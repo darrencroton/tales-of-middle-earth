@@ -304,7 +304,7 @@ export class CanvasRenderer {
   }
 
   render(): void {
-    const { ctx, buffer, cellW, cellH } = this;
+    const { ctx, buffer } = this;
 
     if (this.mode.kind === 'hidden') {
       buffer.takeDirtyRows();
@@ -313,6 +313,7 @@ export class CanvasRenderer {
     }
 
     if (this.mode.kind === 'full') this.fitContent();
+    const { cellW, cellH } = this;
     const region = this.region();
     const pad = this.mode.kind === 'panel' ? PANEL_PADDING_CELLS : 0;
     const fontPx = Math.max(1, Math.floor(Math.min(cellH * 0.9, cellW / CHAR_ASPECT)));

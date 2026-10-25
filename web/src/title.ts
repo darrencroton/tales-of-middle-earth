@@ -111,6 +111,8 @@ export class TitleScreen {
   private lastStep = 0;
   private ready = false;
   private heatBoost = 1;
+  private leaveTimer = 0;
+  private readonly app: HTMLElement | null;
   private visible = true;
 
   constructor(root: HTMLElement, animation: () => AnimationLevel, callbacks: TitleCallbacks) {
@@ -137,6 +139,8 @@ export class TitleScreen {
     this.themeButton = find<HTMLButtonElement>('.title-theme');
     this.actions = find('.title-actions');
     this.logo = find('.title-logo');
+    this.app = document.getElementById('app');
+    this.app?.setAttribute('inert', '');
 
     this.beginButton.addEventListener('click', () => this.begin('ToME'));
     this.themeButton.addEventListener('click', () => this.begin('Theme'));
@@ -167,12 +171,18 @@ export class TitleScreen {
     this.beginButton.hidden = false;
     this.themeButton.hidden = false;
     this.resize();
+    if (this.visible) this.beginButton.focus({ preventScroll: true, focusVisible: false } as FocusOptions);
   }
 
   /** Shows the screen again with a message (game over or failure). */
   showEnd(message: string, error: boolean, actions: { label: string; run: () => void }[]): void {
+    window.clearTimeout(this.leaveTimer);
+    this.leaveTimer = 0;
+    this.surgeAt = 0;
+    this.ready = false;
     this.visible = true;
     this.root.hidden = false;
+    this.app?.setAttribute('inert', '');
     this.root.classList.remove('leaving', 'ready');
     this.root.classList.toggle('error', error);
     this.beginButton.hidden = true;
@@ -192,17 +202,26 @@ export class TitleScreen {
   }
 
   begin(module: ModuleChoice): void {
-    if (!this.ready || !this.visible || this.surgeAt) return;
-    this.surgeAt = performance.now();
-    this.root.classList.add('leaving');
+    if (!this.ready || !this.visible || this.surgeAt || this.leaveTimer) return;
+    const animated = this.animation() !== 'off';
+    if (animated) {
+      this.surgeAt = performance.now();
+      this.root.classList.add('leaving');
+    }
     this.callbacks.onBegin(module);
-    window.setTimeout(() => {
-      this.visible = false;
-      this.root.hidden = true;
-      cancelAnimationFrame(this.frame);
-      this.frame = 0;
-    }, SURGE_MS + FADE_MS);
+    this.leaveTimer = window.setTimeout(() => this.hide(), animated ? SURGE_MS + FADE_MS : 0);
     this.schedule();
+  }
+
+  private hide(): void {
+    this.leaveTimer = 0;
+    this.visible = false;
+    this.surgeAt = 0;
+    this.root.hidden = true;
+    this.root.classList.remove('leaving');
+    this.app?.removeAttribute('inert');
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
   }
 
   private resize(): void {

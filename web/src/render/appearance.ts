@@ -39,6 +39,7 @@ export interface AppearanceContext {
 }
 
 const MEMORY_TINT: RGB = [0.0, 0.02, 0.09];
+const HALLUCINATION_GLYPHS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ&!?=$|"~';
 const UNKNOWN_MATERIAL: Material = {
   glyph: null,
   fg: null,
@@ -88,7 +89,7 @@ export function cellAppearance(ctx: AppearanceContext, x: number, y: number): Ce
     fg = attrColour(snap.attr[i], palette);
   }
 
-  if (layerByte & LAYER_MULTI_HUED) fg = shimmerColour(palette, x, y, animate ? time : 0);
+  if (layerByte & LAYER_MULTI_HUED && !isTerrain) fg = shimmerColour(palette, x, y, animate ? time : 0);
 
   const solid = isTerrain && mat.solid && glyphMode === 'brogue';
   if (mat.solid) bg = scale(bg, 0.9 + 0.2 * cellHash(x, y));
@@ -121,8 +122,10 @@ export function cellAppearance(ctx: AppearanceContext, x: number, y: number): Ce
     if (layer !== LAYER_PLAYER) fg = mix(fg, rememberedColour(fg, 0.6), 0.5);
   }
 
-  if (snap.hallucinating && !isTerrain) {
-    fg = BASE_ATTR_COLOURS[1 + Math.floor(cellHash(x, y, Math.floor(time * 2)) * 15)];
+  if (snap.hallucinating && !isTerrain && layer !== LAYER_PLAYER) {
+    const phase = Math.floor(time * 2);
+    fg = BASE_ATTR_COLOURS[1 + Math.floor(cellHash(x, y, phase) * 15)];
+    glyph = HALLUCINATION_GLYPHS[Math.floor(cellHash(y, x, phase) * HALLUCINATION_GLYPHS.length)];
   }
 
   return { glyph, fg, bg, solid };

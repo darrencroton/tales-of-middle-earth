@@ -75,7 +75,7 @@ const RULES: Rule[] = [
   [/jammed door|locked door|^door$/, () => material({ glyph: '+', fg: [0.85, 0.6, 0.32], bg: [0.3, 0.18, 0.08], blocksLight: true })],
   [/open door|broken door/, () => material({ glyph: "'", fg: [0.85, 0.6, 0.32], bg: [0.2, 0.13, 0.07] })],
   [/staircase|shaft|quest (entrance|exit|down level|up level)|town exit|path to the/, () =>
-    material({ fg: [1, 1, 0.95], bg: [0.16, 0.15, 0.17] })],
+    material({ bg: [0.16, 0.15, 0.17] })],
   [/pool of deep lava/, () =>
     material({ glyph: '≈', fg: [1, 0.78, 0.35], bg: [0.78, 0.22, 0.03], dance: 0.22, emit: { colour: [1, 0.42, 0.12], radius: 4 } })],
   [/shallow lava/, () =>

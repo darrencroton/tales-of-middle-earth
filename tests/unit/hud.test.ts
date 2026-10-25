@@ -121,3 +121,15 @@ describe('opening screen helpers', async () => {
     assert.ok(result.top >= 0 && result.bottom < rows && result.top <= result.bottom);
   });
 });
+
+describe('hallucination', async () => {
+  const { disguiseMonster, disguiseObject } = await import('../../web/src/hud.ts');
+
+  it('hides creature and item identities', () => {
+    const m = disguiseMonster({ id: 3, name: 'Grip, Farmer Maggot’s Dog', ch: 67, attr: 7, x: 1, y: 1, hp: 5, maxhp: 5, asleep: 0, afraid: 0, unique: 1, status: -2 });
+    assert.equal(m.name, 'Something strange');
+    assert.equal(m.unique, 0);
+    assert.equal(m.hp, 5);
+    assert.equal(disguiseObject({ id: 2, name: 'a Potion of Speed', ch: 33, attr: 4, x: 0, y: 0 }).name, 'Something odd');
+  });
+});

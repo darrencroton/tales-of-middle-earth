@@ -44,7 +44,8 @@ type ViewMode = 'title' | 'map' | 'overlay';
 
 const KEYBOARD_SENTINEL = ' ';
 const EFFECT_LINGER_MS = 160;
-const MAX_EFFECT_CELLS = 48;
+const HIGHLIGHT_MS = 2500;
+const MAX_EFFECT_CELLS = 600;
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -81,6 +82,7 @@ map.glyphMode = settings.glyphs;
 
 let mode: ViewMode = 'title';
 let base: ScreenCopy | null = null;
+let basePanel = { row: -1, col: -1 };
 let lastSnap: LevelSnapshot | null = null;
 let lastState: GameState | null = null;
 let materialsLoaded = false;
@@ -92,8 +94,13 @@ let lastRenderMs = 0;
 
 const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
   onEntity: (point) => {
-    map.flashHighlight(point);
+    map.flashHighlight(point, HIGHLIGHT_MS);
+    dirty = true;
     requestFrame();
+    window.setTimeout(() => {
+      dirty = true;
+      requestFrame();
+    }, HIGHLIGHT_MS + 50);
   },
   onMore: () => send([0x20]),
   onHistory: () => showHistory(),
@@ -208,6 +215,7 @@ function refresh(): void {
 function captureEffects(): void {
   const snap = lastSnap;
   if (!snap || !snap.inDungeon || snap.icky || !base) return;
+  if (snap.panelRow !== basePanel.row || snap.panelCol !== basePanel.col) return;
   const effects: MapEffect[] = [];
   for (let row: number = snap.rowMap; row < buffer.rows - 1; row++) {
     for (let col: number = snap.colMap; col < buffer.cols; col++) {
@@ -243,9 +251,9 @@ function frame(now: number): void {
   const due = fps > 0 && now - lastFrame >= 1000 / fps - 2;
 
   if (dirty || due) {
-    if (dirty && engine.state === 'running') {
+    if (dirty) {
       dirty = false;
-      refresh();
+      if (engine.state === 'running') refresh();
     }
     lastFrame = now;
     const started = performance.now();
@@ -296,7 +304,10 @@ const engine = new Engine(buffer, terminal, {
     advanceIntro();
     refresh();
     dirty = true;
-    if (lastSnap?.inDungeon && !lastSnap.icky) base = buffer.copy();
+    if (lastSnap?.inDungeon && !lastSnap.icky) {
+      base = buffer.copy();
+      basePanel = { row: lastSnap.panelRow, col: lastSnap.panelCol };
+    }
     if (hasEffects) {
       map.setEffects([]);
       hasEffects = false;
