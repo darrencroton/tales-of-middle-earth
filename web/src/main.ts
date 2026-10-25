@@ -1,7 +1,15 @@
 import './styles.css';
 import { Engine } from './engine.ts';
 import { attachSwipe } from './input/gestures.ts';
-import { directionKeys, KEY_BACKSPACE, KEY_ENTER, KEY_ESCAPE, translateKey, translateText } from './input/keys.ts';
+import {
+  compositionDelta,
+  directionKeys,
+  KEY_BACKSPACE,
+  KEY_ENTER,
+  KEY_ESCAPE,
+  translateKey,
+  translateText,
+} from './input/keys.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -77,6 +85,13 @@ const engine = new Engine(buffer, renderer, {
   onRunning() {
     splash.hidden = true;
     resize();
+    const storageError = engine.storageError;
+    if (storageError) {
+      showMessage(
+        'Saves unavailable',
+        `Saved games could not be loaded from this browser's storage (${storageError}). Saving to the browser is switched off for this session so existing saves are not overwritten. You can still play and use Export saves to keep a copy.`,
+      );
+    }
   },
   onExit(message) {
     splash.hidden = false;
@@ -123,8 +138,17 @@ function dialogOpen(): boolean {
   return menu.open || info.open;
 }
 
+/** Elements whose own keyboard behaviour (Tab, Enter, Space) must not be taken over. */
+function isControl(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    target !== keyboardInput &&
+    target.closest('button, a, input, select, textarea, [contenteditable]') !== null
+  );
+}
+
 window.addEventListener('keydown', (e) => {
-  if (dialogOpen() || e.isComposing) return;
+  if (dialogOpen() || e.isComposing || isControl(e.target)) return;
   const codes = translateKey(e, ctrlLatched);
   if (!codes) return;
   e.preventDefault();
@@ -133,7 +157,27 @@ window.addEventListener('keydown', (e) => {
 
 keyboardInput.value = KEYBOARD_SENTINEL;
 
+let composing = false;
+let composed = '';
+
+function inputText(): string {
+  const value = keyboardInput.value;
+  return value.startsWith(KEYBOARD_SENTINEL) ? value.slice(KEYBOARD_SENTINEL.length) : value;
+}
+
+keyboardInput.addEventListener('compositionstart', () => {
+  composing = true;
+  composed = '';
+});
+
+keyboardInput.addEventListener('compositionend', () => {
+  composing = false;
+  composed = '';
+  keyboardInput.value = KEYBOARD_SENTINEL;
+});
+
 keyboardInput.addEventListener('beforeinput', (e) => {
+  if (composing || e.isComposing) return;
   if (e.inputType === 'insertText' && e.data) {
     e.preventDefault();
     send(translateText(e.data, ctrlLatched));
@@ -147,12 +191,19 @@ keyboardInput.addEventListener('beforeinput', (e) => {
 });
 
 keyboardInput.addEventListener('input', () => {
+  if (composing) {
+    const current = inputText();
+    const delta = compositionDelta(composed, current);
+    composed = current;
+    send([...Array<number>(delta.backspaces).fill(KEY_BACKSPACE), ...translateText(delta.text, ctrlLatched)]);
+    return;
+  }
   const value = keyboardInput.value;
   if (value === KEYBOARD_SENTINEL) return;
   if (value === '') {
     send([KEY_BACKSPACE]);
   } else {
-    send(translateText(value.startsWith(KEYBOARD_SENTINEL) ? value.slice(1) : value, ctrlLatched));
+    send(translateText(inputText(), ctrlLatched));
   }
   keyboardInput.value = KEYBOARD_SENTINEL;
 });
@@ -216,7 +267,7 @@ async function exportSaves(): Promise<void> {
     showMessage('Export saves', 'The game is still loading. Try again in a moment.');
     return;
   }
-  await engine.syncNow();
+  await engine.syncNow().catch((err) => console.warn('Sync before export failed; exporting from memory', err));
   const files = collectFiles(fs, root);
   if (files.length === 0) {
     showMessage('Export saves', 'There are no saved games yet. Save in-game with Ctrl+S first.');
@@ -297,7 +348,36 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 
 /* Start */
 
+/**
+ * Holds an exclusive lock for this page so that two tabs never load and sync
+ * the same saves. Resolves false when another tab already holds it.
+ */
+function acquireSessionLock(): Promise<boolean> {
+  if (!('locks' in navigator)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    navigator.locks
+      .request('tome2mobile-session', { ifAvailable: true }, (lock) => {
+        if (!lock) {
+          resolve(false);
+          return undefined;
+        }
+        resolve(true);
+        return new Promise<void>(() => undefined);
+      })
+      .catch(() => resolve(true));
+  });
+}
+
 resize();
-engine.start(new URL('engine/tome.js', document.baseURI).href).catch((err) => {
-  console.error(err);
+acquireSessionLock().then((acquired) => {
+  if (!acquired) {
+    splash.classList.add('error');
+    splashProgress.hidden = true;
+    splashStatus.textContent = 'ToME 2 is already open in another tab or window. Close it, then reload this page.';
+    showSplashActions([{ label: 'Reload', run: () => location.reload() }]);
+    return;
+  }
+  engine.start(new URL(`engine/tome.js?v=${__ENGINE_VERSION__}`, document.baseURI).href).catch((err) => {
+    console.error(err);
+  });
 });

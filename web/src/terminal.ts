@@ -60,6 +60,10 @@ export class TerminalBuffer {
       this.chars[offset + col] = text[col - x];
       this.attrs[offset + col] = attr;
     }
+    if (y === this.cursorY && this.cursorX >= start && this.cursorX < end) {
+      this.cursorX = -1;
+      this.cursorY = -1;
+    }
     this.dirty.add(y);
   }
 
