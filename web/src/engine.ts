@@ -1,0 +1,195 @@
+import type { CanvasRenderer, TerminalBuffer } from './terminal.ts';
+import { syncToStorage, type EmscriptenFS } from './saves.ts';
+
+/** Functions the C++ frontend (engine/main-web.cc) calls through Module.tome. */
+export interface TomeBridge {
+  storagePath?: string;
+  waitKey(): Promise<number>;
+  pollKey(): number;
+  drawText(x: number, y: number, attr: number, text: Uint8Array): void;
+  drawCursor(x: number, y: number): void;
+  clear(): void;
+  flush(): void;
+  bell(): void;
+  setTitle(title: string): void;
+  setColour(index: number, r: number, g: number, b: number): void;
+  quit(message: string | null): void;
+}
+
+interface EmscriptenModule {
+  FS: EmscriptenFS;
+}
+
+interface ModuleOptions {
+  tome: TomeBridge;
+  arguments: string[];
+  locateFile(path: string, prefix: string): string;
+  print(text: string): void;
+  printErr(text: string): void;
+  setStatus(text: string): void;
+  onExit(status: number): void;
+  onAbort(what: unknown): void;
+}
+
+type CreateModule = (options: ModuleOptions) => Promise<EmscriptenModule>;
+
+export type EngineState = 'idle' | 'loading' | 'running' | 'exited' | 'failed';
+
+export interface EngineEvents {
+  onStatus(text: string, fraction: number | null): void;
+  onRunning(): void;
+  onExit(message: string | null): void;
+  onError(message: string): void;
+}
+
+const SAVE_SYNC_DELAY_MS = 1500;
+
+export function parseDownloadStatus(text: string): number | null {
+  const match = /\((\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)\)/.exec(text);
+  if (!match) return null;
+  const total = Number(match[2]);
+  return total > 0 ? Math.min(1, Number(match[1]) / total) : null;
+}
+
+export class Engine {
+  state: EngineState = 'idle';
+  private readonly queue: number[] = [];
+  private waiter: ((key: number) => void) | null = null;
+  private module: EmscriptenModule | null = null;
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
+  private syncInFlight: Promise<void> | null = null;
+  private quitMessage: string | null = null;
+  private readonly buffer: TerminalBuffer;
+  private readonly renderer: CanvasRenderer;
+  private readonly events: EngineEvents;
+
+  constructor(buffer: TerminalBuffer, renderer: CanvasRenderer, events: EngineEvents) {
+    this.buffer = buffer;
+    this.renderer = renderer;
+    this.events = events;
+  }
+
+  get fs(): EmscriptenFS | null {
+    return this.module?.FS ?? null;
+  }
+
+  get savePath(): string | null {
+    return this.bridge.storagePath ?? null;
+  }
+
+  sendKeys(codes: number[]): void {
+    if (this.state !== 'running' && this.state !== 'loading') return;
+    for (const code of codes) {
+      const key = code & 0xff;
+      if (this.waiter) {
+        const resolve = this.waiter;
+        this.waiter = null;
+        resolve(key);
+      } else {
+        this.queue.push(key);
+      }
+    }
+  }
+
+  async syncNow(): Promise<void> {
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
+    const fs = this.fs;
+    if (!fs || !this.savePath) return;
+    if (this.syncInFlight) await this.syncInFlight.catch(() => undefined);
+    this.syncInFlight = syncToStorage(fs).finally(() => {
+      this.syncInFlight = null;
+    });
+    return this.syncInFlight;
+  }
+
+  private scheduleSync(): void {
+    if (this.syncTimer) clearTimeout(this.syncTimer);
+    this.syncTimer = setTimeout(() => {
+      this.syncTimer = null;
+      this.syncNow().catch((err) => console.error('Saving to browser storage failed', err));
+    }, SAVE_SYNC_DELAY_MS);
+  }
+
+  private readonly bridge: TomeBridge = {
+    waitKey: () => {
+      this.scheduleSync();
+      const next = this.queue.shift();
+      if (next !== undefined) return Promise.resolve(next);
+      return new Promise<number>((resolve) => {
+        this.waiter = resolve;
+      });
+    },
+    pollKey: () => this.queue.shift() ?? -1,
+    drawText: (x, y, attr, text) => this.buffer.drawText(x, y, attr, text),
+    drawCursor: (x, y) => this.buffer.setCursor(x, y),
+    clear: () => this.buffer.clear(),
+    flush: () => this.renderer.scheduleRender(),
+    bell: () => {
+      if ('vibrate' in navigator) navigator.vibrate(20);
+    },
+    setTitle: (title) => {
+      document.title = title ? `ToME 2 — ${title}` : 'ToME 2';
+    },
+    setColour: (index, r, g, b) => this.buffer.setColour(index, r, g, b),
+    quit: (message) => {
+      this.quitMessage = message;
+    },
+  };
+
+  async start(engineUrl: string, args: string[] = []): Promise<void> {
+    if (this.state !== 'idle') throw new Error(`Engine already ${this.state}`);
+    this.state = 'loading';
+
+    let createModule: CreateModule;
+    try {
+      const imported = (await import(/* @vite-ignore */ engineUrl)) as { default: CreateModule };
+      createModule = imported.default;
+    } catch (err) {
+      this.fail(`Could not load the game engine: ${String(err)}`);
+      return;
+    }
+
+    try {
+      this.module = await createModule({
+        tome: this.bridge,
+        arguments: args,
+        locateFile: (path) => new URL(path, engineUrl).href,
+        print: (text) => console.log(text),
+        printErr: (text) => console.warn(text),
+        setStatus: (text) => {
+          if (text) this.events.onStatus(text, parseDownloadStatus(text));
+        },
+        onExit: (status) => this.handleExit(status),
+        onAbort: (what) => this.fail(`The game engine crashed: ${String(what)}`),
+      });
+    } catch (err) {
+      if (this.state === 'loading') this.fail(`The game engine failed to start: ${String(err)}`);
+      return;
+    }
+
+    if (this.state === 'loading') {
+      this.state = 'running';
+      this.events.onRunning();
+    }
+  }
+
+  private handleExit(status: number): void {
+    if (this.state === 'exited' || this.state === 'failed') return;
+    this.state = 'exited';
+    this.waiter = null;
+    const message = this.quitMessage ?? (status === 0 ? null : `Exited with status ${status}`);
+    this.syncNow()
+      .catch((err) => console.error('Final save sync failed', err))
+      .finally(() => this.events.onExit(message));
+  }
+
+  private fail(message: string): void {
+    if (this.state === 'failed') return;
+    this.state = 'failed';
+    this.waiter = null;
+    this.events.onError(message);
+  }
+}

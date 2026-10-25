@@ -1,0 +1,105 @@
+name: Build, test and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EMSDK_VERSION: 6.0.13
+  EMSDK_DIR: ${{ github.workspace }}/../emsdk
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache Emscripten SDK
+        id: emsdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.EMSDK_DIR }}
+          key: emsdk-${{ runner.os }}-${{ env.EMSDK_VERSION }}
+
+      - name: Install Emscripten SDK
+        if: steps.emsdk-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$EMSDK_DIR"
+          "$EMSDK_DIR/emsdk" install "$EMSDK_VERSION"
+
+      - name: Activate Emscripten SDK
+        run: |
+          "$EMSDK_DIR/emsdk" activate "$EMSDK_VERSION"
+          source "$EMSDK_DIR/emsdk_env.sh"
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
+          echo "EMSDK=$EMSDK" >> "$GITHUB_ENV"
+          emcc --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build engine (WebAssembly)
+        run: |
+          npm run engine:configure
+          npm run engine:build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+        env:
+          CI: true
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

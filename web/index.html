@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="ToME 2 — Tales of Middle-earth, a roguelike playable on your phone." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ToME 2" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <title>ToME 2</title>
+  </head>
+  <body>
+    <main id="app">
+      <div id="terminal" aria-label="Game screen">
+        <canvas id="screen" role="img" aria-label="ToME 2 terminal"></canvas>
+      </div>
+      <nav id="toolbar" aria-label="Game controls">
+        <button type="button" data-action="keyboard" aria-label="Show keyboard">⌨</button>
+        <button type="button" data-action="escape">Esc</button>
+        <button type="button" data-action="enter" aria-label="Enter">⏎</button>
+        <button type="button" data-action="ctrl" aria-pressed="false">Ctrl</button>
+        <button type="button" data-action="menu" aria-label="Menu">☰</button>
+      </nav>
+      <input
+        id="keyboard-input"
+        type="text"
+        inputmode="text"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        enterkeyhint="send"
+        aria-label="Keyboard input"
+      />
+    </main>
+
+    <div id="splash" role="status" aria-live="polite">
+      <h1>ToME 2</h1>
+      <p class="subtitle">Tales of Middle-earth</p>
+      <progress id="splash-progress"></progress>
+      <p id="splash-status">Loading…</p>
+    </div>
+
+    <dialog id="menu">
+      <h2>Menu</h2>
+      <div class="menu-actions">
+        <button type="button" data-menu="export">Export saves</button>
+        <button type="button" data-menu="import">Import saves</button>
+        <button type="button" data-menu="help">Controls</button>
+        <button type="button" data-menu="about">About</button>
+        <button type="button" data-menu="close">Close</button>
+      </div>
+      <input id="import-file" type="file" accept=".tome2save,application/json" hidden />
+    </dialog>
+
+    <dialog id="info">
+      <div id="info-body"></div>
+      <form method="dialog"><button type="submit">Close</button></form>
+    </dialog>
+
+    <template id="help-template">
+      <h2>Controls</h2>
+      <ul>
+        <li><strong>Swipe</strong> on the map to walk; a long swipe runs.</li>
+        <li><strong>⌨</strong> opens the keyboard for commands and text.</li>
+        <li><strong>Esc / ⏎</strong> cancel or confirm prompts.</li>
+        <li><strong>Ctrl</strong> applies Control to the next key.</li>
+        <li>With a hardware keyboard, arrow keys walk and Shift+arrow runs.</li>
+        <li>Saves are kept in this browser. Use <em>Export saves</em> to back them up.</li>
+      </ul>
+    </template>
+
+    <template id="about-template">
+      <h2>About</h2>
+      <p>
+        A mobile web port of <strong>ToME 2</strong> (Tales of Middle-earth), based on
+        <a href="https://github.com/tome2/tome2" target="_blank" rel="noopener">tome2/tome2</a>.
+      </p>
+      <p>
+        ToME is copyright its original authors and is distributed for educational, research
+        and not-for-profit purposes. See
+        <a href="https://github.com/tome2/tome2/blob/master/doc/credits.txt" target="_blank" rel="noopener">the credits</a>.
+      </p>
+      <p><a href="https://github.com/darrencroton/tome2mobile" target="_blank" rel="noopener">Source code</a></p>
+    </template>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
