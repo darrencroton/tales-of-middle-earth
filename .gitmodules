@@ -1,0 +1,3 @@
+[submodule "external/tome2"]
+	path = external/tome2
+	url = https://github.com/darrencroton/tome2.git

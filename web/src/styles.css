@@ -1,0 +1,213 @@
+:root {
+  --bg: #000;
+  --fg: #e8e2d0;
+  --muted: #9a9384;
+  --accent: #d9a441;
+  --panel: #15130f;
+  --panel-border: #3a352b;
+  --button: #221f19;
+  --button-active: #3b3427;
+  --app-height: 100dvh;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overscroll-behavior: none;
+}
+
+body {
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--app-height);
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+#terminal {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#screen {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+#toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  background: var(--panel);
+  border-top: 1px solid var(--panel-border);
+}
+
+#toolbar button,
+dialog button {
+  flex: 1 1 0;
+  min-height: 44px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--button);
+  color: var(--fg);
+  font: inherit;
+  font-size: 16px;
+  touch-action: manipulation;
+}
+
+#toolbar button:active,
+#toolbar button[aria-pressed="true"] {
+  background: var(--button-active);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#keyboard-input {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  font-size: 16px;
+  border: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+#splash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  background: var(--bg);
+  text-align: center;
+  z-index: 10;
+}
+
+#splash[hidden] {
+  display: none;
+}
+
+#splash h1 {
+  margin: 0;
+  color: var(--accent);
+  font-size: 2.5rem;
+  letter-spacing: 0.05em;
+}
+
+#splash .subtitle {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+
+#splash progress {
+  width: min(280px, 80vw);
+  accent-color: var(--accent);
+}
+
+#splash-status {
+  min-height: 1.5em;
+  color: var(--muted);
+  max-width: 36em;
+}
+
+#splash.error #splash-status {
+  color: #ff7b6b;
+}
+
+#splash .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+#splash .actions button {
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--button);
+  color: var(--fg);
+  font: inherit;
+}
+
+dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(var(--app-height) - 32px);
+  overflow: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--fg);
+  padding: 16px;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+
+dialog h2 {
+  margin-top: 0;
+  color: var(--accent);
+}
+
+dialog a {
+  color: var(--accent);
+}
+
+dialog ul {
+  padding-left: 1.2em;
+  line-height: 1.5;
+}
+
+.menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#info form {
+  display: flex;
+  margin-top: 12px;
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  #app {
+    flex-direction: row;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  #toolbar {
+    flex-direction: column;
+    width: 72px;
+    padding: 6px calc(6px + env(safe-area-inset-right)) 6px 6px;
+    border-top: 0;
+    border-left: 1px solid var(--panel-border);
+  }
+}
