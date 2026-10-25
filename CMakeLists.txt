@@ -94,7 +94,7 @@ add_subdirectory(${TOME2_DIR}/src ${CMAKE_BINARY_DIR}/tome2 EXCLUDE_FROM_ALL)
 #
 # Web frontend
 #
-add_executable(tome engine/main-web.cc)
+add_executable(tome engine/main-web.cc engine/snapshot.cc)
 target_include_directories(tome PRIVATE ${TOME2_DIR}/src ${TOME2_DIR}/src/include)
 target_link_libraries(tome PRIVATE game_main game squelch ${LIBS})
 
@@ -116,7 +116,8 @@ set(TOME_LINK_FLAGS
 	-sEXPORT_NAME=createTomeModule
 	-sENVIRONMENT=web
 	-sEXIT_RUNTIME=1
-	-sEXPORTED_RUNTIME_METHODS=FS
+	-sEXPORTED_RUNTIME_METHODS=FS,HEAPU8,HEAPU16,HEAP32,UTF8ToString
+	-sEXPORTED_FUNCTIONS=_main,_web_snapshot,_web_features_json,_web_state_json
 	-lidbfs.js
 	-Wl,--wrap=nanosleep
 	-Wl,--wrap=getpwuid

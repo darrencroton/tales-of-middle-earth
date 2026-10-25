@@ -60,3 +60,48 @@ export function attachSwipe(element: HTMLElement, onSwipe: (swipe: Swipe) => voi
     tracking = false;
   });
 }
+
+export function pinchRatio(startDistance: number, currentDistance: number): number {
+  if (startDistance <= 0 || currentDistance <= 0) return 1;
+  return currentDistance / startDistance;
+}
+
+/**
+ * Reports two-finger pinch scale relative to the gesture start, and the end of the gesture.
+ */
+export function attachPinch(
+  element: HTMLElement,
+  onPinch: (ratio: number) => void,
+  onPinchEnd: () => void,
+): void {
+  let start = 0;
+  const spread = (touches: TouchList) =>
+    Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+
+  element.addEventListener(
+    'touchstart',
+    (e) => {
+      if (e.touches.length === 2) start = spread(e.touches);
+    },
+    { passive: true },
+  );
+
+  element.addEventListener(
+    'touchmove',
+    (e) => {
+      if (e.touches.length !== 2 || start <= 0) return;
+      e.preventDefault();
+      onPinch(pinchRatio(start, spread(e.touches)));
+    },
+    { passive: false },
+  );
+
+  const end = (e: TouchEvent) => {
+    if (start > 0 && e.touches.length < 2) {
+      start = 0;
+      onPinchEnd();
+    }
+  };
+  element.addEventListener('touchend', end);
+  element.addEventListener('touchcancel', end);
+}

@@ -1,3 +1,5 @@
+import type { FeatureInfo } from './render/materials.ts';
+import { readSnapshot, type GameState, type LevelSnapshot } from './render/snapshot.ts';
 import type { CanvasRenderer, TerminalBuffer } from './terminal.ts';
 import { syncToStorage, type EmscriptenFS } from './saves.ts';
 
@@ -13,11 +15,19 @@ export interface TomeBridge {
   bell(): void;
   setTitle(title: string): void;
   setColour(index: number, r: number, g: number, b: number): void;
+  effectFrame(): void;
   quit(message: string | null): void;
 }
 
 interface EmscriptenModule {
   FS: EmscriptenFS;
+  HEAPU8: Uint8Array;
+  HEAPU16: Uint16Array;
+  HEAP32: Int32Array;
+  UTF8ToString(ptr: number): string;
+  _web_snapshot(): number;
+  _web_features_json(): number;
+  _web_state_json(maxMessages: number): number;
 }
 
 interface ModuleOptions {
@@ -40,6 +50,12 @@ export interface EngineEvents {
   onRunning(): void;
   onExit(message: string | null): void;
   onError(message: string): void;
+  /** Engine flushed output to the screen. */
+  onFlush?(): void;
+  /** Engine is idle, waiting for a key. */
+  onIdle?(): void;
+  /** Engine is pausing mid-animation (bolts, explosions). */
+  onEffectFrame?(): void;
 }
 
 const SAVE_SYNC_DELAY_MS = 1500;
@@ -59,6 +75,7 @@ export class Engine {
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
   private syncInFlight: Promise<void> | null = null;
   private quitMessage: string | null = null;
+  private cursorDrawn = false;
   private readonly buffer: TerminalBuffer;
   private readonly renderer: CanvasRenderer;
   private readonly events: EngineEvents;
@@ -71,6 +88,25 @@ export class Engine {
 
   get fs(): EmscriptenFS | null {
     return this.module?.FS ?? null;
+  }
+
+  /** Copies the current level state out of the engine, or null before it runs. */
+  snapshot(): LevelSnapshot | null {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return null;
+    return readSnapshot(mod, mod._web_snapshot());
+  }
+
+  gameState(maxMessages = 40): GameState | null {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return null;
+    return JSON.parse(mod.UTF8ToString(mod._web_state_json(maxMessages))) as GameState;
+  }
+
+  features(): FeatureInfo[] {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return [];
+    return JSON.parse(mod.UTF8ToString(mod._web_features_json())) as FeatureInfo[];
   }
 
   get savePath(): string | null {
@@ -116,6 +152,7 @@ export class Engine {
   private readonly bridge: TomeBridge = {
     waitKey: () => {
       this.scheduleSync();
+      this.events.onIdle?.();
       const next = this.queue.shift();
       if (next !== undefined) return Promise.resolve(next);
       return new Promise<number>((resolve) => {
@@ -124,9 +161,18 @@ export class Engine {
     },
     pollKey: () => this.queue.shift() ?? -1,
     drawText: (x, y, attr, text) => this.buffer.drawText(x, y, attr, text),
-    drawCursor: (x, y) => this.buffer.setCursor(x, y),
+    drawCursor: (x, y) => {
+      this.cursorDrawn = true;
+      this.buffer.setCursor(x, y);
+    },
     clear: () => this.buffer.clear(),
-    flush: () => this.renderer.scheduleRender(),
+    flush: () => {
+      if (!this.cursorDrawn && this.buffer.cursorY >= 0) this.buffer.setCursor(-1, -1);
+      this.cursorDrawn = false;
+      this.renderer.scheduleRender();
+      this.events.onFlush?.();
+    },
+    effectFrame: () => this.events.onEffectFrame?.(),
     bell: () => {
       if ('vibrate' in navigator) navigator.vibrate(20);
     },

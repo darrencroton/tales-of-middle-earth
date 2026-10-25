@@ -18,10 +18,14 @@
     <title>ToME 2</title>
   </head>
   <body>
-    <main id="app">
-      <div id="terminal" aria-label="Game screen">
+    <main id="app" class="mode-title">
+      <div id="stage" aria-label="Game screen">
+        <canvas id="fx" aria-hidden="true"></canvas>
+        <canvas id="map" role="img" aria-label="Dungeon map"></canvas>
         <canvas id="screen" role="img" aria-label="ToME 2 terminal"></canvas>
+        <div id="messages" aria-live="polite"></div>
       </div>
+      <aside id="hud" aria-label="Character and nearby creatures"></aside>
       <nav id="toolbar" aria-label="Game controls">
         <button type="button" data-action="keyboard" aria-label="Show keyboard">⌨</button>
         <button type="button" data-action="escape">Esc</button>
@@ -42,11 +46,27 @@
       />
     </main>
 
-    <div id="splash" role="status" aria-live="polite">
-      <h1>ToME 2</h1>
-      <p class="subtitle">Tales of Middle-earth</p>
-      <progress id="splash-progress"></progress>
-      <p id="splash-status">Loading…</p>
+    <div id="title-screen" role="dialog" aria-modal="true" aria-labelledby="title-heading">
+      <canvas aria-hidden="true"></canvas>
+      <h1 id="title-heading" class="visually-hidden">ToME 2 — Tales of Middle-earth</h1>
+      <div class="title-layout">
+        <div class="title-logo" aria-hidden="true"></div>
+        <p class="title-subtitle">Tales of Middle-earth</p>
+        <blockquote class="title-verse">
+          <span>One Ring to rule them all, One Ring to find them,</span>
+          <span>One Ring to bring them all and in the darkness bind them.</span>
+          <cite>J.R.R. Tolkien</cite>
+        </blockquote>
+        <div class="title-spacer"></div>
+        <div class="title-footer">
+          <div class="title-progress" aria-hidden="true"><div class="title-progress-fill"></div></div>
+          <p class="title-status" role="status" aria-live="polite">Kindling the fires…</p>
+          <button type="button" class="title-begin" hidden>Begin</button>
+          <button type="button" class="title-theme" hidden>Play the Theme module</button>
+          <div class="title-actions"></div>
+          <p class="title-credits">ToME by DarkGod &amp; contributors · of the Angband lineage</p>
+        </div>
+      </div>
     </div>
 
     <dialog id="menu">
@@ -54,6 +74,8 @@
       <div class="menu-actions">
         <button type="button" data-menu="export">Export saves</button>
         <button type="button" data-menu="import">Import saves</button>
+        <button type="button" data-menu="settings">Display settings</button>
+        <button type="button" data-menu="history">Message history</button>
         <button type="button" data-menu="help">Controls</button>
         <button type="button" data-menu="about">About</button>
         <button type="button" data-menu="close">Close</button>
@@ -66,10 +88,35 @@
       <form method="dialog"><button type="submit">Close</button></form>
     </dialog>
 
+    <dialog id="settings">
+      <h2>Display settings</h2>
+      <form id="settings-form" method="dialog">
+        <fieldset>
+          <legend>Animation</legend>
+          <label><input type="radio" name="animation" value="full" /> Full</label>
+          <label><input type="radio" name="animation" value="reduced" /> Reduced</label>
+          <label><input type="radio" name="animation" value="off" /> Off</label>
+        </fieldset>
+        <fieldset>
+          <legend>Map glyphs</legend>
+          <label><input type="radio" name="glyphs" value="brogue" /> Brogue-style</label>
+          <label><input type="radio" name="glyphs" value="classic" /> Classic ASCII</label>
+        </fieldset>
+        <fieldset>
+          <legend>Map zoom</legend>
+          <input type="range" name="zoom" min="12" max="48" step="1" aria-label="Map zoom" />
+        </fieldset>
+        <button type="submit">Done</button>
+      </form>
+    </dialog>
+
     <template id="help-template">
       <h2>Controls</h2>
       <ul>
         <li><strong>Swipe</strong> on the map to walk; a long swipe runs.</li>
+        <li><strong>Pinch</strong> the map to zoom.</li>
+        <li>Tap a creature or item in the list to highlight it on the map.</li>
+        <li>Tap the messages to see the history; tap <em>more ▸</em> to continue.</li>
         <li><strong>⌨</strong> opens the keyboard for commands and text.</li>
         <li><strong>Esc / ⏎</strong> cancel or confirm prompts.</li>
         <li><strong>Ctrl</strong> applies Control to the next key.</li>
@@ -88,6 +135,11 @@
         ToME is copyright its original authors and is distributed for educational, research
         and not-for-profit purposes. See
         <a href="https://github.com/tome2/tome2/blob/master/doc/credits.txt" target="_blank" rel="noopener">the credits</a>.
+      </p>
+      <p>
+        The lighting and presentation are inspired by
+        <a href="https://github.com/tmewett/BrogueCE" target="_blank" rel="noopener">Brogue: Community Edition</a>;
+        no Brogue code or assets are used.
       </p>
       <p><a href="https://github.com/darrencroton/tome2mobile" target="_blank" rel="noopener">Source code</a></p>
     </template>

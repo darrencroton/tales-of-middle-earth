@@ -8,9 +8,17 @@ export async function sendText(page: Page, text: string): Promise<void> {
   await page.evaluate((t) => window.__tome?.sendText(t), text);
 }
 
-export async function waitForEngine(page: Page): Promise<void> {
+/**
+ * Waits for the engine, then (by default) presses Begin on the opening
+ * screen and waits for it to clear.
+ */
+export async function waitForEngine(page: Page, options: { begin?: boolean } = {}): Promise<void> {
   await page.waitForFunction(() => window.__tome?.engine.state === 'running', null, { timeout: 90_000 });
-  await expect(page.locator('#splash')).toBeHidden();
+  if (options.begin === false) return;
+  const begin = page.locator('#title-screen .title-begin');
+  await expect(begin).toBeVisible();
+  await begin.click();
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 10_000 });
 }
 
 export async function waitForScreen(page: Page, pattern: RegExp, timeout = 30_000): Promise<string> {
@@ -76,7 +84,7 @@ export function isOnMap(text: string): boolean {
  * Drives character creation with default choices until the town map is shown.
  */
 export async function createCharacter(page: Page, savefile: string): Promise<void> {
-  let text = await waitForScreen(page, /select a module to play/);
+  let text = await waitForScreen(page, /select a module to play|\[a\] New Character/);
   for (let i = 0; i < 80 && !isOnMap(text); i++) {
     const step = BIRTH_STEPS.find(([pattern]) => pattern.test(text));
     if (!step) {
@@ -102,8 +110,8 @@ export function findPlayer(text: string): { x: number; y: number } | null {
 export async function swipe(page: Page, dx: number, dy: number): Promise<void> {
   await page.evaluate(
     ([sx, sy]) => {
-      const target = document.getElementById('terminal');
-      if (!target) throw new Error('terminal missing');
+      const target = document.getElementById('stage');
+      if (!target) throw new Error('stage missing');
       const rect = target.getBoundingClientRect();
       const x0 = rect.left + rect.width / 2;
       const y0 = rect.top + rect.height / 2;
@@ -117,4 +125,41 @@ export async function swipe(page: Page, dx: number, dy: number): Promise<void> {
     },
     [dx, dy],
   );
+}
+
+export async function viewMode(page: Page): Promise<string> {
+  return page.evaluate(() => window.__tome?.mode() ?? '');
+}
+
+/** Average brightness (0..255) of a canvas region given as fractions of its size. */
+export async function canvasBrightness(
+  page: Page,
+  selector: string,
+  region: { x: number; y: number; w: number; h: number },
+): Promise<number> {
+  return page.evaluate(
+    ([sel, r]) => {
+      const canvas = document.querySelector(sel) as HTMLCanvasElement;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return 0;
+      const x = Math.floor(canvas.width * r.x);
+      const y = Math.floor(canvas.height * r.y);
+      const w = Math.max(1, Math.floor(canvas.width * r.w));
+      const h = Math.max(1, Math.floor(canvas.height * r.h));
+      const data = ctx.getImageData(x, y, w, h).data;
+      let sum = 0;
+      for (let i = 0; i < data.length; i += 4) sum += (data[i] + data[i + 1] + data[i + 2]) / 3;
+      return sum / (data.length / 4);
+    },
+    [selector, region] as const,
+  );
+}
+
+/** Uses tome2's wizard commands (page loaded with ?wizard) to jump to a dungeon level and wield a torch. */
+export async function jumpToLevel(page: Page, level: number): Promise<void> {
+  let text = await screenText(page);
+  for (const step of ['\u0001', ' ', ' ', 'y', 'j', ' ', `${level}\r`, ' ', ' ', 'w', 'c', ' ']) {
+    await sendText(page, step);
+    text = await waitForSettle(page, text, 5_000);
+  }
 }
