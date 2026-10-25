@@ -70,6 +70,10 @@ EM_JS(void, web_flush, (), {
 	Module.tome.flush();
 });
 
+EM_JS(void, web_effect_frame, (), {
+	Module.tome.effectFrame();
+});
+
 EM_JS(void, web_bell, (), {
 	Module.tome.bell();
 });
@@ -118,7 +122,7 @@ extern "C" int __wrap_nanosleep(const struct timespec *req, struct timespec *rem
 
 	unsigned int ms = static_cast<unsigned int>(req->tv_sec * 1000 + req->tv_nsec / 1000000L);
 
-	web_flush();
+	web_effect_frame();
 	emscripten_sleep(ms);
 	last_yield_ms = emscripten_get_now();
 
@@ -195,7 +199,6 @@ public:
 
 		if (wait)
 		{
-			web_flush();
 			Term_keypress(web_wait_key());
 			last_yield_ms = emscripten_get_now();
 			enqueue_pending_keys();

@@ -21,11 +21,35 @@ A mobile-friendly web port of **ToME 2 — Tales of Middle-earth**, the Angband-
 - It works offline after the first load, through a service worker.
 - CI builds the engine, runs unit and end-to-end tests at phone and tablet screen sizes, then deploys to GitHub Pages.
 
-**Milestone 2 — mobile UX** (next)
+**Milestone 2 — Brogue-inspired presentation and mobile layout** ✅
 
-- Viewport that scrolls the map around the player, with pinch-zoom.
-- Compact status and message panels, with portrait and landscape layouts.
-- Tap to travel or target, plus a context action bar and menus for inventory and spells.
+The visual design takes inspiration from [Brogue: Community Edition](https://github.com/tmewett/BrogueCE). No Brogue code, colour tables or assets are used; Brogue CE is AGPL-3.0.
+
+- **Lit map from engine state.** The dungeon is drawn from a snapshot of tome2's own lighting data, not from the terminal text:
+  - warm torch light that falls off and flickers
+  - light from lit rooms and from monsters that carry light
+  - glowing lava and fire, blocked by walls
+  - a dim, blue-tinted memory of remembered areas
+  - shimmering water and lava
+  - bolts and explosions that light up their surroundings
+- **Brogue-style glyphs:** solid shaded walls, `·` floor, `≈` water and lava, `♣` trees, `"` grass, `▲` mountains. Classic ASCII is available in settings.
+- **Camera:** follows the player, with pinch-zoom on touch screens and Ctrl+scroll on desktop.
+- **Sidebar:**
+  - Health, Mana and Sanity bars and status chips
+  - visible creatures and items, nearest first, each with a health bar; tap one to highlight it on the map
+  - laid out along the bottom in portrait and on the left in landscape
+- **Messages:** fade as turns pass. Tap them for the full history, or tap *more ▸* to continue.
+- **Translucent panels:** menus, inventory and other tome2 screens appear in a panel over the dimmed map, scaled to fit.
+- **Title screens:** animated flames burn behind the title and character-creation screens, and the text is scaled to fit.
+- **Display settings:**
+  - animation: Full (20 fps), Reduced (8 fps) or Off; defaults to Off when the system's reduced-motion setting is on, and pauses in the background
+  - glyph set
+  - zoom
+
+**Milestone 3 — touch play** (next)
+
+- Tap to travel, and tap to target.
+- A context action bar and quick menus for inventory and spells.
 - Autosave when the app is sent to the background.
 
 ---
@@ -35,10 +59,14 @@ A mobile-friendly web port of **ToME 2 — Tales of Middle-earth**, the Angband-
 ```
 external/tome2/     tome2 engine (git submodule → darrencroton/tome2), unmodified
 engine/main-web.cc  Web frontend: implements tome2's Frontend interface, bridges to JS
+engine/snapshot.cc  Exports level, lighting, player, monster and message state to JS
 CMakeLists.txt      Emscripten build: engine + deps → web/public/engine/tome.{js,wasm,data}
 web/                Vite + TypeScript app (no framework)
   src/engine.ts       Loads the WASM module; key queue, save syncing
-  src/terminal.ts     Terminal cell buffer and canvas renderer
+  src/terminal.ts     Terminal cell buffer; full-screen and translucent-panel renderer
+  src/render/         Lit map: snapshot reader, materials, lighting, cell appearance, title flames
+  src/hud.ts          Sidebar (bars, entities) and fading messages
+  src/settings.ts     Display settings (stored per browser)
   src/input/          Keyboard and swipe translation to engine keycodes
   src/saves.ts        Save export/import (.tome2save bundles)
 tests/unit/         node:test unit tests
@@ -58,6 +86,13 @@ tests/e2e/          Playwright tests (phone portrait, phone landscape, tablet)
   - Game data (`lib/`, about 4 MB) is preloaded read-only at `/lib`.
   - `~/.tome` (`/home/web_user/.tome`) is mounted on IDBFS.
   - It is flushed to IndexedDB shortly after the engine goes idle waiting for input, when the page is hidden, and on exit.
+- **Presentation modes:**
+  - Before a character exists, the terminal is drawn full-screen over the flames.
+  - In the dungeon, the lit map replaces tome2's map view, with the sidebar and message area alongside.
+  - When tome2 covers the screen with a menu, the cells that differ from the last map screen are drawn as a panel over the dimmed map.
+- **Engine snapshot:**
+  - JavaScript calls exported C++ functions while the engine is paused waiting for input, so the state it reads is always consistent.
+  - The terrain, light flags, glyphs and colours for the whole level are copied out of WebAssembly memory once per frame, and only when something changed.
 - **Dependencies:**
   - fmt, jsoncons and pcg are fetched by CMake at the versions upstream tome2 uses.
   - Boost headers come from Emscripten's `boost_headers` port (1.83).
@@ -93,6 +128,8 @@ npm run preview            # serve dist/ on http://localhost:4173
 ```
 
 If you cloned without submodules, run `git submodule update --init`.
+
+Add `?wizard` to the URL to start tome2 in wizard mode, so its debug commands (Ctrl+A) are available. The end-to-end tests use this to jump to dungeon levels.
 
 ### Tests
 
