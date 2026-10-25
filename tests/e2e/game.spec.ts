@@ -18,7 +18,7 @@ test('loads the engine and lays out the screen without overflow', async ({ page 
 
   await page.goto('./');
   await waitForEngine(page);
-  await waitForScreen(page, /select a module to play/);
+  await waitForScreen(page, /New Character/);
 
   const layout = await page.evaluate(() => {
     const canvas = document.getElementById('screen') as HTMLCanvasElement;
@@ -77,10 +77,6 @@ test('creates a character, walks by swipe, saves, and reloads the save', async (
 
   await page.reload();
   await waitForEngine(page);
-  await waitForScreen(page, /select a module to play/);
-  await sendText(page, '\r');
-  text = await waitForScreen(page, /Press any key/);
-  await sendText(page, ' ');
   text = await waitForScreen(page, new RegExp(savefile));
 
   const entry = new RegExp(`(?:\\[|\\b)([a-z])[\\])] ${savefile}`).exec(text);

@@ -388,68 +388,289 @@ dialog button {
   }
 }
 
-/* Splash */
+/* Opening screen */
 
-#splash {
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+#title-screen {
   position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: #000;
+  overflow: hidden;
+  --serif: Georgia, "Times New Roman", "Liberation Serif", serif;
+}
+
+#title-screen[hidden] {
+  display: none;
+}
+
+#title-screen canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+#title-screen.leaving {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 900ms ease 650ms;
+}
+
+.title-layout {
+  position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 16px;
-  background: var(--bg);
+  padding: calc(env(safe-area-inset-top) + clamp(16px, 7vh, 72px)) 16px calc(16px + env(safe-area-inset-bottom));
   text-align: center;
-  z-index: 10;
+  overflow: hidden;
 }
 
-#splash[hidden] {
-  display: none;
+.title-logo {
+  flex: 0 0 auto;
+  width: min(92vw, 860px);
+  height: clamp(84px, 22vh, 240px);
 }
 
-#splash h1 {
+.title-spacer {
+  flex: 1 1 auto;
+  min-height: 12px;
+}
+
+.title-subtitle {
+  margin: clamp(10px, 3vh, 28px) 0 clamp(14px, 4vh, 36px);
+  font-family: var(--serif);
+  font-size: clamp(13px, 3.8vw, 24px);
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: #f0c878;
+  text-shadow: 0 0 12px rgb(255 140 40 / 0.65), 0 0 2px rgb(0 0 0 / 0.9);
+  opacity: 0;
+  animation: title-rise 1600ms ease-out 1100ms forwards;
+}
+
+.title-verse {
+  margin: 0 auto;
+  max-width: 34em;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: clamp(13px, 3.4vw, 18px);
+  line-height: 1.6;
+  color: rgb(236 226 206 / 0.82);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+}
+
+.title-verse span,
+.title-verse cite {
+  display: block;
+  opacity: 0;
+  animation: title-rise 1800ms ease-out forwards;
+}
+
+.title-verse span:nth-child(1) {
+  animation-delay: 2300ms;
+}
+
+.title-verse span:nth-child(2) {
+  animation-delay: 3300ms;
+}
+
+.title-verse cite {
+  margin-top: 6px;
+  font-size: 0.8em;
+  font-style: normal;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(217 164 65 / 0.7);
+  animation-delay: 4300ms;
+}
+
+.title-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.title-progress {
+  width: min(260px, 70vw);
+  height: 2px;
+  background: rgb(255 255 255 / 0.12);
+  overflow: hidden;
+}
+
+.title-progress-fill {
+  width: 0;
+  height: 100%;
+  background: linear-gradient(to right, #8a3a0a, #ffb347);
+  box-shadow: 0 0 8px #ff8c2a;
+  transition: width 200ms linear;
+}
+
+#title-screen.indeterminate .title-progress-fill {
+  width: 30%;
+  animation: title-progress 1.4s ease-in-out infinite;
+}
+
+#title-screen.ready .title-progress,
+#title-screen.error .title-progress {
+  visibility: hidden;
+}
+
+.title-status {
   margin: 0;
-  color: var(--accent);
-  font-size: 2.5rem;
-  letter-spacing: 0.05em;
-  text-shadow: 0 0 18px rgb(217 164 65 / 0.45);
-}
-
-#splash .subtitle {
-  margin: 0 0 16px;
-  color: var(--muted);
-}
-
-#splash progress {
-  width: min(280px, 80vw);
-  accent-color: var(--accent);
-}
-
-#splash-status {
-  min-height: 1.5em;
-  color: var(--muted);
+  min-height: 1.4em;
+  font-family: var(--serif);
+  font-style: italic;
+  color: rgb(236 226 206 / 0.7);
   max-width: 36em;
 }
 
-#splash.error #splash-status {
-  color: #ff7b6b;
+#title-screen.error .title-status {
+  color: #ff8d7a;
+  font-style: normal;
 }
 
-#splash .actions {
+.title-begin {
+  min-height: 52px;
+  padding: 12px 48px;
+  border: 1px solid rgb(240 190 100 / 0.75);
+  border-radius: 2px;
+  background: rgb(24 10 2 / 0.55);
+  color: #f6d48a;
+  font-family: var(--serif);
+  font-size: 18px;
+  letter-spacing: 0.38em;
+  text-indent: 0.38em;
+  text-transform: uppercase;
+  backdrop-filter: blur(3px);
+  cursor: pointer;
+  touch-action: manipulation;
+  animation: title-pulse 2.6s ease-in-out infinite;
+}
+
+.title-begin:focus-visible {
+  outline: 2px solid #ffcf70;
+  outline-offset: 4px;
+}
+
+.title-theme {
+  border: 0;
+  background: none;
+  color: rgb(236 226 206 / 0.55);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.title-actions {
   display: flex;
   gap: 8px;
-  margin-top: 16px;
 }
 
-#splash .actions button {
+.title-actions:empty {
+  display: none;
+}
+
+.title-actions button {
   min-height: 44px;
-  padding: 0 20px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: var(--button);
-  color: var(--fg);
-  font: inherit;
+  padding: 0 24px;
+  border: 1px solid rgb(240 190 100 / 0.6);
+  border-radius: 2px;
+  background: rgb(24 10 2 / 0.6);
+  color: #f6d48a;
+  font-family: var(--serif);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.title-credits {
+  margin: 4px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: rgb(236 226 206 / 0.38);
+}
+
+@media (max-height: 520px) {
+  .title-logo {
+    height: clamp(64px, 24vh, 120px);
+  }
+
+  .title-verse {
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .title-verse cite,
+  .title-credits {
+    display: none;
+  }
+
+  .title-footer {
+    gap: 4px;
+  }
+
+  .title-begin {
+    min-height: 44px;
+    padding: 8px 40px;
+  }
+}
+
+@keyframes title-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes title-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 14px rgb(255 140 40 / 0.25), inset 0 0 10px rgb(255 140 40 / 0.1);
+  }
+  50% {
+    box-shadow: 0 0 30px rgb(255 140 40 / 0.6), inset 0 0 16px rgb(255 140 40 / 0.25);
+  }
+}
+
+@keyframes title-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-subtitle,
+  .title-verse span,
+  .title-verse cite {
+    animation: none;
+    opacity: 1;
+  }
+
+  .title-begin {
+    animation: none;
+  }
 }
 
 /* Dialogs: translucent panels over the dimmed game. */

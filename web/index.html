@@ -46,11 +46,28 @@
       />
     </main>
 
-    <div id="splash" role="status" aria-live="polite">
-      <h1>ToME 2</h1>
-      <p class="subtitle">Tales of Middle-earth</p>
-      <progress id="splash-progress"></progress>
-      <p id="splash-status">Loading…</p>
+    <div id="title-screen" role="dialog" aria-modal="true" aria-labelledby="title-heading">
+      <canvas aria-hidden="true"></canvas>
+      <h1 id="title-heading" class="visually-hidden">ToME 2 — Tales of Middle-earth</h1>
+      <div class="title-layout">
+        <div class="title-logo" aria-hidden="true"></div>
+        <p class="title-subtitle">Tales of Middle-earth</p>
+        <blockquote class="title-verse">
+          <span>One Ring to rule them all, One Ring to find them,</span>
+          <span>One Ring to bring them all and in the darkness bind them.</span>
+          <cite>J.R.R. Tolkien</cite>
+        </blockquote>
+        <div class="title-spacer"></div>
+        <div class="title-footer">
+          <div class="title-progress" aria-hidden="true"><div class="title-progress-fill"></div></div>
+          <p class="title-status" role="status" aria-live="polite">Kindling the fires…</p>
+          <button type="button" class="title-begin" hidden>Begin</button>
+          <button type="button" class="title-theme" hidden>Play the Theme module</button>
+          <div class="title-actions"></div>
+          <p class="title-credits">ToME by DarkGod &amp; contributors · of the Angband lineage</p>
+        </div>
+      </div>
+    </div>
     </div>
 
     <dialog id="menu">

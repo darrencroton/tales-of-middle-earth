@@ -17,6 +17,7 @@ import {
 } from './saves.ts';
 import { ANIMATION_FPS, loadSettings, saveSettings, type Settings } from './settings.ts';
 import { CanvasRenderer, TerminalBuffer, type ScreenCopy } from './terminal.ts';
+import { TitleScreen, moduleKey, type ModuleChoice } from './title.ts';
 
 declare global {
   interface Window {
@@ -52,9 +53,6 @@ const messagesEl = byId<HTMLDivElement>('messages');
 const hudEl = byId<HTMLElement>('hud');
 const toolbar = byId<HTMLElement>('toolbar');
 const keyboardInput = byId<HTMLInputElement>('keyboard-input');
-const splash = byId<HTMLDivElement>('splash');
-const splashStatus = byId<HTMLParagraphElement>('splash-status');
-const splashProgress = byId<HTMLProgressElement>('splash-progress');
 const menu = byId<HTMLDialogElement>('menu');
 const info = byId<HTMLDialogElement>('info');
 const infoBody = byId<HTMLDivElement>('info-body');
@@ -98,19 +96,34 @@ function setCtrlLatched(value: boolean): void {
   ctrlButton?.setAttribute('aria-pressed', String(value));
 }
 
-function showSplashActions(actions: { label: string; run: () => void }[]): void {
-  splash.querySelector('.actions')?.remove();
-  const row = document.createElement('div');
-  row.className = 'actions';
-  for (const action of actions) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = action.label;
-    button.addEventListener('click', action.run);
-    row.append(button);
+/* Opening screen: after Begin, step through tome2's module and news screens. */
+
+let pendingModule: ModuleChoice | null = null;
+const introSent = new Set<string>();
+
+function advanceIntro(): void {
+  if (!pendingModule || engine.state !== 'running') return;
+  const screen = buffer.screenText();
+  if (/New Character|Load Savefile/.test(screen)) {
+    pendingModule = null;
+  } else if (/select a module to play/.test(screen) && !introSent.has('module')) {
+    introSent.add('module');
+    const key = moduleKey(screen, pendingModule) ?? (pendingModule === 'ToME' ? 'a' : null);
+    if (key) send([key.charCodeAt(0)]);
+    else pendingModule = null;
+  } else if (/\[Press any key to continue\]/.test(screen) && !introSent.has('news')) {
+    introSent.add('news');
+    send([0x20]);
+    pendingModule = null;
   }
-  splash.append(row);
 }
+
+const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
+  onBegin(module) {
+    pendingModule = module;
+    advanceIntro();
+  },
+});
 
 /* View state */
 
@@ -244,35 +257,28 @@ function frame(now: number): void {
 
 const engine = new Engine(buffer, terminal, {
   onStatus(text, fraction) {
-    splashStatus.textContent = text.replace(/\s*\(\d.*\)$/, '…');
-    if (fraction === null) splashProgress.removeAttribute('value');
-    else splashProgress.value = fraction;
+    title.setStatus(/^Downloading/.test(text) ? 'Kindling the fires…' : text.replace(/\s*\(\d.*\)$/, '…'), fraction);
   },
   onRunning() {
-    splash.hidden = true;
+    title.setReady();
     layout();
     dirty = true;
     requestFrame();
   },
   onExit(message) {
-    splash.hidden = false;
-    splash.classList.remove('error');
-    splashProgress.hidden = true;
-    splashStatus.textContent = message ?? 'The game has ended. Your progress is saved in this browser.';
-    showSplashActions([{ label: 'Play again', run: () => location.reload() }]);
+    title.showEnd(message ?? 'The game has ended. Your progress is saved in this browser.', false, [
+      { label: 'Play again', run: () => location.reload() },
+    ]);
   },
   onError(message) {
-    splash.hidden = false;
-    splash.classList.add('error');
-    splashProgress.hidden = true;
-    splashStatus.textContent = message;
-    showSplashActions([{ label: 'Reload', run: () => location.reload() }]);
+    title.showEnd(message, true, [{ label: 'Reload', run: () => location.reload() }]);
   },
   onFlush() {
     dirty = true;
     requestFrame();
   },
   onIdle() {
+    advanceIntro();
     refresh();
     dirty = true;
     if (lastSnap?.inDungeon && !lastSnap.icky) base = buffer.copy();
@@ -334,6 +340,13 @@ function dialogOpen(): boolean {
 }
 
 window.addEventListener('keydown', (e) => {
+  if (title.isVisible) {
+    if ((e.key === 'Enter' || e.key === ' ') && title.isReady && !(e.target instanceof HTMLButtonElement)) {
+      e.preventDefault();
+      title.begin('ToME');
+    }
+    return;
+  }
   if (dialogOpen() || e.isComposing) return;
   const codes = translateKey(e, ctrlLatched);
   if (!codes) return;

@@ -88,3 +88,36 @@ describe('terminal overlay helpers', () => {
     assert.equal(term.contentBounds(), null);
   });
 });
+
+describe('opening screen helpers', async () => {
+  const { moduleKey, titleMask } = await import('../../web/src/title.ts');
+
+  it('finds module menu letters on the tome2 screen', () => {
+    const screen = '[a] ToME             b) Theme';
+    assert.equal(moduleKey(screen, 'ToME'), 'a');
+    assert.equal(moduleKey(screen, 'Theme'), 'b');
+    assert.equal(moduleKey('nothing here', 'Theme'), null);
+  });
+
+  it('rasterises the title into a centred cell mask', () => {
+    const cols = 20;
+    const rows = 10;
+    const result = titleMask(
+      cols,
+      rows,
+      (text, px) => ({ width: text.length * px * 0.6, ascent: px * 0.7, descent: px * 0.1 }),
+      (c, r, _px, x, y) => {
+        const data = new Uint8ClampedArray(c * r * 4);
+        for (let yy = 0; yy < r; yy++) {
+          for (let xx = 0; xx < c; xx++) {
+            if (xx >= x && xx < c - x && yy >= y - 4 && yy <= y) data[(yy * c + xx) * 4 + 3] = 255;
+          }
+        }
+        return data;
+      },
+    );
+    assert.equal(result.mask.length, cols * rows);
+    assert.ok(result.mask.some((v) => v === 1));
+    assert.ok(result.top >= 0 && result.bottom < rows && result.top <= result.bottom);
+  });
+});

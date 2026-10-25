@@ -8,9 +8,17 @@ export async function sendText(page: Page, text: string): Promise<void> {
   await page.evaluate((t) => window.__tome?.sendText(t), text);
 }
 
-export async function waitForEngine(page: Page): Promise<void> {
+/**
+ * Waits for the engine, then (by default) presses Begin on the opening
+ * screen and waits for it to clear.
+ */
+export async function waitForEngine(page: Page, options: { begin?: boolean } = {}): Promise<void> {
   await page.waitForFunction(() => window.__tome?.engine.state === 'running', null, { timeout: 90_000 });
-  await expect(page.locator('#splash')).toBeHidden();
+  if (options.begin === false) return;
+  const begin = page.locator('#title-screen .title-begin');
+  await expect(begin).toBeVisible();
+  await begin.click();
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 10_000 });
 }
 
 export async function waitForScreen(page: Page, pattern: RegExp, timeout = 30_000): Promise<string> {
@@ -76,7 +84,7 @@ export function isOnMap(text: string): boolean {
  * Drives character creation with default choices until the town map is shown.
  */
 export async function createCharacter(page: Page, savefile: string): Promise<void> {
-  let text = await waitForScreen(page, /select a module to play/);
+  let text = await waitForScreen(page, /select a module to play|\[a\] New Character/);
   for (let i = 0; i < 80 && !isOnMap(text); i++) {
     const step = BIRTH_STEPS.find(([pattern]) => pattern.test(text));
     if (!step) {

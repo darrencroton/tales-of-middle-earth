@@ -9,16 +9,36 @@ import {
   waitForScreen,
 } from './helpers.ts';
 
-test('title screens burn with animated flames behind the text', async ({ page }) => {
+test('opening screen ignites, then Begin leads to character creation over flames', async ({ page }, testInfo) => {
   await page.goto('./');
-  await waitForEngine(page);
-  await waitForScreen(page, /select a module to play/);
+  await expect(page.locator('#title-screen')).toBeVisible();
+  await page.waitForFunction(() => window.__tome?.engine.state === 'running', null, { timeout: 90_000 });
+  await expect(page.locator('#title-screen .title-begin')).toBeVisible();
+  await expect
+    .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0, y: 0.8, w: 1, h: 0.2 }), { timeout: 10_000 })
+    .toBeGreaterThan(20);
+  await expect
+    .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0.1, y: 0.1, w: 0.8, h: 0.2 }), { timeout: 10_000 })
+    .toBeGreaterThan(4);
+  await page.waitForTimeout(4500);
+  await testInfo.attach('opening', { body: await page.screenshot(), contentType: 'image/png' });
+
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 10_000 });
+  await waitForScreen(page, /New Character/);
   expect(await viewMode(page)).toBe('title');
   await expect(page.locator('#fx')).toBeVisible();
-  await expect(page.locator('#hud')).toBeHidden();
   await expect
     .poll(() => canvasBrightness(page, '#fx', { x: 0, y: 0.85, w: 1, h: 0.15 }), { timeout: 10_000 })
     .toBeGreaterThan(5);
+});
+
+test('the Theme module can be chosen from the opening screen', async ({ page }) => {
+  await page.goto('./');
+  await page.waitForFunction(() => window.__tome?.engine.state === 'running', null, { timeout: 90_000 });
+  await page.locator('#title-screen .title-theme').click();
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 10_000 });
+  await waitForScreen(page, /New Character/);
 });
 
 test('renders the lit map, HUD and translucent panels in the dungeon', async ({ page }, testInfo) => {

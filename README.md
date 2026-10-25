@@ -40,7 +40,13 @@ The visual design takes inspiration from [Brogue: Community Edition](https://git
   - laid out along the bottom in portrait and on the left in landscape
 - **Messages:** fade as turns pass. Tap them for the full history, or tap *more ▸* to continue.
 - **Translucent panels:** menus, inventory and other tome2 screens appear in a panel over the dimmed map, scaled to fit.
-- **Title screens:** animated flames burn behind the title and character-creation screens, and the text is scaled to fit.
+- **Opening screen:**
+  - Flames ignite from the bottom with a flare, and embers drift upward.
+  - The title "ToME" is a Brogue-style mosaic of stone cells, lit from below by the flame columns: crimson at the top, molten gold at the base, flickering with the fire.
+  - The subtitle and the Ring verse fade in.
+  - **Begin** sets off an eruption of flame, then steps automatically through tome2's module and news screens into character creation. There is also a link to play the Theme module.
+  - The opening screen replaces the old loading splash and also shows download progress, errors and the end-of-game message.
+- **Character creation:** a flame backdrop burns behind the screens, and the text is scaled to fit.
 - **Display settings:**
   - animation: Full (20 fps), Reduced (8 fps) or Off; defaults to Off when the system's reduced-motion setting is on, and pauses in the background
   - glyph set
@@ -66,6 +72,7 @@ web/                Vite + TypeScript app (no framework)
   src/terminal.ts     Terminal cell buffer; full-screen and translucent-panel renderer
   src/render/         Lit map: snapshot reader, materials, lighting, cell appearance, title flames
   src/hud.ts          Sidebar (bars, entities) and fading messages
+  src/title.ts        Opening screen (flames, mosaic title, embers, Begin flow)
   src/settings.ts     Display settings (stored per browser)
   src/input/          Keyboard and swipe translation to engine keycodes
   src/saves.ts        Save export/import (.tome2save bundles)
