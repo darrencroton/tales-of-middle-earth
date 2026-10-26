@@ -163,6 +163,18 @@ export interface MonsterState {
   afraid: number;
   unique: number;
   status: number;
+  ridx?: number;
+  ego?: number;
+  level?: number;
+}
+
+/** tome2 monster status: below 0 attacks the player, 0 is neutral, above 0 fights for the player. */
+export function isHostile(m: Pick<MonsterState, 'status'>): boolean {
+  return m.status < 0;
+}
+
+export function isAlly(m: Pick<MonsterState, 'status'>): boolean {
+  return m.status > 0;
 }
 
 export interface ObjectState {
@@ -186,4 +198,65 @@ export interface GameState {
   objects?: ObjectState[];
   messageTotal?: number;
   messages?: MessageState[];
+}
+
+export interface ItemState {
+  /** Inventory index (equipment from 24), or minus the floor object index. */
+  i: number;
+  name: string;
+  tval: number;
+  number: number;
+  /** Weight of one item in tenths of a pound. */
+  weight: number;
+  ch: number;
+  attr: number;
+  wear: number;
+  activate: number;
+  ins: string;
+}
+
+export interface EquipSlot extends Partial<ItemState> {
+  i: number;
+  empty?: number;
+  /** Body part kind: the INVEN_* index of the slot group. */
+  part: number;
+}
+
+export interface InventoryState {
+  ready: number;
+  weight: number;
+  limit: number;
+  pack: ItemState[];
+  equip: EquipSlot[];
+  floor: ItemState[];
+}
+
+export interface StatState {
+  name: string;
+  use: string;
+  top: string;
+  drained: number;
+}
+
+export interface CharacterState {
+  ready: number;
+  stats: StatState[];
+  god: string;
+  exp: number;
+  maxExp: number;
+  nextExp: number;
+  toHit: number;
+  toDam: number;
+  ac: number;
+  toAc: number;
+  blows: number;
+  shots: number;
+  infra: number;
+  maxDepth: number;
+  turn: number;
+}
+
+export interface MonsterRecall {
+  name: string;
+  text: [number, string][];
 }

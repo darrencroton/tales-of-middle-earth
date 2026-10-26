@@ -8,17 +8,10 @@ export async function sendText(page: Page, text: string): Promise<void> {
   await page.evaluate((t) => window.__tome?.sendText(t), text);
 }
 
-/**
- * Waits for the engine, then (by default) presses Begin on the opening
- * screen and waits for it to clear.
- */
-export async function waitForEngine(page: Page, options: { begin?: boolean } = {}): Promise<void> {
+/** Waits for the engine and for the title screen to offer its choices. */
+export async function waitForEngine(page: Page): Promise<void> {
   await page.waitForFunction(() => window.__tome?.engine.state === 'running', null, { timeout: 90_000 });
-  if (options.begin === false) return;
-  const begin = page.locator('#title-screen .title-begin');
-  await expect(begin).toBeVisible();
-  await begin.click();
-  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 10_000 });
+  await expect(page.locator('#title-screen .title-choice').first()).toBeVisible({ timeout: 30_000 });
 }
 
 export async function waitForScreen(page: Page, pattern: RegExp, timeout = 30_000): Promise<string> {
@@ -63,78 +56,56 @@ export async function dismissMore(page: Page): Promise<string> {
   return text;
 }
 
-type Step = [RegExp, string | ((savefile: string) => string)];
+export async function inDungeon(page: Page): Promise<boolean> {
+  return page.evaluate(() => !!window.__tome?.engine.snapshot()?.inDungeon);
+}
 
-/* Prompt/answer pairs for the birth sequence, checked in order. */
-const BIRTH_STEPS: Step[] = [
-  [/-more-/, ' '],
-  [/name of the savefile/, (savefile) => `${savefile}\r`],
-  [/select a module to play/, '\r'],
-  [/Press any key|\[Press any key to continue\]/, ' '],
-  [/\[a\] New Character/, '\r'],
-  [/Art thou an adventurer/, ' '],
-  [/Choose a race \(/, 'a'],
-  [/Choose a race modifier/, 'a'],
-  [/Choose a class \(/, 'a'],
-  [/Choose a class specialisation/, 'a'],
-  [/Choose a god/, 'a'],
-  [/modify the options/, 'n'],
-  [/Number of quests\?/, '\r'],
-  [/Enter minimum attribute/, '\r'],
-  [/'r' to reroll/, '\u001b'],
-  [/Enter your player's name above/, '\u001b'],
-  [/'Q' to suicide/, '\u001b'],
-];
+export async function waitAtCommand(page: Page): Promise<void> {
+  await expect
+    .poll(() => page.evaluate(() => window.__tome!.engine.snapshot()?.atCommand ?? false), { timeout: 20_000 })
+    .toBe(true);
+}
 
-export function isOnMap(text: string): boolean {
-  return /LEVEL\s+1/.test(text) && /HP\s+\d+\/\s*\d+/.test(text) && text.includes('@');
+/** Starts a new character from the title screen, up to the intro text. */
+export async function beginNewCharacter(page: Page, name: string): Promise<void> {
+  await page.locator('#title-screen .title-choice', { hasText: /Enter Middle-earth|New character/i }).click();
+  await page.locator('.ask-text input').fill(name);
+  await page.locator('.sheet-action.primary').click();
+  await expect(page.locator('#title-screen .title-intro p').first()).toBeVisible();
 }
 
 /**
- * Drives character creation with default choices until the town map is shown.
+ * Creates a character through the native screens with default choices
+ * until the town map is shown. Answers yes to tome2 questions (wizard mode).
  */
-export async function createCharacter(page: Page, savefile: string): Promise<void> {
-  let text = await waitForScreen(page, /select a module to play|\[a\] New Character/);
-  for (let i = 0; i < 80 && !isOnMap(text); i++) {
-    const step = BIRTH_STEPS.find(([pattern]) => pattern.test(text));
-    if (!step) {
-      text = await waitForSettle(page, text, 3_000);
-      continue;
+export async function createCharacter(page: Page, name: string): Promise<void> {
+  await beginNewCharacter(page, name);
+  await page.waitForTimeout(400);
+  await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 10_000 });
+
+  for (let i = 0; i < 60 && !(await inDungeon(page)); i++) {
+    const candidates = [
+      '.prompt-card .card-button.primary',
+      '#toolbar [data-action="yes"]',
+      '.director .birth-confirm',
+      '#toolbar [data-action="accept"]',
+      '#toolbar [data-action="begin"]',
+    ];
+    for (const selector of candidates) {
+      const target = page.locator(selector);
+      if ((await target.count()) && (await target.first().isVisible())) {
+        await target.first().click();
+        break;
+      }
     }
-    const answer = step[1];
-    await sendText(page, typeof answer === 'string' ? answer : answer(savefile));
-    text = await waitForSettle(page, text);
+    await page.waitForTimeout(400);
   }
-  expect(isOnMap(text), `expected the town map, got:\n${text}`).toBe(true);
-}
-
-export function findPlayer(text: string): { x: number; y: number } | null {
-  const lines = text.split('\n');
-  for (let y = 0; y < lines.length; y++) {
-    const x = lines[y].indexOf('@');
-    if (x >= 0) return { x, y };
-  }
-  return null;
-}
-
-export async function swipe(page: Page, dx: number, dy: number): Promise<void> {
-  await page.evaluate(
-    ([sx, sy]) => {
-      const target = document.getElementById('stage');
-      if (!target) throw new Error('stage missing');
-      const rect = target.getBoundingClientRect();
-      const x0 = rect.left + rect.width / 2;
-      const y0 = rect.top + rect.height / 2;
-      const touch = (x: number, y: number) =>
-        new Touch({ identifier: 1, target, clientX: x, clientY: y, pageX: x, pageY: y });
-      const start = touch(x0, y0);
-      const end = touch(x0 + sx, y0 + sy);
-      target.dispatchEvent(new TouchEvent('touchstart', { touches: [start], changedTouches: [start], bubbles: true, cancelable: true }));
-      target.dispatchEvent(new TouchEvent('touchmove', { touches: [end], changedTouches: [end], bubbles: true, cancelable: true }));
-      target.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [end], bubbles: true, cancelable: true }));
-    },
-    [dx, dy],
-  );
+  expect(await inDungeon(page), `expected the town map, got:\n${await screenText(page)}`).toBe(true);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  const coach = page.locator('.coach-close');
+  if (await coach.isVisible()) await coach.click();
 }
 
 export async function viewMode(page: Page): Promise<string> {
@@ -178,11 +149,31 @@ export async function playerRegion(page: Page, size = 0.1): Promise<{ x: number;
   }, size);
 }
 
+export async function playerPos(page: Page): Promise<{ x: number; y: number }> {
+  return page.evaluate(() => {
+    const snap = window.__tome!.engine.snapshot()!;
+    return { x: snap.px, y: snap.py };
+  });
+}
+
 /** Uses tome2's wizard commands (page loaded with ?wizard) to jump to a dungeon level and wield a torch. */
 export async function jumpToLevel(page: Page, level: number): Promise<void> {
+  const rowZero = async () => (await screenText(page)).split('\n')[0] ?? '';
   let text = await screenText(page);
-  for (const step of ['\u0001', ' ', ' ', 'y', 'j', ' ', `${level}\r`, ' ', ' ', 'w', 'c', ' ']) {
-    await sendText(page, step);
+  await sendText(page, '\u0001');
+  text = await waitForSettle(page, text, 5_000);
+  for (let i = 0; i < 10 && !/Debug Command/.test(await rowZero()); i++) {
+    await sendText(page, /\[y\/n\]/.test(await rowZero()) ? 'y' : ' ');
     text = await waitForSettle(page, text, 5_000);
   }
+  await sendText(page, 'j');
+  text = await waitForSettle(page, text, 5_000);
+  for (let i = 0; i < 5 && !/Jump to level/.test(await rowZero()); i++) {
+    await sendText(page, ' ');
+    text = await waitForSettle(page, text, 5_000);
+  }
+  await sendText(page, `${level}\r`);
+  await waitForSettle(page, text, 5_000);
+  await dismissMore(page);
+  await waitAtCommand(page);
 }

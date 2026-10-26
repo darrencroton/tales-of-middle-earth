@@ -1,0 +1,544 @@
+import type { Engine } from '../engine.ts';
+import type { Action } from '../play/actions.ts';
+import { keyCodes } from '../play/macro.ts';
+import type { TerminalBuffer } from '../terminal.ts';
+import { moduleKey, type ModuleChoice, type SaveInfo, type TitleChoice, type TitleScreen } from '../title.ts';
+import { el } from '../ui/dom.ts';
+import { ListNav } from '../ui/listnav.ts';
+import { askText } from '../ui/menus.ts';
+import type { Sheets } from '../ui/sheet.ts';
+import { bufferRows } from '../ui/termparse.ts';
+import {
+  STEP_TITLES,
+  cursorKeysTo,
+  parseBirthChoice,
+  parseSaveIndex,
+  parseSavefileScreen,
+  validCharacterName,
+  type BirthChoiceScreen,
+  type BirthStep,
+  type SaveRecord,
+} from './birth.ts';
+
+export interface DirectorDeps {
+  root: HTMLElement;
+  buffer: TerminalBuffer;
+  engine: Engine;
+  sheets: Sheets;
+  palette(): readonly string[];
+  send(keys: number[]): void;
+  requestRefresh(): void;
+}
+
+type Phase = 'boot' | 'title' | 'creating' | 'birth' | 'loading' | 'playing';
+
+const ENTER = 13;
+const ESCAPE = 27;
+const SPACE = 32;
+
+const INTRO_LINES = [
+  'Art thou an adventurer,',
+  'one who passes through the waterfalls we call danger',
+  'to find the true nature of the legends beyond them?',
+  'If this is so, then seeketh me.',
+];
+
+const THEME_INTRO_LINES = ['A module for ToME,', 'set in the world of Middle-earth.', 'Your story begins here.'];
+
+const STEP_ORDER: BirthStep[] = ['race', 'modifier', 'class', 'specialisation', 'god'];
+const STEP_SHORT: Record<BirthStep, string> = {
+  race: 'Race',
+  modifier: 'Lineage',
+  class: 'Class',
+  specialisation: 'Speciality',
+  god: 'God',
+};
+
+const HERO_STATS = ['STR', 'INT', 'WIS', 'DEX', 'CON', 'CHR'];
+
+/**
+ * Drives tome2's start-up and character creation behind native screens:
+ * it answers the module and news screens itself, offers saved heroes on the
+ * title screen, and presents the birth menus as tappable cards.
+ */
+export class Director {
+  module: ModuleChoice = 'ToME';
+  private readonly deps: DirectorDeps;
+  private readonly view: HTMLElement;
+  private readonly nav: ListNav;
+  private title: TitleScreen | null = null;
+  private phase: Phase = 'boot';
+  private heroName = '';
+  private saves: SaveInfo[] = [];
+  private choice: BirthChoiceScreen | null = null;
+  private pendingKey: string | null = null;
+  private chooseWhenReady = false;
+  private renderedKey = '';
+  private nameSent = false;
+  private lastAuto = '';
+
+  constructor(deps: DirectorDeps) {
+    this.deps = deps;
+    this.view = el('div', 'director');
+    this.view.hidden = true;
+    deps.root.append(this.view);
+    this.nav = new ListNav(this.view);
+  }
+
+  attachTitle(title: TitleScreen): void {
+    this.title = title;
+  }
+
+  private screen(): string {
+    return this.deps.buffer.screenText();
+  }
+
+  /** Called whenever the engine waits for a key, before the screen is drawn. */
+  idle(): void {
+    if (this.deps.engine.pendingKeys > 0) return;
+    const screen = this.screen();
+    const rowZero = this.deps.buffer.rowText(0).trim();
+    const snap = this.deps.engine.snapshot();
+
+    if (snap?.inDungeon) {
+      if (this.phase !== 'playing') {
+        this.phase = 'playing';
+        if (this.title?.isVisible) this.title.leave();
+      }
+      return;
+    }
+
+    switch (this.phase) {
+      case 'boot':
+        this.boot(screen, rowZero);
+        break;
+      case 'creating':
+        this.creating(screen, rowZero);
+        break;
+      case 'birth':
+        this.birth(screen, rowZero);
+        break;
+      case 'loading':
+        if (/-more-/.test(rowZero) || /Press any key/.test(screen)) this.deps.send([SPACE]);
+        break;
+      default:
+        break;
+    }
+  }
+
+  private boot(screen: string, rowZero: string): void {
+    if (/select a module to play/.test(screen)) {
+      const key = moduleKey(screen, this.module) ?? 'a';
+      this.deps.send(keyCodes(key));
+    } else if (/\[Press any key to continue\]/.test(screen) || /-more-/.test(rowZero)) {
+      this.deps.send([SPACE]);
+    } else {
+      const entries = parseSavefileScreen(bufferRows(this.deps.buffer, 0, this.deps.buffer.rows - 1), screen);
+      if (!entries) return;
+      const records = this.readSaveIndex();
+      this.saves = entries
+        .map((entry) => {
+          const record = records.find((r) => r.base === entry.name || r.base === `_${entry.name}`);
+          return {
+            letter: entry.letter,
+            name: entry.name,
+            description: (record?.description ?? '').replace(/ is alive$/, ''),
+            alive: record?.alive ?? true,
+          };
+        })
+        .filter((s) => s.alive)
+        .map(({ letter, name, description }) => ({ letter, name, description }));
+      this.phase = 'title';
+      this.title?.setChoices(this.saves);
+    }
+  }
+
+  private readSaveIndex(): SaveRecord[] {
+    const fs = this.deps.engine.fs;
+    const root = this.deps.engine.savePath;
+    if (!fs || !root) return [];
+    const find = (dir: string, depth: number): string | null => {
+      if (depth > 4) return null;
+      let names: string[];
+      try {
+        names = fs.readdir(dir);
+      } catch {
+        return null;
+      }
+      for (const name of names) {
+        if (name === '.' || name === '..') continue;
+        const path = `${dir}/${name}`;
+        if (name === 'global.svg') return path;
+        try {
+          if (fs.isDir(fs.stat(path).mode)) {
+            const found = find(path, depth + 1);
+            if (found) return found;
+          }
+        } catch {
+          // Unreadable entry: skip it.
+        }
+      }
+      return null;
+    };
+    const path = find(root, 0);
+    if (!path) return [];
+    try {
+      return parseSaveIndex(new TextDecoder().decode(fs.readFile(path)));
+    } catch {
+      return [];
+    }
+  }
+
+  /** The player chose on the title screen. */
+  choose(choice: TitleChoice): void {
+    if (this.phase !== 'title') return;
+    if (choice.kind === 'continue') {
+      this.phase = 'loading';
+      this.title?.setBusy(`Loading ${choice.save.name}…`);
+      this.deps.send(keyCodes(choice.save.letter));
+      return;
+    }
+    this.askName();
+  }
+
+  private askName(error = ''): void {
+    this.title?.setBusy('');
+    const taken = new Set(this.saves.map((s) => s.name.toLowerCase()));
+    askText(this.deps.sheets, 'Name your hero', error || 'What shall you be called?', this.heroName, 15).then((name) => {
+      if (name === null) {
+        this.title?.restoreChoices();
+        return;
+      }
+      const problem = validCharacterName(name) ?? (taken.has(name.toLowerCase()) ? `${name} already has a saved game.` : null);
+      if (problem) {
+        this.heroName = name;
+        this.askName(problem);
+        return;
+      }
+      this.heroName = name;
+      this.phase = 'creating';
+      this.nameSent = false;
+      this.deps.send(keyCodes('a'));
+      this.title?.showIntro(this.module === 'Theme' ? THEME_INTRO_LINES : INTRO_LINES, () => {
+        this.title?.leave();
+        this.deps.requestRefresh();
+      });
+    });
+  }
+
+  private creating(screen: string, rowZero: string): void {
+    if (/Enter the name of the savefile/.test(screen) && !this.nameSent) {
+      this.nameSent = true;
+      this.deps.send([...keyCodes(this.heroName), ENTER]);
+    } else if (/already exists! Press any key to load/.test(screen)) {
+      this.phase = 'loading';
+      this.deps.send([SPACE]);
+    } else if (/Savefile does not exist/.test(rowZero) || /-more-/.test(rowZero)) {
+      // The extra key cuts tome2's sliding intro short; ours is on the title screen.
+      this.deps.send([SPACE, SPACE]);
+    } else if (/Art thou an adventurer|DarkGod|furiosity|\[Press any key to continue\]/.test(screen)) {
+      this.deps.send([SPACE]);
+    } else if (/Choose a race|Please answer the following/.test(screen)) {
+      this.phase = 'birth';
+      this.birth(screen, rowZero);
+    }
+  }
+
+  /** Answers the birth questions the native screens skip. */
+  private birth(screen: string, rowZero: string): void {
+    const answer = (pattern: RegExp, keys: number[]) => {
+      if (!pattern.test(screen)) return false;
+      this.deps.send(keys);
+      return true;
+    };
+    if (/-more-/.test(rowZero)) {
+      this.deps.send([SPACE]);
+      return;
+    }
+    if (answer(/modify the options\s*\[y\/n\]/, keyCodes('n'))) return;
+    if (answer(/Number of quests\?/, [ENTER])) return;
+    if (answer(/Enter minimum attribute for/, [ENTER])) return;
+    if (/Enter your player's name above/.test(screen)) {
+      const key = `name:${screen}`;
+      if (this.lastAuto === key) return;
+      this.lastAuto = key;
+      this.deps.send([...keyCodes(this.heroName), ENTER]);
+      return;
+    }
+    if (this.pendingKey) {
+      const current = parseBirthChoice(bufferRows(this.deps.buffer, 0, this.deps.buffer.rows - 1), screen);
+      const arrived = current?.options.find((o) => o.current)?.key === this.pendingKey;
+      const choose = arrived && this.chooseWhenReady;
+      this.pendingKey = null;
+      this.chooseWhenReady = false;
+      if (choose) this.deps.send([ENTER]);
+    }
+  }
+
+  hide(): void {
+    if (this.view.hidden) return;
+    this.view.hidden = true;
+    this.renderedKey = '';
+  }
+
+  /** Draws a native view for the current pre-game screen; false lets the generic view show it. */
+  render(): boolean {
+    if (this.promptShowing()) return false;
+    if (this.phase === 'boot' || this.phase === 'title' || this.phase === 'creating' || this.phase === 'loading') {
+      this.showWaiting(this.phase === 'loading' ? 'Loading…' : '');
+      return true;
+    }
+    if (this.phase !== 'birth') return false;
+    const screen = this.screen();
+    const rows = bufferRows(this.deps.buffer, 0, this.deps.buffer.rows - 1);
+    const choice = parseBirthChoice(rows, screen);
+    if (choice) {
+      this.choice = choice;
+      this.showChoice(choice);
+      return true;
+    }
+    this.choice = null;
+    if (/'r' to reroll/.test(screen)) {
+      this.showHero('reroll');
+      return true;
+    }
+    if (/'S' to start over, or ESC to continue/.test(screen)) {
+      this.showHero('confirm');
+      return true;
+    }
+    if (/modify the options|Number of quests|Enter minimum attribute|Enter your player's name|Please answer the following/.test(screen)) {
+      this.showWaiting('Forging your hero…');
+      return true;
+    }
+    return false;
+  }
+
+  /** A -more- on the prompt line that the native views would hide (yes/no questions show as a card). */
+  private promptShowing(): boolean {
+    if (this.phase !== 'birth' && this.phase !== 'loading') return false;
+    return /-more-/.test(this.deps.buffer.rowText(0).trim());
+  }
+
+  /** Toolbar actions for the native screens, or null for the defaults. */
+  actions(): Action[] | null {
+    if (this.view.hidden || this.promptShowing()) return null;
+    const menu: Action = { id: 'menu', label: 'Menu', icon: '☰', effect: { kind: 'menu' } };
+    if (this.choice) {
+      return [
+        { id: 'back', label: 'Start over', icon: '↺', effect: { kind: 'keys', keys: keyCodes('S') } },
+        { id: 'random', label: 'Random', icon: '⚄', effect: { kind: 'keys', keys: keyCodes('*') } },
+        { id: 'choose', label: 'Choose', icon: '✔', effect: { kind: 'keys', keys: [ENTER] }, primary: true },
+        menu,
+      ];
+    }
+    const screen = this.screen();
+    if (/'r' to reroll/.test(screen)) {
+      return [
+        { id: 'reroll', label: 'Reroll', icon: '⚄', effect: { kind: 'keys', keys: keyCodes('r') } },
+        { id: 'accept', label: 'Accept', icon: '✔', effect: { kind: 'keys', keys: [ESCAPE] }, primary: true },
+        menu,
+      ];
+    }
+    if (/'S' to start over, or ESC to continue/.test(screen)) {
+      return [
+        { id: 'restart', label: 'Start over', icon: '↺', effect: { kind: 'keys', keys: keyCodes('S') } },
+        { id: 'begin', label: 'Begin adventure', icon: '▸', effect: { kind: 'keys', keys: [ESCAPE] }, primary: true },
+        menu,
+      ];
+    }
+    return [menu];
+  }
+
+  handleKey(e: KeyboardEvent): boolean {
+    if (this.view.hidden || !this.choice) return false;
+    const options = this.choice.options;
+    const index = options.findIndex((o) => o.current);
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowRight':
+        this.preview(options[(index + 1) % options.length].key);
+        return true;
+      case 'ArrowUp':
+      case 'ArrowLeft':
+        this.preview(options[(index - 1 + options.length) % options.length].key);
+        return true;
+      case 'Enter':
+      case ' ':
+        this.deps.send([ENTER]);
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /** Moves tome2's cursor to an option so its description shows. */
+  private preview(key: string): void {
+    if (!this.choice || this.pendingKey) return;
+    const keys = cursorKeysTo(this.choice.options, key);
+    if (!keys) return;
+    this.pendingKey = key;
+    this.deps.send(keyCodes(keys));
+  }
+
+  private tapOption(key: string): void {
+    if (!this.choice) return;
+    if (this.pendingKey) {
+      if (this.pendingKey === key) this.chooseWhenReady = true;
+      return;
+    }
+    const current = this.choice.options.find((o) => o.current);
+    if (current?.key === key) this.deps.send([ENTER]);
+    else this.preview(key);
+  }
+
+  private show(key: string, build: () => HTMLElement[], className: string): void {
+    this.view.hidden = false;
+    if (key === this.renderedKey) return;
+    this.renderedKey = key;
+    this.view.className = `director ${className}`;
+    this.view.replaceChildren(...build());
+  }
+
+  private showWaiting(text: string): void {
+    this.show(`wait:${text}`, () => [el('p', 'director-wait', text)], 'waiting');
+  }
+
+  private steps(current: BirthStep): HTMLElement {
+    const list = el('ol', 'birth-steps');
+    const at = STEP_ORDER.indexOf(current);
+    STEP_ORDER.forEach((step, i) => {
+      if (step === 'modifier' || step === 'specialisation') {
+        if (step !== current) return;
+      }
+      const item = el('li', i < at ? 'done' : step === current ? 'current' : '', STEP_SHORT[step]);
+      list.append(item);
+    });
+    return list;
+  }
+
+  private showChoice(choice: BirthChoiceScreen): void {
+    const key = JSON.stringify(choice);
+    this.show(
+      `choice:${key}`,
+      () => {
+        const header = el('header', 'birth-header');
+        header.append(this.steps(choice.step), el('h2', undefined, STEP_TITLES[choice.step]));
+        const summary = choice.summary.filter((s) => s.label !== 'Name');
+        if (this.heroName || summary.length) {
+          const line = [this.heroName, ...summary.map((s) => s.value)].filter(Boolean).join(' · ');
+          header.append(el('p', 'birth-summary', line));
+        }
+
+        const current = choice.options.find((o) => o.current);
+        const card = el('article', 'birth-card');
+        card.append(el('h3', undefined, current?.label ?? ''));
+        if (current?.unusual) card.append(el('p', 'birth-tag', 'Unusual choice: experimental, or not suited to your race'));
+        for (const p of choice.description.filter((d) => d !== 'EXPERIMENTAL')) card.append(el('p', undefined, p));
+        const confirm = el('button', 'birth-confirm', `Choose ${current?.label ?? ''}`);
+        confirm.type = 'button';
+        confirm.addEventListener('click', () => this.deps.send([ENTER]));
+        card.append(confirm);
+
+        const list = el('div', 'birth-options');
+        list.setAttribute('role', 'listbox');
+        list.setAttribute('aria-label', STEP_TITLES[choice.step]);
+        for (const option of choice.options) {
+          const button = el('button', `birth-option${option.current ? ' current' : ''}${option.unusual ? ' unusual' : ''}`, option.label);
+          button.type = 'button';
+          button.dataset.nav = '';
+          button.setAttribute('role', 'option');
+          button.setAttribute('aria-selected', String(option.current));
+          button.addEventListener('click', () => this.tapOption(option.key));
+          list.append(button);
+        }
+
+        const body = el('div', 'birth-body');
+        body.append(card, list);
+        requestAnimationFrame(() => {
+          const active = list.querySelector<HTMLElement>('.current');
+          if (active) this.nav.setActive(active);
+        });
+        return [header, body];
+      },
+      'birth',
+    );
+  }
+
+  private showHero(kind: 'reroll' | 'confirm'): void {
+    const screen = this.screen();
+    const lines = screen.split('\n');
+    const field = (label: string) => {
+      for (const line of lines.slice(0, 8)) {
+        const m = new RegExp(`^\\s*${label}\\s*:\\s*(.*?)\\s*$`).exec(line.slice(0, 40));
+        if (m) return m[1];
+      }
+      return '';
+    };
+    const stats = HERO_STATS.map((name) => {
+      const m = new RegExp(`${name}:\\s+(\\S+)`).exec(screen);
+      return { name, value: m?.[1] ?? '?' };
+    });
+    const pair = (label: string) => {
+      const m = new RegExp(`${label}\\s+(\\d+)/\\s*(\\d+)`).exec(screen);
+      return m ? `${m[1]}/${m[2]}` : '';
+    };
+    const ratings = ['Fighting', 'Bows/Throw', 'Saving Throw', 'Stealth', 'Magic Device'].map((label) => {
+      const escaped = label.replace('/', '\\/');
+      const m = new RegExp(`${escaped}\\s*:\\s*(\\S+(?: \\S+)?)`).exec(screen);
+      return { label, value: m?.[1] ?? '' };
+    });
+    const key = JSON.stringify([kind, stats, ratings, field('Race'), field('Class')]);
+    this.show(
+      `hero:${key}`,
+      () => {
+        const header = el('header', 'birth-header');
+        header.append(el('h2', undefined, kind === 'reroll' ? 'Your hero' : 'Ready to begin?'));
+        const subtitle = [this.heroName || field('Name'), `${field('Race')} ${field('Class')}`.trim(), field('God') && field('God') !== 'Nobody' ? `follower of ${field('God')}` : '']
+          .filter(Boolean)
+          .join(' · ');
+        header.append(el('p', 'birth-summary', subtitle));
+
+        const card = el('article', 'birth-card hero');
+        const grid = el('div', 'stat-grid six');
+        for (const s of stats) {
+          const node = el('div', 'stat');
+          node.append(el('span', 'stat-label', s.name), el('span', 'stat-value', s.value));
+          grid.append(node);
+        }
+        card.append(grid);
+        const vitals = el('div', 'stat-grid');
+        for (const [label, pattern] of [
+          ['Health', 'Hit Points'],
+          ['Mana', 'Spell Points'],
+          ['Sanity', 'Sanity'],
+        ] as const) {
+          const value = pair(pattern);
+          if (!value) continue;
+          const node = el('div', 'stat');
+          node.append(el('span', 'stat-label', label), el('span', 'stat-value', value));
+          vitals.append(node);
+        }
+        card.append(vitals);
+        const skills = el('dl', 'ratings');
+        for (const r of ratings) {
+          if (!r.value) continue;
+          skills.append(el('dt', undefined, r.label), el('dd', `rating-${r.value.toLowerCase().replace(/\W+/g, '-')}`, r.value));
+        }
+        card.append(skills);
+        card.append(
+          el(
+            'p',
+            'muted',
+            kind === 'reroll'
+              ? 'Reroll for different attributes, or accept them.'
+              : 'Begin your adventure, or start over.',
+          ),
+        );
+        const body = el('div', 'birth-body single');
+        body.append(card);
+        return [header, body];
+      },
+      'birth hero',
+    );
+  }
+}

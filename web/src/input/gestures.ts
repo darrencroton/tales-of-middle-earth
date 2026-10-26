@@ -1,66 +1,3 @@
-export const SWIPE_MIN_DISTANCE = 24;
-export const SWIPE_RUN_DISTANCE = 140;
-
-/* Keypad digits by 45-degree sector, starting east and turning anticlockwise (screen y points down). */
-const SECTOR_DIGITS = ['6', '9', '8', '7', '4', '1', '2', '3'] as const;
-
-export interface Swipe {
-  digit: string;
-  run: boolean;
-}
-
-export function swipeFromDelta(dx: number, dy: number): Swipe | null {
-  const distance = Math.hypot(dx, dy);
-  if (distance < SWIPE_MIN_DISTANCE) return null;
-  const angle = Math.atan2(-dy, dx);
-  const sector = ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
-  return { digit: SECTOR_DIGITS[sector], run: distance >= SWIPE_RUN_DISTANCE };
-}
-
-/**
- * Calls onSwipe for single-finger swipes on the element. Multi-touch gestures are ignored.
- */
-export function attachSwipe(element: HTMLElement, onSwipe: (swipe: Swipe) => void): void {
-  let startX = 0;
-  let startY = 0;
-  let tracking = false;
-
-  element.addEventListener(
-    'touchstart',
-    (e) => {
-      if (e.touches.length !== 1) {
-        tracking = false;
-        return;
-      }
-      tracking = true;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-    },
-    { passive: true },
-  );
-
-  element.addEventListener(
-    'touchmove',
-    (e) => {
-      if (tracking) e.preventDefault();
-    },
-    { passive: false },
-  );
-
-  element.addEventListener('touchend', (e) => {
-    if (!tracking) return;
-    tracking = false;
-    const touch = e.changedTouches[0];
-    if (!touch) return;
-    const swipe = swipeFromDelta(touch.clientX - startX, touch.clientY - startY);
-    if (swipe) onSwipe(swipe);
-  });
-
-  element.addEventListener('touchcancel', () => {
-    tracking = false;
-  });
-}
-
 export function pinchRatio(startDistance: number, currentDistance: number): number {
   if (startDistance <= 0 || currentDistance <= 0) return 1;
   return currentDistance / startDistance;
@@ -109,34 +46,77 @@ export function attachPinch(
 export const TAP_MAX_MOVE = 12;
 export const TAP_MAX_MS = 450;
 
+export const LONG_PRESS_MS = 500;
+
+export interface MapGestureHandlers {
+  onTap(clientX: number, clientY: number, target: EventTarget | null): void;
+  onLongPress(clientX: number, clientY: number, target: EventTarget | null): void;
+  /** Incremental drag in CSS pixels. */
+  onPan(dx: number, dy: number): void;
+  onPanEnd(): void;
+}
+
 /**
- * Reports single-pointer taps (touch, pen or mouse) that barely moved.
+ * Single-pointer gestures on the map: a tap, a long press (held still), or
+ * a drag that pans. A second finger cancels them so pinch-zoom can take over.
  */
-export function attachTap(
-  element: HTMLElement,
-  onTap: (clientX: number, clientY: number, target: EventTarget | null) => void,
-): void {
-  const down = new Map<number, { x: number; y: number; t: number }>();
-  let multi = false;
+export function attachMapGestures(element: HTMLElement, handlers: MapGestureHandlers): void {
+  let active: { id: number; x: number; y: number; lastX: number; lastY: number; t: number; target: EventTarget | null } | null = null;
+  let panning = false;
+  let pressed = false;
+  let timer = 0;
+  let pointers = 0;
+
+  const reset = () => {
+    window.clearTimeout(timer);
+    timer = 0;
+    active = null;
+    if (panning) handlers.onPanEnd();
+    panning = false;
+    pressed = false;
+  };
 
   element.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    down.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
-    if (down.size > 1) multi = true;
+    pointers++;
+    if (pointers > 1) {
+      reset();
+      return;
+    }
+    active = { id: e.pointerId, x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY, t: performance.now(), target: e.target };
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      if (!active || panning) return;
+      pressed = true;
+      handlers.onLongPress(active.x, active.y, active.target);
+    }, LONG_PRESS_MS);
+  });
+
+  element.addEventListener('pointermove', (e) => {
+    if (!active || e.pointerId !== active.id || pressed) return;
+    if (!panning && Math.hypot(e.clientX - active.x, e.clientY - active.y) > TAP_MAX_MOVE) {
+      panning = true;
+      window.clearTimeout(timer);
+      if (element.hasPointerCapture?.(e.pointerId) === false) element.setPointerCapture?.(e.pointerId);
+    }
+    if (panning) {
+      handlers.onPan(e.clientX - active.lastX, e.clientY - active.lastY);
+      active.lastX = e.clientX;
+      active.lastY = e.clientY;
+    }
   });
 
   element.addEventListener('pointerup', (e) => {
-    const start = down.get(e.pointerId);
-    down.delete(e.pointerId);
-    const wasMulti = multi;
-    if (down.size === 0) multi = false;
-    if (!start || wasMulti) return;
-    const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
-    if (moved <= TAP_MAX_MOVE && performance.now() - start.t <= TAP_MAX_MS) onTap(e.clientX, e.clientY, e.target);
+    pointers = Math.max(0, pointers - 1);
+    if (!active || e.pointerId !== active.id) return;
+    const tap = !panning && !pressed && performance.now() - active.t <= TAP_MAX_MS * 2;
+    const { x, y, target } = active;
+    reset();
+    if (tap) handlers.onTap(x, y, target);
   });
 
-  element.addEventListener('pointercancel', (e) => {
-    down.delete(e.pointerId);
-    if (down.size === 0) multi = false;
+  element.addEventListener('pointercancel', () => {
+    pointers = Math.max(0, pointers - 1);
+    reset();
   });
 }

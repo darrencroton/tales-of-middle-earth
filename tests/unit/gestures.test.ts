@@ -1,37 +1,40 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { SWIPE_MIN_DISTANCE, SWIPE_RUN_DISTANCE, swipeFromDelta } from '../../web/src/input/gestures.ts';
+import { pinchRatio } from '../../web/src/input/gestures.ts';
+import { keyDirection, nextIndex, type NavRect } from '../../web/src/ui/listnav.ts';
 
-describe('swipeFromDelta', () => {
-  it('ignores short movements', () => {
-    assert.equal(swipeFromDelta(SWIPE_MIN_DISTANCE - 1, 0), null);
-    assert.equal(swipeFromDelta(0, 0), null);
+describe('pinch', () => {
+  it('reports the spread relative to the start', () => {
+    assert.equal(pinchRatio(100, 150), 1.5);
+    assert.equal(pinchRatio(0, 150), 1);
+  });
+});
+
+describe('list navigation', () => {
+  const rect = (left: number, top: number, width = 100, height = 40): NavRect => ({ left, top, width, height });
+
+  it('steps through a vertical list', () => {
+    const list = [rect(0, 0), rect(0, 50), rect(0, 100)];
+    assert.equal(nextIndex(list, 0, 'down'), 1);
+    assert.equal(nextIndex(list, 2, 'down'), 2);
+    assert.equal(nextIndex(list, 1, 'up'), 0);
+    assert.equal(nextIndex(list, -1, 'down'), 0);
+    assert.equal(nextIndex(list, -1, 'up'), 2);
+    assert.equal(nextIndex(list, 1, 'last'), 2);
   });
 
-  it('maps the eight compass directions to keypad digits', () => {
-    const d = 60;
-    const cases: [number, number, string][] = [
-      [d, 0, '6'],
-      [d, -d, '9'],
-      [0, -d, '8'],
-      [-d, -d, '7'],
-      [-d, 0, '4'],
-      [-d, d, '1'],
-      [0, d, '2'],
-      [d, d, '3'],
-    ];
-    for (const [dx, dy, digit] of cases) {
-      assert.equal(swipeFromDelta(dx, dy)?.digit, digit, `dx=${dx} dy=${dy}`);
-    }
+  it('moves to the nearest item in the row below a grid', () => {
+    const grid = [rect(0, 0), rect(110, 0), rect(220, 0), rect(0, 50), rect(110, 50)];
+    assert.equal(nextIndex(grid, 1, 'down'), 4);
+    assert.equal(nextIndex(grid, 2, 'down'), 4);
+    assert.equal(nextIndex(grid, 4, 'up'), 1);
+    assert.equal(nextIndex(grid, 1, 'right'), 2);
+    assert.equal(nextIndex(grid, 0, 'left'), 0);
   });
 
-  it('snaps near-horizontal swipes to the nearest direction', () => {
-    assert.equal(swipeFromDelta(100, 20)?.digit, '6');
-    assert.equal(swipeFromDelta(-100, -30)?.digit, '4');
-  });
-
-  it('runs on long swipes', () => {
-    assert.equal(swipeFromDelta(50, 0)?.run, false);
-    assert.equal(swipeFromDelta(SWIPE_RUN_DISTANCE, 0)?.run, true);
+  it('maps keys to directions', () => {
+    assert.equal(keyDirection('ArrowDown'), 'down');
+    assert.equal(keyDirection('Home'), 'first');
+    assert.equal(keyDirection('a'), null);
   });
 });

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { COMMAND_GROUPS, commandKeys, contextActions, situationalActions } from '../../web/src/play/actions.ts';
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
-import { classifyPrompt, directionDigit, isAdjacent, menuChoiceAt } from '../../web/src/play/prompts.ts';
+import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
 import { Travel, travelGrid, type TravelContext } from '../../web/src/play/travel.ts';
 import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials } from '../../web/src/render/materials.ts';
@@ -20,26 +20,6 @@ describe('prompt classification', () => {
     assert.equal(classifyPrompt('Direction (Escape to cancel)? '), 'direction');
     assert.equal(classifyPrompt('(Inven: b-e, ESC) Wear/Wield which item?'), 'item');
     assert.equal(classifyPrompt('You see a Kobold.'), 'other');
-  });
-});
-
-describe('menu choices', () => {
-  it('picks the letter of the tapped line', () => {
-    assert.equal(menuChoiceAt('a) , 6 Rations of Food          6.0 lb', 30), 'a');
-    assert.equal(menuChoiceAt('  c) ~ 5 Wooden Torches', 2), 'c');
-  });
-
-  it('picks the nearest choice to the left on multi-column rows', () => {
-    const row = ' [a] Human       b) Half-Elf    c) Elf';
-    assert.equal(menuChoiceAt(row, 3), 'a');
-    assert.equal(menuChoiceAt(row, 20), 'b');
-    assert.equal(menuChoiceAt(row, 34), 'c');
-    assert.equal(menuChoiceAt(row, 0), 'a');
-  });
-
-  it('ignores rows without choices', () => {
-    assert.equal(menuChoiceAt('You have no more Rations of Food (a).', 10), null);
-    assert.equal(menuChoiceAt('Inventory: carrying 58.7 pounds', 5), null);
   });
 });
 
@@ -168,7 +148,7 @@ describe('travel', () => {
     assert.deepEqual(travel.step(ctx(snap)), { kind: 'stop', reason: 'blocked' });
 
     travel = new Travel({ x: 5, y: 0 }, ctx(snap));
-    assert.deepEqual(travel.step(ctx(snap, [monster(7, 5, 5)])), { kind: 'stop', reason: 'monster' });
+    assert.deepEqual(travel.step(ctx(snap, [monster(7, 5, 5)])), { kind: 'stop', reason: 'monster', creature: 'kobold' });
   });
 
   it('ignores known distant or sleeping creatures and allies', () => {
@@ -182,7 +162,7 @@ describe('travel', () => {
     const snap = level(['......'], { x: 0, y: 0 });
     const known = [monster(1, 2, 0)];
     const travel = new Travel({ x: 5, y: 0 }, ctx(snap, known));
-    assert.deepEqual(travel.step(ctx(snap, known)), { kind: 'stop', reason: 'monster' });
+    assert.deepEqual(travel.step(ctx(snap, known)), { kind: 'stop', reason: 'monster', creature: 'kobold' });
   });
 
   it('stops when the engine is no longer waiting for a command', () => {
@@ -225,7 +205,7 @@ describe('targeting', () => {
 describe('actions', () => {
   it('prefixes commands with a keymap bypass', () => {
     assert.deepEqual(commandKeys({ command: 'R', then: '&\r' }), [92, ...keys('R&\r')]);
-    for (const group of COMMAND_GROUPS) for (const c of group.commands) assert.ok(c.command.length >= 1);
+    for (const group of COMMAND_GROUPS) for (const c of group.commands) assert.ok(c.command.length >= 1 || c.native);
   });
 
   it('offers situational actions for what is underfoot', () => {
@@ -254,5 +234,44 @@ describe('actions', () => {
       contextActions({ ...base, mode: 'title', atCommand: false, prompt: 'none' }).map((a) => a.id),
       ['escape', 'enter', 'keyboard', 'menu'],
     );
+    assert.deepEqual(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none' }).map((a) => a.id), ['escape', 'up', 'down', 'menu']);
+    assert.deepEqual(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none', listShown: true }).map((a) => a.id), ['escape', 'menu']);
+    assert.deepEqual(contextActions({ ...base, prompt: 'yesno', cardShown: true }).map((a) => a.id), ['menu']);
+    assert.ok(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none', screen: 'skills' }).some((a) => a.id === 'raise'));
+  });
+
+  it('opens native views for items, looking and the level map', () => {
+    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const inventory = contextActions(base).find((a) => a.id === 'inventory');
+    assert.deepEqual(inventory?.effect, { kind: 'native', view: 'inventory' });
+    assert.deepEqual(contextActions({ ...base, looking: true }).map((a) => a.id), ['lookdone']);
+    assert.deepEqual(contextActions({ ...base, overview: true }).map((a) => a.id), ['overviewdone']);
+    assert.deepEqual(contextActions(base).find((a) => a.id === 'explore')?.effect, { kind: 'native', view: 'explore' });
+    const fight = contextActions({ ...base, foe: '6', gear: 'light' });
+    assert.deepEqual(fight.slice(0, 2).map((a) => [a.id, a.label]), [
+      ['attack', 'Attack'],
+      ['equip', 'Light'],
+    ]);
+    assert.deepEqual(fight[0].effect, { kind: 'keys', keys: [92, 59, 54] });
+    const crowded = contextActions({ ...base, foe: '6', gear: 'light', floorObjects: 1, underfoot: 'down staircase' });
+    assert.ok(crowded.length <= 7);
+    assert.deepEqual(crowded.map((a) => a.id), ['attack', 'equip', 'pickup', 'descend', 'inventory', 'commands', 'menu']);
+    const busy = contextActions({ ...base, gear: 'light', underfoot: 'down staircase' }).map((a) => a.id);
+    assert.deepEqual(busy, ['equip', 'descend', 'explore', 'inventory', 'rest', 'commands', 'menu']);
+    const sheet = COMMAND_GROUPS.flatMap((g) => g.commands);
+    assert.equal(sheet.find((c) => c.label === 'Inventory')?.native, 'inventory');
+    assert.equal(sheet.find((c) => c.label === 'Look')?.native, 'look');
+  });
+
+  it('recognises quantity and typed-text prompts', () => {
+    assert.equal(classifyPrompt('Quantity (1-6): 1'), 'quantity');
+    assert.equal(classifyPrompt('Inscription: ', true), 'text');
+    assert.equal(classifyPrompt('Inscription: '), 'other');
+    assert.equal(classifyPrompt('Jump to level? ', true), 'other');
+    assert.equal(classifyPrompt('Select a skill (a-98), @ to select by name, +/- to scroll:', true), 'item');
+  });
+
+  it('recognises yes/no prompts with extra answers', () => {
+    assert.equal(classifyPrompt('Buy 2 Wooden Torches? [y/n/RET/ESC]'), 'yesno');
   });
 });

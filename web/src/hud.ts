@@ -1,17 +1,20 @@
-import type { GameState, MessageState, MonsterState, ObjectState, PlayerState } from './render/snapshot.ts';
+import { readableColour } from './render/colour.ts';
+import { isAlly, isHostile, type GameState, type MessageState, type MonsterState, type ObjectState, type PlayerState } from './render/snapshot.ts';
 
 export interface TextSegment {
   text: string;
   colour: string;
 }
 
+export type HudEntity = { kind: 'monster'; monster: MonsterState } | { kind: 'object'; object: ObjectState };
+
 export interface HudCallbacks {
-  onEntity(point: { x: number; y: number }): void;
+  onEntity(entity: HudEntity): void;
+  onPlayer(): void;
   onMore(): void;
   onHistory(): void;
 }
 
-const MSTATUS_FRIEND = 2;
 const FOOD_WEAK = 1000;
 const FOOD_HUNGRY = 2000;
 const VISIBLE_MESSAGES = 3;
@@ -115,7 +118,10 @@ export class Hud {
 
     const p = state.player;
     const palette = this.palette();
-    const player = el('section', 'hud-player');
+    const player = el('button', 'hud-player');
+    player.type = 'button';
+    player.setAttribute('aria-label', `${p.name}: character sheet`);
+    player.addEventListener('click', () => this.callbacks.onPlayer());
     const who = el('div', 'who');
     who.append(el('span', 'name', p.name), el('span', 'sub', `${p.race} ${p.cls} · Lv ${p.lev}`));
     const bars = el('div', 'bars');
@@ -133,8 +139,10 @@ export class Hud {
     const hallucinating = (p.status.hallucinating ?? 0) > 0;
     const monsters = hallucinating ? (state.monsters ?? []).map(disguiseMonster) : (state.monsters ?? []);
     const objects = hallucinating ? (state.objects ?? []).map(disguiseObject) : (state.objects ?? []);
-    for (const m of sortByDistance(monsters, px, py)) list.append(this.monsterItem(m, palette));
-    for (const o of sortByDistance(objects, px, py)) list.append(this.objectItem(o, palette));
+    const real = new Map((state.monsters ?? []).map((m) => [m.id, m]));
+    const realObjects = new Map((state.objects ?? []).map((o) => [o.id, o]));
+    for (const m of sortByDistance(monsters, px, py)) list.append(this.monsterItem(m, real.get(m.id) ?? m, palette));
+    for (const o of sortByDistance(objects, px, py)) list.append(this.objectItem(o, realObjects.get(o.id) ?? o, palette));
 
     this.root.replaceChildren(player, list);
   }
@@ -145,32 +153,34 @@ export class Hud {
     return g;
   }
 
-  private entityButton(x: number, y: number): HTMLButtonElement {
+  private entityButton(entity: HudEntity): HTMLButtonElement {
     const button = el('button', 'entity');
     button.type = 'button';
-    button.addEventListener('click', () => this.callbacks.onEntity({ x, y }));
+    button.addEventListener('click', () => this.callbacks.onEntity(entity));
     return button;
   }
 
-  private monsterItem(m: MonsterState, palette: readonly string[]): HTMLElement {
+  private monsterItem(m: MonsterState, real: MonsterState, palette: readonly string[]): HTMLElement {
     const item = el('li');
-    const button = this.entityButton(m.x, m.y);
-    const friendly = m.status >= MSTATUS_FRIEND;
-    button.classList.add(friendly ? 'ally' : 'foe');
+    const button = this.entityButton({ kind: 'monster', monster: real });
+    const friendly = isAlly(m);
+    const neutral = !friendly && !isHostile(m);
+    button.classList.add(friendly ? 'ally' : neutral ? 'neutral' : 'foe');
     button.style.setProperty('--fill', `${(fraction(m.hp, m.maxhp) * 100).toFixed(1)}%`);
     const tags: string[] = [];
     if (m.asleep) tags.push('asleep');
     if (m.afraid) tags.push('afraid');
     if (friendly) tags.push('ally');
+    if (neutral) tags.push('neutral');
     button.append(this.glyph(m.ch, m.attr, palette), el('span', m.unique ? 'label unique' : 'label', m.name));
     if (tags.length) button.append(el('span', 'tags', tags.join(', ')));
     item.append(button);
     return item;
   }
 
-  private objectItem(o: ObjectState, palette: readonly string[]): HTMLElement {
+  private objectItem(o: ObjectState, real: ObjectState, palette: readonly string[]): HTMLElement {
     const item = el('li');
-    const button = this.entityButton(o.x, o.y);
+    const button = this.entityButton({ kind: 'object', object: real });
     button.classList.add('item');
     button.append(this.glyph(o.ch, o.attr, palette), el('span', 'label', o.name));
     item.append(button);
@@ -207,7 +217,7 @@ export class Hud {
       const age = arr.length - 1 - i;
       const turns = this.turn - (this.seenAt.get(keyOf(m, messages.indexOf(m))) ?? this.turn);
       const line = el('div', 'msg', m.text);
-      line.style.color = palette[m.color] ?? '#ddd';
+      line.style.color = readableColour(palette[m.color] ?? '#ddd');
       line.style.opacity = String(Math.max(0.22, 0.85 - turns * 0.12 - age * 0.18));
       lines.push(line);
     });
@@ -219,7 +229,7 @@ export class Hud {
         const text = more ? segment.text.replace(/-more-\s*$/, '') : segment.text;
         if (!text) continue;
         const span = el('span', undefined, text);
-        span.style.color = segment.colour;
+        span.style.color = readableColour(segment.colour);
         line.append(span);
       }
       if (more) line.append(el('span', 'more', 'more ▸'));

@@ -1,28 +1,34 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createCharacter, dismissMore, screenText, sendText, viewMode, waitForEngine, waitForScreen } from './helpers.ts';
+import {
+  createCharacter,
+  dismissMore,
+  jumpToLevel,
+  playerPos,
+  screenText,
+  viewMode,
+  waitAtCommand,
+  waitForEngine,
+  waitForScreen,
+} from './helpers.ts';
 
 async function actionIds(page: Page): Promise<string[]> {
   return page.evaluate(() => window.__tome!.actions());
 }
 
-async function playerPos(page: Page): Promise<{ x: number; y: number }> {
-  return page.evaluate(() => {
-    const snap = window.__tome!.engine.snapshot()!;
-    return { x: snap.px, y: snap.py };
-  });
-}
-
-async function waitAtCommand(page: Page): Promise<void> {
-  await expect
-    .poll(() => page.evaluate(() => window.__tome!.engine.snapshot()?.atCommand ?? false), { timeout: 15_000 })
-    .toBe(true);
+async function packCount(page: Page, pattern: RegExp): Promise<number> {
+  return page.evaluate(
+    (source) => {
+      const re = new RegExp(source);
+      return (window.__tome!.engine.inventory()?.pack ?? []).filter((i) => re.test(i.name)).reduce((n, i) => n + i.number, 0);
+    },
+    pattern.source,
+  );
 }
 
 test('tapping the map travels there along a known path', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await createCharacter(page, 'Walker');
-  await waitAtCommand(page);
 
   const target = await page.evaluate(() => {
     const tome = window.__tome!;
@@ -68,56 +74,171 @@ test('tapping the map travels there along a known path', async ({ page }) => {
   const after = Math.max(Math.abs(end.x - target!.x), Math.abs(end.y - target!.y));
   const context = `stopped (${cause || 'never started'}) at ${JSON.stringify(end)} from ${JSON.stringify(start)} towards ${JSON.stringify(target)}\n${await screenText(page)}`;
   if (after > 0 && cause !== 'interrupted') {
-    await expect(page.locator('#toast'), context).toContainText(/creature|hurt|blocked/);
+    await expect(page.locator('#toast'), context).toContainText(/near|hurt|blocked/);
   }
   expect(after, context).toBeLessThan(before);
 });
 
-test('the action bar follows the game and menus can be tapped', async ({ page }) => {
+test('items are used, wielded and taken off from the native inventory', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Packer');
+
+  await expect.poll(() => actionIds(page)).toEqual(expect.arrayContaining(['inventory', 'rest', 'look', 'commands', 'menu']));
+
+  const food = await packCount(page, /Ration/);
+  await page.locator('#toolbar [data-action="inventory"]').click();
+  await expect(page.locator('.sheet .item-row').first()).toBeVisible();
+  await page.locator('.sheet .item-row', { hasText: 'Ration' }).click();
+  await page.locator('.sheet .action-button', { hasText: 'Eat' }).click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  await expect.poll(() => packCount(page, /Ration/), { timeout: 10_000 }).toBe(food - 1);
+  expect(await viewMode(page)).toBe('map');
+
+  await dismissMore(page);
+  await page.locator('#toolbar [data-action="inventory"]').click();
+  await page.locator('.sheet .item-row', { hasText: /Sword|Dagger|Axe|Mace|Spear|Whip/ }).first().click();
+  await page.locator('.sheet .action-button', { hasText: 'Wield' }).click();
+  const weapon = () => page.evaluate(() => window.__tome!.engine.inventory()!.equip.find((e) => e.i === 24)?.name ?? '');
+  await expect.poll(weapon, { timeout: 10_000 }).not.toBe('');
+
+  await dismissMore(page);
+  await page.locator('#toolbar [data-action="inventory"]').click();
+  await page.locator('.sheet .segment', { hasText: 'Equipment' }).click();
+  await page.locator('.sheet .item-row:not(.empty-slot)').first().click();
+  await page.locator('.sheet .action-button', { hasText: 'Take off' }).click();
+  await expect.poll(weapon, { timeout: 10_000 }).toBe('');
+});
+
+test('tome2 menus show as tappable lists with a movable highlight', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await createCharacter(page, 'Tapper');
-  await waitAtCommand(page);
-
-  await expect.poll(() => actionIds(page)).toEqual(expect.arrayContaining(['inventory', 'rest', 'look', 'commands', 'menu']));
-  const overflow = await page.evaluate(() => {
-    const bar = document.getElementById('toolbar')!;
-    return { horizontal: bar.scrollWidth - bar.clientWidth, vertical: bar.scrollHeight - bar.clientHeight };
-  });
-  expect(overflow.horizontal).toBeLessThanOrEqual(1);
-  expect(overflow.vertical).toBeLessThanOrEqual(1);
-
-  await page.locator('#toolbar [data-action="inventory"]').click();
-  await expect.poll(() => viewMode(page)).toBe('overlay');
-  await expect.poll(() => actionIds(page)).toContain('escape');
-  await page.locator('#toolbar [data-action="escape"]').click();
-  await expect.poll(() => viewMode(page)).toBe('map');
 
   await page.locator('#toolbar [data-action="commands"]').click();
-  await expect(page.locator('#commands')).toBeVisible();
-  await page.locator('#commands .command', { hasText: 'Wear / wield' }).click();
-  await expect(page.locator('#commands')).toBeHidden();
+  await page.locator('.sheet .command', { hasText: 'Wear / wield' }).click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
   await waitForScreen(page, /Wear\/Wield which item/);
-  if ((await viewMode(page)) !== 'overlay') await sendText(page, ' ');
   await expect.poll(() => viewMode(page)).toBe('overlay');
+  await expect(page.locator('.termview .tv-title')).toHaveText(/Wear\/Wield which item/);
 
-  const row = (await screenText(page)).split('\n').findIndex((line) => line.includes('Torch'));
-  expect(row).toBeGreaterThan(0);
-  const point = await page.evaluate((r) => window.__tome!.terminalCellCentre(20, r), row);
-  await page.mouse.click(point.x, point.y);
+  const first = await page.locator('.termview .tv-choice.is-active').getAttribute('data-key');
+  await page.keyboard.press('ArrowDown');
+  const second = await page.locator('.termview .tv-choice.is-active').getAttribute('data-key');
+  expect(second).not.toBe(first);
+
+  await page.locator('.termview .tv-choice', { hasText: 'Torch' }).click();
   await expect(page.locator('#messages')).toContainText('light source', { timeout: 10_000 });
-
+  await dismissMore(page);
   await waitAtCommand(page);
-  await page.locator('#toolbar [data-action="menu"]').focus();
-  await page.keyboard.press('i');
-  await expect.poll(() => viewMode(page)).toBe('overlay');
-  await page.keyboard.press('Escape');
-  await expect.poll(() => viewMode(page)).toBe('map');
 
-  await page.locator('#messages .msg').first().click();
-  await expect(page.locator('#info')).toContainText('Message history');
+  await page.keyboard.press('C');
+  await expect.poll(() => viewMode(page)).toBe('overlay');
+  const outside = await page.evaluate(() => {
+    const map = document.querySelector('#map')!.getBoundingClientRect();
+    const corners = [
+      [map.left + 3, map.top + 3],
+      [map.right - 3, map.top + 3],
+      [map.left + 3, map.bottom - 3],
+      [map.right - 3, map.bottom - 3],
+    ];
+    return corners.find(([x, y]) => !document.elementFromPoint(x, y)?.closest('.termview, #hud, #toolbar')) ?? corners[0];
+  });
+  await page.mouse.click(outside[0], outside[1]);
+  await expect.poll(() => viewMode(page)).toBe('map');
+});
+
+test('abilities, the full sheet and knowledge are native views', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Scholar');
+
+  await page.locator('.hud-player').click();
+  await page.locator('.sheet .action-button', { hasText: 'Abilities' }).click();
+  await expect(page.locator('.termview .tv-title')).toHaveText('Abilities');
+  await expect(page.locator('.termview .skill-row').first()).toBeVisible();
+  await page.locator('#toolbar [data-action="learn"]').click();
+  await expect(page.locator('.prompt-card')).toBeVisible();
+  await page.locator('.prompt-card button').first().click();
+  await page.locator('#toolbar [data-action="done"]').click();
+  await waitAtCommand(page);
+
+  await page.locator('.hud-player').click();
+  await page.locator('.sheet .action-button', { hasText: 'Full character sheet' }).click();
+  await expect(page.locator('.termview .tv-title')).toHaveText('Character sheet');
+  await expect(page.locator('.termview .stat-label', { hasText: 'Fighting' })).toBeVisible();
+  await page.locator('.termview .tv-tab', { hasText: 'Resists' }).click();
+  await expect(page.locator('.termview .tv-tab.selected')).toHaveText('Resists');
+  await page.locator('#toolbar [data-action="done"]').click();
+  await waitAtCommand(page);
+
+  await page.locator('.hud-player').click();
+  await page.locator('.sheet .action-button', { hasText: 'Knowledge' }).click();
+  await page.locator('.sheet .row-button', { hasText: 'Quests' }).click();
+  await expect(page.locator('.termview .tv-title')).toHaveText(/Quest/);
+  await page.locator('#toolbar [data-action="done"]').click();
+  await waitAtCommand(page);
+});
+
+test('dragging pans the map without moving, long press describes, sheets open from the HUD', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Looker');
+
+  const start = await playerPos(page);
+  const box = (await page.locator('#map').boundingBox())!;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(cx - i * 12, cy - i * 8);
+  await page.mouse.up();
+  expect(await playerPos(page)).toEqual(start);
+  await expect(page.locator('#recentre')).toBeVisible();
+  await page.locator('#recentre').click();
+  await expect(page.locator('#recentre')).toBeHidden();
+
+  const playerCentre = () =>
+    page.evaluate(() => {
+      const snap = window.__tome!.engine.snapshot()!;
+      const p = window.__tome!.mapCellCentre(snap.px, snap.py);
+      return { x: Math.round(p.x), y: Math.round(p.y) };
+    });
+  let point = await playerCentre();
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(100);
+    const next = await playerCentre();
+    if (next.x === point.x && next.y === point.y) break;
+    point = next;
+  }
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await expect(page.locator('#look-card')).toContainText('yourself');
+  await page.locator('#look-card .look-button', { hasText: '✕' }).click();
+
+  await page.locator('#toolbar [data-action="look"]').click();
+  await expect(page.locator('#look-banner')).toBeVisible();
+  await page.mouse.click(point.x + 30, point.y);
+  await expect(page.locator('#look-card .look-text')).toHaveText(/You see|not explored/);
+  await page.locator('#toolbar [data-action="lookdone"]').click();
+  await expect(page.locator('#look-banner')).toBeHidden();
+  expect(await playerPos(page)).toEqual(start);
+
+  await page.locator('#hud .hud-player').click();
+  await expect(page.locator('.sheet-title')).toHaveText('Looker');
+  await expect(page.locator('.sheet .stat-grid.six .stat')).toHaveCount(6);
+  await page.mouse.click(5, 5);
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  await page.locator('#toolbar [data-action="menu"]').click();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.sheet .row-button.is-active')).toContainText('Messages');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.sheet-title')).toHaveText('Messages');
   await page.keyboard.press('Escape');
-  await expect(page.locator('#info')).toBeHidden();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
   expect(await page.evaluate(() => window.__tome!.travelling())).toBe(false);
 });
 
@@ -125,18 +246,17 @@ test('hiding the app autosaves at the command prompt', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await createCharacter(page, 'Sleeper');
-  await waitAtCommand(page);
 
-  const savePath = await page.evaluate(() => `${window.__tome!.engine.savePath}/2.4/save/Sleeper`);
   const exists = () =>
-    page.evaluate((p) => {
+    page.evaluate(() => {
+      const engine = window.__tome!.engine;
       try {
-        window.__tome!.engine.fs!.stat(p);
+        engine.fs!.stat(`${engine.savePath}/2.4/save/Sleeper`);
         return true;
       } catch {
         return false;
       }
-    }, savePath);
+    });
   expect(await exists()).toBe(false);
 
   await page.evaluate(() => {
@@ -152,5 +272,37 @@ test('hiding the app autosaves at the command prompt', async ({ page }) => {
   await page.waitForTimeout(500);
   await page.reload();
   await waitForEngine(page);
-  await waitForScreen(page, /Sleeper/);
+  await expect(page.locator('#title-screen .title-choice').first()).toContainText('Sleeper');
+});
+
+test('explore reveals the level after the suggested weapon and light are equipped', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Scout');
+  await jumpToLevel(page, 2);
+
+  for (let i = 0; i < 2 && (await page.locator('#toolbar [data-action="equip"]').count()); i++) {
+    await page.locator('#toolbar [data-action="equip"]').click();
+    await dismissMore(page);
+    await waitAtCommand(page);
+  }
+  await expect(page.locator('#toolbar [data-action="equip"]')).toHaveCount(0);
+
+  const known = () =>
+    page.evaluate(() => {
+      const snap = window.__tome!.engine.snapshot()!;
+      let n = 0;
+      for (let i = 0; i < snap.info.length; i++) if (snap.info[i] & 3) n++;
+      return n;
+    });
+  const before = await known();
+  for (let i = 0; i < 5 && (await known()) <= before; i++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    const explore = page.locator('#toolbar [data-action="explore"]');
+    if (!(await explore.count())) break;
+    await explore.click();
+    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+  }
+  expect(await known()).toBeGreaterThan(before);
 });
