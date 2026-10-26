@@ -45,6 +45,7 @@ declare global {
       terminalCellCentre(col: number, row: number): { x: number; y: number };
       actions(): string[];
       travelling(): boolean;
+      lastStopCause(): string;
     };
   }
 }
@@ -104,6 +105,7 @@ let features: FeatureInfo[] = [];
 let materials: Material[] = [];
 let travel: Travel | null = null;
 let travelTimer = 0;
+let lastStopCause = '';
 let picker: TargetPicker | null = null;
 let lastSavedTurn = -1;
 let autosaveSyncPending = false;
@@ -127,7 +129,7 @@ const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
   },
   onMore: () => send([0x20]),
   onHistory: () => {
-    if (travel || picker) stopAutomation();
+    if (travel || picker) stopAutomation(null, 'history');
     showHistory();
   },
 });
@@ -289,7 +291,7 @@ function updateActionBar(): void {
 }
 
 function runAction(action: Action): void {
-  if (travel || picker) stopAutomation();
+  if (travel || picker) stopAutomation(null, 'action');
   switch (action.effect.kind) {
     case 'keys':
       send(action.effect.keys);
@@ -403,7 +405,8 @@ function travelContext(): TravelContext | null {
   return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp };
 }
 
-function stopAutomation(message: string | null = null): void {
+function stopAutomation(message: string | null, cause: string): void {
+  if (travel || picker) lastStopCause = cause;
   window.clearTimeout(travelTimer);
   travelTimer = 0;
   travel = null;
@@ -420,7 +423,7 @@ function stepTravel(): void {
   if (!travel || !ctx) return;
   const step = travel.step(ctx);
   if (step.kind === 'stop') {
-    stopAutomation(STOP_MESSAGES[step.reason]);
+    stopAutomation(STOP_MESSAGES[step.reason], step.reason);
     return;
   }
   map.setPath(step.path);
@@ -431,13 +434,13 @@ function stepTravel(): void {
 function startTravel(goal: MapPoint): void {
   const ctx = travelContext();
   if (!ctx) return;
-  stopAutomation();
+  stopAutomation(null, 'new travel');
   travel = new Travel(goal, ctx);
   stepTravel();
 }
 
 function startTargeting(goal: MapPoint): void {
-  stopAutomation();
+  stopAutomation(null, 'new target');
   picker = new TargetPicker(goal, lastState?.monsters?.length ?? 0);
   engine.sendKeys(picker.begin());
 }
@@ -450,7 +453,7 @@ function stepTargeting(): void {
   const targeting = !snap.atCommand && prompt !== 'aim' && prompt !== 'more';
   const step = picker.step(cursor, { x: snap.px, y: snap.py }, targeting);
   if (step.kind === 'keys') engine.sendKeys(step.keys);
-  else stopAutomation(step.kind === 'fail' ? 'Could not target there.' : null);
+  else stopAutomation(step.kind === 'fail' ? 'Could not target there.' : null, 'target');
 }
 
 /* Taps */
@@ -459,7 +462,7 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
   if (title.isVisible) return;
   if (target instanceof Element && target.closest('#messages')) return;
   if (travel || picker) {
-    stopAutomation();
+    stopAutomation(null, 'tap');
     return;
   }
   const prompt = classifyPrompt(rowZeroText());
@@ -514,7 +517,7 @@ attachTap(stage, onStageTap);
 /* Autosave */
 
 function autosave(): void {
-  if (travel || picker) stopAutomation();
+  if (travel || picker) stopAutomation(null, 'autosave');
   const snap = engine.state === 'running' ? engine.snapshot() : null;
   if (snap && snap.inDungeon && snap.atCommand && !snap.icky && snap.turn !== lastSavedTurn) {
     lastSavedTurn = snap.turn;
@@ -651,7 +654,7 @@ const engine = new Engine(buffer, terminal, {
 
 function send(codes: number[] | null): void {
   if (!codes || codes.length === 0) return;
-  if (travel || picker) stopAutomation();
+  if (travel || picker) stopAutomation(null, 'send');
   engine.sendKeys(codes);
   if (ctrlLatched) setCtrlLatched(false);
 }
@@ -968,6 +971,7 @@ window.__tome = {
   terminalCellCentre: (col, row) => terminal.cellCentre(col, row),
   actions: () => currentActions.map((a) => a.id),
   travelling: () => travel !== null,
+  lastStopCause: () => lastStopCause,
 };
 
 /* Service worker */

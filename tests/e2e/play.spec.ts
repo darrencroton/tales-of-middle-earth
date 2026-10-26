@@ -59,7 +59,12 @@ test('tapping the map travels there along a known path', async ({ page }) => {
   const before = Math.max(Math.abs(start.x - target!.x), Math.abs(start.y - target!.y));
   const after = Math.max(Math.abs(end.x - target!.x), Math.abs(end.y - target!.y));
   if (after > 0) {
-    await expect(page.locator('#toast')).toContainText(/creature|hurt|blocked/);
+    const diag = await page.evaluate(([x, y]) => {
+      const hit = document.elementFromPoint(x, y);
+      return { cause: window.__tome!.lastStopCause(), hit: hit ? `${hit.tagName}#${hit.id}.${hit.className}` : 'none', screen: window.__tome!.screenText() };
+    }, [point.x, point.y] as const);
+    const context = `stopped (${diag.cause || 'never started'}) at ${JSON.stringify(end)} from ${JSON.stringify(start)} towards ${JSON.stringify(target)}; tap hit ${diag.hit}\n${diag.screen}`;
+    await expect(page.locator('#toast'), context).toContainText(/creature|hurt|blocked/);
   }
   expect(after).toBeLessThan(before);
 });
