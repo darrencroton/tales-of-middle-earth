@@ -107,6 +107,14 @@ The game now plays through a phone-first interface; tome2's 80×24 screens only 
 - **Shops:** the shop name, keeper and your gold sit in the header; prices and weights carry units. Tap an item for its description and to buy it (with a quantity stepper). The toolbar offers Leave, Sell and More.
 - **Layout:** the HUD and toolbar extend into the safe areas, so nothing is cut off beside a notch or home indicator, in either orientation.
 
+**Polish — review pass** ✅
+
+- **Quest levels stay native.** Entering a quest level (the thieves' hideout under Bree, for one) no longer drops back to the raw 80×24 terminal: the map is drawn from the moment the character exists, including while a new level is generated.
+- **Messages flow past.** By default messages no longer stop the game at `-more-`; they appear in the log under the map (tap it to read back). *Settings → Messages* restores the pauses.
+- **Fights read better:** the creature *Attack* would strike is bracketed in red on the map, a creature that loses health flashes and shows the damage, and experience floats up as it is gained. A level-up banner says how many skill points are waiting, and a *skill points* chip in the HUD opens the skills screen.
+- **Fewer taps:** *Dungeon* in town walks to the nearest known way down; *Stop* (or a tap on the map) interrupts resting and running; travel no longer stops for creatures that are asleep when first seen.
+- **Fixes:** saving reports success only once the save reached browser storage and is offered only at the command prompt; *Save and quit* warns when browser storage is unavailable instead of discarding the game; a save import that cannot be written in full is refused before anything changes; inscriptions and names cannot turn into stray control keys; clearing an inscription works; native floor pick-up honours the always-pickup option; a mouse release outside the map no longer disables taps; option switches follow tome2's cursor; sheets stay above the on-screen keyboard; long lists of saved heroes scroll; *Animation: Off* also stops the CSS pulses; new app versions wait until no game is in progress before taking over.
+
 ---
 
 ## Architecture

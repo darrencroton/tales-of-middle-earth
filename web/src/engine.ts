@@ -43,6 +43,7 @@ interface EmscriptenModule {
   _web_store_object_desc(index: number): number;
   _web_monster_desc(index: number): number;
   _web_character_json(): number;
+  _web_set_auto_more(on: number): void;
 }
 
 interface ModuleOptions {
@@ -156,6 +157,13 @@ export class Engine {
     }
   }
 
+  /** Lets messages flow past without -more- pauses (tome2's auto_more option). */
+  setAutoMore(on: boolean): void {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return;
+    mod._web_set_auto_more(on ? 1 : 0);
+  }
+
   features(): FeatureInfo[] {
     const mod = this.module;
     if (!mod || this.state !== 'running') return [];
@@ -176,10 +184,12 @@ export class Engine {
     return this.waiter !== null && this.queue.length === 0;
   }
 
+  /** Queues key codes for the engine; codes outside 0..255 are dropped rather than wrapped into control keys. */
   sendKeys(codes: number[]): void {
     if (this.state !== 'running' && this.state !== 'loading') return;
     for (const code of codes) {
-      const key = code & 0xff;
+      if (!Number.isInteger(code) || code < 0 || code > 0xff) continue;
+      const key = code;
       if (this.waiter) {
         const resolve = this.waiter;
         this.waiter = null;

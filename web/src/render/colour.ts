@@ -1,8 +1,6 @@
 /** Linear-ish RGB triple; components nominally 0..1 but may exceed 1 for light. */
 export type RGB = readonly [number, number, number];
 
-export const BLACK: RGB = [0, 0, 0];
-
 /* Angband attribute colours (TERM_DARK .. TERM_L_UMBER) used until the engine sends its palette. */
 export const BASE_ATTR_COLOURS: readonly RGB[] = [
   [0, 0, 0],
@@ -46,10 +44,6 @@ export function luminance(a: RGB): number {
 export function desaturate(a: RGB, amount: number): RGB {
   const l = luminance(a);
   return mix(a, [l, l, l], amount);
-}
-
-export function maxComponent(a: RGB): number {
-  return Math.max(a[0], a[1], a[2]);
 }
 
 function channel(v: number): number {

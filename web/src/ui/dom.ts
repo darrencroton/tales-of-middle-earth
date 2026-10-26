@@ -45,3 +45,15 @@ export function section(title: string, ...children: Node[]): HTMLElement {
   node.append(el('h3', undefined, title), ...children);
   return node;
 }
+
+export function fraction(value: number, max: number): number {
+  return max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
+}
+
+/** A labelled progress bar (`kind` selects the colour class). */
+export function bar(kind: string, label: string, value: number, max: number): HTMLElement {
+  const node = el('div', `bar bar-${kind}`);
+  node.style.setProperty('--fill', `${(fraction(value, max) * 100).toFixed(1)}%`);
+  node.append(el('span', 'bar-label', label), el('span', 'bar-value', `${value}/${max}`));
+  return node;
+}

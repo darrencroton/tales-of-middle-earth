@@ -50,6 +50,8 @@ export interface TermViewOptions {
   empty?: string;
   /** Uppercase key range that shows a description of each choice ("Descs A-F"). */
   describe?: [string, string] | null;
+  /** Terminal row of tome2's cursor, which marks the current option switch. */
+  cursorRow?: number;
 }
 
 const WHITE = 1;
@@ -176,7 +178,8 @@ export class TermView {
         blocks = blocks.filter((b) => b !== heading);
       }
     }
-    const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, blocks]);
+    const cursorRow = blocks.some((b) => b.kind === 'option') ? options.cursorRow : undefined;
+    const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, cursorRow, blocks]);
     this.root.hidden = false;
     this.tabs = options.tabs ?? [];
     if (key === this.renderedKey) return;
@@ -187,7 +190,7 @@ export class TermView {
     this.root.className = `termview ${options.layout}`;
 
     this.renderHeader(options);
-    this.body.replaceChildren(...this.renderBlocks(blocks, options.describe ?? null));
+    this.body.replaceChildren(...this.renderBlocks(blocks, options.describe ?? null, cursorRow));
     if (options.empty && !this.body.textContent?.trim()) this.body.replaceChildren(el('p', 'tv-empty', options.empty));
     this.fitPreformatted();
 
@@ -327,7 +330,7 @@ export class TermView {
     return out;
   }
 
-  private renderBlocks(blocks: Block[], describe: [string, string] | null): HTMLElement[] {
+  private renderBlocks(blocks: Block[], describe: [string, string] | null, cursorRow?: number): HTMLElement[] {
     const out: HTMLElement[] = [];
     const headings = this.columnHeadings(blocks);
     let optionIndex = 0;
@@ -370,7 +373,7 @@ export class TermView {
           break;
         }
         case 'option': {
-          const row = el('button', `tv-option${block.value ? ' on' : ''}`);
+          const row = el('button', `tv-option${block.value ? ' on' : ''}${block.row === cursorRow ? ' current' : ''}`);
           row.type = 'button';
           row.dataset.nav = '';
           row.dataset.option = String(optionIndex++);

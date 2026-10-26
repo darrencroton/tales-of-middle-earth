@@ -46,6 +46,8 @@ export class MapRenderer {
   private highlightUntil = 0;
   private reticle: MapPoint | null = null;
   private lookCell: MapPoint | null = null;
+  private foe: MapPoint | null = null;
+  private hits: { x: number; y: number; until: number }[] = [];
   private camX = Number.NaN;
   private camY = Number.NaN;
   private panX = 0;
@@ -170,6 +172,16 @@ export class MapRenderer {
 
   setReticle(point: MapPoint | null): void {
     this.reticle = point;
+  }
+
+  /** Marks the creature the Attack button would strike. */
+  setFoe(point: MapPoint | null): void {
+    this.foe = point;
+  }
+
+  /** Flashes a cell where a creature was just hurt. */
+  markHit(point: MapPoint, durationMs = 450): void {
+    this.hits.push({ ...point, until: performance.now() + durationMs });
   }
 
   flashHighlight(point: MapPoint, durationMs = 2500): void {
@@ -308,6 +320,34 @@ export class MapRenderer {
     if (this.highlight && performance.now() < this.highlightUntil) {
       ctx.strokeStyle = toCss(scale(ACCENT, pulse));
       ctx.strokeRect(px(this.highlight.x) + line / 2, py(this.highlight.y) + line / 2, cellW - line, cellH - line);
+    }
+
+    const now = performance.now();
+    this.hits = this.hits.filter((h) => h.until > now);
+    for (const hit of this.hits) {
+      const k = (hit.until - now) / 450;
+      ctx.fillStyle = `rgba(255,70,50,${(0.45 * k).toFixed(3)})`;
+      ctx.fillRect(px(hit.x), py(hit.y), cellW, cellH);
+    }
+
+    if (this.foe && !this.overview) {
+      const left = px(this.foe.x);
+      const top = py(this.foe.y);
+      const arm = Math.max(3, cellW * 0.3);
+      ctx.strokeStyle = `rgba(255,90,70,${(0.55 + 0.45 * pulse).toFixed(3)})`;
+      ctx.lineWidth = line;
+      ctx.beginPath();
+      for (const [cx, cy, dx, dy] of [
+        [left, top, 1, 1],
+        [left + cellW, top, -1, 1],
+        [left, top + cellH, 1, -1],
+        [left + cellW, top + cellH, -1, -1],
+      ]) {
+        ctx.moveTo(cx + dx * arm, cy);
+        ctx.lineTo(cx, cy);
+        ctx.lineTo(cx, cy + dy * arm);
+      }
+      ctx.stroke();
     }
 
     if (this.path.length > 0) {

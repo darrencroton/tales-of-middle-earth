@@ -1,4 +1,5 @@
 import type { Engine } from '../engine.ts';
+import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, KEY_SPACE as SPACE } from '../input/keys.ts';
 import type { Action } from '../play/actions.ts';
 import { keyCodes } from '../play/macro.ts';
 import type { TerminalBuffer } from '../terminal.ts';
@@ -31,10 +32,6 @@ export interface DirectorDeps {
 }
 
 type Phase = 'boot' | 'title' | 'creating' | 'birth' | 'loading' | 'playing';
-
-const ENTER = 13;
-const ESCAPE = 27;
-const SPACE = 32;
 
 const INTRO_LINES = [
   'Art thou an adventurer,',
@@ -138,7 +135,8 @@ export class Director {
       const records = this.readSaveIndex();
       this.saves = entries
         .map((entry) => {
-          const record = records.find((r) => r.base === entry.name || r.base === `_${entry.name}`);
+          const matches = (r: SaveRecord) => r.base === entry.name || r.base === `_${entry.name}`;
+          const record = records.find((r) => matches(r) && r.module === this.module) ?? records.find(matches);
           return {
             letter: entry.letter,
             name: entry.name,

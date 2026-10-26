@@ -11,7 +11,7 @@ import { findListedItem, itemActions, itemLetter, itemMacro } from '../../web/sr
 import { MacroRunner, type MacroScreen } from '../../web/src/play/macro.ts';
 import { readableColour } from '../../web/src/render/colour.ts';
 import type { ItemState } from '../../web/src/render/snapshot.ts';
-import { descriptionParagraphs } from '../../web/src/ui/inventory.ts';
+import { descriptionParagraphs } from '../../web/src/ui/api.ts';
 import { parseStore, stackSize, storeMacro } from '../../web/src/ui/store.ts';
 import { abilityMoveKeys, parseAbilities, parseSkills, skillMoveKeys } from '../../web/src/ui/skills.ts';
 import { flagLabel, parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
@@ -58,6 +58,11 @@ describe('item actions', () => {
     const list = ['Floor: a-b', '  a) , 6 Rations of Food      6.0 lb', '  b) ! a Potion of Cure Light Wounds   0.4 lb'].join('\n');
     assert.equal(findListedItem(list, 'a Potion of Cure Light Wounds'), 'b');
     assert.equal(findListedItem(list, 'a Wand of Stinking Cloud'), null);
+  });
+
+  it('prefers an exact name over a shared prefix', () => {
+    const list = ['  a) ! a Potion of Speed {a}   0.4 lb', '  b) ! a Potion of Speed {b}   0.4 lb'].join('\n');
+    assert.equal(findListedItem(list, 'a Potion of Speed {b}'), 'b');
   });
 
   it('answers the item prompt, switching lists when needed', () => {

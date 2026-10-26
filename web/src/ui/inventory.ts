@@ -1,7 +1,8 @@
 import { SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
 import type { EquipSlot, InventoryState, ItemState } from '../render/snapshot.ts';
-import { pounds, titleName, type GameApi } from './api.ts';
+import { descriptionParagraphs, pounds, titleName, type GameApi } from './api.ts';
 import { el, glyph, navButton } from './dom.ts';
+
 
 /* Slot for a carried symbiote, shown only when something is in it. */
 const CARRIED = 49;
@@ -102,14 +103,6 @@ function placeLabel(item: ItemState, place: ItemPlace, slot?: EquipSlot): string
   return `In your pack · ${weight}`;
 }
 
-/** Paragraphs from tome2's item description (wrapped at 75 columns). */
-export function descriptionParagraphs(text: string): string[] {
-  return text
-    .split(/\n\s*\n/)
-    .map((p) => p.replace(/\s*\n\s*/g, ' ').trim())
-    .filter(Boolean);
-}
-
 /** One item: what is known about it and what you can do with it. */
 export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void {
   const inventory = api.engine.inventory();
@@ -117,17 +110,18 @@ export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void 
   const body = el('div', 'item-detail');
 
   const actions = el('div', 'action-grid');
+  const alwaysPickup = !!api.state()?.player?.alwaysPickup;
   for (const action of itemActions(item, place)) {
     const button = navButton(action.label, {
       className: `action-button${action.primary ? ' primary' : ''}${action.danger ? ' danger' : ''}`,
       onClick: () => {
         if (action.needsText) {
           api.askText('Inscribe', `Inscription for ${item.name}`, item.ins).then((text) => {
-            if (text !== null) api.runMacro(itemMacro(action, item, place, text));
+            if (text !== null) api.runMacro(itemMacro(action, item, place, text, alwaysPickup));
           });
           return;
         }
-        api.runMacro(itemMacro(action, item, place));
+        api.runMacro(itemMacro(action, item, place, '', alwaysPickup));
       },
     });
     actions.append(button);

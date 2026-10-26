@@ -79,8 +79,10 @@ button {
   padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
 }
 
-/* While the on-screen keyboard is up, fit above it. */
-#app.keyboard-open {
+/* While the on-screen keyboard is up, fit the app and any sheet in the visible area above it. */
+html.keyboard-open #app,
+html.keyboard-open .sheet-layer {
+  top: var(--app-top, 0px);
   bottom: auto;
   height: var(--app-height);
 }
@@ -870,7 +872,8 @@ button {
 
 .tv-choice.is-active,
 .tv-choice.current,
-.tv-option.is-active {
+.tv-option.is-active,
+.tv-option.current {
   outline: none;
   border-color: var(--accent);
   background: rgb(217 164 65 / 0.12);
@@ -2014,6 +2017,10 @@ button {
   flex-direction: column;
   gap: 0.5rem;
   width: 100%;
+  max-height: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   animation: fade-in 1200ms ease 500ms both;
 }
 
@@ -2189,6 +2196,7 @@ button {
   }
 }
 
+/* Animation Off (the setting, or the system preference it defaults from). */
 @media (prefers-reduced-motion: reduce) {
   .title-subtitle,
   .title-verse span,
@@ -2197,12 +2205,16 @@ button {
     animation: none;
     opacity: 1;
   }
+}
 
-  .title-choice.primary,
-  .sheet,
-  .sheet-backdrop {
-    animation: none;
-  }
+:root[data-animation="off"] .title-choice.primary,
+:root[data-animation="off"] .title-progress-fill,
+:root[data-animation="off"] .sheet,
+:root[data-animation="off"] .sheet-backdrop,
+:root[data-animation="off"] .termview.panel,
+:root[data-animation="off"] .prompt-card,
+:root[data-animation="off"] .feel-vignette {
+  animation: none;
 }
 
 .tv-empty {
@@ -2426,6 +2438,35 @@ button {
 
 .feel-float.gold {
   color: #ffd56a;
+}
+
+.feel-float.exp {
+  color: #9fd8ff;
+  font-size: var(--fs-small);
+}
+
+.feel-float.at {
+  font-family: var(--mono);
+  color: #ff8a70;
+  text-shadow: 0 0 6px #000, 0 1px 3px #000;
+  animation-duration: 900ms;
+}
+
+.feel-float.at.ally {
+  color: #ffd1c4;
+}
+
+.feel-float.at.kill {
+  font-family: var(--serif);
+  font-style: italic;
+  color: #ffd56a;
+}
+
+.entity.skills {
+  --fill: 100%;
+  --bar: #4a3a12;
+  color: var(--accent-bright);
+  border-color: var(--accent);
 }
 
 .feel-float.still {

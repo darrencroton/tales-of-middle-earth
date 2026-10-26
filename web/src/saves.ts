@@ -112,9 +112,42 @@ export function collectFiles(fs: EmscriptenFS, root: string): SaveFile[] {
   return files;
 }
 
-export function writeFiles(fs: EmscriptenFS, root: string, files: SaveFile[]): void {
+/**
+ * The reason a bundle cannot be written as a whole: a path listed twice, a
+ * path that is also a directory of another entry, or a clash with a file or
+ * directory already in storage. Null when every file can be written.
+ */
+export function bundleConflict(fs: Pick<EmscriptenFS, 'stat' | 'isDir'>, root: string, files: readonly SaveFile[]): string | null {
+  const paths = new Set<string>();
   for (const file of files) {
-    if (!isSafeRelativePath(file.path)) throw new Error(`Unsafe path: ${file.path}`);
+    if (!isSafeRelativePath(file.path)) return `Unsafe path: ${file.path}`;
+    if (paths.has(file.path)) return `Listed twice: ${file.path}`;
+    paths.add(file.path);
+  }
+  const isDir = (path: string): boolean | null => {
+    try {
+      return fs.isDir(fs.stat(path).mode);
+    } catch {
+      return null;
+    }
+  };
+  for (const path of paths) {
+    const parts = path.split('/');
+    for (let i = 1; i < parts.length; i++) {
+      const dir = parts.slice(0, i).join('/');
+      if (paths.has(dir)) return `${dir} is both a file and a directory`;
+      if (isDir(`${root}/${dir}`) === false) return `${dir} already exists as a file`;
+    }
+    if (isDir(`${root}/${path}`) === true) return `${path} already exists as a directory`;
+  }
+  return null;
+}
+
+/** Writes a bundle into storage; call bundleConflict first so nothing is half written. */
+export function writeFiles(fs: EmscriptenFS, root: string, files: SaveFile[]): void {
+  const conflict = bundleConflict(fs, root, files);
+  if (conflict) throw new Error(conflict);
+  for (const file of files) {
     const absolute = `${root}/${file.path}`;
     const dir = absolute.slice(0, absolute.lastIndexOf('/'));
     fs.mkdirTree(dir);

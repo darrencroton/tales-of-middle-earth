@@ -1,9 +1,9 @@
 import { readableColour } from '../render/colour.ts';
 import type { MapPoint } from '../render/map.ts';
 import { CAVE_MARK, CAVE_SEEN, isAlly, isHostile, type MonsterState, type ObjectState } from '../render/snapshot.ts';
-import { capitalise, titleName, type GameApi } from './api.ts';
+import { capitalise, descriptionParagraphs, titleName, type GameApi } from './api.ts';
 import { el, glyph, navButton } from './dom.ts';
-import { descriptionParagraphs, openItem } from './inventory.ts';
+import { openItem } from './inventory.ts';
 
 
 export function healthWord(hp: number, maxhp: number): string {

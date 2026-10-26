@@ -30,7 +30,9 @@ function listFiles(dir: string): string[] {
 
 /**
  * Emits sw.js with a precache list of every built and public file. The cache
- * name is derived from file contents, so each deploy installs a fresh cache.
+ * name is derived from file contents, so each deploy installs a fresh cache;
+ * a new worker waits (keeping the old cache alive) until the page lets it
+ * take over or every old client is closed.
  */
 function serviceWorker(): Plugin {
   return {
@@ -67,9 +69,12 @@ function serviceWorker(): Plugin {
 const PRECACHE = ${precache};
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)).then(() => self.skipWaiting()),
-  );
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)));
+});
+
+/* The page asks a waiting worker to take over only while no game is in progress. */
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'skip-waiting') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {

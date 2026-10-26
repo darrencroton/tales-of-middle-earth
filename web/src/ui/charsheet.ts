@@ -1,4 +1,4 @@
-import type { TermRow } from './termparse.ts';
+import { rowText, type TermRow } from './termparse.ts';
 import { el, section } from './dom.ts';
 
 /* tome2 colours on the character sheet. */
@@ -30,13 +30,6 @@ export interface SheetFlag {
 export type FullSheet =
   | { page: 0; groups: SheetGroup[]; tactic: string; movement: string }
   | { page: 1 | 2 | 3 | 4; flags: SheetFlag[] };
-
-function rowText(row: TermRow | undefined): string {
-  if (!row) return '';
-  let text = '';
-  for (let x = 0; x < row.chars.length; x++) text += row.chars[x] === 0 ? ' ' : String.fromCharCode(row.chars[x]);
-  return text;
-}
 
 const tidy = (text: string) => text.replace(/\s+/g, ' ').replace(/ ?\/ ?/g, ' / ').trim();
 

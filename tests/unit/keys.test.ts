@@ -7,8 +7,10 @@ import {
   KEY_ESCAPE,
   controlCode,
   directionKeys,
+  keyCodes,
   translateKey,
   translateText,
+  typedAnswer,
   type KeyLike,
 } from '../../web/src/input/keys.ts';
 
@@ -106,5 +108,18 @@ describe('compositionDelta', async () => {
   it('does not backspace over characters that were never sent', () => {
     assert.deepEqual(compositionDelta('a日', 'a'), { backspaces: 0, text: '' });
     assert.deepEqual(compositionDelta('a日b', 'a'), { backspaces: 1, text: '' });
+  });
+});
+
+describe('text for the engine', () => {
+  it('drops characters outside Latin-1 instead of turning them into control keys', () => {
+    assert.deepEqual(keyCodes('čR10'), [82, 49, 48]);
+    assert.deepEqual(keyCodes('@r1'), [64, 114, 49]);
+  });
+
+  it('answers a pre-filled prompt: keep, clear or replace', () => {
+    assert.deepEqual(typedAnswer('@r1', '@r1'), [KEY_ENTER]);
+    assert.deepEqual(typedAnswer('', '@r1'), [KEY_BACKSPACE, KEY_ENTER]);
+    assert.deepEqual(typedAnswer('x', '@r1'), [120, KEY_ENTER]);
   });
 });

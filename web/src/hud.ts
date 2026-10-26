@@ -1,4 +1,5 @@
 import { readableColour } from './render/colour.ts';
+import { bar, el, fraction } from './ui/dom.ts';
 import { isAlly, isHostile, type GameState, type MessageState, type MonsterState, type ObjectState, type PlayerState } from './render/snapshot.ts';
 
 export interface TextSegment {
@@ -11,6 +12,8 @@ export type HudEntity = { kind: 'monster'; monster: MonsterState } | { kind: 'ob
 export interface HudCallbacks {
   onEntity(entity: HudEntity): void;
   onPlayer(): void;
+  /** The skill-points chip was tapped. */
+  onSkills(): void;
   onMore(): void;
   onHistory(): void;
 }
@@ -31,24 +34,6 @@ const STATUS_LABELS: [string, string][] = [
   ['fast', 'Hasted'],
   ['slow', 'Slowed'],
 ];
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-function fraction(value: number, max: number): number {
-  return max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
-}
-
-function bar(kind: string, label: string, value: number, max: number): HTMLElement {
-  const node = el('div', `bar bar-${kind}`);
-  node.style.setProperty('--fill', `${(fraction(value, max) * 100).toFixed(1)}%`);
-  node.append(el('span', 'bar-label', label), el('span', 'bar-value', `${value}/${max}`));
-  return node;
-}
 
 export function depthLabel(player: Pick<PlayerState, 'depth' | 'dungeon' | 'wild'>): string {
   if (player.wild) return 'Wilderness';
@@ -136,6 +121,14 @@ export class Hud {
     player.append(who, bars, meta, chips);
 
     const list = el('ul', 'hud-entities');
+    if ((p.skillPoints ?? 0) > 0) {
+      const item = el('li');
+      const button = el('button', 'entity skills', `${p.skillPoints} skill point${p.skillPoints === 1 ? '' : 's'} to spend`);
+      button.type = 'button';
+      button.addEventListener('click', () => this.callbacks.onSkills());
+      item.append(button);
+      list.append(item);
+    }
     const hallucinating = (p.status.hallucinating ?? 0) > 0;
     const monsters = hallucinating ? (state.monsters ?? []).map(disguiseMonster) : (state.monsters ?? []);
     const objects = hallucinating ? (state.objects ?? []).map(disguiseObject) : (state.objects ?? []);
@@ -210,7 +203,8 @@ export class Hud {
     const palette = this.palette();
     const lines: HTMLElement[] = [];
     let history = messages.filter((m) => /[^\s=\-_~*]/.test(m.text));
-    if (currentText && history.length && currentText.startsWith(history[0].text.slice(0, 20))) history = history.slice(1);
+    /* The prompt line repeats the newest messages (joined on one row); keep each once. */
+    while (currentText && history.length && currentText.includes(history[0].text.slice(0, 20))) history = history.slice(1);
     const historyCount = currentText ? VISIBLE_MESSAGES - 1 : VISIBLE_MESSAGES;
 
     history.slice(0, historyCount).reverse().forEach((m, i, arr) => {

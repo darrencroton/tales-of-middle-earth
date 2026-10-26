@@ -1,4 +1,4 @@
-import type { TermRow } from './termparse.ts';
+import { rowText, type TermRow } from './termparse.ts';
 import { el } from './dom.ts';
 
 /* tome2 colours on the skills screen. */
@@ -28,12 +28,6 @@ export interface SkillsScreen {
 }
 
 const SKILL_ROW = /^(\s*)(\[|\s)?([.+-])(\]|\s)?(\S.*?)\s+(-?)(\d+)\.(\d{3}) \[(\d)\.(\d{3})\]\s*$/;
-
-function rowText(row: TermRow): string {
-  let text = '';
-  for (let x = 0; x < row.chars.length; x++) text += row.chars[x] === 0 ? ' ' : String.fromCharCode(row.chars[x]);
-  return text;
-}
 
 /** Reads tome2's skills screen (rows of the whole terminal), or null. */
 export function parseSkills(rows: readonly TermRow[]): SkillsScreen | null {

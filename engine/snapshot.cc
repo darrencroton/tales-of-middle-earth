@@ -108,6 +108,19 @@ enum FeatureBits : uint32_t {
 	FB_REMEMBER = 1 << 7
 };
 
+/*
+ * True once the character has a level, including while a new level is being
+ * generated: quest hooks print messages (with -more-) before the engine marks
+ * the dungeon ready, and the map must stay native through them.
+ */
+bool level_ready()
+{
+	return character_generated && cave && p_ptr;
+}
+
+/* -1 leaves tome2's auto_more option alone; 0 or 1 overrides it on every snapshot. */
+int auto_more_override = -1;
+
 int32_t header[H_COUNT];
 std::vector<uint8_t> feat_buf(MAX_HGT * MAX_WID);
 std::vector<uint16_t> info_buf(MAX_HGT * MAX_WID);
@@ -311,11 +324,23 @@ extern "C" {
 /*
  * Rebuilds the level arrays and returns the header (see HeaderSlot).
  */
+/*
+ * Whether messages flow past without -more- pauses (tome2's auto_more
+ * option). Applied on every snapshot, so loading a savefile cannot undo it.
+ */
+EMSCRIPTEN_KEEPALIVE void web_set_auto_more(int on)
+{
+	auto_more_override = on < 0 ? -1 : (on ? 1 : 0);
+	if (auto_more_override >= 0 && options) options->auto_more = auto_more_override != 0;
+}
+
 EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 {
 	auto const &f_info = game->edit_data.f_info;
 
-	bool const ready = character_dungeon && cave && p_ptr;
+	bool const ready = level_ready();
+
+	if (auto_more_override >= 0 && options) options->auto_more = auto_more_override != 0;
 
 	header[H_VERSION] = SNAPSHOT_VERSION;
 	header[H_IN_DUNGEON] = ready ? 1 : 0;
@@ -416,7 +441,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	json.clear();
 	json += '{';
 
-	if (!(character_dungeon && cave && p_ptr))
+	if (!(level_ready()))
 	{
 		json_int(json, "ready", 0, false);
 		json += '}';
@@ -451,6 +476,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	json_str(json, "dungeon", game->edit_data.d_info[dungeon_type].name);
 	json_int(json, "wild", p_ptr->wild_mode ? 1 : 0);
 	json_int(json, "alwaysPickup", options->always_pickup ? 1 : 0);
+	json_int(json, "skillPoints", p_ptr->skill_points);
 	json_key(json, "status");
 	json += '{';
 	json_int(json, "blind", p_ptr->blind);
@@ -560,7 +586,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_inventory_json()
 	json.clear();
 	json += '{';
 
-	if (!(character_dungeon && cave && p_ptr))
+	if (!(level_ready()))
 	{
 		json_int(json, "ready", 0, false);
 		json += '}';
@@ -652,7 +678,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_object_desc(int item)
 {
 	json.clear();
 
-	if (!(character_dungeon && cave && p_ptr)) return json.c_str();
+	if (!(level_ready())) return json.c_str();
 	if (item >= INVEN_TOTAL || (item < 0 && -item >= o_max)) return json.c_str();
 
 	return describe_object(get_object(item));
@@ -666,7 +692,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_object_desc(int index)
 {
 	json.clear();
 
-	if (!(character_dungeon && cave && p_ptr && town_info)) return json.c_str();
+	if (!(level_ready() && town_info)) return json.c_str();
 
 	auto const &c_ptr = cave[p_ptr->py][p_ptr->px];
 	if (c_ptr.feat != FEAT_SHOP) return json.c_str();
@@ -688,7 +714,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
 {
 	json.clear();
 
-	if (!(character_dungeon && cave && p_ptr) || m_idx <= 0 || m_idx >= m_max)
+	if (!(level_ready()) || m_idx <= 0 || m_idx >= m_max)
 	{
 		json = "{}";
 		return json.c_str();
@@ -730,7 +756,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_character_json()
 	json.clear();
 	json += '{';
 
-	if (!(character_dungeon && cave && p_ptr))
+	if (!(level_ready()))
 	{
 		json_int(json, "ready", 0, false);
 		json += '}';

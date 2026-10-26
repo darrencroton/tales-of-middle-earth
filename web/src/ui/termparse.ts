@@ -60,6 +60,14 @@ export interface TermRow {
   attrs: ArrayLike<number>;
 }
 
+/** A row's characters as a string, with unset cells shown as spaces. */
+export function rowText(row: TermRow | undefined): string {
+  if (!row) return '';
+  let text = '';
+  for (let x = 0; x < row.chars.length; x++) text += row.chars[x] === 0 ? ' ' : String.fromCharCode(row.chars[x]);
+  return text;
+}
+
 const SPACE = 0x20;
 const OPTION_ROW = /^\s*(.+?)\s*:\s*(yes|no)\s+\(([\w-]+)\)\s*$/;
 const CHOICE = /^(?:\[([a-zA-Z0-9])\]|\(([a-zA-Z0-9])\)|([a-zA-Z0-9])[)\]]|([a-zA-Z]) -)(?=\s|$)/;

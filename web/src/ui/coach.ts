@@ -5,8 +5,8 @@ const STORAGE_KEY = 'tome2mobile.coach.v1';
 const COACH_TURNS = 400;
 
 const TIPS: [string, string][] = [
-  ['⇢', 'In the dungeon, Explore walks to new places for you and stops when something needs you.'],
-  ['◎', 'Tap the map to walk there; tap a creature next to you to attack it.'],
+  ['⇣', 'Dungeon walks you to the way down. Below, Explore finds new places and stops when something needs you.'],
+  ['◎', 'Tap the map to walk there; tap a creature next to you, or Attack, to fight it.'],
   ['◉', 'Press and hold anything to see what it is. Drag to look around.'],
 ];
 

@@ -176,6 +176,11 @@ export class TitleScreen {
     return this.visible;
   }
 
+  /** Restarts the frame loop after the animation setting changed. */
+  animationChanged(): void {
+    this.schedule();
+  }
+
   setStatus(text: string, fraction: number | null): void {
     if (this.ready) return;
     this.status.textContent = text;

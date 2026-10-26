@@ -65,7 +65,8 @@ export function attachMapGestures(element: HTMLElement, handlers: MapGestureHand
   let panning = false;
   let pressed = false;
   let timer = 0;
-  let pointers = 0;
+  /* Pointers currently down anywhere; releases outside the element still count. */
+  const pointers = new Set<number>();
 
   const reset = () => {
     window.clearTimeout(timer);
@@ -76,10 +77,14 @@ export function attachMapGestures(element: HTMLElement, handlers: MapGestureHand
     pressed = false;
   };
 
+  const release = (e: PointerEvent) => pointers.delete(e.pointerId);
+  window.addEventListener('pointerup', release, true);
+  window.addEventListener('pointercancel', release, true);
+
   element.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    pointers++;
-    if (pointers > 1) {
+    pointers.add(e.pointerId);
+    if (pointers.size > 1) {
       reset();
       return;
     }
@@ -107,7 +112,6 @@ export function attachMapGestures(element: HTMLElement, handlers: MapGestureHand
   });
 
   element.addEventListener('pointerup', (e) => {
-    pointers = Math.max(0, pointers - 1);
     if (!active || e.pointerId !== active.id) return;
     const tap = !panning && !pressed && performance.now() - active.t <= TAP_MAX_MS * 2;
     const { x, y, target } = active;
@@ -115,8 +119,5 @@ export function attachMapGestures(element: HTMLElement, handlers: MapGestureHand
     if (tap) handlers.onTap(x, y, target);
   });
 
-  element.addEventListener('pointercancel', () => {
-    pointers = Math.max(0, pointers - 1);
-    reset();
-  });
+  element.addEventListener('pointercancel', () => reset());
 }

@@ -151,6 +151,15 @@ describe('travel', () => {
     assert.deepEqual(travel.step(ctx(snap, [monster(7, 5, 5)])), { kind: 'stop', reason: 'monster', creature: 'kobold' });
   });
 
+  it('walks on past a newly seen sleeping creature until it wakes nearby', () => {
+    const snap = level(['......'], { x: 0, y: 0 });
+    const travel = new Travel({ x: 5, y: 0 }, ctx(snap));
+    const sleeper = monster(7, 2, 0, { asleep: 1 });
+    assert.equal(travel.step(ctx(snap, [sleeper])).kind, 'keys');
+    snap.px = 1;
+    assert.deepEqual(travel.step(ctx(snap, [{ ...sleeper, asleep: 0 }])), { kind: 'stop', reason: 'monster', creature: 'kobold' });
+  });
+
   it('ignores known distant or sleeping creatures and allies', () => {
     const snap = level(['......'], { x: 0, y: 0 });
     const known = [monster(1, 5, 0, { asleep: 1 }), monster(2, 1, 0, { status: 3 })];

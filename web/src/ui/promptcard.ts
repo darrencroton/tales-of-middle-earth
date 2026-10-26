@@ -1,3 +1,4 @@
+import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, keyCodes as codes, typedAnswer } from '../input/keys.ts';
 import type { PromptKind } from '../play/prompts.ts';
 import { el, iconText } from './dom.ts';
 import { cleanPrompt } from './prompttext.ts';
@@ -5,21 +6,17 @@ import type { MessageBox } from './msgbox.ts';
 
 export type CardKind = Extract<PromptKind, 'yesno' | 'quantity' | 'text' | 'direction' | 'aim'>;
 
-const ENTER = 13;
-const ESCAPE = 27;
-const codes = (text: string) => [...text].map((c) => c.charCodeAt(0));
-
-/* Keypad digits in screen order, with their arrows; the centre cancels. */
-const PAD: [string, string][] = [
-  ['7', '↖'],
-  ['8', '↑'],
-  ['9', '↗'],
-  ['4', '←'],
-  ['', '✕'],
-  ['6', '→'],
-  ['1', '↙'],
-  ['2', '↓'],
-  ['3', '↘'],
+/* Keypad digits in screen order, with their arrows and names; the centre cancels. */
+const PAD: [string, string, string][] = [
+  ['7', '↖', 'North-west'],
+  ['8', '↑', 'North'],
+  ['9', '↗', 'North-east'],
+  ['4', '←', 'West'],
+  ['', '✕', 'Cancel'],
+  ['6', '→', 'East'],
+  ['1', '↙', 'South-west'],
+  ['2', '↓', 'South'],
+  ['3', '↘', 'South-east'],
 ];
 
 /** The value tome2 pre-fills after a prompt's colon ("Quantity (1-6): 1" → "1"). */
@@ -32,12 +29,6 @@ export function promptDefault(text: string): string {
 export function quantityLimit(text: string): number | null {
   const m = /\((\d+)\s*-\s*(\d+)\)/.exec(text);
   return m ? Number(m[2]) : null;
-}
-
-/** Keys that answer a typed prompt; the first key replaces tome2's default. */
-export function typedAnswer(value: string, initial: string): number[] {
-  if (value === initial || value === '') return [ENTER];
-  return [...codes(value), ENTER];
 }
 
 /**
@@ -203,8 +194,10 @@ export class PromptCard {
 
   private pad(): HTMLElement {
     const grid = el('div', 'direction-pad');
-    for (const [digit, arrow] of PAD) {
-      grid.append(this.button(iconText(arrow), digit ? codes(digit) : [ESCAPE], digit ? 'pad-button' : 'pad-button cancel'));
+    for (const [digit, arrow, name] of PAD) {
+      const button = this.button(iconText(arrow), digit ? codes(digit) : [ESCAPE], digit ? 'pad-button' : 'pad-button cancel');
+      button.setAttribute('aria-label', name);
+      grid.append(button);
     }
     return grid;
   }
