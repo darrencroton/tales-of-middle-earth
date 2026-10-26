@@ -2299,3 +2299,20 @@ button {
   font-size: var(--fs-small);
   text-align: center;
 }
+
+.tv-text.pair {
+  justify-content: space-between;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgb(255 255 255 / 0.05);
+}
+
+.tv-text.pair .tv-cell:last-child {
+  color: var(--muted);
+}
+
+.tv-heading {
+  margin: 0.4rem 0 0.6rem;
+  color: var(--accent-bright);
+  font-size: var(--fs-large);
+  font-weight: 600;
+}

@@ -408,7 +408,7 @@ describe('file viewer headings', () => {
   it('titles knowledge and help files', () => {
     assert.equal(cleanPrompt('[ToME 2.4.1 (ah, git), Artifacts Seen, Line 0/0]'), 'Artifacts Seen');
     assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), Help file 'help.hlp', Line 1/33]"), 'Help');
-    assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), Help file 'ability.txt', Line 68/113]"), 'Help · Ability');
+    assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), Help file 'ability.txt', Line 68/113]"), 'Help');
     assert.ok(isFileViewer('[ToME 2.4.1 (ah, git), Quest status, Line 0/5]'));
     assert.ok(isEmptyFile('[ToME 2.4.1 (ah, git), Fate status, Line 0/0]'));
     assert.ok(!isEmptyFile('[ToME 2.4.1 (ah, git), Quest status, Line 0/5]'));

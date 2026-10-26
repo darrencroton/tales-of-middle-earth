@@ -57,11 +57,24 @@ const WHITE = 1;
 const UNITS: Readonly<Record<string, string>> = { weight: ' lb', price: ' gold' };
 /* Words that make a row a set of column headings rather than content. */
 const HEADING = /^(Name|Item Description.*|Description|School|Level|Lv|Cost|Mana|Fail|Info|Weight|Price|Qty|Skill)$/i;
+/* A lone short line followed by a menu, used as the menu's title ("Options"). */
+function menuHeading(blocks: Block[]): TextBlock | null {
+  const content = blocks.filter((b) => b.kind !== 'gap');
+  const [first, next] = content;
+  if (first?.kind !== 'text' || next?.kind !== 'choice' || first.cells.length !== 1) return null;
+  const text = first.cells[0].text.trim();
+  return text.length > 0 && text.length <= TITLE_MAX && !/[.:]$/.test(text) ? first : null;
+}
+
 /* A cell split into one cell per word ("Level Cost Fail" → three cells). */
 function words(cell: Cell): Cell[] {
   return [...cell.text.matchAll(/\S+/g)].map((m) => sliceCell(cell, m.index, m.index + m[0].length));
 }
 
+/* A second cell starting this far right is a value for the first (name … status). */
+const PAIR_COLUMN = 40;
+/* A short line above a menu becomes its title. */
+const TITLE_MAX = 40;
 /* Cells up to this length are kept on one line when a row wraps. */
 const SHORT_CELL = 28;
 
@@ -155,7 +168,14 @@ export class TermView {
   render(source: TermViewSource, region: TermViewRegion, options: TermViewOptions): void {
     const parsed = parseRows(bufferRows(source, region.y0, region.y1), region.y0, region.x0, region.x1);
     const hide = options.hideRow;
-    const blocks = hide ? parsed.filter((b) => b.kind === 'gap' || b.kind === 'pre' || !hide(b.row)) : parsed;
+    let blocks = hide ? parsed.filter((b) => b.kind === 'gap' || b.kind === 'pre' || !hide(b.row)) : parsed;
+    if (!options.title) {
+      const heading = menuHeading(blocks);
+      if (heading) {
+        options = { ...options, title: this.textOf(heading).trim() };
+        blocks = blocks.filter((b) => b !== heading);
+      }
+    }
     const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, blocks]);
     this.root.hidden = false;
     this.tabs = options.tabs ?? [];
@@ -333,7 +353,14 @@ export class TermView {
             out.push(el('hr', 'tv-rule'));
             return;
           }
-          const line = el('p', block.cells.length > 1 ? 'tv-text cells' : 'tv-text');
+          if (/^\s*[\\/]-{5,}[\\/]\s*$/.test(text)) return;
+          const boxed = /^\s*<\s*(.*?)\s*>\s*$/.exec(text);
+          if (boxed) {
+            out.push(el('h3', 'tv-heading', boxed[1]));
+            return;
+          }
+          const pair = block.cells.length === 2 && block.cells[1].col >= PAIR_COLUMN;
+          const line = el('p', pair ? 'tv-text cells pair' : block.cells.length > 1 ? 'tv-text cells' : 'tv-text');
           block.cells.forEach((cell) => {
             const part = el('span', cell.text.length <= SHORT_CELL ? 'tv-cell short' : 'tv-cell');
             for (const run of cell.runs) part.append(this.span(run));
