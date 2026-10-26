@@ -2272,3 +2272,30 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* End of game */
+
+.gameover-hero {
+  margin: 0.5rem 0 1.2rem;
+  text-align: center;
+}
+
+.gameover-name {
+  margin: 0;
+  color: var(--accent-bright);
+  font-size: var(--fs-title);
+  font-weight: 700;
+}
+
+.gameover-title {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.gameover-date {
+  margin: 0 0 1rem;
+  color: var(--faint);
+  font-size: var(--fs-small);
+  text-align: center;
+}

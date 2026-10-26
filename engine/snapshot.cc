@@ -33,7 +33,9 @@
 #include "player_type.hpp"
 #include "spells1.hpp"
 #include "store_info_type.hpp"
+#include "store_type.hpp"
 #include "tables.hpp"
+#include "town_type.hpp"
 #include "util.hpp"
 #include "variable.hpp"
 #include "xtra1.hpp"
@@ -629,14 +631,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_inventory_json()
  * Returns what the player knows about an item (see web_inventory_json for
  * the index) as plain text, lines separated by newlines.
  */
-EMSCRIPTEN_KEEPALIVE char const *web_object_desc(int item)
+static char const *describe_object(object_type *o_ptr)
 {
-	json.clear();
-
-	if (!(character_dungeon && cave && p_ptr)) return json.c_str();
-	if (item >= INVEN_TOTAL || (item < 0 && -item >= o_max)) return json.c_str();
-
-	object_type *o_ptr = get_object(item);
 	if (!o_ptr->k_ptr) return json.c_str();
 
 	char *buf = nullptr;
@@ -650,6 +646,35 @@ EMSCRIPTEN_KEEPALIVE char const *web_object_desc(int item)
 	if (known && buf) json.assign(buf, len);
 	free(buf);
 	return json.c_str();
+}
+
+EMSCRIPTEN_KEEPALIVE char const *web_object_desc(int item)
+{
+	json.clear();
+
+	if (!(character_dungeon && cave && p_ptr)) return json.c_str();
+	if (item >= INVEN_TOTAL || (item < 0 && -item >= o_max)) return json.c_str();
+
+	return describe_object(get_object(item));
+}
+
+/*
+ * Returns the description of an item on the shelf of the shop (or home)
+ * the player is standing in, by its position in the stock.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_store_object_desc(int index)
+{
+	json.clear();
+
+	if (!(character_dungeon && cave && p_ptr && town_info)) return json.c_str();
+
+	auto const &c_ptr = cave[p_ptr->py][p_ptr->px];
+	if (c_ptr.feat != FEAT_SHOP) return json.c_str();
+
+	auto &stock = town_info[p_ptr->town_num].store[c_ptr.special].stock;
+	if (index < 0 || index >= static_cast<int>(stock.size())) return json.c_str();
+
+	return describe_object(&stock[index]);
 }
 
 /*

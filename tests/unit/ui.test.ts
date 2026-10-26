@@ -193,6 +193,7 @@ describe('shops', () => {
     ]);
     assert.equal(store.hasNextPage, true);
     assert.equal(store.home, false);
+    assert.equal(store.page, 1);
     assert.equal(parseStore('just a map', choices), null);
   });
 

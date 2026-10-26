@@ -47,6 +47,7 @@ import { cleanPrompt, describableRange, isEmptyFile, isFileViewer } from './ui/p
 import { openStoreItem, parseStore, type StoreScreen } from './ui/store.ts';
 import { abilitiesElements, abilityMoveKeys, parseAbilities, parseSkills, skillMoveKeys, skillsElements } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
+import { parseTomb, tombElements } from './ui/gameover.ts';
 import { fullSheetElements, parseFullSheet, sheetPageKeys, SHEET_PAGES, type FullSheet } from './ui/charsheet.ts';
 
 declare global {
@@ -253,6 +254,9 @@ function openNative(view: NativeView): void {
       break;
     case 'knowledge':
       openKnowledge(api);
+      break;
+    case 'finish':
+      finishGame();
       break;
     case 'history':
       showHistory();
@@ -509,8 +513,11 @@ function refresh(): void {
     const skills = parseSkills(rows);
     const abilities = skills ? null : parseAbilities(rows);
     const fullSheet = skills || abilities ? null : parseFullSheet(rows);
+    const tomb = parseTomb(rows);
     if (termView.visible && currentBox()) {
       /* The panel stays as it was beneath a message box. */
+    } else if (tomb) {
+      termView.renderCustom({ layout: 'full', title: 'Your adventure has ended' }, JSON.stringify(tomb), () => tombElements(tomb));
     } else if (fullSheet) {
       renderFullSheet(fullSheet);
     } else if (abilities) {
@@ -609,7 +616,7 @@ function updateActionBar(force = false): void {
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
-      screen: !termView.visible ? null : termView.options().length ? 'options' : /Skills Screen/.test(rowZeroText()) ? 'skills' : /Abilities Screen/.test(rowZeroText()) ? 'abilities' : /'p' for previous, 'n' for next/.test(buffer.screenText()) ? 'sheet' : /Help file '/.test(rowZeroText()) ? 'help' : isFileViewer(rowZeroText()) ? 'file' : null,
+      screen: !termView.visible ? null : termView.options().length ? 'options' : /Skills Screen/.test(rowZeroText()) ? 'skills' : /Abilities Screen/.test(rowZeroText()) ? 'abilities' : /'p' for previous, 'n' for next/.test(buffer.screenText()) ? 'sheet' : /You may now dump a character record/.test(buffer.screenText()) ? 'gameover' : /Help file '/.test(rowZeroText()) ? 'help' : isFileViewer(rowZeroText()) ? 'file' : null,
       looking,
       overview: map.overview,
       atCommand: !!snap?.atCommand,
@@ -1321,6 +1328,21 @@ function saveAndQuit(): void {
   stopAutomation(null, 'quit');
   showToast('Saving…');
   runMacro(quitMacro());
+}
+
+/** Leaves the end-of-game screens and returns to the title. */
+function finishGame(): void {
+  quitting = true;
+  stopAutomation(null, 'quit');
+  runMacro(finishMacro());
+}
+
+function* finishMacro(): Macro {
+  let s = yield [KEY_ESCAPE];
+  for (let i = 0; i < 8; i++) {
+    if (/Press ESC to quit/.test(s.screen) || /-more-/.test(s.prompt)) s = yield [KEY_ESCAPE];
+    else return;
+  }
 }
 
 function* quitMacro(): Macro {

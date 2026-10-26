@@ -1,6 +1,6 @@
 import type { PromptKind } from './prompts.ts';
 
-export type NativeView = 'inventory' | 'equipment' | 'look' | 'lookDone' | 'character' | 'knowledge' | 'history' | 'overview' | 'overviewDone';
+export type NativeView = 'inventory' | 'equipment' | 'look' | 'lookDone' | 'character' | 'knowledge' | 'history' | 'overview' | 'overviewDone' | 'finish';
 
 export type ActionEffect =
   | { kind: 'keys'; keys: number[] }
@@ -134,7 +134,7 @@ export interface ActionContext {
   /** A native card is answering the current question. */
   cardShown?: boolean;
   /** Which special tome2 screen is open. */
-  screen?: 'skills' | 'abilities' | 'options' | 'help' | 'file' | 'sheet' | null;
+  screen?: 'skills' | 'abilities' | 'options' | 'help' | 'file' | 'sheet' | 'gameover' | null;
   atCommand: boolean;
   /** Name of the terrain under the player, lower case. */
   underfoot: string;
@@ -234,6 +234,9 @@ export function contextActions(ctx: ActionContext): Action[] {
       { id: 'pageup', label: 'Page up', icon: '▲', effect: { kind: 'keys', keys: text('-') } },
       { id: 'pagedown', label: 'Page down', icon: '▼', effect: { kind: 'keys', keys: text(' ') }, primary: true },
     ];
+  }
+  if (ctx.screen === 'gameover') {
+    return [{ id: 'finish', label: 'Continue', icon: '›', effect: { kind: 'native', view: 'finish' }, primary: true }];
   }
   if (ctx.screen === 'options' || ctx.screen === 'sheet') {
     return [{ id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] }, primary: true }, MENU];

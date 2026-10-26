@@ -40,6 +40,7 @@ interface EmscriptenModule {
   _web_state_json(maxMessages: number): number;
   _web_inventory_json(): number;
   _web_object_desc(item: number): number;
+  _web_store_object_desc(index: number): number;
   _web_monster_desc(index: number): number;
   _web_character_json(): number;
 }
@@ -130,6 +131,13 @@ export class Engine {
     const mod = this.module;
     if (!mod || this.state !== 'running') return '';
     return mod.UTF8ToString(mod._web_object_desc(item));
+  }
+
+  /** Description of an item on the shelf of the shop the player is in, by stock position. */
+  storeObjectDescription(index: number): string {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return '';
+    return mod.UTF8ToString(mod._web_store_object_desc(index));
   }
 
   monsterRecall(index: number): MonsterRecall | null {

@@ -2,6 +2,7 @@ import { keyCodes, type Macro } from '../play/macro.ts';
 import type { GameApi } from './api.ts';
 import { capitalise } from './api.ts';
 import { el, navButton } from './dom.ts';
+import { descriptionParagraphs } from './inventory.ts';
 import type { ChoiceBlock } from './termparse.ts';
 
 const BACKSLASH = 92;
@@ -20,7 +21,11 @@ export interface StoreScreen {
   commands: StoreCommand[];
   hasNextPage: boolean;
   home: boolean;
+  /** Shelf page shown, from 1. */
+  page: number;
 }
+
+const ITEMS_PER_PAGE = 12;
 
 /** Recognises tome2's shop (or home) screen from its command list. */
 export function parseStore(screen: string, choices: readonly ChoiceBlock[]): StoreScreen | null {
@@ -40,7 +45,8 @@ export function parseStore(screen: string, choices: readonly ChoiceBlock[]): Sto
             : 'other';
       return { key: c.key, kind, label };
     });
-  return { commandsRow, commands, hasNextPage: /SPACE\) Next page/.test(screen), home: /Get an item/.test(screen) };
+  const page = Number(/\(Page (\d+)\)/.exec(screen)?.[1] ?? 1);
+  return { commandsRow, commands, hasNextPage: /SPACE\) Next page/.test(screen), home: /Get an item/.test(screen), page };
 }
 
 /** Leading count of a stack ("28 Strips of Venison" → 28, "a Cloak" → 1). */
@@ -114,11 +120,18 @@ export function openStoreItem(api: GameApi, store: StoreScreen, choice: ChoiceBl
     });
     actions.append(buyButton);
   }
-  if (examine) {
+  const index = (store.page - 1) * ITEMS_PER_PAGE + choice.key.charCodeAt(0) - 'a'.charCodeAt(0);
+  const paragraphs = descriptionParagraphs(api.engine.storeObjectDescription(index));
+  if (examine && paragraphs.length === 0) {
     actions.append(navButton('Examine', { className: 'action-button', onClick: () => api.runMacro(storeMacro(examine.key, choice.key, 1)) }));
   }
   body.append(actions);
   if (!store.home && affordable === 0) body.append(el('p', 'muted', 'You cannot afford this.'));
+  if (paragraphs.length) {
+    const description = el('div', 'description');
+    for (const p of paragraphs) description.append(el('p', undefined, p));
+    body.append(description);
+  }
 
   api.sheets.open({
     title: capitalise(name.replace(/^(a|an|\d+) /i, '')),

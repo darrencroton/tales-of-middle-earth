@@ -56,7 +56,7 @@ const WHITE = 1;
 /* Columns shown with a unit instead of a heading. */
 const UNITS: Readonly<Record<string, string>> = { weight: ' lb', price: ' gold' };
 /* Words that make a row a set of column headings rather than content. */
-const HEADING = /^(Name|Item|Description|School|Level|Lv|Cost|Mana|Fail|Info|Weight|Price|Qty|Skill)$/i;
+const HEADING = /^(Name|Item Description.*|Description|School|Level|Lv|Cost|Mana|Fail|Info|Weight|Price|Qty|Skill)$/i;
 /* A cell split into one cell per word ("Level Cost Fail" → three cells). */
 function words(cell: Cell): Cell[] {
   return [...cell.text.matchAll(/\S+/g)].map((m) => sliceCell(cell, m.index, m.index + m[0].length));
@@ -274,8 +274,8 @@ export class TermView {
       const block = blocks[i];
       if (block.kind === 'gap') continue;
       if (block.kind !== 'text') return null;
-      const cells = block.cells.flatMap(words);
-      return cells.length > 0 && cells.every((c) => HEADING.test(c.text)) ? { index: i, cells } : null;
+      const cells = block.cells.flatMap((c) => (HEADING.test(c.text.trim()) ? [c] : words(c)));
+      return cells.length > 0 && cells.every((c) => HEADING.test(c.text.trim())) ? { index: i, cells } : null;
     }
     return null;
   }
