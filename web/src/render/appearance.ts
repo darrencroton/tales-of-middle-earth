@@ -29,6 +29,8 @@ export interface CellAppearance {
   fg: RGB;
   bg: RGB;
   solid: boolean;
+  /** Terrain symbol (centred by its ink) rather than a creature or item letter. */
+  terrain: boolean;
 }
 
 export interface AppearanceContext {
@@ -130,5 +132,5 @@ export function cellAppearance(ctx: AppearanceContext, x: number, y: number): Ce
     glyph = HALLUCINATION_GLYPHS[Math.floor(cellHash(y, x, phase) * HALLUCINATION_GLYPHS.length)];
   }
 
-  return { glyph, fg, bg, solid };
+  return { glyph, fg, bg, solid, terrain: isTerrain };
 }

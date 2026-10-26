@@ -67,6 +67,12 @@ test('the action bar follows the game and menus can be tapped', async ({ page })
   await waitAtCommand(page);
 
   await expect.poll(() => actionIds(page)).toEqual(expect.arrayContaining(['inventory', 'rest', 'look', 'commands', 'menu']));
+  const overflow = await page.evaluate(() => {
+    const bar = document.getElementById('toolbar')!;
+    return { horizontal: bar.scrollWidth - bar.clientWidth, vertical: bar.scrollHeight - bar.clientHeight };
+  });
+  expect(overflow.horizontal).toBeLessThanOrEqual(1);
+  expect(overflow.vertical).toBeLessThanOrEqual(1);
 
   await page.locator('#toolbar [data-action="inventory"]').click();
   await expect.poll(() => viewMode(page)).toBe('overlay');

@@ -44,7 +44,7 @@ The visual design takes inspiration from [Brogue: Community Edition](https://git
   - Flames ignite from the bottom with a flare, and embers drift upward.
   - The title "ToME" is a Brogue-style mosaic of stone cells, lit from below by the flame columns: crimson at the top, molten gold at the base, flickering with the fire.
   - The subtitle and the Ring verse fade in.
-  - **Begin** sets off an eruption of flame, then steps automatically through tome2's module and news screens into character creation. There is also a link to play the Theme module.
+  - **Enter Middle-earth** sets off an eruption of flame, then steps automatically through tome2's module and news screens into character creation. There is also a link to play the Theme module.
   - The opening screen replaces the old loading splash and also shows download progress, errors and the end-of-game message.
 - **Character creation:** a flame backdrop burns behind the screens, and the text is scaled to fit.
 - **Display settings:**

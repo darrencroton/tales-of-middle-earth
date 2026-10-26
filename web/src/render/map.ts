@@ -20,6 +20,9 @@ export const MIN_ZOOM = 12;
 export const MAX_ZOOM = 48;
 export const CELL_ASPECT = 0.62;
 
+/** Glyphs with most of their weight low down, lifted so they read as centred. */
+const OPTICAL_LIFT: Readonly<Record<string, number>> = { '▲': 1 / 12 };
+
 const MAP_FONT = '"DejaVu Sans Mono", Menlo, Consolas, "Segoe UI Symbol", "Noto Sans Symbols 2", monospace';
 const ACCENT: RGB = [0.85, 0.64, 0.25];
 
@@ -46,6 +49,8 @@ export class MapRenderer {
   private cssWidth = 0;
   private cssHeight = 0;
   private lastTime = 0;
+  private glyphOffsets = new Map<string, number>();
+  private glyphFont = '';
   private path: MapPoint[] = [];
   private view = { originX: 0, originY: 0, cellW: 1, cellH: 1 };
 
@@ -184,7 +189,12 @@ export class MapRenderer {
     const y1 = Math.min(snap.height - 1, Math.ceil(originY + rows));
 
     const fontPx = Math.max(1, Math.floor(Math.min(cellH * 0.86, cellW / 0.6)));
-    ctx.font = `${fontPx}px ${MAP_FONT}`;
+    const font = `${fontPx}px ${MAP_FONT}`;
+    ctx.font = font;
+    if (font !== this.glyphFont) {
+      this.glyphFont = font;
+      this.glyphOffsets.clear();
+    }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -210,7 +220,7 @@ export class MapRenderer {
         ctx.fillRect(left, top, width, height);
         if (!cell.solid && cell.glyph !== ' ') {
           ctx.fillStyle = toCss(cell.fg);
-          ctx.fillText(cell.glyph, left + width / 2, top + height / 2 + this.dpr);
+          ctx.fillText(cell.glyph, left + width / 2, top + height / 2 + this.glyphOffset(cell.glyph, cell.terrain));
         }
       }
     }
@@ -218,7 +228,8 @@ export class MapRenderer {
     for (const e of this.effects) {
       if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) continue;
       ctx.fillStyle = toCss(scale(attrColour(e.attr, this.palette), 1.1));
-      ctx.fillText(String.fromCharCode(e.ch), px(e.x) + cellW / 2, py(e.y) + cellH / 2 + this.dpr);
+      const ch = String.fromCharCode(e.ch);
+      ctx.fillText(ch, px(e.x) + cellW / 2, py(e.y) + cellH / 2 + this.glyphOffset(ch, true));
     }
 
     const pulse = animate ? 0.65 + 0.35 * Math.sin(time * 6) : 1;
@@ -268,6 +279,25 @@ export class MapRenderer {
     vignette.addColorStop(1, 'rgba(0,0,0,0.5)');
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, w, h);
+  }
+
+  /**
+   * Vertical offset from the cell centre (with textBaseline 'middle') that
+   * places a glyph well in its cell. Terrain symbols are centred by their
+   * ink; letters and item symbols share a baseline with the capital height
+   * centred, so descenders still hang below.
+   */
+  private glyphOffset(glyph: string, terrain: boolean): number {
+    const key = `${terrain ? 't' : 'e'}${glyph}`;
+    const cached = this.glyphOffsets.get(key);
+    if (cached !== undefined) return cached;
+    const m = this.ctx.measureText(terrain ? glyph : 'H');
+    let offset = (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+    const lift = OPTICAL_LIFT[glyph];
+    if (terrain && lift) offset -= (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) * lift;
+    if (!Number.isFinite(offset)) offset = 0;
+    this.glyphOffsets.set(key, offset);
+    return offset;
   }
 
   private clampCamera(focus: number, span: number, size: number): number {
