@@ -923,7 +923,7 @@ function continueIfWaiting(): void {
 }
 
 function insideControls(target: EventTarget | null): boolean {
-  return target instanceof Element && !!target.closest('#messages, .termview, #look-card, #recentre, #look-banner, .director, .prompt-card');
+  return target instanceof Element && !!target.closest('#messages, .termview, #look-card, #recentre, #look-banner, .director, .prompt-card, .coach');
 }
 
 function onStageTap(clientX: number, clientY: number, target: EventTarget | null): void {
