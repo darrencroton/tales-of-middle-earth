@@ -177,3 +177,13 @@ export async function jumpToLevel(page: Page, level: number): Promise<void> {
   await dismissMore(page);
   await waitAtCommand(page);
 }
+
+/** Takes the toolbar's gear suggestions (wield, light) until none is left. */
+export async function equipSuggested(page: Page): Promise<void> {
+  for (let i = 0; i < 3 && (await page.locator('#toolbar [data-action="equip"]').count()); i++) {
+    await page.locator('#toolbar [data-action="equip"]').click();
+    await dismissMore(page);
+    await waitAtCommand(page);
+  }
+  await expect(page.locator('#toolbar [data-action="equip"]')).toHaveCount(0);
+}

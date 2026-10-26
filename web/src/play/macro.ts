@@ -58,4 +58,4 @@ export class MacroRunner {
   }
 }
 
-export const keyCodes = (text: string): number[] => [...text].map((c) => c.charCodeAt(0));
+export { keyCodes } from '../input/keys.ts';

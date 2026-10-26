@@ -34,6 +34,14 @@ export function titleName(name: string): string {
   return capitalise(name.replace(/^(a|an|the|some) /i, ''));
 }
 
+/** Paragraphs from tome2's item description (wrapped at 75 columns). */
+export function descriptionParagraphs(text: string): string[] {
+  return text
+    .split(/\n\s*\n/)
+    .map((p) => p.replace(/\s*\n\s*/g, ' ').trim())
+    .filter(Boolean);
+}
+
 export function pounds(tenths: number): string {
   return `${(tenths / 10).toFixed(1)} lb`;
 }

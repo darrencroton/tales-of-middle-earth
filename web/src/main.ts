@@ -2,26 +2,19 @@ import './styles.css';
 import { Engine } from './engine.ts';
 import { Hud, rowSegments, statusLabels, type HudEntity } from './hud.ts';
 import { attachMapGestures, attachPinch } from './input/gestures.ts';
-import {
-  compositionDelta,
-  directionKeys,
-  KEY_BACKSPACE,
-  KEY_ENTER,
-  KEY_ESCAPE,
-  translateKey,
-  translateText,
-} from './input/keys.ts';
+import { directionKeys, KEY_BACKSLASH as BACKSLASH, KEY_ENTER, KEY_ESCAPE, translateKey, translateText } from './input/keys.ts';
+import { attachSoftKeyboard } from './input/softkeyboard.ts';
 import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
-import { MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
+import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, type FeatureInfo, type Material } from './render/materials.ts';
 import { COMMAND_GROUPS, commandKeys, contextActions, pickupCommand, type Action, type CommandDef, type NativeView } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
 import { STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
-import { Explore } from './play/explore.ts';
-import { isHostile, type GameState, type LevelSnapshot } from './render/snapshot.ts';
+import { Explore, nearestReachable } from './play/explore.ts';
+import { isHostile, type GameState, type LevelSnapshot, type MonsterState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -76,12 +69,10 @@ declare global {
 
 type ViewMode = 'title' | 'screen' | 'map' | 'overlay';
 
-const KEYBOARD_SENTINEL = ' ';
 const EFFECT_LINGER_MS = 160;
 const HIGHLIGHT_MS = 2500;
 const MAX_EFFECT_CELLS = 600;
 const TRAVEL_STEP_MS = 45;
-const BACKSLASH = 92;
 const CTRL_S = 0x13;
 const CTRL_X = 0x18;
 const SPACE = 0x20;
@@ -110,7 +101,7 @@ const lookBanner = byId<HTMLDivElement>('look-banner');
 
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 let settings: Settings = loadSettings(reducedMotion);
-applyTextSize(settings.textSize);
+applySettings();
 
 const buffer = new TerminalBuffer();
 const map = new MapRenderer(mapCanvas);
@@ -133,7 +124,8 @@ let travelTimer = 0;
 let lastStopCause = '';
 let picker: TargetPicker | null = null;
 let lastSavedTurn = -1;
-let autosaveSyncPending = false;
+/** A save command was sent; once the engine has written it, storage is synced (and the player told, if asked). */
+let pendingSync: 'silent' | 'toast' | null = null;
 let currentActions: Action[] = [];
 let actionsKey = '';
 let dirty = true;
@@ -174,7 +166,8 @@ const promptCard = new PromptCard(stage, (keys) => send(keys));
 
 const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
   onEntity: (entity) => openEntity(entity),
-  onPlayer: () => openCharacter(api),
+  onPlayer: () => openNative('character'),
+  onSkills: () => openNative('skills'),
   onMore: () => send([SPACE]),
   onHistory: () => {
     if (travel || picker) stopAutomation(null, 'history');
@@ -210,7 +203,11 @@ const api: GameApi = {
   },
   command: (command) => {
     sheets.closeAll();
-    send([BACKSLASH, ...[...command].map((c) => c.charCodeAt(0))]);
+    if (!lastSnap?.atCommand) {
+      showToast('Finish what you are doing first.');
+      return;
+    }
+    send([BACKSLASH, ...keyCodes(command)]);
   },
   runMacro: (macro) => {
     sheets.closeAll();
@@ -263,8 +260,14 @@ function openNative(view: NativeView): void {
     case 'character':
       openCharacter(api);
       break;
+    case 'skills':
+      api.command('G');
+      break;
     case 'knowledge':
       openKnowledge(api);
+      break;
+    case 'dungeon':
+      travelToExit();
       break;
     case 'finish':
       finishGame();
@@ -413,7 +416,7 @@ function itemTabs(prompt: string): TermViewTab[] {
 function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
   const prompt = rowZeroText();
   const kind = currentPrompt();
-  const options: TermViewOptions = { layout, describe: describableRange(prompt) };
+  const options: TermViewOptions = { layout, describe: describableRange(prompt), cursorRow: buffer.cursorY };
   const store = currentStore();
   if (store) {
     const lines = buffer.screenText().split('\n');
@@ -579,9 +582,11 @@ function refresh(): void {
 
   const state = engine.gameState();
   if (state) {
+    const previous = lastState;
     lastState = state;
     hud.update(state, snap.py, snap.px);
     if (state.player) feel.update(state.player);
+    if (previous && previous.player?.name === state.player?.name) showHits(previous, state);
     coach.update(mode === 'map' && snap.atCommand && !looking && lookCard.hidden && !map.overview, snap.turn);
     hud.updateMessages(
       state.messages ?? [],
@@ -590,6 +595,39 @@ function refresh(): void {
     );
   }
   updateActionBar();
+}
+
+const KILLED = /\b(slain|destroyed|killed|dies|dissolves|shatters)\b/i;
+
+/**
+ * Marks creatures whose health dropped since the last state and floats the
+ * damage over them; a creature that vanished with a kill message gets a
+ * farewell instead.
+ */
+function showHits(previous: GameState, next: GameState): void {
+  if (mode !== 'map' || (next.player?.status.hallucinating ?? 0) > 0) return;
+  const before = new Map((previous.monsters ?? []).map((m) => [m.id, m]));
+  const seen = new Set<number>();
+  let marked = false;
+  const mark = (point: MapPoint, text: string, kind: string) => {
+    map.markHit(point);
+    marked = true;
+    const at = map.cellCentre(point.x, point.y);
+    feel.floatAt(at.x, at.y, text, kind);
+  };
+  for (const m of next.monsters ?? []) {
+    seen.add(m.id);
+    const was = before.get(m.id);
+    if (was && m.hp < was.hp) mark(m, `−${was.hp - m.hp}`, isHostile(m) ? 'damage' : 'damage ally');
+  }
+  const fresh = (next.messages ?? []).slice(0, Math.max(0, (next.messageTotal ?? 0) - (previous.messageTotal ?? 0)));
+  for (const was of before.values()) {
+    if (seen.has(was.id)) continue;
+    const name = was.name.toLowerCase();
+    if (fresh.some((m) => KILLED.test(m.text) && m.text.toLowerCase().includes(name))) mark(was, 'Slain', 'kill');
+  }
+  /* With animation off no frames are scheduled, so the flash is cleared explicitly. */
+  if (marked) window.setTimeout(() => requestFrame(), HIT_FLASH_MS + 50);
 }
 
 /* Shops */
@@ -639,13 +677,13 @@ function gearSuggestion(): GearSuggestion | null {
   });
 }
 
-/** Direction of the weakest hostile creature next to the player, if any. */
-function adjacentFoe(): string | null {
+/** The weakest hostile creature next to the player, if any. */
+function adjacentFoe(): MonsterState | null {
   const snap = lastSnap;
   if (!snap?.inDungeon || !snap.atCommand) return null;
   const foes = (lastState?.monsters ?? []).filter((m) => isHostile(m) && isAdjacent(m.x, m.y, snap.px, snap.py));
   foes.sort((a, b) => a.hp / Math.max(1, a.maxhp) - b.hp / Math.max(1, b.maxhp));
-  return foes.length ? directionDigit(foes[0].x - snap.px, foes[0].y - snap.py) : null;
+  return foes[0] ?? null;
 }
 
 function useSuggested(): void {
@@ -661,12 +699,14 @@ function updateActionBar(force = false): void {
   const directed = mode === 'screen' ? director.actions() : null;
   const prompt = currentPrompt();
   const store = prompt === 'none' || prompt === 'other' ? currentStore() : null;
+  const foe = adjacentFoe();
+  map.setFoe(foe && mode === 'map' ? { x: foe.x, y: foe.y } : null);
   const actions =
     directed ??
     (store ? storeActions(store) : null) ??
     contextActions({
       mode,
-      prompt: currentPrompt(),
+      prompt,
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
@@ -678,7 +718,7 @@ function updateActionBar(force = false): void {
       floorObjects: snap?.floorObjects ?? 0,
       alwaysPickup: alwaysPickup(),
       gear: gearSuggestion()?.kind ?? null,
-      foe: adjacentFoe(),
+      foe: foe && snap ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
       town: !!snap?.inDungeon && snap.depth === 0 && !snap.wild,
     });
   currentActions = actions;
@@ -849,6 +889,10 @@ function startTravel(goal: MapPoint): void {
 /* Terrain that leads further down, matching the Descend action. */
 const DOWN_EXIT = /down staircase|shaft down|quest down|quest entrance|path to the next/;
 
+function isDownExit(snap: LevelSnapshot, index: number): boolean {
+  return DOWN_EXIT.test(features[snap.feat[index]]?.name.toLowerCase() ?? '');
+}
+
 /** Walks to unexplored places until something needs attention. */
 function startExplore(): void {
   const ctx = travelContext();
@@ -856,8 +900,25 @@ function startExplore(): void {
   stopAutomation(null, 'explore');
   recentreMap();
   const snap = ctx.snap;
-  travel = new Explore(exploreSkip, (i) => DOWN_EXIT.test(features[snap.feat[i]]?.name.toLowerCase() ?? ''));
+  travel = new Explore(exploreSkip, (i) => isDownExit(snap, i));
   stepTravel();
+}
+
+/** Walks to the nearest known way down (the dungeon entrance, in town). */
+function travelToExit(): void {
+  const ctx = travelContext();
+  if (!ctx) return;
+  const snap = ctx.snap;
+  if (isDownExit(snap, snap.py * snap.width + snap.px)) {
+    send([BACKSLASH, ...keyCodes('>')]);
+    return;
+  }
+  const exit = nearestReachable(snap, materials, (i) => isDownExit(snap, i));
+  if (!exit) {
+    showToast('No way down in sight. Explore to find one.');
+    return;
+  }
+  startTravel(exit);
 }
 
 function startTargeting(goal: MapPoint): void {
@@ -985,7 +1046,11 @@ function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<type
     else startTargeting(cell);
     return;
   }
-  if (!snap.atCommand) return;
+  if (!snap.atCommand) {
+    /* Resting, running or repeating: a tap interrupts it. */
+    if (prompt === 'none') send([KEY_ESCAPE]);
+    return;
+  }
   if (cell.x === player.x && cell.y === player.y) {
     if (snap.floorObjects > 0) send([BACKSLASH, pickupCommand(alwaysPickup()).charCodeAt(0)]);
     return;
@@ -1020,15 +1085,20 @@ recentre.addEventListener('click', () => recentreMap());
 
 /* Autosave */
 
+/** Sends tome2's save command at the command prompt; the sync to browser storage follows once the engine is back at it. */
+function saveGame(notify: 'silent' | 'toast'): boolean {
+  const snap = engine.state === 'running' ? engine.snapshot() : null;
+  if (!snap || !snap.inDungeon || !snap.atCommand || snap.icky || quitting) return false;
+  lastSavedTurn = snap.turn;
+  pendingSync = notify;
+  engine.sendKeys([BACKSLASH, CTRL_S]);
+  return true;
+}
+
 function autosave(): void {
   if (travel || picker) stopAutomation(null, 'autosave');
   const snap = engine.state === 'running' ? engine.snapshot() : null;
-  if (snap && snap.inDungeon && snap.atCommand && !snap.icky && snap.turn !== lastSavedTurn && !quitting) {
-    lastSavedTurn = snap.turn;
-    autosaveSyncPending = true;
-    engine.sendKeys([BACKSLASH, CTRL_S]);
-    return;
-  }
+  if (snap && snap.turn !== lastSavedTurn && saveGame('silent')) return;
   engine.syncNow().catch((err) => console.error('Saving to browser storage failed', err));
 }
 
@@ -1062,7 +1132,11 @@ function animating(): boolean {
   return settings.animation !== 'off' && document.visibilityState === 'visible';
 }
 
-function requestFrame(): void {
+let renderWanted = false;
+
+/** Asks for a frame; `draw` false only keeps an animation ticking at its frame rate. */
+function requestFrame(draw = true): void {
+  if (draw) renderWanted = true;
   if (!frameHandle) frameHandle = requestAnimationFrame(frame);
 }
 
@@ -1071,7 +1145,8 @@ function frame(now: number): void {
   const fps = ANIMATION_FPS[settings.animation];
   const due = fps > 0 && now - lastFrame >= 1000 / fps - 2;
 
-  if (dirty || due) {
+  if (dirty || due || renderWanted) {
+    renderWanted = false;
     if (dirty) {
       dirty = false;
       if (engine.state === 'running') refresh();
@@ -1086,7 +1161,7 @@ function frame(now: number): void {
     lastRenderMs = performance.now() - started;
   }
 
-  if ((animating() && mode !== 'title') || dirty) requestFrame();
+  if ((animating() && mode !== 'title') || dirty) requestFrame(false);
 }
 
 /* Engine */
@@ -1097,6 +1172,7 @@ const engine = new Engine(buffer, {
   },
   onRunning() {
     layout();
+    engine.setAutoMore(settings.messages === 'flow');
     dirty = true;
     requestFrame();
     const storageError = engine.storageError;
@@ -1127,7 +1203,7 @@ const engine = new Engine(buffer, {
   onIdle() {
     director.idle();
     refresh();
-    dirty = true;
+    dirty = false;
     if (lastSnap?.inDungeon && !lastSnap.icky) {
       base = buffer.copy();
       basePanel = { row: lastSnap.panelRow, col: lastSnap.panelCol };
@@ -1137,9 +1213,16 @@ const engine = new Engine(buffer, {
       hasEffects = false;
     }
     hud.tick();
-    if (autosaveSyncPending) {
-      autosaveSyncPending = false;
-      engine.syncNow().catch((err) => console.error('Autosave sync failed', err));
+    if (pendingSync && lastSnap?.atCommand) {
+      const notify = pendingSync === 'toast';
+      pendingSync = null;
+      engine.syncNow().then(
+        () => notify && showToast(engine.storageError ? 'Saved for this session only' : 'Game saved'),
+        (err) => {
+          console.error('Save sync failed', err);
+          showToast('Saving to browser storage failed');
+        },
+      );
     }
     if (engine.pendingKeys > 0) {
       requestFrame();
@@ -1159,6 +1242,7 @@ const engine = new Engine(buffer, {
     requestFrame();
   },
   onEffectFrame() {
+    director.effectFrame();
     refresh();
     captureEffects();
     if (mode === 'map' || mode === 'overlay') map.render(performance.now(), animating());
@@ -1192,6 +1276,7 @@ const feel = new GameFeel(byId<HTMLElement>('stage'), () => settings.animation);
 const coach = new Coach(byId<HTMLElement>('stage'));
 const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
   onChoose: (choice) => director.choose(choice),
+  onReady: () => adoptUpdate?.(),
   onSettings: () => openSettingsSheet(),
   onSaves: () => openSavesMenu(),
   onHidden: () => {
@@ -1218,10 +1303,14 @@ function layout(): void {
  * covers part of it does it shrink to the visible area above the keyboard.
  */
 function updateAppHeight(): void {
-  const visible = window.visualViewport?.height ?? window.innerHeight;
+  const viewport = window.visualViewport;
+  const visible = viewport?.height ?? window.innerHeight;
   const keyboard = visible < window.innerHeight - KEYBOARD_MIN_PX;
-  app.classList.toggle('keyboard-open', keyboard);
-  if (keyboard) document.documentElement.style.setProperty('--app-height', `${Math.round(visible)}px`);
+  document.documentElement.classList.toggle('keyboard-open', keyboard);
+  if (keyboard) {
+    document.documentElement.style.setProperty('--app-height', `${Math.round(visible)}px`);
+    document.documentElement.style.setProperty('--app-top', `${Math.round(viewport?.offsetTop ?? 0)}px`);
+  }
 }
 
 new ResizeObserver(() => layout()).observe(stage);
@@ -1277,58 +1366,7 @@ window.addEventListener('keydown', (e) => {
   send(codes);
 });
 
-keyboardInput.value = KEYBOARD_SENTINEL;
-
-let composing = false;
-let composed = '';
-
-function inputText(): string {
-  const value = keyboardInput.value;
-  return value.startsWith(KEYBOARD_SENTINEL) ? value.slice(KEYBOARD_SENTINEL.length) : value;
-}
-
-keyboardInput.addEventListener('compositionstart', () => {
-  composing = true;
-  composed = '';
-});
-
-keyboardInput.addEventListener('compositionend', () => {
-  composing = false;
-  composed = '';
-  keyboardInput.value = KEYBOARD_SENTINEL;
-});
-
-keyboardInput.addEventListener('beforeinput', (e) => {
-  if (composing || e.isComposing) return;
-  if (e.inputType === 'insertText' && e.data) {
-    e.preventDefault();
-    send(translateText(e.data, ctrlLatched));
-  } else if (e.inputType === 'insertLineBreak') {
-    e.preventDefault();
-    send([KEY_ENTER]);
-  } else if (e.inputType.startsWith('delete')) {
-    e.preventDefault();
-    send([KEY_BACKSPACE]);
-  }
-});
-
-keyboardInput.addEventListener('input', () => {
-  if (composing) {
-    const current = inputText();
-    const delta = compositionDelta(composed, current);
-    composed = current;
-    send([...Array<number>(delta.backspaces).fill(KEY_BACKSPACE), ...translateText(delta.text, ctrlLatched)]);
-    return;
-  }
-  const value = keyboardInput.value;
-  if (value === KEYBOARD_SENTINEL) return;
-  if (value === '') {
-    send([KEY_BACKSPACE]);
-  } else {
-    send(translateText(inputText(), ctrlLatched));
-  }
-  keyboardInput.value = KEYBOARD_SENTINEL;
-});
+attachSoftKeyboard(keyboardInput, send, () => ctrlLatched);
 
 /* Zoom */
 
@@ -1391,13 +1429,21 @@ function openSettingsSheet(): void {
   openSettings(sheets, settings, (next) => {
     settings = next;
     saveSettings(settings);
-    applyTextSize(settings.textSize);
+    applySettings();
+    engine.setAutoMore(settings.messages === 'flow');
     map.zoom = settings.zoom;
     pinchStartZoom = settings.zoom;
     map.glyphMode = settings.glyphs;
     dirty = true;
     requestFrame();
+    title.animationChanged();
   });
+}
+
+/** Applies the settings that live in CSS: text size and animation. */
+function applySettings(): void {
+  applyTextSize(settings.textSize);
+  document.documentElement.dataset.animation = settings.animation;
 }
 
 function inGame(): boolean {
@@ -1477,10 +1523,9 @@ function openGameMenu(): void {
       sheets.closeAll();
       showHistory();
     } },
-    { label: 'Save game', icon: '⇩', hidden: !playing, run: () => {
-      api.send([BACKSLASH, CTRL_S]);
-      autosaveSyncPending = true;
-      showToast('Game saved');
+    { label: 'Save game', icon: '⇩', hidden: !playing || !lastSnap?.atCommand, run: () => {
+      sheets.closeAll();
+      if (!saveGame('toast')) showToast('Finish what you are doing first.');
     } },
     { label: 'Settings', icon: '⚙', hint: 'Text size, animation, map', run: () => openSettingsSheet() },
     { label: 'How to play', icon: '?', run: () => openTemplate(sheets, 'How to play', 'help-template') },
@@ -1488,10 +1533,19 @@ function openGameMenu(): void {
     { label: 'Import saves', icon: '⤓', run: startImport },
     { label: 'About', icon: 'ℹ', run: () => openTemplate(sheets, 'About', 'about-template') },
     { label: playing ? 'Save and quit' : 'Quit to title', icon: '⏻', hint: 'Back to the title screen', run: () => {
-      if (playing) {
-        confirmSheet(sheets, 'Save and quit?', 'Your game is saved and you return to the title screen.', 'Save and quit', saveAndQuit);
-      } else {
+      if (!playing) {
         saveAndQuit();
+      } else if (engine.storageError) {
+        confirmSheet(
+          sheets,
+          'Quit without keeping this game?',
+          'Browser storage is unavailable this session, so this game cannot be kept. Export saves first if you want to keep it.',
+          'Quit anyway',
+          saveAndQuit,
+          true,
+        );
+      } else {
+        confirmSheet(sheets, 'Save and quit?', 'Your game is saved and you return to the title screen.', 'Save and quit', saveAndQuit);
       }
     } },
   ]);
@@ -1532,7 +1586,12 @@ async function importSaves(file: File): Promise<void> {
     'Import',
     () => {
       sheets.closeAll();
-      writeFiles(fs, root, files);
+      try {
+        writeFiles(fs, root, files);
+      } catch (err) {
+        openMessage(sheets, 'Import failed', `Nothing was changed: ${String(err instanceof Error ? err.message : err)}`);
+        return;
+      }
       engine.syncNow().then(() => location.reload(), (err) => openMessage(sheets, 'Import failed', String(err)));
     },
     true,
@@ -1568,9 +1627,37 @@ window.__tome = {
 
 /* Service worker */
 
+/** Set once a service worker is registered: asks a waiting update to take over if the title screen idles. */
+let adoptUpdate: (() => void) | null = null;
+
+/**
+ * A new version waits until nothing is in progress: it takes over (and the
+ * page reloads) only while the title screen idles, so a game or a character
+ * being created is never lost.
+ */
+function watchUpdates(registration: ServiceWorkerRegistration): void {
+  const adopt = (worker: ServiceWorker | null) => {
+    if (worker && worker.state === 'installed' && navigator.serviceWorker.controller && director.atTitle) {
+      worker.postMessage({ type: 'skip-waiting' });
+    }
+  };
+  adoptUpdate = () => adopt(registration.waiting);
+  adopt(registration.waiting);
+  registration.addEventListener('updatefound', () => {
+    const worker = registration.installing;
+    worker?.addEventListener('statechange', () => adopt(worker));
+  });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (director.atTitle) location.reload();
+  });
+}
+
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('Service worker registration failed', err));
+    navigator.serviceWorker
+      .register('./sw.js')
+      .then(watchUpdates)
+      .catch((err) => console.warn('Service worker registration failed', err));
   });
 }
 

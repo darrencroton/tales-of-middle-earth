@@ -44,10 +44,14 @@ tests/e2e/             Playwright (phone portrait, phone landscape, tablet)
 - **Modes** (`main.ts`): `title` (opening screen), `screen` (pre-dungeon: director views or full TermView over flames), `map` (lit map + HUD), `overlay` (tome2 covers the map → TermView panel built from cells that differ from the last map screen).
 - **Engine interaction:** the engine blocks in `inkey()` via Asyncify; `onIdle` fires each time it waits. JS may call exported C functions while it waits. Send keys with `\` before a command to bypass keymaps.
 - **Macros** (`play/macro.ts`): generators that yield keys and receive the next screen; used to answer item/quantity/inscription/shop prompts so native buttons map to tome2 commands. Never yield an empty key list.
-- **Director** (`flow/director.ts`): auto-answers module/news/savefile screens, feeds Continue/New to the title, drives birth screens (cursor moves with `6`/`4`, confirm with Enter), auto-answers routine birth questions.
+- **Director** (`flow/director.ts`): auto-answers module/news/savefile screens, feeds Continue/New to the title, drives birth screens (cursor moves with `6`/`4`, confirm with Enter), auto-answers routine birth questions. tome2's sliding intro never waits for a key, so `effectFrame()` (called from `onEffectFrame`) sends the key that cuts it short.
 - **Prompts:** `classifyPrompt(row0, cursorOnRow0)`; yes/no, quantity, text, direction and aim become a native `PromptCard`. `cleanPrompt` strips key hints for headings.
 - **Gestures:** tap = travel/act, drag = pan (resets on next move), long-press = look, pinch = zoom.
-- **Saves:** `~/.tome` on IDBFS; Save and quit sends `\^X`, answers the follow-up screens, then reloads to the title.
+- **Saves:** `~/.tome` on IDBFS; Save and quit sends `\^X`, answers the follow-up screens, then reloads to the title. Any save command sets `pendingSync` so storage is synced (and the player told) once the engine has written the file.
+- **Level readiness:** `engine/snapshot.cc` reports `inDungeon` from `character_generated`, not `character_dungeon`, so the map stays native while a new level is generated (quest hooks print `-more-` messages mid-generation).
+- **Messages:** Settings → Messages defaults to *Flow past*, which sets tome2's `auto_more` through `web_set_auto_more` (re-applied on every snapshot so a loaded savefile cannot undo it). Messages then only appear in the HUD log and history.
+- **Service worker:** a new worker waits; the page asks it to take over (and reloads) only while no game is in progress.
+- **Keys:** `keyCodes`/`typedAnswer` in `input/keys.ts` are the only text encoders; the engine drops codes outside 0..255.
 
 ## Build, run, test
 
@@ -74,7 +78,8 @@ npm run test:e2e       # slow (~30+ min for all projects in CI)
 - `play/items.ts` `suggestedGear`: heal > eat > wield > light; toolbar `equip` action runs the matching item macro.
 - `feel.ts`: `playerEvents(prev, next)` (pure) → hurt flash, level-up/depth banners, gold float, low-health pulse; honours the animation setting.
 - `ui/coach.ts`: first-game tips (localStorage `tome2mobile.coach.v1`); e2e `createCharacter` dismisses it.
-- Map toolbar is capped at 7 buttons (`MAX_MAP_ACTIONS`); Look gives way first, Rest hides when a foe is adjacent, Explore hides in town.
+- Map toolbar is capped at 7 buttons (`MAX_MAP_ACTIONS`); Look gives way first, Rest hides when a foe is adjacent. In town, Explore is replaced by Dungeon (travel to the nearest known way down); while resting or running the bar shows Stop, and a map tap also interrupts.
+- Attack targets the weakest adjacent hostile and the map brackets it in red (`map.setFoe`); creatures that lose health get a flash and a floating damage number (`showHits` in `main.ts`, `feel.floatAt`).
 
 ## Native views of tome2 screens
 

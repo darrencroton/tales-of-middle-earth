@@ -1,12 +1,9 @@
+import { KEY_BACKSLASH as BACKSLASH, KEY_ENTER as ENTER } from '../input/keys.ts';
 import { keyCodes, type Macro } from '../play/macro.ts';
 import type { GameApi } from './api.ts';
-import { capitalise } from './api.ts';
+import { capitalise, descriptionParagraphs } from './api.ts';
 import { el, navButton } from './dom.ts';
-import { descriptionParagraphs } from './inventory.ts';
 import type { ChoiceBlock } from './termparse.ts';
-
-const BACKSLASH = 92;
-const ENTER = 13;
 
 export interface StoreCommand {
   key: string;

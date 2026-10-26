@@ -1,4 +1,4 @@
-import type { TermRow } from './termparse.ts';
+import { rowText, type TermRow } from './termparse.ts';
 import { el, section } from './dom.ts';
 
 export interface Tomb {
@@ -11,13 +11,6 @@ export interface Tomb {
   depth: number;
   cause: string;
   date: string;
-}
-
-function rowText(row: TermRow | undefined): string {
-  if (!row) return '';
-  let text = '';
-  for (let x = 0; x < row.chars.length; x++) text += row.chars[x] === 0 ? ' ' : String.fromCharCode(row.chars[x]);
-  return text;
 }
 
 /** Reads tome2's end-of-game summary (rows of the whole terminal), or null. */

@@ -1,6 +1,21 @@
+import { KEY_BACKSLASH, keyCodes } from '../input/keys.ts';
 import type { PromptKind } from './prompts.ts';
 
-export type NativeView = 'inventory' | 'equipment' | 'look' | 'lookDone' | 'character' | 'knowledge' | 'history' | 'overview' | 'overviewDone' | 'finish' | 'explore' | 'equip';
+export type NativeView =
+  | 'inventory'
+  | 'equipment'
+  | 'look'
+  | 'lookDone'
+  | 'character'
+  | 'skills'
+  | 'knowledge'
+  | 'history'
+  | 'overview'
+  | 'overviewDone'
+  | 'finish'
+  | 'explore'
+  | 'dungeon'
+  | 'equip';
 
 export type ActionEffect =
   | { kind: 'keys'; keys: number[] }
@@ -38,16 +53,12 @@ export function pickupCommand(alwaysPickup: boolean): string {
   return alwaysPickup ? ',' : 'g';
 }
 
-const BACKSLASH = 92;
-
 export function commandKeys(def: Pick<CommandDef, 'command' | 'then' | 'pickup'>, alwaysPickup = false): number[] {
   const command = def.pickup ? pickupCommand(alwaysPickup) : def.command;
-  const keys = [BACKSLASH, ...[...command].map((c) => c.charCodeAt(0))];
-  if (def.then) keys.push(...[...def.then].map((c) => c.charCodeAt(0)));
-  return keys;
+  return [KEY_BACKSLASH, ...keyCodes(command), ...keyCodes(def.then ?? '')];
 }
 
-const text = (s: string) => [...s].map((c) => c.charCodeAt(0));
+const text = keyCodes;
 
 export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
   {
@@ -152,12 +163,13 @@ export interface ActionContext {
 /* More buttons than this crowd a phone's toolbar. */
 const MAX_MAP_ACTIONS = 7;
 /* Buttons that give way, in order, when the toolbar is full; all are also under More. */
-const OVERFLOW_ORDER = ['look', 'cast', 'rest', 'explore'];
+const OVERFLOW_ORDER = ['look', 'cast', 'rest', 'explore', 'dungeon'];
 
 const KEYBOARD: Action = { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } };
 const MENU: Action = { id: 'menu', label: 'Menu', icon: '☰', effect: { kind: 'menu' } };
 const ESCAPE: Action = { id: 'escape', label: 'Back', icon: '‹', effect: { kind: 'keys', keys: [27] } };
 const CANCEL: Action = { id: 'escape', label: 'Cancel', icon: '✕', effect: { kind: 'keys', keys: [27] } };
+const STOP: Action = { id: 'stop', label: 'Stop', icon: '■', effect: { kind: 'keys', keys: [27] }, primary: true };
 const ENTER: Action = { id: 'enter', label: 'Enter', icon: '⏎', effect: { kind: 'keys', keys: [13] } };
 const UP: Action = { id: 'up', label: 'Up', icon: '▲', effect: { kind: 'nav', direction: 'up' } };
 const DOWN: Action = { id: 'down', label: 'Down', icon: '▼', effect: { kind: 'nav', direction: 'down' } };
@@ -267,11 +279,16 @@ export function contextActions(ctx: ActionContext): Action[] {
   }
 
   if (ctx.mode === 'map' && ctx.atCommand) {
+    const situational = situationalActions(ctx.underfoot, ctx.floorObjects, ctx.alwaysPickup);
     const actions: Action[] = [
       ...(ctx.foe ? [{ id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true } as Action] : []),
       ...(ctx.gear ? [gearAction(ctx.gear)] : []),
-      ...situationalActions(ctx.underfoot, ctx.floorObjects, ctx.alwaysPickup),
-      ...(ctx.town ? [] : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
+      ...situational,
+      ...(ctx.town
+        ? situational.some((a) => a.id === 'descend')
+          ? []
+          : [{ id: 'dungeon', label: 'Dungeon', icon: '⇣', effect: { kind: 'native', view: 'dungeon' } } as Action]
+        : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
       { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
       ...(ctx.foe ? [] : [command('rest', 'Rest', '☾', { command: 'R', then: '&\r' })]),
       command('cast', 'Cast', '✦', { command: 'm' }),
@@ -288,6 +305,9 @@ export function contextActions(ctx: ActionContext): Action[] {
   }
 
   if (ctx.mode === 'overlay' || ctx.mode === 'screen') return ctx.listShown ? [ESCAPE, MENU] : [ESCAPE, UP, DOWN, MENU];
+
+  /* Resting, running or repeating a command on the map. */
+  if (ctx.mode === 'map' && ctx.prompt === 'none') return [STOP, MENU];
 
   return [ESCAPE, ENTER, KEYBOARD, MENU];
 }

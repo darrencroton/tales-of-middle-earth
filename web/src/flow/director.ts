@@ -1,4 +1,5 @@
 import type { Engine } from '../engine.ts';
+import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, KEY_SPACE as SPACE } from '../input/keys.ts';
 import type { Action } from '../play/actions.ts';
 import { keyCodes } from '../play/macro.ts';
 import type { TerminalBuffer } from '../terminal.ts';
@@ -32,10 +33,6 @@ export interface DirectorDeps {
 
 type Phase = 'boot' | 'title' | 'creating' | 'birth' | 'loading' | 'playing';
 
-const ENTER = 13;
-const ESCAPE = 27;
-const SPACE = 32;
-
 const INTRO_LINES = [
   'Art thou an adventurer,',
   'one who passes through the waterfalls we call danger',
@@ -44,6 +41,9 @@ const INTRO_LINES = [
 ];
 
 const THEME_INTRO_LINES = ['A module for ToME,', 'set in the world of Middle-earth.', 'Your story begins here.'];
+
+/* tome2's own intro and credits screens, replaced by the title screen's intro. */
+const INTRO_SCREEN = /Art thou an adventurer|DarkGod|furiosity|\[Press any key to continue\]/;
 
 const STEP_ORDER: BirthStep[] = ['race', 'modifier', 'class', 'specialisation', 'god'];
 const STEP_SHORT: Record<BirthStep, string> = {
@@ -89,6 +89,11 @@ export class Director {
     this.title = title;
   }
 
+  /** The title screen is showing its choices and nothing is loading or being created. */
+  get atTitle(): boolean {
+    return this.phase === 'title';
+  }
+
   private screen(): string {
     return this.deps.buffer.screenText();
   }
@@ -126,6 +131,16 @@ export class Director {
     }
   }
 
+  /**
+   * Called while the engine pauses mid-animation. The only animation while a
+   * character is being created is tome2's own sliding intro, which never
+   * waits for a key, so the key that cuts it short is sent from here.
+   */
+  effectFrame(): void {
+    if (this.phase !== 'creating' || this.deps.engine.pendingKeys > 0) return;
+    this.deps.send([SPACE]);
+  }
+
   private boot(screen: string, rowZero: string): void {
     if (/select a module to play/.test(screen)) {
       const key = moduleKey(screen, this.module) ?? 'a';
@@ -138,7 +153,8 @@ export class Director {
       const records = this.readSaveIndex();
       this.saves = entries
         .map((entry) => {
-          const record = records.find((r) => r.base === entry.name || r.base === `_${entry.name}`);
+          const matches = (r: SaveRecord) => r.base === entry.name || r.base === `_${entry.name}`;
+          const record = records.find((r) => matches(r) && r.module === this.module) ?? records.find(matches);
           return {
             letter: entry.letter,
             name: entry.name,
@@ -236,7 +252,7 @@ export class Director {
     } else if (/Savefile does not exist/.test(rowZero) || /-more-/.test(rowZero)) {
       // The extra key cuts tome2's sliding intro short; ours is on the title screen.
       this.deps.send([SPACE, SPACE]);
-    } else if (/Art thou an adventurer|DarkGod|furiosity|\[Press any key to continue\]/.test(screen)) {
+    } else if (INTRO_SCREEN.test(screen)) {
       this.deps.send([SPACE]);
     } else if (/Choose a race|Please answer the following/.test(screen)) {
       this.phase = 'birth';

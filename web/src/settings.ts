@@ -3,12 +3,15 @@ import { MAX_ZOOM, MIN_ZOOM } from './render/map.ts';
 
 export type AnimationLevel = 'full' | 'reduced' | 'off';
 export type TextSize = 'small' | 'medium' | 'large' | 'xlarge';
+/** Messages flow into the log as they happen, or pause for a tap at each -more-. */
+export type MessageFlow = 'flow' | 'pause';
 
 export interface Settings {
   animation: AnimationLevel;
   glyphs: GlyphMode;
   zoom: number;
   textSize: TextSize;
+  messages: MessageFlow;
 }
 
 const STORAGE_KEY = 'tome2mobile.settings';
@@ -40,6 +43,7 @@ export function defaultSettings(prefersReducedMotion: boolean): Settings {
     glyphs: 'brogue',
     zoom: 22,
     textSize: 'medium',
+    messages: 'flow',
   };
 }
 
@@ -54,7 +58,8 @@ export function sanitiseSettings(raw: unknown, defaults: Settings): Settings {
       ? Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value.zoom))
       : defaults.zoom;
   const textSize = typeof value.textSize === 'string' && Object.hasOwn(TEXT_SIZE_PX, value.textSize) ? (value.textSize as TextSize) : defaults.textSize;
-  return { animation, glyphs, zoom, textSize };
+  const messages = value.messages === 'flow' || value.messages === 'pause' ? value.messages : defaults.messages;
+  return { animation, glyphs, zoom, textSize, messages };
 }
 
 export function loadSettings(prefersReducedMotion: boolean): Settings {

@@ -1,5 +1,7 @@
+import { KEY_BACKSLASH as BACKSLASH, KEY_ENTER as ENTER, keyCodes, typedAnswer } from '../input/keys.ts';
 import type { InventoryState, ItemState } from '../render/snapshot.ts';
-import { keyCodes, type Macro, type MacroScreen } from './macro.ts';
+import { pickupCommand } from './actions.ts';
+import type { Macro, MacroScreen } from './macro.ts';
 
 export type ItemPlace = 'pack' | 'equip' | 'floor';
 
@@ -17,8 +19,6 @@ export interface ItemAction {
 }
 
 export const INVEN_WIELD = 24;
-const BACKSLASH = 92;
-const ENTER = 13;
 
 export const TV = {
   PARCHMENT: 8,
@@ -42,10 +42,10 @@ export const TV = {
 /* Mage staffs, boomerangs, launchers, diggers and melee weapons. */
 const WEAPON_TVALS = new Set([6, 15, 19, 20, 21, 22, 23, 24]);
 
-/** Equipment slot groups, keyed by their first inventory index. */
 /** Equipment index of the light source slot. */
 export const INVEN_LITE = 36;
 
+/** Equipment slot groups, keyed by their first inventory index. */
 export const SLOT_NAMES: Readonly<Record<number, string>> = {
   24: 'Weapon',
   27: 'Launcher',
@@ -136,23 +136,29 @@ export function itemLetter(index: number): string {
 
 const ITEM_PROMPT = /^\((Inven|Equip|Floor):/;
 
-/** Letter of the listed item whose name matches, from a menu shown on screen. */
+/** Letter of the listed item whose name matches (exactly, else by prefix), from a menu shown on screen; floor lists carry no symbol. */
 export function findListedItem(screen: string, name: string): string | null {
   const wanted = name.toLowerCase();
+  const listed: [string, string][] = [];
   for (const line of screen.split('\n')) {
-    const m = /(?:^|\s)([a-z])\) (?:\S )?(.*?)\s*(?:\d+\.\d lb)?\s*$/.exec(line);
-    if (m && m[2].toLowerCase().startsWith(wanted.slice(0, Math.max(8, wanted.length - 4)))) return m[1];
+    const m = /(?:^|\s)([a-z])\) (?:[^\w\s] )?(.*?)\s*(?:\d+\.\d lb)?\s*$/.exec(line);
+    if (m) listed.push([m[1], m[2].toLowerCase()]);
   }
-  return null;
+  const exact = listed.find(([, text]) => text === wanted);
+  if (exact) return exact[0];
+  const prefix = wanted.slice(0, Math.max(8, wanted.length - 4));
+  return listed.find(([, text]) => text.startsWith(prefix))?.[0] ?? null;
 }
 
 /**
  * Runs an item command and answers tome2's prompts: picks the item from the
  * right list (switching between pack, equipment and floor as needed), then
- * answers quantity and inscription prompts.
+ * answers quantity and inscription prompts. `alwaysPickup` mirrors tome2's
+ * option, which swaps the meaning of its two pick-up keys.
  */
-export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace, text = ''): Macro {
-  let s: MacroScreen = yield [BACKSLASH, ...keyCodes(action.command)];
+export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace, text = '', alwaysPickup = false): Macro {
+  const command = action.id === 'pickup' ? pickupCommand(alwaysPickup) : action.command;
+  let s: MacroScreen = yield [BACKSLASH, ...keyCodes(command)];
   const want = place === 'pack' ? 'Inven' : place === 'equip' ? 'Equip' : 'Floor';
 
   for (let tries = 0; tries < 3; tries++) {
@@ -182,7 +188,7 @@ export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace
     if (/Quantity/i.test(s.prompt)) {
       s = yield [...keyCodes(action.quantity === 'all' ? String(item.number) : '1'), ENTER];
     } else if (action.needsText && /Inscri/i.test(s.prompt)) {
-      s = yield [...keyCodes(text), ENTER];
+      s = yield typedAnswer(text, item.ins);
     } else {
       return;
     }

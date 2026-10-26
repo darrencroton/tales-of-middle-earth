@@ -1,9 +1,7 @@
 /* Cave info flags (tome2 defines.hpp). */
 export const CAVE_MARK = 0x0001;
 export const CAVE_GLOW = 0x0002;
-export const CAVE_ROOM = 0x0008;
 export const CAVE_SEEN = 0x0010;
-export const CAVE_VIEW = 0x0020;
 export const CAVE_PLIT = 0x2000;
 export const CAVE_MLIT = 0x4000;
 
@@ -147,6 +145,8 @@ export interface PlayerState {
   wild: number;
   /** 1 when the always_pickup option is on. */
   alwaysPickup: number;
+  /** Skill points waiting to be spent. */
+  skillPoints?: number;
   status: Record<string, number>;
 }
 

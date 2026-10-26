@@ -8,12 +8,12 @@ import {
   type LevelSnapshot,
   type MonsterState,
 } from '../render/snapshot.ts';
+import { KEY_BACKSLASH as BACKSLASH } from '../input/keys.ts';
 import { findPath, type Point, type TravelGrid } from './pathfinding.ts';
 import { directionDigit } from './prompts.ts';
 
 const MAX_STEPS = 400;
 const DANGER_RADIUS = 2;
-const BACKSLASH = 92;
 const WALK = ';'.charCodeAt(0);
 const OPEN = 'o'.charCodeAt(0);
 
@@ -62,13 +62,10 @@ export function travelGrid(snap: LevelSnapshot, materials: readonly Material[]):
   };
 }
 
-function hostile(m: MonsterState): boolean {
-  return isHostile(m);
-}
-
 /**
  * Walks the player towards a goal one step per engine idle, stopping in the
- * way Brogue's travel does: on arrival, when hurt, or when danger appears.
+ * way Brogue's travel does: on arrival, when hurt, or when danger appears
+ * (a new awake hostile creature, or a known one awake and close).
  */
 export class Travel {
   readonly goal: Point;
@@ -86,7 +83,7 @@ export class Travel {
   constructor(goal: Point, start: TravelContext, dangerRadius = DANGER_RADIUS) {
     this.goal = goal;
     this.dangerRadius = dangerRadius;
-    this.known = new Set(start.monsters.filter(hostile).map((m) => m.id));
+    this.known = new Set(start.monsters.filter(isHostile).map((m) => m.id));
     this.lastHp = start.hp;
   }
 
@@ -104,9 +101,12 @@ export class Travel {
 
     const goalIsMonster = ctx.monsters.some((m) => m.x === this.goal.x && m.y === this.goal.y);
     for (const m of ctx.monsters) {
-      if (!hostile(m)) continue;
+      if (!isHostile(m)) continue;
       if (m.x === this.goal.x && m.y === this.goal.y) continue;
-      if (!this.known.has(m.id)) return { kind: 'stop', reason: 'monster', creature: m.name };
+      if (!this.known.has(m.id)) {
+        if (!m.asleep) return { kind: 'stop', reason: 'monster', creature: m.name };
+        this.known.add(m.id);
+      }
       if (!m.asleep && Math.max(Math.abs(m.x - pos.x), Math.abs(m.y - pos.y)) <= this.dangerRadius) {
         return { kind: 'stop', reason: 'monster', creature: m.name };
       }

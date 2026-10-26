@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   createCharacter,
   dismissMore,
+  equipSuggested,
   jumpToLevel,
   playerPos,
   screenText,
@@ -84,7 +85,7 @@ test('items are used, wielded and taken off from the native inventory', async ({
   await waitForEngine(page);
   await createCharacter(page, 'Packer');
 
-  await expect.poll(() => actionIds(page)).toEqual(expect.arrayContaining(['inventory', 'rest', 'look', 'commands', 'menu']));
+  await expect.poll(() => actionIds(page)).toEqual(expect.arrayContaining(['inventory', 'commands', 'menu']));
 
   const food = await packCount(page, /Ration/);
   await page.locator('#toolbar [data-action="inventory"]').click();
@@ -184,6 +185,7 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   await page.goto('./');
   await waitForEngine(page);
   await createCharacter(page, 'Looker');
+  await equipSuggested(page);
 
   const start = await playerPos(page);
   const box = (await page.locator('#map').boundingBox())!;
@@ -281,18 +283,13 @@ test('explore reveals the level after the suggested weapon and light are equippe
   await createCharacter(page, 'Scout');
   await jumpToLevel(page, 2);
 
-  for (let i = 0; i < 2 && (await page.locator('#toolbar [data-action="equip"]').count()); i++) {
-    await page.locator('#toolbar [data-action="equip"]').click();
-    await dismissMore(page);
-    await waitAtCommand(page);
-  }
-  await expect(page.locator('#toolbar [data-action="equip"]')).toHaveCount(0);
+  await equipSuggested(page);
 
   const known = () =>
     page.evaluate(() => {
       const snap = window.__tome!.engine.snapshot()!;
       let n = 0;
-      for (let i = 0; i < snap.info.length; i++) if (snap.info[i] & 3) n++;
+      for (let i = 0; i < snap.info.length; i++) if (snap.info[i] & 0x11) n++;
       return n;
     });
   const before = await known();
@@ -305,4 +302,38 @@ test('explore reveals the level after the suggested weapon and light are equippe
     await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
   }
   expect(await known()).toBeGreaterThan(before);
+});
+
+test('Dungeon walks to the way down and the quest level below Bree stays native', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Delver');
+
+  await equipSuggested(page);
+  const dungeon = page.locator('#toolbar [data-action="dungeon"]');
+  await expect(dungeon).toBeVisible();
+  for (let i = 0; i < 12 && !(await page.locator('#toolbar [data-action="descend"]').count()); i++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    const attack = page.locator('#toolbar [data-action="attack"]');
+    if (await attack.count()) {
+      await attack.click();
+      await page.waitForTimeout(300);
+      continue;
+    }
+    await dungeon.click();
+    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+  }
+  await expect(page.locator('#toolbar [data-action="descend"]')).toBeVisible();
+  await expect(dungeon).toHaveCount(0);
+
+  const depthBefore = await page.evaluate(() => window.__tome!.engine.snapshot()!.depth);
+  await page.locator('#toolbar [data-action="descend"]').click();
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.snapshot()!.depth), { timeout: 30_000 }).toBeGreaterThan(depthBefore);
+  await waitAtCommand(page);
+  expect(await viewMode(page)).toBe('map');
+  await expect(page.locator('.termview')).toBeHidden();
+  expect((await screenText(page)).split('\n')[0]).not.toMatch(/-more-/);
+  await expect(page.locator('#toolbar [data-action="explore"]')).toBeVisible();
+  expect(await page.evaluate(() => window.__tome!.engine.gameState()!.messages!.length)).toBeGreaterThan(0);
 });

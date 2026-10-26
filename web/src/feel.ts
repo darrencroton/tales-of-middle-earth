@@ -8,11 +8,12 @@ export const LOW_HEALTH = 0.3;
 
 export type FeelEvent =
   | { kind: 'hurt'; fraction: number }
-  | { kind: 'levelup'; level: number }
+  | { kind: 'levelup'; level: number; skillPoints: number }
   | { kind: 'depth'; place: string; feet: number; deeper: boolean }
-  | { kind: 'gold'; amount: number };
+  | { kind: 'gold'; amount: number }
+  | { kind: 'exp'; amount: number };
 
-type Tracked = Pick<PlayerState, 'name' | 'lev' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild'>;
+type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints'>;
 
 /** What changed for the player between two states, as feedback events. */
 export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
@@ -22,7 +23,8 @@ export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
     const place = next.depth > 0 && !next.wild ? next.dungeon : depthLabel(next);
     events.push({ kind: 'depth', place, feet: next.wild ? 0 : next.depth * 50, deeper: next.depth > prev.depth });
   }
-  if (next.lev > prev.lev) events.push({ kind: 'levelup', level: next.lev });
+  if (next.lev > prev.lev) events.push({ kind: 'levelup', level: next.lev, skillPoints: next.skillPoints ?? 0 });
+  else if (next.exp > prev.exp) events.push({ kind: 'exp', amount: next.exp - prev.exp });
   if (next.chp < prev.chp && next.mhp > 0) events.push({ kind: 'hurt', fraction: Math.min(1, (prev.chp - next.chp) / next.mhp) });
   if (next.au > prev.au) events.push({ kind: 'gold', amount: next.au - prev.au });
   return events;
@@ -42,6 +44,9 @@ function vibrate(pattern: number | number[]): void {
     /* Vibration is unavailable. */
   }
 }
+
+/* Gold and experience floats start a little apart so both can be read. */
+const FLOAT_OFFSETS: Readonly<Record<string, string>> = { gold: '42%', exp: '50%' };
 
 /**
  * Feedback layer over the map: a red flash when hurt, a pulse at low
@@ -75,10 +80,15 @@ export class GameFeel {
     for (const event of events) this.play(event);
   }
 
-  /** Forgets the last state, e.g. when a new game starts. */
-  reset(): void {
-    this.prev = null;
-    this.layer.classList.remove('low');
+  /** Floats a short text (damage, a pickup) at a point on the stage, in viewport coordinates. */
+  floatAt(clientX: number, clientY: number, text: string, kind: string): void {
+    const rect = this.layer.getBoundingClientRect();
+    const node = el('div', `feel-float at ${kind}`, text);
+    node.style.left = `${clientX - rect.left}px`;
+    node.style.top = `${clientY - rect.top}px`;
+    if (this.animation() === 'off') node.classList.add('still');
+    this.layer.append(node);
+    window.setTimeout(() => node.remove(), FLOAT_MS);
   }
 
   private play(event: FeelEvent): void {
@@ -89,8 +99,15 @@ export class GameFeel {
         break;
       case 'levelup':
         this.flash('levelup', 1);
-        this.showBanner(`Level ${event.level}`, 'Your hero grows stronger', 'levelup');
+        this.showBanner(
+          `Level ${event.level}`,
+          event.skillPoints > 0 ? `${event.skillPoints} skill point${event.skillPoints === 1 ? '' : 's'} to spend` : 'Your hero grows stronger',
+          'levelup',
+        );
         vibrate([30, 60, 30]);
+        break;
+      case 'exp':
+        this.float(`+${event.amount} xp`, 'exp');
         break;
       case 'depth': {
         const where = event.feet
@@ -126,6 +143,7 @@ export class GameFeel {
 
   private float(text: string, kind: string): void {
     const node = el('div', `feel-float ${kind}`, text);
+    node.style.top = FLOAT_OFFSETS[kind] ?? '42%';
     if (this.animation() === 'off') node.classList.add('still');
     this.layer.append(node);
     window.setTimeout(() => node.remove(), FLOAT_MS);

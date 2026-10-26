@@ -4,6 +4,7 @@ import {
   SAVE_FORMAT,
   base64ToBytes,
   bytesToBase64,
+  bundleConflict,
   collectFiles,
   decodeBundle,
   encodeBundle,
@@ -126,6 +127,20 @@ describe('filesystem helpers', () => {
 
   it('refuses to write unsafe paths', () => {
     assert.throws(() => writeFiles(new MemoryFS(), '/root', [{ path: '../evil', data: new Uint8Array() }]), /Unsafe/);
+  });
+
+  it('rejects a bundle that cannot be written whole, before touching anything', () => {
+    const fs = new MemoryFS();
+    fs.mkdirTree('/root/2.4/save');
+    fs.writeFile('/root/2.4/save/Hero', new Uint8Array([1]));
+    const data = new Uint8Array([2]);
+    assert.match(bundleConflict(fs, '/root', [{ path: '2.4/save/Hero', data }, { path: '2.4/save/Hero/child', data }])!, /file and a directory/);
+    assert.match(bundleConflict(fs, '/root', [{ path: '2.4/save/Hero/child', data }])!, /exists as a file/);
+    assert.match(bundleConflict(fs, '/root', [{ path: '2.4/save', data }])!, /as a directory/);
+    assert.match(bundleConflict(fs, '/root', [{ path: 'a', data }, { path: 'a', data }])!, /twice/);
+    assert.equal(bundleConflict(fs, '/root', [{ path: '2.4/save/Hero', data }, { path: '2.4/save/Sam', data }]), null);
+    assert.throws(() => writeFiles(fs, '/root', [{ path: '2.4/save/Hero', data }, { path: '2.4/save/Hero/child', data }]));
+    assert.deepEqual(fs.readFile('/root/2.4/save/Hero'), new Uint8Array([1]));
   });
 });
 

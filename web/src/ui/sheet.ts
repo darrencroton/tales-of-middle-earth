@@ -144,12 +144,17 @@ export class Sheets {
     }
     const target = e.target as HTMLElement | null;
     if (target?.closest('input, textarea, select')) return;
+    /* A focused button activates itself on Enter or Space. */
+    if ((e.key === 'Enter' || e.key === ' ') && target?.closest('button, a') && target !== this.panel) return;
     if (e.key === 'Backspace' && this.stack.length > 1) {
       e.preventDefault();
       this.back();
       return;
     }
-    if (this.nav.handleKey(e)) e.preventDefault();
+    if (this.nav.handleKey(e)) {
+      e.preventDefault();
+      this.nav.active?.focus({ preventScroll: true });
+    }
   }
 
   private show(): void {

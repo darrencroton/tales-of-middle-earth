@@ -2,6 +2,7 @@ export const KEY_BACKSPACE = 8;
 export const KEY_TAB = 9;
 export const KEY_ENTER = 13;
 export const KEY_ESCAPE = 27;
+export const KEY_SPACE = 32;
 export const KEY_BACKSLASH = 92;
 export const KEY_DELETE = 127;
 
@@ -70,6 +71,27 @@ export function translateKey(event: KeyLike, ctrlLatched = false): number[] | nu
   }
 
   return [code];
+}
+
+/** Key codes for a string of Latin-1 text; characters the engine cannot take are left out. */
+export function keyCodes(text: string): number[] {
+  const codes: number[] = [];
+  for (const ch of text) {
+    const code = ch.charCodeAt(0);
+    if (ch.length === 1 && code <= 0xff) codes.push(code);
+  }
+  return codes;
+}
+
+/**
+ * Keys that answer a prompt tome2 pre-filled with `initial`: the first typed
+ * character replaces the default, Backspace at the start clears it, and
+ * Enter keeps whatever is shown.
+ */
+export function typedAnswer(value: string, initial: string): number[] {
+  if (value === initial) return [KEY_ENTER];
+  if (value === '') return [KEY_BACKSPACE, KEY_ENTER];
+  return [...keyCodes(value), KEY_ENTER];
 }
 
 /**

@@ -1,9 +1,8 @@
+import { keyCodes as code } from '../input/keys.ts';
 import type { Point } from './pathfinding.ts';
 import { directionDigit } from './prompts.ts';
 
 export type TargetStep = { kind: 'keys'; keys: number[] } | { kind: 'done' } | { kind: 'fail' };
-
-const code = (s: string) => [...s].map((c) => c.charCodeAt(0));
 
 /** Digits that move a free cursor by (dx, dy): diagonals first, then straight. */
 export function cursorMoves(dx: number, dy: number): number[] {

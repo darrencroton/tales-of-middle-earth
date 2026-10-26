@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { isLowHealth, playerEvents } from '../../web/src/feel.ts';
 
-const base = { name: 'Frodo', lev: 1, au: 100, chp: 20, mhp: 20, depth: 0, dungeon: 'Barrow-Downs', wild: 0 };
+const base = { name: 'Frodo', lev: 1, exp: 0, au: 100, chp: 20, mhp: 20, depth: 0, dungeon: 'Barrow-Downs', wild: 0 };
 
 describe('game feel events', () => {
   it('reports nothing for the first state or a different character', () => {
@@ -16,7 +16,8 @@ describe('game feel events', () => {
   });
 
   it('reports level-ups, gold and depth changes', () => {
-    assert.deepEqual(playerEvents(base, { ...base, lev: 2 }), [{ kind: 'levelup', level: 2 }]);
+    assert.deepEqual(playerEvents(base, { ...base, lev: 2, exp: 10, skillPoints: 5 }), [{ kind: 'levelup', level: 2, skillPoints: 5 }]);
+    assert.deepEqual(playerEvents(base, { ...base, exp: 4 }), [{ kind: 'exp', amount: 4 }]);
     assert.deepEqual(playerEvents(base, { ...base, au: 112 }), [{ kind: 'gold', amount: 12 }]);
     assert.deepEqual(playerEvents(base, { ...base, au: 90 }), []);
     assert.deepEqual(playerEvents(base, { ...base, depth: 3 }), [{ kind: 'depth', place: 'Barrow-Downs', feet: 150, deeper: true }]);

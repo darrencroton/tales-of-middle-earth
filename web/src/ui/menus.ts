@@ -4,6 +4,7 @@ import {
   TEXT_SIZE_LABELS,
   TEXT_SIZE_PX,
   type AnimationLevel,
+  type MessageFlow,
   type Settings,
   type TextSize,
 } from '../settings.ts';
@@ -87,6 +88,15 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
       segmented<AnimationLevel>('Animation', [['full', 'Full'], ['reduced', 'Reduced'], ['off', 'Off']], current.animation, (animation) =>
         update({ animation }),
       ),
+    ),
+  );
+  body.append(
+    section(
+      'Messages',
+      segmented<MessageFlow>('Messages', [['flow', 'Flow past'], ['pause', 'Pause at each']], current.messages, (messages) =>
+        update({ messages }),
+      ),
+      el('p', 'muted', 'Messages are always kept in the log: tap them to read back.'),
     ),
   );
   body.append(

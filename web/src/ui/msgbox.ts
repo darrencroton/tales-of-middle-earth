@@ -1,4 +1,4 @@
-import type { TermRow } from './termparse.ts';
+import { rowText, type TermRow } from './termparse.ts';
 
 export interface BoxChoice {
   label: string;
@@ -16,12 +16,6 @@ export interface MessageBox {
 }
 
 const char = (row: TermRow, x: number) => (x >= 0 && x < row.chars.length ? String.fromCharCode(row.chars[x] || 32) : ' ');
-
-function rowText(row: TermRow): string {
-  let text = '';
-  for (let x = 0; x < row.chars.length; x++) text += char(row, x);
-  return text;
-}
 
 /** Finds a "/----\ |text| \----/" box, or null. */
 export function findMessageBox(rows: readonly TermRow[]): MessageBox | null {
