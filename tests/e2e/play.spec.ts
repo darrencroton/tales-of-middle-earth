@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   createCharacter,
   dismissMore,
+  jumpToLevel,
   playerPos,
   screenText,
   viewMode,
@@ -272,4 +273,36 @@ test('hiding the app autosaves at the command prompt', async ({ page }) => {
   await page.reload();
   await waitForEngine(page);
   await expect(page.locator('#title-screen .title-choice').first()).toContainText('Sleeper');
+});
+
+test('explore reveals the level after the suggested weapon and light are equipped', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Scout');
+  await jumpToLevel(page, 2);
+
+  for (let i = 0; i < 2 && (await page.locator('#toolbar [data-action="equip"]').count()); i++) {
+    await page.locator('#toolbar [data-action="equip"]').click();
+    await dismissMore(page);
+    await waitAtCommand(page);
+  }
+  await expect(page.locator('#toolbar [data-action="equip"]')).toHaveCount(0);
+
+  const known = () =>
+    page.evaluate(() => {
+      const snap = window.__tome!.engine.snapshot()!;
+      let n = 0;
+      for (let i = 0; i < snap.info.length; i++) if (snap.info[i] & 3) n++;
+      return n;
+    });
+  const before = await known();
+  for (let i = 0; i < 5 && (await known()) <= before; i++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    const explore = page.locator('#toolbar [data-action="explore"]');
+    if (!(await explore.count())) break;
+    await explore.click();
+    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+  }
+  expect(await known()).toBeGreaterThan(before);
 });
