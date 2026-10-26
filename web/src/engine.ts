@@ -116,6 +116,16 @@ export class Engine {
     return this.bridge.storagePath ?? null;
   }
 
+  /** Number of keys sent but not yet read by the engine. */
+  get pendingKeys(): number {
+    return this.queue.length;
+  }
+
+  /** True while the engine is blocked waiting for a key with nothing queued. */
+  get awaitingInput(): boolean {
+    return this.waiter !== null && this.queue.length === 0;
+  }
+
   sendKeys(codes: number[]): void {
     if (this.state !== 'running' && this.state !== 'loading') return;
     for (const code of codes) {

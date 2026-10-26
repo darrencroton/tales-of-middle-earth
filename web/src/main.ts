@@ -415,6 +415,7 @@ function stopAutomation(message: string | null = null): void {
 
 function stepTravel(): void {
   travelTimer = 0;
+  if (!engine.awaitingInput) return;
   const ctx = travelContext();
   if (!travel || !ctx) return;
   const step = travel.step(ctx);
@@ -629,6 +630,10 @@ const engine = new Engine(buffer, terminal, {
     if (autosaveSyncPending) {
       autosaveSyncPending = false;
       engine.syncNow().catch((err) => console.error('Autosave sync failed', err));
+    }
+    if (engine.pendingKeys > 0) {
+      requestFrame();
+      return;
     }
     if (travel && !travelTimer) {
       travelTimer = window.setTimeout(stepTravel, animating() ? TRAVEL_STEP_MS : 0);

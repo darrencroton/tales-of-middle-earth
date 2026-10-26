@@ -32,6 +32,10 @@ test('tapping the map travels there along a known path', async ({ page }) => {
       const i = y * snap.width + x;
       return (snap.info[i] & 0x11) !== 0 && (features[snap.feat[i]].flags & 1) === 0 && (snap.layer[i] & 0x7f) === 1;
     };
+    const onMap = (x: number, y: number) => {
+      const p = tome.mapCellCentre(x, y);
+      return document.elementFromPoint(p.x, p.y)?.id === 'map';
+    };
     for (let d = 5; d >= 3; d--) {
       for (const [dx, dy] of [[d, 0], [-d, 0], [0, d], [0, -d]]) {
         const x = snap.px + dx;
@@ -39,7 +43,7 @@ test('tapping the map travels there along a known path', async ({ page }) => {
         if (x < 0 || y < 0 || x >= snap.width || y >= snap.height) continue;
         let clear = true;
         for (let k = 1; k <= d; k++) clear &&= ok(snap.px + Math.sign(dx) * k, snap.py + Math.sign(dy) * k);
-        if (clear) return { x, y };
+        if (clear && onMap(x, y)) return { x, y };
       }
     }
     return null;
@@ -100,6 +104,12 @@ test('the action bar follows the game and menus can be tapped', async ({ page })
   await expect.poll(() => viewMode(page)).toBe('overlay');
   await page.keyboard.press('Escape');
   await expect.poll(() => viewMode(page)).toBe('map');
+
+  await page.locator('#messages .msg').first().click();
+  await expect(page.locator('#info')).toContainText('Message history');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#info')).toBeHidden();
+  expect(await page.evaluate(() => window.__tome!.travelling())).toBe(false);
 });
 
 test('hiding the app autosaves at the command prompt', async ({ page }) => {
