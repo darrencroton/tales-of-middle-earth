@@ -68,7 +68,21 @@ npm run test:e2e       # slow (~30+ min for all projects in CI)
 - `?wizard` starts in wizard mode (a y/n prompt appears at birth); e2e uses it to jump levels.
 - Debug hook: `window.__tome` (engine, buffer, screenText, sendText, mode, actions, director…).
 
+## Native views of tome2 screens
+
+Parsed from the terminal each refresh (`main.ts` `refresh()` → `renderCustom`); keys are still sent to tome2 underneath.
+
+| Screen | Parser | Notes |
+|---|---|---|
+| Skills / Abilities | `ui/skills.ts` | taps move the cursor with `2`/`8`; toolbar raises/learns |
+| Full sheet (`C`) | `ui/charsheet.ts` | tabs press `n` to cycle pages; equipment letters map to `INVEN_WIELD + n` |
+| Message boxes | `ui/msgbox.ts` | `msg_box_auto` boxes → `PromptCard.showBox`; panel under a box is frozen |
+| End of game | `ui/gameover.ts` | *Continue* runs `finishMacro` (Escapes) and reloads to the title |
+| Shop item | `ui/store.ts` | description via `web_store_object_desc(page*12 + letter)` |
+| Knowledge (`~`) | `ui/character.ts` | native menu sends `\~N`; file viewer gets Done/Page toolbar |
+
 ## Known gaps / next ideas
 
-- Remaining tome2 screens shown via TermView: spell lists, skills, knowledge, help, full character sheet, death screens. Candidates for native views: spells, skills, the shop list itself.
-- Hardware-keyboard `i`/`e` are redirected to the native inventory.
+- Still TermView (modern text, not native): spell lists, help files, options, knowledge file contents, the shop list itself.
+- Hardware-keyboard `i`/`e`/`~` are redirected to the native inventory and knowledge menu (`redirectNativeScreen`).
+- Renaming from the full sheet (`c`) edits inline on row 2 and is not offered.

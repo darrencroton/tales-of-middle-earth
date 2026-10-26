@@ -119,7 +119,7 @@ test('tome2 menus show as tappable lists with a movable highlight', async ({ pag
   await expect(page.locator('.sheet-layer')).toBeHidden();
   await waitForScreen(page, /Wear\/Wield which item/);
   await expect.poll(() => viewMode(page)).toBe('overlay');
-  await expect(page.locator('.termview .tv-prompt')).toHaveText(/Wear\/Wield which item/);
+  await expect(page.locator('.termview .tv-title')).toHaveText(/Wear\/Wield which item/);
 
   const first = await page.locator('.termview .tv-choice.is-active').getAttribute('data-key');
   await page.keyboard.press('ArrowDown');
@@ -135,6 +135,38 @@ test('tome2 menus show as tappable lists with a movable highlight', async ({ pag
   await expect.poll(() => viewMode(page)).toBe('overlay');
   await page.mouse.click(5, 5);
   await expect.poll(() => viewMode(page)).toBe('map');
+});
+
+test('abilities, the full sheet and knowledge are native views', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Scholar');
+
+  await page.locator('.hud-player').click();
+  await page.locator('.sheet .action-button', { hasText: 'Abilities' }).click();
+  await expect(page.locator('.termview .tv-title')).toHaveText('Abilities');
+  await expect(page.locator('.termview .skill-row').first()).toBeVisible();
+  await page.locator('#toolbar [data-action="learn"]').click();
+  await expect(page.locator('.prompt-card')).toBeVisible();
+  await page.locator('.prompt-card button').first().click();
+  await page.locator('#toolbar [data-action="done"]').click();
+  await waitAtCommand(page);
+
+  await page.locator('.hud-player').click();
+  await page.locator('.sheet .action-button', { hasText: 'Full character sheet' }).click();
+  await expect(page.locator('.termview .tv-title')).toHaveText('Character sheet');
+  await expect(page.locator('.termview .stat-label', { hasText: 'Fighting' })).toBeVisible();
+  await page.locator('.termview .tv-tab', { hasText: 'Resists' }).click();
+  await expect(page.locator('.termview .tv-tab.selected')).toHaveText('Resists');
+  await page.locator('#toolbar [data-action="done"]').click();
+  await waitAtCommand(page);
+
+  await page.locator('.hud-player').click();
+  await page.locator('.sheet .action-button', { hasText: 'Knowledge' }).click();
+  await page.locator('.sheet .row-button', { hasText: 'Quests' }).click();
+  await expect(page.locator('.termview .tv-title')).toHaveText(/Quest/);
+  await page.locator('#toolbar [data-action="done"]').click();
+  await waitAtCommand(page);
 });
 
 test('dragging pans the map without moving, long press describes, sheets open from the HUD', async ({ page }) => {

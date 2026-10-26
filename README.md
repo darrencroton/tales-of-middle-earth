@@ -89,8 +89,15 @@ The game now plays through a phone-first interface; tome2's 80×24 screens only 
   - **Drag** to look around without moving; your next move (or *Centre*) brings the view back.
   - **Press and hold**, or use **Look** and tap, to see what is there: "You see a Village idiot (awake, unhurt) on grass", with *About* and *Go there* / *Attack*.
   - **Level map** shows the whole level; tap a place to travel there.
-- **tome2 screens** (spells, shops, skills, help, knowledge, options) are rendered as HTML text at the chosen size. Menu entries become tappable rows with a highlight; columns line up and wrap onto a second line on narrow screens; prose reflows; ASCII art keeps its shape.
-- **Shops:** tap an item to buy it (with a quantity stepper) or examine it. The toolbar offers Leave, Sell and More.
+- **Questions as cards:** yes/no, how many (with a stepper and *All*), a line of text, a direction (a 3×3 pad, or tap a neighbouring square) and a target (*Nearest*, *Current target*, or tap the map) appear as a card above the toolbar. tome2's centred message boxes ("Learn this ability?", notices, lettered choices) become cards too.
+- **Native views of tome2 screens:**
+  - **Skills:** a tree with values and gain per point; tap to select, *Raise* / *Lower* on the toolbar.
+  - **Abilities:** cost or *Known* per ability, with *Learn* and *About*.
+  - **Full character sheet:** tabs for Stats, Bonuses, Resists, Traits and Senses. Flag pages list only what applies, with where it comes from (an item, or innate). Tactic and movement have ‹ › steppers.
+  - **Knowledge:** artifacts, uniques, kills, recall depths, quests, notes and more, from a native menu; empty lists say so.
+  - **End of the game:** a summary card (level, experience, gold, depth, cause) with *Continue*, which returns to the title.
+- **Other tome2 screens** (spell lists, help, options) are rendered as HTML text at the chosen size, without key hints. Menu entries become tappable rows with a highlight; values are labelled with their column heading ("Level 1 · Cost 1 · Fail 5%"); options become switches; prose reflows; ASCII art keeps its shape.
+- **Shops:** the shop name, keeper and your gold sit in the header; prices and weights carry units. Tap an item for its description and to buy it (with a quantity stepper). The toolbar offers Leave, Sell and More.
 - **Layout:** the HUD and toolbar extend into the safe areas, so nothing is cut off beside a notch or home indicator, in either orientation.
 
 ---

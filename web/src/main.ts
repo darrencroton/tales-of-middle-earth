@@ -805,12 +805,20 @@ function stepTargeting(): void {
  * command (so tapping "a" would aim a wand); they are replaced by the
  * native sheets.
  */
-function redirectInventoryScreen(): boolean {
+function redirectNativeScreen(): boolean {
+  if (macros.running) return false;
   const m = /^(Inventory|Equipment): carrying/.exec(rowZeroText());
-  if (!m || macros.running) return false;
-  engine.sendKeys([KEY_ESCAPE]);
-  openInventory(api, m[1] === 'Equipment' ? 'equip' : 'pack');
-  return true;
+  if (m) {
+    engine.sendKeys([KEY_ESCAPE]);
+    openInventory(api, m[1] === 'Equipment' ? 'equip' : 'pack');
+    return true;
+  }
+  if (/Display current knowledge/.test(buffer.screenText())) {
+    engine.sendKeys([KEY_ESCAPE]);
+    openKnowledge(api);
+    return true;
+  }
+  return false;
 }
 
 /* Macros */
@@ -1060,7 +1068,7 @@ const engine = new Engine(buffer, {
       requestFrame();
       return;
     }
-    if (redirectInventoryScreen()) {
+    if (redirectNativeScreen()) {
       requestFrame();
       return;
     }
