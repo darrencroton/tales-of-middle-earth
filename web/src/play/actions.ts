@@ -1,6 +1,6 @@
 import type { PromptKind } from './prompts.ts';
 
-export type NativeView = 'inventory' | 'equipment' | 'look' | 'lookDone' | 'character' | 'history' | 'overview' | 'overviewDone';
+export type NativeView = 'inventory' | 'equipment' | 'look' | 'lookDone' | 'character' | 'knowledge' | 'history' | 'overview' | 'overviewDone';
 
 export type ActionEffect =
   | { kind: 'keys'; keys: number[] }
@@ -106,7 +106,7 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
       { label: 'Skills', icon: '±', command: 'G' },
       { label: 'Abilities', icon: '✪', command: 'N' },
       { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
-      { label: 'Knowledge', icon: '¶', command: '~' },
+      { label: 'Knowledge', icon: '¶', command: '~', native: 'knowledge' },
       { label: 'Messages', icon: '≣', command: '\u0010', native: 'history' },
       { label: 'Help', icon: '?', command: '?' },
     ],
@@ -134,7 +134,7 @@ export interface ActionContext {
   /** A native card is answering the current question. */
   cardShown?: boolean;
   /** Which special tome2 screen is open. */
-  screen?: 'skills' | 'options' | 'help' | null;
+  screen?: 'skills' | 'abilities' | 'options' | 'help' | 'file' | 'sheet' | null;
   atCommand: boolean;
   /** Name of the terrain under the player, lower case. */
   underfoot: string;
@@ -218,15 +218,24 @@ export function contextActions(ctx: ActionContext): Action[] {
       { id: 'raise', label: 'Raise', icon: '+', effect: { kind: 'keys', keys: text('6') }, primary: true },
     ];
   }
-  if (ctx.screen === 'help') {
+  if (ctx.screen === 'abilities') {
     return [
       { id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] } },
-      { id: 'helpback', label: 'Back', icon: '‹', effect: { kind: 'keys', keys: [8] } },
+      UP,
+      DOWN,
+      { id: 'about', label: 'About', icon: '?', effect: { kind: 'keys', keys: text('?') } },
+      { id: 'learn', label: 'Learn', icon: '+', effect: { kind: 'keys', keys: text('6') }, primary: true },
+    ];
+  }
+  if (ctx.screen === 'help' || ctx.screen === 'file') {
+    return [
+      { id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] } },
+      ...(ctx.screen === 'help' ? [{ id: 'helpback', label: 'Back', icon: '‹', effect: { kind: 'keys', keys: [8] } } as Action] : []),
       { id: 'pageup', label: 'Page up', icon: '▲', effect: { kind: 'keys', keys: text('-') } },
       { id: 'pagedown', label: 'Page down', icon: '▼', effect: { kind: 'keys', keys: text(' ') }, primary: true },
     ];
   }
-  if (ctx.screen === 'options') {
+  if (ctx.screen === 'options' || ctx.screen === 'sheet') {
     return [{ id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] }, primary: true }, MENU];
   }
 

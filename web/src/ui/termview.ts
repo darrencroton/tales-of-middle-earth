@@ -46,6 +46,8 @@ export interface TermViewOptions {
   tabs?: TermViewTab[];
   /** Terminal rows to leave out (shop command lists, page markers). */
   hideRow?: (row: number) => boolean;
+  /** Shown when the screen has nothing to show. */
+  empty?: string;
   /** Uppercase key range that shows a description of each choice ("Descs A-F"). */
   describe?: [string, string] | null;
 }
@@ -80,6 +82,7 @@ export class TermView {
   private renderedKey = '';
   private blocks: Block[] = [];
   private tabs: TermViewTab[] = [];
+  private customView = '';
 
   constructor(parent: HTMLElement, palette: () => readonly string[], callbacks: TermViewCallbacks) {
     this.palette = palette;
@@ -153,7 +156,7 @@ export class TermView {
     const parsed = parseRows(bufferRows(source, region.y0, region.y1), region.y0, region.x0, region.x1);
     const hide = options.hideRow;
     const blocks = hide ? parsed.filter((b) => b.kind === 'gap' || b.kind === 'pre' || !hide(b.row)) : parsed;
-    const key = JSON.stringify([options.layout, options.title, options.subtitle, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, blocks]);
+    const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, blocks]);
     this.root.hidden = false;
     this.tabs = options.tabs ?? [];
     if (key === this.renderedKey) return;
@@ -165,6 +168,7 @@ export class TermView {
 
     this.renderHeader(options);
     this.body.replaceChildren(...this.renderBlocks(blocks, options.describe ?? null));
+    if (options.empty && !this.body.textContent?.trim()) this.body.replaceChildren(el('p', 'tv-empty', options.empty));
     this.fitPreformatted();
 
     const items = [...this.body.querySelectorAll<HTMLElement>('.tv-choice, .tv-option')];
@@ -182,13 +186,19 @@ export class TermView {
     this.tabs = options.tabs ?? [];
     const fullKey = `custom\u0000${options.layout}\u0000${options.title}\u0000${options.badge}\u0000${key}`;
     if (fullKey === this.renderedKey) return;
+    const activeKey = this.nav.active?.dataset.key;
+    const view = `${options.title}\u0000${this.tabs.find((t) => t.active)?.label ?? ''}`;
     this.renderedKey = fullKey;
     this.blocks = [];
     this.root.className = `termview ${options.layout}`;
     this.renderHeader(options);
     this.body.replaceChildren(...build());
+    if (view !== this.customView) this.body.scrollTop = 0;
+    this.customView = view;
     const current = this.body.querySelector<HTMLElement>('.current');
-    this.nav.setActive(current ?? this.body.querySelector<HTMLElement>('[data-nav]'), true);
+    const previous = activeKey ? this.body.querySelector<HTMLElement>(`[data-key="${CSS.escape(activeKey)}"]`) : null;
+    const tab = this.header.querySelector<HTMLElement>('.tv-tabs .selected');
+    this.nav.setActive(current ?? previous ?? tab ?? this.body.querySelector<HTMLElement>('[data-nav]'), true);
   }
 
   move(direction: NavDirection): void {
@@ -227,6 +237,7 @@ export class TermView {
         const button = el('button', `segment tv-tab${tab.active ? ' selected' : ''}`, tab.label);
         button.type = 'button';
         button.dataset.index = String(i);
+        button.dataset.nav = '';
         bar.append(button);
       });
       parts.push(bar);

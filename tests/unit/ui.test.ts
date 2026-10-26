@@ -13,7 +13,10 @@ import { readableColour } from '../../web/src/render/colour.ts';
 import type { ItemState } from '../../web/src/render/snapshot.ts';
 import { descriptionParagraphs } from '../../web/src/ui/inventory.ts';
 import { parseStore, stackSize, storeMacro } from '../../web/src/ui/store.ts';
-import { parseSkills, skillMoveKeys } from '../../web/src/ui/skills.ts';
+import { abilityMoveKeys, parseAbilities, parseSkills, skillMoveKeys } from '../../web/src/ui/skills.ts';
+import { flagLabel, parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
+import { findMessageBox } from '../../web/src/ui/msgbox.ts';
+import { cleanPrompt, isEmptyFile, isFileViewer } from '../../web/src/ui/prompttext.ts';
 import { parseRows, type ChoiceBlock, type TermRow } from '../../web/src/ui/termparse.ts';
 
 const codes = (s: string) => [...s].map((c) => c.charCodeAt(0));
@@ -254,5 +257,159 @@ describe('skills screen', () => {
 
   it('ignores other screens', () => {
     assert.equal(parseSkills(rows(['Options'])), null);
+  });
+});
+
+describe('abilities screen', () => {
+  const lines = [
+    '                            ToME Abilities Screen',
+    'up/down to move, right to buy, ? for help',
+    'Skill points left: 3',
+    'Increases your max possible blows number by 1',
+    'Prereq: Combat@20',
+    '',
+    '',
+    ' . Ammo creation                                            8',
+    '[.]Extra Max Blow(1)                                        Known',
+    ' . Spread blows                                             5',
+  ];
+  const screen = parseAbilities(rows(lines, { 7: [[0, 61, 8]], 8: [[0, 66, 13]], 9: [[0, 61, 1]] }))!;
+
+  it('reads points, description and abilities', () => {
+    assert.equal(screen.points, 3);
+    assert.equal(screen.description, 'Increases your max possible blows number by 1 Prereq: Combat@20');
+    assert.deepEqual(
+      screen.abilities.map((a) => [a.name, a.cost, a.selected, a.state]),
+      [
+        ['Ammo creation', 8, false, 'locked'],
+        ['Extra Max Blow(1)', null, true, 'known'],
+        ['Spread blows', 5, false, 'learnable'],
+      ],
+    );
+  });
+
+  it('moves the cursor to a tapped ability', () => {
+    assert.equal(abilityMoveKeys(screen, screen.abilities[2]), '2');
+    assert.equal(abilityMoveKeys(screen, screen.abilities[0]), '8');
+  });
+
+  it('ignores other screens', () => {
+    assert.equal(parseAbilities(rows(['ToME Skills Screen'])), null);
+  });
+});
+
+describe('message boxes', () => {
+  const box = (text: string) => {
+    const w = text.length + 1;
+    const x = 40 - Math.floor((text.length + 1) / 2);
+    const lines: string[] = [];
+    lines[11] = ' '.repeat(x) + '/' + '-'.repeat(w - 1) + '\\';
+    lines[12] = ' '.repeat(x) + '|' + text + '|';
+    lines[13] = ' '.repeat(x) + '\\' + '-'.repeat(w - 1) + '/';
+    return rows(lines);
+  };
+
+  it('reads a yes/no question', () => {
+    const found = findMessageBox(box('Learn this ability (this is permanent)? (y/n)'));
+    assert.equal(found?.kind, 'yesno');
+    assert.equal(found?.text, 'Learn this ability?');
+    assert.deepEqual([found?.top, found?.bottom], [11, 13]);
+  });
+
+  it('reads lettered choices', () => {
+    const found = findMessageBox(box('[D]estroy, [P]ickup, [I]nscribe?'));
+    assert.equal(found?.kind, 'choice');
+    assert.deepEqual(found?.choices, [
+      { label: 'Destroy', key: 'D' },
+      { label: 'Pickup', key: 'P' },
+      { label: 'Inscribe', key: 'I' },
+    ]);
+  });
+
+  it('reads a notice and ignores screens without a box', () => {
+    assert.equal(findMessageBox(box('You cannot learn this ability.'))?.kind, 'notice');
+    assert.equal(findMessageBox(rows(['Hello', '/---- not a box'])), null);
+  });
+});
+
+describe('full character sheet', () => {
+  const footer = "    ['c' to change name, 'f' to file, 'p' for previous, 'n' for next, or ESC]";
+  it('reads the summary page', () => {
+    const lines = [
+      '',
+      '',
+      ' Name  : Pages                                               STR:     22',
+      ' Race  : Human                                               INT:      9',
+      ' Class : Warrior                                             WIS:      7',
+      ' Body  : Player                                              DEX:     15',
+      ' God   : Nobody                                              CON:     14',
+      '                                                             CHR:     10',
+      ' + To Melee Hit           1 Level              1    Hit Points       19/    19',
+      ' + To Melee Damage        3 Experience         0    Spell Points      5/     5',
+      ' + To Ranged Hit          1 Max Exp            0    Sanity           10/    10',
+      ' + To Ranged Damage       0 Exp to Adv.       10',
+      '   AC                   0+1 Gold             100    Speed               Normal',
+      '',
+      '                         (Miscellaneous Abilities)',
+      ' Fighting    : Bad                                     Blows/Round:  1',
+      ' Bows/Throw  : Very Bad                                Shots/Round:  1',
+      ' Saving Throw: Bad                                     Mel.dmg/Rnd:  3',
+      ' Stealth     : Bad                                     Infra-Vision: 0 feet',
+      ' Magic Device: Bad                                     Tactic:       normal',
+      '                                                       Explor:       normal',
+      "              ['t/T' to change tactics, 'e/E' to change movement]",
+      footer,
+    ];
+    const sheet = parseFullSheet(rows(lines, { 15: [[15, 18, 4]] }));
+    assert.ok(sheet && 'groups' in sheet);
+    const find = (title: string) => sheet.groups.find((g) => g.title === title)!.stats;
+    assert.deepEqual(find('Character').map((s) => s.value), ['Pages', 'Human', 'Warrior', 'Player', 'Nobody']);
+    assert.deepEqual(find('Attributes').map((s) => `${s.label} ${s.value}`), ['STR 22', 'INT 9', 'WIS 7', 'DEX 15', 'CON 14', 'CHR 10']);
+    assert.ok(find('Combat').some((s) => s.label === 'Melee damage per round' && s.value === '3'));
+    assert.ok(find('Progress').some((s) => s.label === 'Health' && s.value === '19 / 19'));
+    const fighting = find('Skills').find((s) => s.label === 'Fighting');
+    assert.deepEqual([fighting?.value, fighting?.tone], ['Bad', 'bad']);
+    assert.equal(find('Skills').find((s) => s.label === 'Shooting')?.value, 'Very Bad');
+    assert.equal(sheet.tactic, 'normal');
+    assert.equal(sheet.movement, 'normal');
+  });
+
+  it('reads active flags with their sources', () => {
+    const lines: string[] = ['', '', ''];
+    lines[3] = '           adefz@                                  adefz@';
+    lines[4] = 'Sust Str  :......                       Res Acid  :+...+.';
+    lines[5] = 'Sust Int  :......                       Imm Fire  :*.....';
+    lines[22] = footer;
+    const sheet = parseFullSheet(rows(lines));
+    assert.ok(sheet && 'flags' in sheet);
+    assert.equal(sheet.page, 2);
+    assert.deepEqual(
+      sheet.flags.map((f) => [f.label, f.value, f.sources.join('')]),
+      [
+        ['Resist acid', 'Yes', 'az'],
+        ['Immune to fire', 'Immune', 'a'],
+      ],
+    );
+  });
+
+  it('names flags and pages', () => {
+    assert.equal(flagLabel('Res Pois'), 'Resist poison');
+    assert.equal(flagLabel('Sust Con'), 'Sustain constitution');
+    assert.equal(flagLabel('Add Str'), 'Strength');
+    assert.equal(flagLabel('Orc.ESP'), 'Sense orcs');
+    assert.equal(flagLabel('Free Act'), 'Free action');
+    assert.equal(sheetPageKeys(0, 2), 'nn');
+    assert.equal(sheetPageKeys(3, 0), 'nn');
+  });
+});
+
+describe('file viewer headings', () => {
+  it('titles knowledge and help files', () => {
+    assert.equal(cleanPrompt('[ToME 2.4.1 (ah, git), Artifacts Seen, Line 0/0]'), 'Artifacts Seen');
+    assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), Help file 'help.hlp', Line 1/33]"), 'Help');
+    assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), Help file 'ability.txt', Line 68/113]"), 'Help · Ability');
+    assert.ok(isFileViewer('[ToME 2.4.1 (ah, git), Quest status, Line 0/5]'));
+    assert.ok(isEmptyFile('[ToME 2.4.1 (ah, git), Fate status, Line 0/0]'));
+    assert.ok(!isEmptyFile('[ToME 2.4.1 (ah, git), Quest status, Line 0/5]'));
   });
 });

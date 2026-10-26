@@ -1,6 +1,7 @@
 import type { PromptKind } from '../play/prompts.ts';
 import { el, iconText } from './dom.ts';
 import { cleanPrompt } from './prompttext.ts';
+import type { MessageBox } from './msgbox.ts';
 
 export type CardKind = Extract<PromptKind, 'yesno' | 'quantity' | 'text' | 'direction' | 'aim'>;
 
@@ -92,6 +93,30 @@ export class PromptCard {
         this.aim(canTargetLast);
         break;
     }
+  }
+
+  /** A question or notice tome2 drew in a box over the screen. */
+  showBox(box: MessageBox): void {
+    const key = `box\u0000${box.kind}\u0000${box.text}`;
+    this.root.hidden = false;
+    if (key === this.renderedKey) return;
+    this.renderedKey = key;
+    this.root.className = `prompt-card ${box.kind}`;
+    const buttons = el('div', 'card-buttons');
+    let primary: HTMLButtonElement;
+    if (box.kind === 'yesno') {
+      primary = this.button('Yes', codes('y'), 'card-button primary');
+      buttons.append(this.button('No', codes('n')), primary);
+    } else if (box.kind === 'choice') {
+      buttons.append(this.button('Cancel', [ESCAPE]));
+      for (const choice of box.choices) buttons.append(this.button(choice.label, codes(choice.key)));
+      primary = buttons.lastElementChild as HTMLButtonElement;
+    } else {
+      primary = this.button('OK', codes(' '), 'card-button primary');
+      buttons.append(primary);
+    }
+    this.root.replaceChildren(this.title(box.text), buttons);
+    primary.focus({ preventScroll: true });
   }
 
   private answer(keys: number[]): void {

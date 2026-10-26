@@ -106,3 +106,78 @@ export function skillsElements(screen: SkillsScreen, onTap: (skill: SkillRow) =>
   }
   return out;
 }
+
+const TERM_L_GREEN = 13;
+
+export interface AbilityRow {
+  row: number;
+  name: string;
+  /** Skill points needed, or null once known. */
+  cost: number | null;
+  selected: boolean;
+  state: 'known' | 'learnable' | 'locked';
+}
+
+export interface AbilitiesScreen {
+  points: number;
+  description: string;
+  abilities: AbilityRow[];
+}
+
+const ABILITY_ROW = /^([[ ])\.([\] ])(\S.*?)\s{2,}(\d+|Known)\s*$/;
+
+/** Reads tome2's abilities screen (rows of the whole terminal), or null. */
+export function parseAbilities(rows: readonly TermRow[]): AbilitiesScreen | null {
+  if (!/Abilities Screen/.test(rowText(rows[0] ?? { chars: [], attrs: [] }))) return null;
+  const points = Number(/Skill points left:\s*(-?\d+)/.exec(rowText(rows[2]))?.[1] ?? 0);
+  const description = rows
+    .slice(3, 7)
+    .map((r) => rowText(r).trim())
+    .filter(Boolean)
+    .join(' ');
+  const abilities: AbilityRow[] = [];
+  rows.forEach((r, y) => {
+    if (y < 7) return;
+    const m = ABILITY_ROW.exec(rowText(r));
+    if (!m) return;
+    const attr = r.attrs[0] ?? 1;
+    const known = m[4] === 'Known';
+    const selected = m[1] === '[' || attr === TERM_L_GREEN;
+    abilities.push({
+      row: y,
+      name: m[3].trim(),
+      cost: known ? null : Number(m[4]),
+      selected,
+      state: known ? 'known' : attr === TERM_L_DARK ? 'locked' : selected && points < Number(m[4]) ? 'locked' : 'learnable',
+    });
+  });
+  return abilities.length ? { points, description, abilities } : null;
+}
+
+/** Cursor keys from the selected ability to another row. */
+export function abilityMoveKeys(screen: AbilitiesScreen, target: AbilityRow): string {
+  const from = screen.abilities.findIndex((a) => a.selected);
+  const to = screen.abilities.indexOf(target);
+  if (from < 0 || to < 0 || from === to) return '';
+  return (to > from ? '2' : '8').repeat(Math.abs(to - from));
+}
+
+/** Rows for the native abilities panel; `onTap` receives the tapped ability. */
+export function abilitiesElements(screen: AbilitiesScreen, onTap: (ability: AbilityRow) => void): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  if (screen.description) out.push(el('p', 'skill-description', screen.description));
+  for (const ability of screen.abilities) {
+    const state = ability.state === 'known' ? 'max' : ability.state === 'locked' ? 'untrained' : 'normal';
+    const button = el('button', `skill-row ${state}${ability.selected ? ' current' : ''}`);
+    button.type = 'button';
+    button.dataset.nav = '';
+    button.dataset.key = `ability-${ability.row}`;
+    button.append(el('span', 'skill-name', ability.name));
+    const value = el('span', 'skill-value');
+    value.append(el('span', 'skill-level', ability.cost === null ? 'Known' : `${ability.cost} pt${ability.cost === 1 ? '' : 's'}`));
+    button.append(value);
+    button.addEventListener('click', () => onTap(ability));
+    out.push(button);
+  }
+  return out;
+}

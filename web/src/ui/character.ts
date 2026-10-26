@@ -2,6 +2,7 @@ import { depthLabel } from '../hud.ts';
 import type { PlayerState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { el, navButton, section } from './dom.ts';
+import { openMenu } from './menus.ts';
 
 function stat(label: string, value: string, className = ''): HTMLElement {
   const node = el('div', `stat ${className}`.trim());
@@ -73,11 +74,11 @@ export function openCharacter(api: GameApi): void {
     ['Skills', 'G'],
     ['Abilities', 'N'],
     ['Full character sheet', 'C'],
-    ['Knowledge', '~'],
   ];
   for (const [label, command] of screens) {
     more.append(navButton(label, { className: 'action-button', onClick: () => api.command(command) }));
   }
+  more.append(navButton('Knowledge', { className: 'action-button', onClick: () => openKnowledge(api) }));
   body.append(section('More', more));
 
   api.sheets.open({
@@ -87,4 +88,26 @@ export function openCharacter(api: GameApi): void {
     className: 'sheet-character',
     initial: more.querySelector<HTMLElement>('[data-nav]'),
   });
+}
+
+const KNOWLEDGE: [string, string, string][] = [
+  ['Artifacts found', '★', '1'],
+  ['Unique creatures', '♛', '2'],
+  ['Kills', '⚔', '3'],
+  ['Recall depths', '↧', '4'],
+  ['Corruptions', '☣', '5'],
+  ['Companions', '♥', '6'],
+  ['Quests', '!', '7'],
+  ['Fates', '☯', '8'],
+  ['Dungeon towns', '⌂', '9'],
+  ['Notes', '✎', '0'],
+];
+
+/** What the character knows: each entry opens tome2's knowledge list. */
+export function openKnowledge(api: GameApi): void {
+  openMenu(
+    api.sheets,
+    'Knowledge',
+    KNOWLEDGE.map(([label, icon, key]) => ({ label, icon, run: () => api.command(`~${key}`) })),
+  );
 }

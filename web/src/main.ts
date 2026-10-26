@@ -32,8 +32,9 @@ import {
 import { ANIMATION_FPS, applyTextSize, loadSettings, saveSettings, type Settings } from './settings.ts';
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
 import { TitleScreen } from './title.ts';
-import type { GameApi } from './ui/api.ts';
-import { openCharacter } from './ui/character.ts';
+import { titleName, type GameApi } from './ui/api.ts';
+import { INVEN_WIELD } from './play/items.ts';
+import { openCharacter, openKnowledge } from './ui/character.ts';
 import { el, iconText } from './ui/dom.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
@@ -42,9 +43,11 @@ import { Sheets } from './ui/sheet.ts';
 import { bufferRows, parseRows, type ChoiceBlock, type OptionBlock } from './ui/termparse.ts';
 import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.ts';
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
-import { cleanPrompt, describableRange } from './ui/prompttext.ts';
+import { cleanPrompt, describableRange, isEmptyFile, isFileViewer } from './ui/prompttext.ts';
 import { openStoreItem, parseStore, type StoreScreen } from './ui/store.ts';
-import { parseSkills, skillMoveKeys, skillsElements } from './ui/skills.ts';
+import { abilitiesElements, abilityMoveKeys, parseAbilities, parseSkills, skillMoveKeys, skillsElements } from './ui/skills.ts';
+import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
+import { fullSheetElements, parseFullSheet, sheetPageKeys, SHEET_PAGES, type FullSheet } from './ui/charsheet.ts';
 
 declare global {
   interface Window {
@@ -248,6 +251,9 @@ function openNative(view: NativeView): void {
     case 'character':
       openCharacter(api);
       break;
+    case 'knowledge':
+      openKnowledge(api);
+      break;
     case 'history':
       showHistory();
       break;
@@ -407,6 +413,9 @@ function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
   }
   if (prompt && kind !== 'more' && !CARD_KINDS.has(kind)) options.title = cleanPrompt(prompt) || undefined;
   if (kind === 'item') options.tabs = itemTabs(prompt);
+  if (isEmptyFile(prompt)) options.empty = 'Nothing here yet.';
+  const box = currentBox();
+  if (box) options.hideRow = (row) => row >= box.top && row <= box.bottom;
   return options;
 }
 
@@ -420,13 +429,43 @@ function toggleOption(option: OptionBlock, options: OptionBlock[]): void {
   send([...keyCodes(step.repeat(Math.abs(target - current))), ...keyCodes(option.value ? 'n' : 'y')]);
 }
 
+/** tome2's centred message box, while one is drawn. */
+function currentBox(): MessageBox | null {
+  return lastSnap?.icky ? findMessageBox(bufferRows(buffer, 0, buffer.rows - 1)) : null;
+}
+
 function updatePromptCard(): void {
+  const box = currentBox();
+  if (box && !macros.running && engine.pendingKeys === 0) {
+    promptCard.showBox(box);
+    return;
+  }
   const kind = currentPrompt();
   const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
   const show =
     CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !picker && !title.isVisible && engine.pendingKeys === 0;
   if (show) promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()));
   else promptCard.hide();
+}
+
+/** Names for the equipment letters on the full character sheet. */
+function sheetSource(letter: string): string {
+  if (letter === '@') return 'Innate';
+  if (letter === 'z') return 'Symbiote';
+  const index = INVEN_WIELD + letter.charCodeAt(0) - 'a'.charCodeAt(0);
+  const item = engine.inventory()?.equip.find((slot) => slot.i === index && slot.name);
+  return item?.name ? titleName(item.name) : 'Equipment';
+}
+
+function renderFullSheet(sheet: FullSheet): void {
+  const tabs: TermViewTab[] = SHEET_PAGES.map((label, page) => ({
+    label,
+    active: page === sheet.page,
+    run: () => page !== sheet.page && send(keyCodes(sheetPageKeys(sheet.page, page))),
+  }));
+  termView.renderCustom({ layout: 'panel', title: 'Character sheet', tabs }, JSON.stringify(sheet), () =>
+    fullSheetElements(sheet, { send: (keys) => send(keyCodes(keys)), source: sheetSource }),
+  );
 }
 
 /** Reads engine state and decides how the screen is presented. */
@@ -466,8 +505,25 @@ function refresh(): void {
   if (snap.icky) {
     setMode('overlay');
     const region = (base ? buffer.diffBounds(base, 1) : null) ?? { x0: 0, y0: 1, x1: buffer.cols - 1, y1: buffer.rows - 1 };
-    const skills = parseSkills(bufferRows(buffer, 0, buffer.rows - 1));
-    if (skills) {
+    const rows = bufferRows(buffer, 0, buffer.rows - 1);
+    const skills = parseSkills(rows);
+    const abilities = skills ? null : parseAbilities(rows);
+    const fullSheet = skills || abilities ? null : parseFullSheet(rows);
+    if (termView.visible && currentBox()) {
+      /* The panel stays as it was beneath a message box. */
+    } else if (fullSheet) {
+      renderFullSheet(fullSheet);
+    } else if (abilities) {
+      termView.renderCustom(
+        { layout: 'panel', title: 'Abilities', badge: `${abilities.points} point${abilities.points === 1 ? '' : 's'} to spend` },
+        JSON.stringify(abilities),
+        () =>
+          abilitiesElements(abilities, (ability) => {
+            const keys = abilityMoveKeys(abilities, ability);
+            if (keys) send(keyCodes(keys));
+          }),
+      );
+    } else if (skills) {
       termView.renderCustom(
         { layout: 'panel', title: 'Skills', badge: `${skills.points} point${skills.points === 1 ? '' : 's'} to spend` },
         JSON.stringify(skills),
@@ -553,7 +609,7 @@ function updateActionBar(force = false): void {
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
-      screen: !termView.visible ? null : termView.options().length ? 'options' : /Skills Screen/.test(buffer.screenText()) ? 'skills' : /Help file '/.test(rowZeroText()) ? 'help' : null,
+      screen: !termView.visible ? null : termView.options().length ? 'options' : /Skills Screen/.test(rowZeroText()) ? 'skills' : /Abilities Screen/.test(rowZeroText()) ? 'abilities' : /'p' for previous, 'n' for next/.test(buffer.screenText()) ? 'sheet' : /Help file '/.test(rowZeroText()) ? 'help' : isFileViewer(rowZeroText()) ? 'file' : null,
       looking,
       overview: map.overview,
       atCommand: !!snap?.atCommand,

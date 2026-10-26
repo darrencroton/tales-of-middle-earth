@@ -5,7 +5,12 @@
 export function cleanPrompt(text: string): string {
   let t = text.replace(/\s+/g, ' ').trim();
   const help = /Help file '([^']+)'/.exec(t);
-  if (help) return `Help: ${help[1].replace(/\.(txt|hlp)$/, '').replace(/[_-]/g, ' ')}`;
+  if (help) {
+    const name = help[1].replace(/\.(txt|hlp)$/, '').replace(/[_-]/g, ' ');
+    return name === 'help' ? 'Help' : `Help · ${name[0].toUpperCase()}${name.slice(1)}`;
+  }
+  const viewer = /^\[[^\]]*?\),\s*(.+?),\s*Line \d+\/\d+\]$/.exec(t);
+  if (viewer) return viewer[1];
   t = t.replace(/\[[^\]]*\]/g, ' ');
   t = t.replace(/\(([^()]*)\)/g, (group, inner: string) => (isKeyHint(inner) ? ' ' : group));
   const parts = t.split(',').map((p) => p.trim());
@@ -41,4 +46,14 @@ export function isInstructionLine(text: string): boolean {
 export function describableRange(prompt: string): [string, string] | null {
   const m = /Descs ([A-Z])-([A-Z])/.exec(prompt);
   return m ? [m[1], m[2]] : null;
+}
+
+/** True for tome2's file viewer heading: "[ToME 2.4.1 (…), Artifacts Seen, Line 0/0]". */
+export function isFileViewer(prompt: string): boolean {
+  return /^\[.*, Line \d+\/\d+\]$/.test(prompt.trim());
+}
+
+/** True when the file viewer shows an empty file. */
+export function isEmptyFile(prompt: string): boolean {
+  return /, Line 0\/0\]$/.test(prompt.trim());
 }
