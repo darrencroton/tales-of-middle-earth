@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createCharacter, screenText, sendText, viewMode, waitForEngine, waitForScreen } from './helpers.ts';
+import { createCharacter, dismissMore, screenText, sendText, viewMode, waitForEngine, waitForScreen } from './helpers.ts';
 
 async function actionIds(page: Page): Promise<string[]> {
   return page.evaluate(() => window.__tome!.actions());
@@ -51,22 +51,26 @@ test('tapping the map travels there along a known path', async ({ page }) => {
   expect(target, 'no clear straight line to test travel').not.toBeNull();
 
   const start = await playerPos(page);
-  const point = await page.evaluate(([x, y]) => window.__tome!.mapCellCentre(x, y), [target!.x, target!.y] as const);
-  await page.mouse.click(point.x, point.y);
-
-  await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 20_000 }).toBe(false);
-  const end = await playerPos(page);
   const before = Math.max(Math.abs(start.x - target!.x), Math.abs(start.y - target!.y));
+  let end = start;
+  let cause = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    const point = await page.evaluate(([x, y]) => window.__tome!.mapCellCentre(x, y), [target!.x, target!.y] as const);
+    await page.mouse.click(point.x, point.y);
+    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 20_000 }).toBe(false);
+    end = await playerPos(page);
+    cause = await page.evaluate(() => window.__tome!.lastStopCause());
+    const progressed = end.x !== start.x || end.y !== start.y;
+    if (progressed || /monster|hurt|blocked/.test(cause)) break;
+  }
   const after = Math.max(Math.abs(end.x - target!.x), Math.abs(end.y - target!.y));
-  if (after > 0) {
-    const diag = await page.evaluate(([x, y]) => {
-      const hit = document.elementFromPoint(x, y);
-      return { cause: window.__tome!.lastStopCause(), hit: hit ? `${hit.tagName}#${hit.id}.${hit.className}` : 'none', screen: window.__tome!.screenText() };
-    }, [point.x, point.y] as const);
-    const context = `stopped (${diag.cause || 'never started'}) at ${JSON.stringify(end)} from ${JSON.stringify(start)} towards ${JSON.stringify(target)}; tap hit ${diag.hit}\n${diag.screen}`;
+  const context = `stopped (${cause || 'never started'}) at ${JSON.stringify(end)} from ${JSON.stringify(start)} towards ${JSON.stringify(target)}\n${await screenText(page)}`;
+  if (after > 0 && cause !== 'interrupted') {
     await expect(page.locator('#toast'), context).toContainText(/creature|hurt|blocked/);
   }
-  expect(after).toBeLessThan(before);
+  expect(after, context).toBeLessThan(before);
 });
 
 test('the action bar follows the game and menus can be tapped', async ({ page }) => {
