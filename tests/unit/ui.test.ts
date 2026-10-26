@@ -60,9 +60,11 @@ describe('item actions', () => {
     assert.equal(findListedItem(list, 'a Wand of Stinking Cloud'), null);
   });
 
-  it('prefers an exact name over a shared prefix', () => {
-    const list = ['  a) ! a Potion of Speed {a}   0.4 lb', '  b) ! a Potion of Speed {b}   0.4 lb'].join('\n');
+  it('prefers an exact name over a shared prefix, with or without a symbol', () => {
+    const list = ['  a) a Potion of Speed {a}   0.4 lb', '  b) a Potion of Speed {b}   0.4 lb', '  c) ! a Potion of Cure Light Wounds   0.4 lb'].join('\n');
     assert.equal(findListedItem(list, 'a Potion of Speed {b}'), 'b');
+    assert.equal(findListedItem(list, 'a Potion of Speed {a}'), 'a');
+    assert.equal(findListedItem(list, 'a Potion of Cure Light Wounds'), 'c');
   });
 
   it('answers the item prompt, switching lists when needed', () => {

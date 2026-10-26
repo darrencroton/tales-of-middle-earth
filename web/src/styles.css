@@ -2208,7 +2208,7 @@ html.keyboard-open .sheet-layer {
 }
 
 :root[data-animation="off"] .title-choice.primary,
-:root[data-animation="off"] .title-progress-fill,
+:root[data-animation="off"] #title-screen.indeterminate .title-progress-fill,
 :root[data-animation="off"] .sheet,
 :root[data-animation="off"] .sheet-backdrop,
 :root[data-animation="off"] .termview.panel,

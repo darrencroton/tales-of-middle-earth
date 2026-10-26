@@ -136,12 +136,12 @@ export function itemLetter(index: number): string {
 
 const ITEM_PROMPT = /^\((Inven|Equip|Floor):/;
 
-/** Letter of the listed item whose name matches (exactly, else by prefix), from a menu shown on screen. */
+/** Letter of the listed item whose name matches (exactly, else by prefix), from a menu shown on screen; floor lists carry no symbol. */
 export function findListedItem(screen: string, name: string): string | null {
   const wanted = name.toLowerCase();
   const listed: [string, string][] = [];
   for (const line of screen.split('\n')) {
-    const m = /(?:^|\s)([a-z])\) (?:\S )?(.*?)\s*(?:\d+\.\d lb)?\s*$/.exec(line);
+    const m = /(?:^|\s)([a-z])\) (?:[^\w\s] )?(.*?)\s*(?:\d+\.\d lb)?\s*$/.exec(line);
     if (m) listed.push([m[1], m[2].toLowerCase()]);
   }
   const exact = listed.find(([, text]) => text === wanted);

@@ -17,6 +17,8 @@ export type TitleChoice = { kind: 'continue'; save: SaveInfo } | { kind: 'new' }
 
 export interface TitleCallbacks {
   onChoose(choice: TitleChoice): void;
+  /** The choices are shown and nothing is in progress. */
+  onReady(): void;
   onSettings(): void;
   /** Export or import saved games. */
   onSaves(): void;
@@ -225,6 +227,7 @@ export class TitleScreen {
     this.links.hidden = false;
     this.nav.setActive(0, false);
     if (this.visible) buttons[0]?.focus({ preventScroll: true, focusVisible: false } as FocusOptions);
+    this.callbacks.onReady();
   }
 
   /** Hides the choices while a choice is being acted on. */

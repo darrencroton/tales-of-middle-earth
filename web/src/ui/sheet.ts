@@ -151,7 +151,10 @@ export class Sheets {
       this.back();
       return;
     }
-    if (this.nav.handleKey(e)) e.preventDefault();
+    if (this.nav.handleKey(e)) {
+      e.preventDefault();
+      this.nav.active?.focus({ preventScroll: true });
+    }
   }
 
   private show(): void {

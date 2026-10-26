@@ -42,6 +42,9 @@ const INTRO_LINES = [
 
 const THEME_INTRO_LINES = ['A module for ToME,', 'set in the world of Middle-earth.', 'Your story begins here.'];
 
+/* tome2's own intro and credits screens, replaced by the title screen's intro. */
+const INTRO_SCREEN = /Art thou an adventurer|DarkGod|furiosity|\[Press any key to continue\]/;
+
 const STEP_ORDER: BirthStep[] = ['race', 'modifier', 'class', 'specialisation', 'god'];
 const STEP_SHORT: Record<BirthStep, string> = {
   race: 'Race',
@@ -86,6 +89,11 @@ export class Director {
     this.title = title;
   }
 
+  /** The title screen is showing its choices and nothing is loading or being created. */
+  get atTitle(): boolean {
+    return this.phase === 'title';
+  }
+
   private screen(): string {
     return this.deps.buffer.screenText();
   }
@@ -121,6 +129,16 @@ export class Director {
       default:
         break;
     }
+  }
+
+  /**
+   * Called while the engine pauses mid-animation. The only animation while a
+   * character is being created is tome2's own sliding intro, which never
+   * waits for a key, so the key that cuts it short is sent from here.
+   */
+  effectFrame(): void {
+    if (this.phase !== 'creating' || this.deps.engine.pendingKeys > 0) return;
+    this.deps.send([SPACE]);
   }
 
   private boot(screen: string, rowZero: string): void {
@@ -234,7 +252,7 @@ export class Director {
     } else if (/Savefile does not exist/.test(rowZero) || /-more-/.test(rowZero)) {
       // The extra key cuts tome2's sliding intro short; ours is on the title screen.
       this.deps.send([SPACE, SPACE]);
-    } else if (/Art thou an adventurer|DarkGod|furiosity|\[Press any key to continue\]/.test(screen)) {
+    } else if (INTRO_SCREEN.test(screen)) {
       this.deps.send([SPACE]);
     } else if (/Choose a race|Please answer the following/.test(screen)) {
       this.phase = 'birth';

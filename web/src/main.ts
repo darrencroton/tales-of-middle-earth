@@ -1082,7 +1082,7 @@ recentre.addEventListener('click', () => recentreMap());
 
 /* Autosave */
 
-/** Sends tome2's save command at the command prompt; the sync to browser storage follows on the next idle. */
+/** Sends tome2's save command at the command prompt; the sync to browser storage follows once the engine is back at it. */
 function saveGame(notify: 'silent' | 'toast'): boolean {
   const snap = engine.state === 'running' ? engine.snapshot() : null;
   if (!snap || !snap.inDungeon || !snap.atCommand || snap.icky || quitting) return false;
@@ -1210,7 +1210,7 @@ const engine = new Engine(buffer, {
       hasEffects = false;
     }
     hud.tick();
-    if (pendingSync) {
+    if (pendingSync && lastSnap?.atCommand) {
       const notify = pendingSync === 'toast';
       pendingSync = null;
       engine.syncNow().then(
@@ -1239,6 +1239,7 @@ const engine = new Engine(buffer, {
     requestFrame();
   },
   onEffectFrame() {
+    director.effectFrame();
     refresh();
     captureEffects();
     if (mode === 'map' || mode === 'overlay') map.render(performance.now(), animating());
@@ -1272,6 +1273,7 @@ const feel = new GameFeel(byId<HTMLElement>('stage'), () => settings.animation);
 const coach = new Coach(byId<HTMLElement>('stage'));
 const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
   onChoose: (choice) => director.choose(choice),
+  onReady: () => adoptUpdate?.(),
   onSettings: () => openSettingsSheet(),
   onSaves: () => openSavesMenu(),
   onHidden: () => {
@@ -1622,24 +1624,28 @@ window.__tome = {
 
 /* Service worker */
 
+/** Set once a service worker is registered: asks a waiting update to take over if the title screen idles. */
+let adoptUpdate: (() => void) | null = null;
+
 /**
- * A new version waits until no game is in progress: it takes over (and the
- * page reloads) only while the title screen shows, so a running game never
- * loses the engine files it is still loading.
+ * A new version waits until nothing is in progress: it takes over (and the
+ * page reloads) only while the title screen idles, so a game or a character
+ * being created is never lost.
  */
 function watchUpdates(registration: ServiceWorkerRegistration): void {
   const adopt = (worker: ServiceWorker | null) => {
-    if (worker && worker.state === 'installed' && navigator.serviceWorker.controller && !inGame()) {
+    if (worker && worker.state === 'installed' && navigator.serviceWorker.controller && director.atTitle) {
       worker.postMessage({ type: 'skip-waiting' });
     }
   };
+  adoptUpdate = () => adopt(registration.waiting);
   adopt(registration.waiting);
   registration.addEventListener('updatefound', () => {
     const worker = registration.installing;
     worker?.addEventListener('statechange', () => adopt(worker));
   });
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!inGame()) location.reload();
+    if (director.atTitle) location.reload();
   });
 }
 
