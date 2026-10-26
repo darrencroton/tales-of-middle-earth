@@ -89,6 +89,13 @@ The game now plays through a phone-first interface; tome2's 80×24 screens only 
   - **Drag** to look around without moving; your next move (or *Centre*) brings the view back.
   - **Press and hold**, or use **Look** and tap, to see what is there: "You see a Village idiot (awake, unhurt) on grass", with *About* and *Go there* / *Attack*.
   - **Level map** shows the whole level; tap a place to travel there.
+- **Play from the toolbar:**
+  - **Explore** walks to the nearest unexplored place or item and keeps going. It stops when a creature comes into view, when one is right beside you, or when you are hurt. Once the level is explored it heads for the way down.
+  - **Attack** appears when a hostile creature is next to you, aimed at the most wounded one.
+  - **Suggestions** from your pack: *Wield* when no weapon is wielded, *Light* in the dark, *Heal* (a known healing potion) when under half health, *Eat* when hungry.
+  - The bar shows what makes sense right now: *Pick up*, *Descend*, *Ascend*, *Drink* and so on appear where they apply.
+- **Game feel:** a red flash when you are hurt (stronger for bigger hits) and a pulse at low health; a banner for a new level or depth; a rising *+gold* when you find money; a short vibration on devices that support it. Animations follow *Settings → Animation*.
+- **First-game tips:** a small card over the map with three tips, which never blocks play and retires after a little play or *Got it*.
 - **Questions as cards:** yes/no, how many (with a stepper and *All*), a line of text, a direction (a 3×3 pad, or tap a neighbouring square) and a target (*Nearest*, *Current target*, or tap the map) appear as a card above the toolbar. tome2's centred message boxes ("Learn this ability?", notices, lettered choices) become cards too.
 - **Native views of tome2 screens:**
   - **Skills:** a tree with values and gain per point; tap to select, *Raise* / *Lower* on the toolbar.
@@ -96,7 +103,7 @@ The game now plays through a phone-first interface; tome2's 80×24 screens only 
   - **Full character sheet:** tabs for Stats, Bonuses, Resists, Traits and Senses. Flag pages list only what applies, with where it comes from (an item, or innate). Tactic and movement have ‹ › steppers.
   - **Knowledge:** artifacts, uniques, kills, recall depths, quests, notes and more, from a native menu; empty lists say so.
   - **End of the game:** a summary card (level, experience, gold, depth, cause) with *Continue*, which returns to the title.
-- **Other tome2 screens** (spell lists, help, options) are rendered as HTML text at the chosen size, without key hints. Menu entries become tappable rows with a highlight; values are labelled with their column heading ("Level 1 · Cost 1 · Fail 5%"); options become switches; prose reflows; ASCII art keeps its shape.
+- **Other tome2 screens** (spell lists, help, options, knowledge lists) are rendered as HTML text at the chosen size, without key hints. Menus take their heading as a title; help pages show their own heading; lists such as known uniques line up names and status. Menu entries become tappable rows with a highlight; values are labelled with their column heading ("Level 1 · Cost 1 · Fail 5%"); options become switches; prose reflows; ASCII art keeps its shape.
 - **Shops:** the shop name, keeper and your gold sit in the header; prices and weights carry units. Tap an item for its description and to buy it (with a quantity stepper). The toolbar offers Leave, Sell and More.
 - **Layout:** the HUD and toolbar extend into the safe areas, so nothing is cut off beside a notch or home indicator, in either orientation.
 

@@ -68,6 +68,14 @@ npm run test:e2e       # slow (~30+ min for all projects in CI)
 - `?wizard` starts in wizard mode (a y/n prompt appears at birth); e2e uses it to jump levels.
 - Debug hook: `window.__tome` (engine, buffer, screenText, sendText, mode, actions, director…).
 
+## Play assists
+
+- `play/explore.ts`: `exploreTarget` (BFS to the nearest item or frontier cell), `Explore` (chains `Travel`s, danger radius 1, heads for `DOWN_EXIT` when done). Skip set is per depth (`exploreSkip` in `main.ts`).
+- `play/items.ts` `suggestedGear`: heal > eat > wield > light; toolbar `equip` action runs the matching item macro.
+- `feel.ts`: `playerEvents(prev, next)` (pure) → hurt flash, level-up/depth banners, gold float, low-health pulse; honours the animation setting.
+- `ui/coach.ts`: first-game tips (localStorage `tome2mobile.coach.v1`); e2e `createCharacter` dismisses it.
+- Map toolbar is capped at 7 buttons (`MAX_MAP_ACTIONS`); Look gives way first, Rest hides when a foe is adjacent, Explore hides in town.
+
 ## Native views of tome2 screens
 
 Parsed from the terminal each refresh (`main.ts` `refresh()` → `renderCustom`); keys are still sent to tome2 underneath.
