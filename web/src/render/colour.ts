@@ -74,3 +74,20 @@ export function cellNoise(x: number, y: number, t: number, speed = 1): number {
   const p2 = cellHash(y, x, 7) * Math.PI * 2;
   return 0.6 * Math.sin(t * 2.1 * speed + phase) + 0.4 * Math.sin(t * 3.7 * speed + p2);
 }
+
+/**
+ * Lightens dark text colours (tome2's dark blue, dark grey...) so they stay
+ * readable on the black panels. Accepts and returns "rgb(r, g, b)" strings.
+ */
+export function readableColour(css: string, minLuminance = 0.32): string {
+  const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(css);
+  if (!m) return css;
+  let [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  if (luminance >= minLuminance) return css;
+  const k = Math.min(0.75, (minLuminance - luminance) / (1 - luminance) + 0.15);
+  r += (255 - r) * k;
+  g += (255 - g) * k;
+  b += (255 - b) * k;
+  return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+}

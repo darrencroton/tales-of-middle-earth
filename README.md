@@ -15,7 +15,7 @@ A mobile-friendly web port of **ToME 2 — Tales of Middle-earth**, the Angband-
 - Input:
   - hardware keyboard: arrow keys walk, Shift+arrow runs
   - on-screen keyboard
-  - swipe to walk; a long swipe runs
+  - swipe to walk; a long swipe runs (replaced in Milestone 4 by drag to pan)
   - toolbar with Esc, Enter and a sticky Ctrl key
 - Saves persist in the browser (IndexedDB), with export and import of a `.tome2save` backup.
 - It works offline after the first load, through a service worker.
@@ -69,6 +69,30 @@ The visual design takes inspiration from [Brogue: Community Edition](https://git
   - Commands are sent with tome2's keymap bypass (`\`), so they also work with the roguelike keyset.
 - **Autosave:** when the app is hidden or closed at the command prompt, the game saves itself (Ctrl+S) and flushes to browser storage.
 
+**Milestone 4 — native mobile interface** ✅
+
+The game now plays through a phone-first interface; tome2's 80×24 screens only appear where nothing better exists, and then as readable HTML.
+
+- **One text size everywhere:** messages, panels, menus, sheets and character creation all scale from a single base size. *Settings → Text size* offers Small, Medium, Large and Extra large.
+- **Opening screen:**
+  - The flames are a smooth noise field that drifts slowly upwards (no per-frame randomness), with gentler embers.
+  - It offers **Continue** for each saved hero (with tome2's summary, e.g. "Grodon, the Ent Warrior") and **New character**. Links: Settings, Saves (export/import), Theme module.
+  - tome2's module and news screens are answered automatically. Its sliding intro is replaced by the same words rising from the flames in one piece.
+- **Character creation:** race, race modifier, class, specialisation and god are tappable cards. Tapping one shows its description; tapping again (or *Choose*) confirms. *Random* and *Start over* are on the toolbar. Stats appear on a hero card with *Reroll* and *Accept*; routine questions (options, quests, minimum stats, name) are answered for you.
+- **Native sheets** (bottom sheets on phones, centred cards on wider screens): tap outside or press Escape to close; one row is always highlighted, and arrow keys or swipes move it.
+  - **Inventory and equipment:** tap an item for what you know about it and what you can do: eat, quaff, read, aim, wield, wear, take off, drop one or all, throw, inscribe, destroy. The app answers tome2's item, quantity and inscription prompts itself.
+  - **Character:** tap your name or health bars for attributes, combat, progress, and links to skills, abilities and the full sheet.
+  - **Creatures and items:** tap one in the list under the map for its health, recall text and actions (attack, approach, show on map).
+  - **Game menu:** character, messages, save, settings, how to play, export/import, about, and **Save and quit**, which saves and returns to the title screen.
+  - **Commands:** every command, grouped.
+- **Map:**
+  - **Drag** to look around without moving; your next move (or *Centre*) brings the view back.
+  - **Press and hold**, or use **Look** and tap, to see what is there: "You see a Village idiot (awake, unhurt) on grass", with *About* and *Go there* / *Attack*.
+  - **Level map** shows the whole level; tap a place to travel there.
+- **tome2 screens** (spells, shops, skills, help, knowledge, options) are rendered as HTML text at the chosen size. Menu entries become tappable rows with a highlight; columns line up and wrap onto a second line on narrow screens; prose reflows; ASCII art keeps its shape.
+- **Shops:** tap an item to buy it (with a quantity stepper) or examine it. The toolbar offers Leave, Sell and More.
+- **Layout:** the HUD and toolbar extend into the safe areas, so nothing is cut off beside a notch or home indicator, in either orientation.
+
 ---
 
 ## Architecture
@@ -80,13 +104,15 @@ engine/snapshot.cc  Exports level, lighting, player, monster and message state t
 CMakeLists.txt      Emscripten build: engine + deps → web/public/engine/tome.{js,wasm,data}
 web/                Vite + TypeScript app (no framework)
   src/engine.ts       Loads the WASM module; key queue, save syncing
-  src/terminal.ts     Terminal cell buffer; full-screen and translucent-panel renderer
-  src/render/         Lit map: snapshot reader, materials, lighting, cell appearance, title flames
+  src/terminal.ts     Terminal cell buffer
+  src/render/         Lit map: snapshot reader, materials, lighting, cell appearance, flames
   src/hud.ts          Sidebar (bars, entities) and fading messages
-  src/title.ts        Opening screen (flames, mosaic title, embers, Begin flow)
-  src/settings.ts     Display settings (stored per browser)
-  src/play/           Touch play: prompts, pathfinding, travel, targeting, context actions
-  src/input/          Keyboard and swipe translation to engine keycodes
+  src/title.ts        Opening screen (flames, mosaic title, embers, Continue / New character, intro)
+  src/flow/           Start-up and character creation driven behind native screens
+  src/ui/             Sheets, list navigation, HTML rendering of tome2 screens, native views
+  src/settings.ts     Settings (stored per browser)
+  src/play/           Touch play: prompts, pathfinding, travel, targeting, actions, item macros
+  src/input/          Keyboard and gesture handling
   src/saves.ts        Save export/import (.tome2save bundles)
 tests/unit/         node:test unit tests
 tests/e2e/          Playwright tests (phone portrait, phone landscape, tablet)
@@ -106,9 +132,12 @@ tests/e2e/          Playwright tests (phone portrait, phone landscape, tablet)
   - `~/.tome` (`/home/web_user/.tome`) is mounted on IDBFS.
   - It is flushed to IndexedDB shortly after the engine goes idle waiting for input, when the page is hidden, and on exit.
 - **Presentation modes:**
-  - Before a character exists, the terminal is drawn full-screen over the flames.
+  - Before a character exists, a director answers tome2's start-up screens and shows native character creation; any screen it does not recognise is shown as HTML text over the flames.
   - In the dungeon, the lit map replaces tome2's map view, with the sidebar and message area alongside.
-  - When tome2 covers the screen with a menu, the cells that differ from the last map screen are drawn as a panel over the dimmed map.
+  - When tome2 covers the screen with a menu, the cells that differ from the last map screen are parsed into text, menu choices and art, and shown as an HTML panel over the dimmed map.
+- **Native views and macros:**
+  - The engine exports the pack, equipment, floor items, character summary, item descriptions and monster recall as JSON (`engine/snapshot.cc`). Monster recall runs against an off-screen terminal so the visible screen is untouched.
+  - Actions from native views are sent as short scripts (generators in `src/play/macro.ts`) that read each prompt tome2 shows and answer it: which list the item is in, the item letter, a quantity, an inscription.
 - **Engine snapshot:**
   - JavaScript calls exported C++ functions while the engine is paused waiting for input, so the state it reads is always consistent.
   - The terrain, light flags, glyphs and colours for the whole level are copied out of WebAssembly memory once per frame, and only when something changed.
@@ -174,9 +203,9 @@ One-off setup: in the repository's **Settings → Pages**, set **Source** to **G
 
 - **Where they live:** saves are stored in your browser for this site. Clearing site data, or uninstalling the home-screen app on some platforms, deletes them.
 - **Backing up:**
-  1. Save in-game with **Ctrl+S**.
-  2. Choose **☰ → Export saves** to download a `.tome2save` backup.
-  3. Use **☰ → Import saves** to restore it on any device.
+  1. Save in-game with **☰ → Save game** (or Ctrl+S). The game also saves when you leave the app, and on **☰ → Save and quit**.
+  2. Choose **☰ → Export saves** (or **Saves** on the title screen) to download a `.tome2save` backup.
+  3. Use **Import saves** from either place to restore it on any device.
 
 ---
 

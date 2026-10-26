@@ -1,6 +1,13 @@
 import type { FeatureInfo } from './render/materials.ts';
-import { readSnapshot, type GameState, type LevelSnapshot } from './render/snapshot.ts';
-import type { CanvasRenderer, TerminalBuffer } from './terminal.ts';
+import {
+  readSnapshot,
+  type CharacterState,
+  type GameState,
+  type InventoryState,
+  type LevelSnapshot,
+  type MonsterRecall,
+} from './render/snapshot.ts';
+import type { TerminalBuffer } from './terminal.ts';
 import { syncToStorage, type EmscriptenFS } from './saves.ts';
 
 /** Functions the C++ frontend (engine/main-web.cc) calls through Module.tome. */
@@ -31,6 +38,10 @@ interface EmscriptenModule {
   _web_snapshot(): number;
   _web_features_json(): number;
   _web_state_json(maxMessages: number): number;
+  _web_inventory_json(): number;
+  _web_object_desc(item: number): number;
+  _web_monster_desc(index: number): number;
+  _web_character_json(): number;
 }
 
 interface ModuleOptions {
@@ -80,12 +91,10 @@ export class Engine {
   private quitMessage: string | null = null;
   private cursorDrawn = false;
   private readonly buffer: TerminalBuffer;
-  private readonly renderer: CanvasRenderer;
   private readonly events: EngineEvents;
 
-  constructor(buffer: TerminalBuffer, renderer: CanvasRenderer, events: EngineEvents) {
+  constructor(buffer: TerminalBuffer, events: EngineEvents) {
     this.buffer = buffer;
-    this.renderer = renderer;
     this.events = events;
   }
 
@@ -104,6 +113,39 @@ export class Engine {
     const mod = this.module;
     if (!mod || this.state !== 'running') return null;
     return JSON.parse(mod.UTF8ToString(mod._web_state_json(maxMessages))) as GameState;
+  }
+
+  inventory(): InventoryState | null {
+    const json = this.callJson<InventoryState>((mod) => mod._web_inventory_json());
+    return json && json.ready ? json : null;
+  }
+
+  character(): CharacterState | null {
+    const json = this.callJson<CharacterState>((mod) => mod._web_character_json());
+    return json && json.ready ? json : null;
+  }
+
+  /** What the player knows about an item: inventory index, or minus the floor object index. */
+  objectDescription(item: number): string {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return '';
+    return mod.UTF8ToString(mod._web_object_desc(item));
+  }
+
+  monsterRecall(index: number): MonsterRecall | null {
+    const json = this.callJson<Partial<MonsterRecall>>((mod) => mod._web_monster_desc(index));
+    return json && json.name ? (json as MonsterRecall) : null;
+  }
+
+  private callJson<T>(call: (mod: EmscriptenModule) => number): T | null {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return null;
+    try {
+      return JSON.parse(mod.UTF8ToString(call(mod))) as T;
+    } catch (err) {
+      console.error('Engine returned invalid JSON', err);
+      return null;
+    }
   }
 
   features(): FeatureInfo[] {
@@ -186,7 +228,6 @@ export class Engine {
     flush: () => {
       if (!this.cursorDrawn && this.buffer.cursorY >= 0) this.buffer.setCursor(-1, -1);
       this.cursorDrawn = false;
-      this.renderer.scheduleRender();
       this.events.onFlush?.();
     },
     effectFrame: () => this.events.onEffectFrame?.(),

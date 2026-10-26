@@ -51,15 +51,17 @@ describe('settings', () => {
 
   it('sanitises stored values', () => {
     const defaults = defaultSettings(false);
-    assert.deepEqual(sanitiseSettings({ animation: 'reduced', glyphs: 'classic', zoom: 30 }, defaults), {
+    assert.deepEqual(sanitiseSettings({ animation: 'reduced', glyphs: 'classic', zoom: 30, textSize: 'large' }, defaults), {
       animation: 'reduced',
       glyphs: 'classic',
       zoom: 30,
+      textSize: 'large',
     });
-    assert.deepEqual(sanitiseSettings({ animation: 'wild', glyphs: 7, zoom: 999 }, defaults), {
+    assert.deepEqual(sanitiseSettings({ animation: 'wild', glyphs: 7, zoom: 999, textSize: 'huge' }, defaults), {
       animation: 'full',
       glyphs: 'brogue',
       zoom: 48,
+      textSize: 'medium',
     });
     assert.deepEqual(sanitiseSettings(null, defaults), defaults);
   });

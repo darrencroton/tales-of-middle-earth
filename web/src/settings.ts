@@ -2,11 +2,13 @@ import type { GlyphMode } from './render/appearance.ts';
 import { MAX_ZOOM, MIN_ZOOM } from './render/map.ts';
 
 export type AnimationLevel = 'full' | 'reduced' | 'off';
+export type TextSize = 'small' | 'medium' | 'large' | 'xlarge';
 
 export interface Settings {
   animation: AnimationLevel;
   glyphs: GlyphMode;
   zoom: number;
+  textSize: TextSize;
 }
 
 const STORAGE_KEY = 'tome2mobile.settings';
@@ -17,11 +19,27 @@ export const ANIMATION_FPS: Record<AnimationLevel, number> = {
   off: 0,
 };
 
+/** Base text size in CSS pixels; every piece of text in the app scales from it. */
+export const TEXT_SIZE_PX: Record<TextSize, number> = {
+  small: 12,
+  medium: 14,
+  large: 16,
+  xlarge: 19,
+};
+
+export const TEXT_SIZE_LABELS: Record<TextSize, string> = {
+  small: 'Small',
+  medium: 'Medium',
+  large: 'Large',
+  xlarge: 'Extra large',
+};
+
 export function defaultSettings(prefersReducedMotion: boolean): Settings {
   return {
     animation: prefersReducedMotion ? 'off' : 'full',
     glyphs: 'brogue',
     zoom: 22,
+    textSize: 'medium',
   };
 }
 
@@ -35,7 +53,8 @@ export function sanitiseSettings(raw: unknown, defaults: Settings): Settings {
     typeof value.zoom === 'number' && Number.isFinite(value.zoom)
       ? Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value.zoom))
       : defaults.zoom;
-  return { animation, glyphs, zoom };
+  const textSize = typeof value.textSize === 'string' && value.textSize in TEXT_SIZE_PX ? (value.textSize as TextSize) : defaults.textSize;
+  return { animation, glyphs, zoom, textSize };
 }
 
 export function loadSettings(prefersReducedMotion: boolean): Settings {
@@ -54,4 +73,8 @@ export function saveSettings(settings: Settings): void {
   } catch {
     // Storage unavailable (private mode, blocked site data): keep in-memory settings only.
   }
+}
+
+export function applyTextSize(size: TextSize): void {
+  document.documentElement.style.setProperty('--fs', `${TEXT_SIZE_PX[size]}px`);
 }

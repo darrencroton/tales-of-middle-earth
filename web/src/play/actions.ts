@@ -1,11 +1,15 @@
 import type { PromptKind } from './prompts.ts';
 
+export type NativeView = 'inventory' | 'equipment' | 'look' | 'lookDone' | 'character' | 'history' | 'overview' | 'overviewDone';
+
 export type ActionEffect =
   | { kind: 'keys'; keys: number[] }
   | { kind: 'keyboard' }
   | { kind: 'menu' }
   | { kind: 'commands' }
-  | { kind: 'ctrl' };
+  | { kind: 'ctrl' }
+  | { kind: 'nav'; direction: 'up' | 'down' | 'select' }
+  | { kind: 'native'; view: NativeView };
 
 export interface Action {
   id: string;
@@ -25,6 +29,8 @@ export interface CommandDef {
   then?: string;
   /** Pick-up command, whose key depends on the always_pickup option. */
   pickup?: boolean;
+  /** Opens a native view instead of sending the command. */
+  native?: NativeView;
 }
 
 /** tome2 picks up with 'g' normally and with ',' when always_pickup is on. */
@@ -47,8 +53,8 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
   {
     title: 'Items',
     commands: [
-      { label: 'Inventory', icon: '≡', command: 'i' },
-      { label: 'Equipment', icon: '[', command: 'e' },
+      { label: 'Inventory', icon: '≡', command: 'i', native: 'inventory' },
+      { label: 'Equipment', icon: '[', command: 'e', native: 'equipment' },
       { label: 'Wear / wield', icon: '|', command: 'w' },
       { label: 'Take off', icon: '⤴', command: 't' },
       { label: 'Pick up', icon: '⇡', command: 'g', pickup: true },
@@ -95,13 +101,13 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
   {
     title: 'Knowledge',
     commands: [
-      { label: 'Look', icon: '◉', command: 'l' },
-      { label: 'Character', icon: '@', command: 'C' },
+      { label: 'Look', icon: '◉', command: 'l', native: 'look' },
+      { label: 'Character', icon: '@', command: 'C', native: 'character' },
       { label: 'Skills', icon: '±', command: 'G' },
       { label: 'Abilities', icon: '✪', command: 'N' },
-      { label: 'Full map', icon: '▦', command: 'M' },
+      { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
       { label: 'Knowledge', icon: '¶', command: '~' },
-      { label: 'Messages', icon: '≣', command: '\u0010' },
+      { label: 'Messages', icon: '≣', command: '\u0010', native: 'history' },
       { label: 'Help', icon: '?', command: '?' },
     ],
   },
@@ -115,8 +121,20 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
 ];
 
 export interface ActionContext {
-  mode: 'title' | 'map' | 'overlay';
+  mode: 'title' | 'screen' | 'map' | 'overlay';
   prompt: PromptKind;
+  /** Text of the prompt line, for item prompts that offer other lists. */
+  promptText?: string;
+  /** Native look mode is on. */
+  looking?: boolean;
+  /** The whole-level map is showing. */
+  overview?: boolean;
+  /** The panel shows tappable choices or switches, so no cursor buttons are needed. */
+  listShown?: boolean;
+  /** A native card is answering the current question. */
+  cardShown?: boolean;
+  /** Which special tome2 screen is open. */
+  screen?: 'skills' | 'options' | null;
   atCommand: boolean;
   /** Name of the terrain under the player, lower case. */
   underfoot: string;
@@ -126,8 +144,11 @@ export interface ActionContext {
 
 const KEYBOARD: Action = { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } };
 const MENU: Action = { id: 'menu', label: 'Menu', icon: '☰', effect: { kind: 'menu' } };
-const ESCAPE: Action = { id: 'escape', label: 'Esc', icon: '⎋', effect: { kind: 'keys', keys: [27] } };
+const ESCAPE: Action = { id: 'escape', label: 'Back', icon: '‹', effect: { kind: 'keys', keys: [27] } };
+const CANCEL: Action = { id: 'escape', label: 'Cancel', icon: '✕', effect: { kind: 'keys', keys: [27] } };
 const ENTER: Action = { id: 'enter', label: 'Enter', icon: '⏎', effect: { kind: 'keys', keys: [13] } };
+const UP: Action = { id: 'up', label: 'Up', icon: '▲', effect: { kind: 'nav', direction: 'up' } };
+const DOWN: Action = { id: 'down', label: 'Down', icon: '▼', effect: { kind: 'nav', direction: 'down' } };
 
 function command(id: string, label: string, icon: string, def: Pick<CommandDef, 'command' | 'then'>, primary = false): Action {
   return { id, label, icon, effect: { kind: 'keys', keys: commandKeys(def) }, primary };
@@ -152,6 +173,15 @@ export function situationalActions(underfoot: string, floorObjects: number, alwa
  * Buttons for the action bar, chosen from what tome2 is waiting for.
  */
 export function contextActions(ctx: ActionContext): Action[] {
+  if (ctx.overview && ctx.mode === 'map') {
+    return [{ id: 'overviewdone', label: 'Close map', icon: '✕', effect: { kind: 'native', view: 'overviewDone' }, primary: true }];
+  }
+  if (ctx.looking && ctx.mode === 'map') {
+    return [{ id: 'lookdone', label: 'Done looking', icon: '✓', effect: { kind: 'native', view: 'lookDone' }, primary: true }];
+  }
+
+  if (ctx.cardShown) return [MENU];
+
   switch (ctx.prompt) {
     case 'more':
       return [
@@ -163,35 +193,49 @@ export function contextActions(ctx: ActionContext): Action[] {
       return [
         { id: 'yes', label: 'Yes', icon: '✔', effect: { kind: 'keys', keys: text('y') }, primary: true },
         { id: 'no', label: 'No', icon: '✘', effect: { kind: 'keys', keys: text('n') } },
-        KEYBOARD,
         MENU,
       ];
     case 'aim':
       return [
         { id: 'nearest', label: 'Nearest', icon: '◎', effect: { kind: 'keys', keys: text('*t') }, primary: true },
-        { id: 'target', label: 'Target', icon: '⌖', effect: { kind: 'keys', keys: text('5') } },
-        ESCAPE,
+        CANCEL,
         MENU,
       ];
     case 'direction':
-      return [ESCAPE, KEYBOARD, MENU];
+      return [CANCEL, MENU];
     case 'item':
-      return [ESCAPE, { id: 'floor', label: 'Floor', icon: '⤓', effect: { kind: 'keys', keys: text('-') } }, KEYBOARD, MENU];
+      return [CANCEL, MENU];
     default:
       break;
+  }
+
+  if (ctx.screen === 'skills') {
+    return [
+      { id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] } },
+      UP,
+      DOWN,
+      { id: 'raise', label: 'Raise', icon: '+', effect: { kind: 'keys', keys: text('6') }, primary: true },
+      { id: 'lower', label: 'Lower', icon: '−', effect: { kind: 'keys', keys: text('4') } },
+      { id: 'expand', label: 'Open', icon: '▾', effect: { kind: 'keys', keys: [13] } },
+    ];
+  }
+  if (ctx.screen === 'options') {
+    return [{ id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] }, primary: true }, MENU];
   }
 
   if (ctx.mode === 'map' && ctx.atCommand) {
     return [
       ...situationalActions(ctx.underfoot, ctx.floorObjects, ctx.alwaysPickup),
-      command('inventory', 'Items', '≡', { command: 'i' }),
+      { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
       command('rest', 'Rest', '☾', { command: 'R', then: '&\r' }),
       command('cast', 'Cast', '✦', { command: 'm' }),
-      command('look', 'Look', '◉', { command: 'l' }),
+      { id: 'look', label: 'Look', icon: '◉', effect: { kind: 'native', view: 'look' } },
       { id: 'commands', label: 'More', icon: '⋯', effect: { kind: 'commands' } },
       MENU,
     ];
   }
+
+  if (ctx.mode === 'overlay' || ctx.mode === 'screen') return ctx.listShown ? [ESCAPE, MENU] : [ESCAPE, UP, DOWN, MENU];
 
   return [ESCAPE, ENTER, KEYBOARD, MENU];
 }

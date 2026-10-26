@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { COMMAND_GROUPS, commandKeys, contextActions, situationalActions } from '../../web/src/play/actions.ts';
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
-import { classifyPrompt, directionDigit, isAdjacent, menuChoiceAt } from '../../web/src/play/prompts.ts';
+import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
 import { Travel, travelGrid, type TravelContext } from '../../web/src/play/travel.ts';
 import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials } from '../../web/src/render/materials.ts';
@@ -20,26 +20,6 @@ describe('prompt classification', () => {
     assert.equal(classifyPrompt('Direction (Escape to cancel)? '), 'direction');
     assert.equal(classifyPrompt('(Inven: b-e, ESC) Wear/Wield which item?'), 'item');
     assert.equal(classifyPrompt('You see a Kobold.'), 'other');
-  });
-});
-
-describe('menu choices', () => {
-  it('picks the letter of the tapped line', () => {
-    assert.equal(menuChoiceAt('a) , 6 Rations of Food          6.0 lb', 30), 'a');
-    assert.equal(menuChoiceAt('  c) ~ 5 Wooden Torches', 2), 'c');
-  });
-
-  it('picks the nearest choice to the left on multi-column rows', () => {
-    const row = ' [a] Human       b) Half-Elf    c) Elf';
-    assert.equal(menuChoiceAt(row, 3), 'a');
-    assert.equal(menuChoiceAt(row, 20), 'b');
-    assert.equal(menuChoiceAt(row, 34), 'c');
-    assert.equal(menuChoiceAt(row, 0), 'a');
-  });
-
-  it('ignores rows without choices', () => {
-    assert.equal(menuChoiceAt('You have no more Rations of Food (a).', 10), null);
-    assert.equal(menuChoiceAt('Inventory: carrying 58.7 pounds', 5), null);
   });
 });
 
@@ -254,5 +234,31 @@ describe('actions', () => {
       contextActions({ ...base, mode: 'title', atCommand: false, prompt: 'none' }).map((a) => a.id),
       ['escape', 'enter', 'keyboard', 'menu'],
     );
+    assert.deepEqual(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none' }).map((a) => a.id), ['escape', 'up', 'down', 'menu']);
+    assert.deepEqual(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none', listShown: true }).map((a) => a.id), ['escape', 'menu']);
+    assert.deepEqual(contextActions({ ...base, prompt: 'yesno', cardShown: true }).map((a) => a.id), ['menu']);
+    assert.ok(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none', screen: 'skills' }).some((a) => a.id === 'raise'));
+  });
+
+  it('opens native views for items, looking and the level map', () => {
+    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const inventory = contextActions(base).find((a) => a.id === 'inventory');
+    assert.deepEqual(inventory?.effect, { kind: 'native', view: 'inventory' });
+    assert.deepEqual(contextActions({ ...base, looking: true }).map((a) => a.id), ['lookdone']);
+    assert.deepEqual(contextActions({ ...base, overview: true }).map((a) => a.id), ['overviewdone']);
+    const sheet = COMMAND_GROUPS.flatMap((g) => g.commands);
+    assert.equal(sheet.find((c) => c.label === 'Inventory')?.native, 'inventory');
+    assert.equal(sheet.find((c) => c.label === 'Look')?.native, 'look');
+  });
+
+  it('recognises quantity and typed-text prompts', () => {
+    assert.equal(classifyPrompt('Quantity (1-6): 1'), 'quantity');
+    assert.equal(classifyPrompt('Inscription: ', true), 'text');
+    assert.equal(classifyPrompt('Inscription: '), 'other');
+    assert.equal(classifyPrompt('Jump to level? ', true), 'other');
+  });
+
+  it('recognises yes/no prompts with extra answers', () => {
+    assert.equal(classifyPrompt('Buy 2 Wooden Torches? [y/n/RET/ESC]'), 'yesno');
   });
 });

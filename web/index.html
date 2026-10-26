@@ -22,8 +22,10 @@
       <div id="stage" aria-label="Game screen">
         <canvas id="fx" aria-hidden="true"></canvas>
         <canvas id="map" role="img" aria-label="Dungeon map"></canvas>
-        <canvas id="screen" role="img" aria-label="ToME 2 terminal"></canvas>
         <div id="messages" aria-live="polite"></div>
+        <div id="look-banner" hidden>Tap anything on the map to look at it</div>
+        <button id="recentre" type="button" hidden aria-label="Back to your hero">⌖ Centre</button>
+        <div id="look-card" role="status" aria-live="polite" hidden></div>
         <div id="toast" role="status" aria-live="polite"></div>
       </div>
       <aside id="hud" aria-label="Character and nearby creatures"></aside>
@@ -39,6 +41,7 @@
         enterkeyhint="send"
         aria-label="Keyboard input"
       />
+      <input id="import-file" type="file" accept=".tome2save,application/json" hidden />
     </main>
 
     <div id="title-screen" role="dialog" aria-modal="true" aria-labelledby="title-heading">
@@ -52,85 +55,59 @@
           <span>One Ring to bring them all and in the darkness bind them.</span>
           <cite>J.R.R. Tolkien</cite>
         </blockquote>
+        <div class="title-intro" aria-live="polite" hidden></div>
         <div class="title-spacer"></div>
         <div class="title-footer">
           <div class="title-progress" aria-hidden="true"><div class="title-progress-fill"></div></div>
           <p class="title-status" role="status" aria-live="polite">Kindling the fires…</p>
-          <button type="button" class="title-begin" hidden>Enter Middle-earth</button>
-          <button type="button" class="title-theme" hidden>Play the Theme module</button>
-          <div class="title-actions"></div>
+          <div class="title-choices" hidden></div>
+          <div class="title-links" hidden>
+            <button type="button" class="title-link" data-link="settings">Settings</button>
+            <span aria-hidden="true">·</span>
+            <button type="button" class="title-link" data-link="saves">Saves</button>
+            <span aria-hidden="true">·</span>
+            <a class="title-link" href="?module=theme">Theme module</a>
+          </div>
           <p class="title-credits">ToME by DarkGod &amp; contributors · of the Angband lineage</p>
         </div>
       </div>
     </div>
 
-    <dialog id="menu">
-      <h2>Menu</h2>
-      <div class="menu-actions">
-        <button type="button" data-menu="export">Export saves</button>
-        <button type="button" data-menu="import">Import saves</button>
-        <button type="button" data-menu="settings">Display settings</button>
-        <button type="button" data-menu="history">Message history</button>
-        <button type="button" data-menu="help">Controls</button>
-        <button type="button" data-menu="about">About</button>
-        <button type="button" data-menu="close">Close</button>
-      </div>
-      <input id="import-file" type="file" accept=".tome2save,application/json" hidden />
-    </dialog>
-
-    <dialog id="info">
-      <div id="info-body"></div>
-      <form method="dialog"><button type="submit">Close</button></form>
-    </dialog>
-
-    <dialog id="commands">
-      <h2>Commands</h2>
-      <div id="commands-body"></div>
-      <form method="dialog"><button type="submit">Close</button></form>
-    </dialog>
-
-    <dialog id="settings">
-      <h2>Display settings</h2>
-      <form id="settings-form" method="dialog">
-        <fieldset>
-          <legend>Animation</legend>
-          <label><input type="radio" name="animation" value="full" /> Full</label>
-          <label><input type="radio" name="animation" value="reduced" /> Reduced</label>
-          <label><input type="radio" name="animation" value="off" /> Off</label>
-        </fieldset>
-        <fieldset>
-          <legend>Map glyphs</legend>
-          <label><input type="radio" name="glyphs" value="brogue" /> Brogue-style</label>
-          <label><input type="radio" name="glyphs" value="classic" /> Classic ASCII</label>
-        </fieldset>
-        <fieldset>
-          <legend>Map zoom</legend>
-          <input type="range" name="zoom" min="12" max="48" step="1" aria-label="Map zoom" />
-        </fieldset>
-        <button type="submit">Done</button>
-      </form>
-    </dialog>
-
     <template id="help-template">
-      <h2>Controls</h2>
+      <h3>Moving</h3>
       <ul>
-        <li><strong>Tap</strong> a place on the map to travel there; tap again to stop.</li>
-        <li><strong>Swipe</strong> on the map to walk; a long swipe runs.</li>
-        <li>When aiming, tap a creature or place to target it.</li>
-        <li>Tap a line in a menu or list to choose it.</li>
-        <li>The bar at the bottom offers actions for what is happening now; <strong>More</strong> lists every command.</li>
-        <li><strong>Pinch</strong> the map to zoom.</li>
-        <li>Tap a creature or item in the list to highlight it on the map.</li>
-        <li>Tap the messages to see the history; tap <em>more ▸</em> to continue.</li>
-        <li><strong>⌨</strong> opens the keyboard for commands and text.</li>
-
-        <li>With a hardware keyboard, arrow keys walk and Shift+arrow runs.</li>
+        <li><strong>Tap</strong> a place on the map to walk there. Tap again to stop.</li>
+        <li><strong>Tap</strong> a creature next to you to attack it.</li>
+        <li><strong>Drag</strong> the map to look around without moving. Your next move brings the view back, or tap <em>Centre</em>.</li>
+        <li><strong>Pinch</strong> to zoom the map.</li>
+      </ul>
+      <h3>Looking and information</h3>
+      <ul>
+        <li><strong>Press and hold</strong> anything on the map, or use <em>Look</em> and tap, to see what it is.</li>
+        <li>Tap a creature or item in the list under the map for details and actions.</li>
+        <li>Tap your name or health bars for your character sheet.</li>
+        <li>Tap the messages for the full message log.</li>
+      </ul>
+      <h3>Items and menus</h3>
+      <ul>
+        <li><strong>Items</strong> shows your pack and equipment. Tap an item to use, wear, drop or read about it.</li>
+        <li>In any list, tap a line to choose it. Arrow keys, or swiping, move the highlight; Enter chooses it.</li>
+        <li>Tap outside a panel, or press Escape, to close it.</li>
+        <li>The bar at the bottom shows what you can do now. <strong>More</strong> lists every command.</li>
+      </ul>
+      <h3>Keyboard</h3>
+      <ul>
+        <li>With a hardware keyboard, arrow keys walk and Shift+arrow runs. All the classic ToME keys work.</li>
+        <li><strong>⌨</strong> opens the on-screen keyboard for commands and text.</li>
+      </ul>
+      <h3>Saving</h3>
+      <ul>
+        <li>The game saves when you leave the app. <em>Menu → Save and quit</em> saves and returns to the title screen.</li>
         <li>Saves are kept in this browser. Use <em>Export saves</em> to back them up.</li>
       </ul>
     </template>
 
     <template id="about-template">
-      <h2>About</h2>
       <p>
         A mobile web port of <strong>ToME 2</strong> (Tales of Middle-earth), based on
         <a href="https://github.com/tome2/tome2" target="_blank" rel="noopener">tome2/tome2</a>.

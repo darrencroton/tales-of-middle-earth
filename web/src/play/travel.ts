@@ -4,13 +4,13 @@ import {
   CAVE_SEEN,
   LAYER_MASK,
   LAYER_MONSTER,
+  isHostile,
   type LevelSnapshot,
   type MonsterState,
 } from '../render/snapshot.ts';
 import { findPath, type Point, type TravelGrid } from './pathfinding.ts';
 import { directionDigit } from './prompts.ts';
 
-const MSTATUS_FRIEND = 2;
 const MAX_STEPS = 400;
 const DANGER_RADIUS = 2;
 const BACKSLASH = 92;
@@ -58,7 +58,7 @@ export function travelGrid(snap: LevelSnapshot, materials: readonly Material[]):
 }
 
 function hostile(m: MonsterState): boolean {
-  return m.status < MSTATUS_FRIEND;
+  return isHostile(m);
 }
 
 /**

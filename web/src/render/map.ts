@@ -2,7 +2,7 @@ import { cellAppearance, type GlyphMode } from './appearance.ts';
 import { BASE_ATTR_COLOURS, scale, toCss, type RGB } from './colour.ts';
 import { computeEmissive, type LightSource } from './lighting.ts';
 import { attrColour, type Material } from './materials.ts';
-import type { LevelSnapshot } from './snapshot.ts';
+import { LAYER_MASK, LAYER_OBJECT, type LevelSnapshot } from './snapshot.ts';
 
 export interface MapEffect {
   x: number;
@@ -32,6 +32,8 @@ const ACCENT: RGB = [0.85, 0.64, 0.25];
  */
 export class MapRenderer {
   zoom = 22;
+  /** Shows the whole level scaled to fit, instead of following the player. */
+  overview = false;
   glyphMode: GlyphMode = 'brogue';
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
@@ -43,8 +45,12 @@ export class MapRenderer {
   private highlight: MapPoint | null = null;
   private highlightUntil = 0;
   private reticle: MapPoint | null = null;
+  private lookCell: MapPoint | null = null;
   private camX = Number.NaN;
   private camY = Number.NaN;
+  private panX = 0;
+  private panY = 0;
+  private panning = false;
   private dpr = 1;
   private cssWidth = 0;
   private cssHeight = 0;
@@ -116,6 +122,52 @@ export class MapRenderer {
     };
   }
 
+  /** True while the view is moved away from the player by dragging. */
+  get panned(): boolean {
+    return this.panX !== 0 || this.panY !== 0;
+  }
+
+  /** Moves the view by a drag of (dx, dy) CSS pixels, without moving the player. */
+  panBy(dx: number, dy: number): void {
+    const cellH = this.zoom;
+    const cellW = Math.max(1, Math.round(this.zoom * CELL_ASPECT));
+    this.panX -= dx / cellW;
+    this.panY -= dy / cellH;
+    this.panning = true;
+    this.clampPan();
+  }
+
+  /** Ends a drag; the view stays where it was left. */
+  endPan(): void {
+    this.panning = false;
+  }
+
+  /** Returns the view to the player. */
+  resetPan(): void {
+    this.panX = 0;
+    this.panY = 0;
+    this.panning = false;
+  }
+
+  private clampPan(): void {
+    const snap = this.snap;
+    if (!snap) return;
+    const { cols, rows } = this.viewportCells();
+    const limit = (pan: number, focus: number, span: number, size: number) => {
+      if (size <= span) return 0;
+      const lo = span / 2 - span * 0.25;
+      const hi = size - span / 2 + span * 0.25;
+      return Math.max(lo, Math.min(hi, focus + pan)) - focus;
+    };
+    this.panX = limit(this.panX, snap.px + 0.5, cols, snap.width);
+    this.panY = limit(this.panY, snap.py + 0.5, rows, snap.height);
+  }
+
+  /** Marks the cell being looked at. */
+  setLookCell(point: MapPoint | null): void {
+    this.lookCell = point;
+  }
+
   setReticle(point: MapPoint | null): void {
     this.reticle = point;
   }
@@ -163,15 +215,23 @@ export class MapRenderer {
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     if (!snap || snap.width === 0 || this.materials.length === 0) return;
 
-    const cellH = this.zoom * this.dpr;
-    const cellW = Math.max(1, Math.round(this.zoom * CELL_ASPECT)) * this.dpr;
+    let cellH = this.zoom * this.dpr;
+    let cellW = Math.max(1, Math.round(this.zoom * CELL_ASPECT)) * this.dpr;
+    if (this.overview) {
+      const fit = Math.min(this.canvas.width / (snap.width * CELL_ASPECT), this.canvas.height / snap.height);
+      cellH = fit;
+      cellW = fit * CELL_ASPECT;
+    }
     const cols = this.canvas.width / cellW;
     const rows = this.canvas.height / cellH;
 
-    const focus = this.reticle ?? { x: snap.px, y: snap.py };
+    const focus = this.reticle ?? { x: snap.px + this.panX, y: snap.py + this.panY };
     const targetX = this.clampCamera(focus.x + 0.5, cols, snap.width);
     const targetY = this.clampCamera(focus.y + 0.5, rows, snap.height);
-    if (Number.isNaN(this.camX) || !animate) {
+    if (this.overview) {
+      this.camX = snap.width / 2;
+      this.camY = snap.height / 2;
+    } else if (Number.isNaN(this.camX) || !animate || this.panning) {
       this.camX = targetX;
       this.camY = targetY;
     } else {
@@ -189,6 +249,7 @@ export class MapRenderer {
     const y1 = Math.min(snap.height - 1, Math.ceil(originY + rows));
 
     const fontPx = Math.max(1, Math.floor(Math.min(cellH * 0.86, cellW / 0.6)));
+    const tiny = fontPx < 7;
     const font = `${fontPx}px ${MAP_FONT}`;
     ctx.font = font;
     if (font !== this.glyphFont) {
@@ -218,6 +279,14 @@ export class MapRenderer {
         const width = px(x + 1) - left;
         ctx.fillStyle = toCss(cell.bg);
         ctx.fillRect(left, top, width, height);
+        if (tiny) {
+          const layer = snap.layer[y * snap.width + x] & LAYER_MASK;
+          if (layer >= LAYER_OBJECT) {
+            ctx.fillStyle = toCss(cell.fg);
+            ctx.fillRect(left, top, Math.max(1, width), Math.max(1, height));
+          }
+          continue;
+        }
         if (!cell.solid && cell.glyph !== ' ') {
           ctx.fillStyle = toCss(cell.fg);
           ctx.fillText(cell.glyph, left + width / 2, top + height / 2 + this.glyphOffset(cell.glyph, cell.terrain));
@@ -251,6 +320,23 @@ export class MapRenderer {
         ctx.arc(px(p.x) + cellW / 2, py(p.y) + cellH / 2, i === this.path.length - 1 ? dot * 1.8 : dot, 0, Math.PI * 2);
         ctx.fill();
       });
+    }
+
+    if (this.overview) {
+      const radius = Math.max(7 * this.dpr, cellH * 2.5);
+      ctx.strokeStyle = toCss(scale(ACCENT, 0.7 + 0.3 * pulse));
+      ctx.lineWidth = Math.max(2, 2 * this.dpr);
+      ctx.beginPath();
+      ctx.arc(px(snap.px) + cellW / 2, py(snap.py) + cellH / 2, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = line;
+    }
+
+    if (this.lookCell) {
+      ctx.strokeStyle = toCss(scale(ACCENT, 0.6 + 0.4 * pulse));
+      ctx.lineWidth = line * 1.5;
+      ctx.strokeRect(px(this.lookCell.x) + line, py(this.lookCell.y) + line, cellW - line * 2, cellH - line * 2);
+      ctx.lineWidth = line;
     }
 
     if (this.reticle) {
@@ -301,6 +387,8 @@ export class MapRenderer {
   }
 
   private clampCamera(focus: number, span: number, size: number): number {
-    return size <= span ? size / 2 : focus;
+    if (size <= span) return size / 2;
+    if (!this.panned) return focus;
+    return Math.max(span / 2 - span * 0.25, Math.min(size - span / 2 + span * 0.25, focus));
   }
 }

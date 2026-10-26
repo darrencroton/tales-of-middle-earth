@@ -267,6 +267,49 @@ public:
 	}
 };
 
+/*
+ * Off-screen terminal that swallows drawing, so engine text routines can be
+ * run for the web UI without touching the visible screen.
+ */
+class NullFrontend final : public Frontend {
+
+public:
+	void init() final { }
+	void nuke() final { }
+	void process_event(bool) final { }
+	bool soft_cursor() const final { return true; }
+	bool icky_corner() const final { return false; }
+	void flush_events() final { }
+	void process_queued_events() final { }
+	void clear() final { }
+	void flush_output() final { }
+	void noise() final { }
+	void react() final { }
+	void rename_main_window(std::string_view) final { }
+	void draw_cursor(int, int) final { }
+	void draw_text(int, int, int, byte, const char *) final { }
+};
+
+static term *scratch_term = nullptr;
+static term *saved_term = nullptr;
+
+void web_scratch_term_begin()
+{
+	if (!scratch_term)
+	{
+		scratch_term = term_init(80, 24, 16, std::make_shared<NullFrontend>());
+	}
+
+	saved_term = Term;
+	Term_activate(scratch_term);
+}
+
+void web_scratch_term_end()
+{
+	Term_activate(saved_term);
+	saved_term = nullptr;
+}
+
 static void (*previous_quit_aux)(const char *) = nullptr;
 
 static void hook_quit(const char *str)

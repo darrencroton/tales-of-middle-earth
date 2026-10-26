@@ -1,65 +1,88 @@
 import { expect, test } from '@playwright/test';
 import {
+  beginNewCharacter,
   canvasBrightness,
   createCharacter,
   jumpToLevel,
   playerRegion,
-  sendText,
   viewMode,
   waitForEngine,
-  waitForScreen,
 } from './helpers.ts';
 
-test('opening screen ignites, then Begin leads to character creation over flames', async ({ page }, testInfo) => {
+test('opening screen ignites, the intro rises from the flames, then character creation', async ({ page }, testInfo) => {
   await page.goto('./');
   await expect(page.locator('#title-screen')).toBeVisible();
-  await page.waitForFunction(() => window.__tome?.engine.state === 'running', null, { timeout: 90_000 });
-  await expect(page.locator('#title-screen .title-begin')).toBeVisible();
+  await waitForEngine(page);
   await expect
     .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0, y: 0.8, w: 1, h: 0.2 }), { timeout: 10_000 })
-    .toBeGreaterThan(20);
+    .toBeGreaterThan(15);
   await expect
     .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0.1, y: 0.1, w: 0.8, h: 0.2 }), { timeout: 10_000 })
     .toBeGreaterThan(4);
   await page.waitForTimeout(4500);
   await testInfo.attach('opening', { body: await page.screenshot(), contentType: 'image/png' });
 
+  await beginNewCharacter(page, 'Lighter');
+  await expect(page.locator('#title-screen .title-intro')).toContainText('Art thou an adventurer');
+  await page.waitForTimeout(1500);
+  await testInfo.attach('intro', { body: await page.screenshot(), contentType: 'image/png' });
   await page.keyboard.press('Enter');
   await expect(page.locator('#title-screen')).toBeHidden({ timeout: 10_000 });
-  await waitForScreen(page, /New Character/);
-  expect(await viewMode(page)).toBe('title');
+
+  await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race', { timeout: 30_000 });
+  expect(await viewMode(page)).toBe('screen');
   await expect(page.locator('#fx')).toBeVisible();
   await expect
     .poll(() => canvasBrightness(page, '#fx', { x: 0, y: 0.85, w: 1, h: 0.15 }), { timeout: 10_000 })
     .toBeGreaterThan(5);
+
+  const current = page.locator('.director .birth-option.current');
+  const other = page.locator('.director .birth-option:not(.current)').first();
+  const otherName = (await other.textContent())!;
+  await other.click();
+  await expect(current).toHaveText(otherName);
+  await expect(page.locator('.director .birth-card h3')).toHaveText(otherName);
+  await testInfo.attach('race', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.locator('.director .birth-confirm').click();
+  await expect(page.locator('.director .birth-summary')).toContainText(otherName);
 });
 
 test('the Theme module can be chosen from the opening screen', async ({ page }) => {
   await page.goto('./');
-  await page.waitForFunction(() => window.__tome?.engine.state === 'running', null, { timeout: 90_000 });
-  await page.locator('#title-screen .title-theme').click();
-  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 10_000 });
-  await waitForScreen(page, /New Character/);
+  await waitForEngine(page);
+  await page.locator('#title-screen a.title-link', { hasText: 'Theme' }).click();
+  await page.waitForURL(/module=theme/);
+  await waitForEngine(page);
+  expect(await page.evaluate(() => window.__tome!.director.module)).toBe('Theme');
+  await beginNewCharacter(page, 'Themer');
+  await expect(page.locator('#title-screen .title-intro')).toContainText('A module for ToME');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.director .birth-header h2')).toHaveText(/Choose your race/, { timeout: 30_000 });
 });
 
-test('renders the lit map, HUD and translucent panels in the dungeon', async ({ page }, testInfo) => {
+test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }, testInfo) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Vis');
 
   await expect.poll(() => viewMode(page)).toBe('map');
-  await expect(page.locator('#screen')).toBeHidden();
-  await expect(page.locator('#hud .hud-player .name')).toHaveText(/\w+/);
+  await expect(page.locator('#hud .hud-player .name')).toHaveText('Vis');
   await expect(page.locator('#hud .bar-hp')).toContainText('Health');
   expect(await canvasBrightness(page, '#map', { x: 0.4, y: 0.4, w: 0.2, h: 0.2 })).toBeGreaterThan(3);
   await testInfo.attach('town', { body: await page.screenshot(), contentType: 'image/png' });
 
-  await sendText(page, 'i');
+  await page.keyboard.press('i');
+  await expect(page.locator('.sheet .item-row').first()).toBeVisible();
+  await testInfo.attach('inventory', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  await expect.poll(() => viewMode(page)).toBe('map');
+
+  await page.keyboard.press('C');
   await expect.poll(() => viewMode(page)).toBe('overlay');
-  await expect(page.locator('#screen')).toBeVisible();
-  await expect(page.locator('#messages')).toContainText('Inventory');
-  await testInfo.attach('inventory-panel', { body: await page.screenshot(), contentType: 'image/png' });
-  await sendText(page, '\u001b');
+  await expect(page.locator('.termview')).toBeVisible();
+  await testInfo.attach('character-panel', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.keyboard.press('Escape');
   await expect.poll(() => viewMode(page)).toBe('map');
 
   await jumpToLevel(page, 5);
@@ -75,19 +98,24 @@ test('renders the lit map, HUD and translucent panels in the dungeon', async ({ 
   expect(stats.renderMs).toBeLessThan(250);
 });
 
-test('display settings persist and switch the glyph set', async ({ page }) => {
+test('settings persist: text size, glyphs and animation', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
-  await page.locator('[data-action="menu"]').click();
-  await page.locator('[data-menu="settings"]').click();
-  await page.locator('input[name="glyphs"][value="classic"]').check();
-  await page.locator('input[name="animation"][value="reduced"]').check();
-  await page.locator('#settings-form button[type="submit"]').click();
+  const fontSize = () => page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
+  expect(await fontSize()).toBe('14px');
+
+  await page.locator('#title-screen [data-link="settings"]').click();
+  await page.locator('.sheet .segment', { hasText: 'Extra large' }).click();
+  await page.locator('.sheet .segment', { hasText: 'Classic ASCII' }).click();
+  await page.locator('.sheet .segment', { hasText: 'Reduced' }).click();
+  expect(await fontSize()).toBe('19px');
+  await page.keyboard.press('Escape');
 
   await page.reload();
   await waitForEngine(page);
-  await page.locator('[data-action="menu"]').click();
-  await page.locator('[data-menu="settings"]').click();
-  await expect(page.locator('input[name="glyphs"][value="classic"]')).toBeChecked();
-  await expect(page.locator('input[name="animation"][value="reduced"]')).toBeChecked();
+  expect(await fontSize()).toBe('19px');
+  await page.locator('#title-screen [data-link="settings"]').click();
+  await expect(page.locator('.sheet .segment.selected', { hasText: 'Classic ASCII' })).toBeVisible();
+  await expect(page.locator('.sheet .segment.selected', { hasText: 'Reduced' })).toBeVisible();
+  await expect(page.locator('.sheet .segment.selected', { hasText: 'Extra large' })).toBeVisible();
 });

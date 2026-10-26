@@ -14,11 +14,15 @@
 #include "feature_flag.hpp"
 #include "feature_type.hpp"
 #include "game.hpp"
+#include "deity_type.hpp"
+#include "inventory.hpp"
+#include "monster1.hpp"
 #include "monster2.hpp"
 #include "monster_race.hpp"
 #include "monster_race_flag.hpp"
 #include "monster_type.hpp"
 #include "object1.hpp"
+#include "object2.hpp"
 #include "object_flag.hpp"
 #include "object_kind.hpp"
 #include "object_type.hpp"
@@ -29,13 +33,22 @@
 #include "player_type.hpp"
 #include "spells1.hpp"
 #include "store_info_type.hpp"
+#include "tables.hpp"
+#include "util.hpp"
 #include "variable.hpp"
+#include "xtra1.hpp"
 
 #include <emscripten.h>
 
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
+
+/* Off-screen terminal (engine/main-web.cc). */
+void web_scratch_term_begin();
+void web_scratch_term_end();
 
 namespace {
 
@@ -153,6 +166,39 @@ void json_str(std::string &out, char const *key, std::string_view value, bool co
 	json_key(out, key);
 	json_string(out, value);
 	if (comma) out += ',';
+}
+
+void json_object(std::string &out, int index, object_type const *o_ptr)
+{
+	char name[160];
+	object_desc(name, o_ptr, true, 3);
+	auto const flags = object_flags(o_ptr);
+
+	out += '{';
+	json_int(out, "i", index);
+	json_str(out, "name", name);
+	json_int(out, "tval", o_ptr->tval);
+	json_int(out, "number", o_ptr->number);
+	json_int(out, "weight", o_ptr->weight);
+	json_int(out, "ch", static_cast<unsigned char>(object_char(o_ptr)));
+	json_int(out, "attr", object_attr(o_ptr));
+	json_int(out, "wear", wield_slot(o_ptr) >= 0 ? 1 : 0);
+	json_int(out, "activate", (flags & TR_ACTIVATE) ? 1 : 0);
+	json_str(out, "ins", o_ptr->inscription, false);
+	out += '}';
+}
+
+/* text_out() hook collecting coloured runs as JSON [[attr, "text"], ...]. */
+std::string text_runs;
+
+void text_out_to_json(byte a, const char *str)
+{
+	if (!text_runs.empty()) text_runs += ',';
+	text_runs += '[';
+	text_runs += std::to_string(a);
+	text_runs += ',';
+	json_string(text_runs, str);
+	text_runs += ']';
 }
 
 void cell_glyph(int y, int x, uint8_t *glyph, uint8_t *attr, uint8_t *layer, uint8_t *effect)
@@ -445,7 +491,10 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 		json_int(json, "asleep", m_ptr->csleep ? 1 : 0);
 		json_int(json, "afraid", m_ptr->monfear ? 1 : 0);
 		json_int(json, "unique", (r_ptr->flags & RF_UNIQUE) ? 1 : 0);
-		json_int(json, "status", m_ptr->status, false);
+		json_int(json, "status", m_ptr->status);
+		json_int(json, "ridx", m_ptr->r_idx);
+		json_int(json, "ego", m_ptr->ego);
+		json_int(json, "level", r_ptr->level, false);
 		json += '}';
 	}
 	json += "],";
@@ -494,6 +543,207 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 		json += '}';
 	}
 	json += "]}";
+
+	return json.c_str();
+}
+
+
+/*
+ * Returns the pack, equipment and items underfoot as JSON. Item "i" is the
+ * inventory index (equipment from INVEN_WIELD) or minus the o_list index for
+ * floor items.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_inventory_json()
+{
+	json.clear();
+	json += '{';
+
+	if (!(character_dungeon && cave && p_ptr))
+	{
+		json_int(json, "ready", 0, false);
+		json += '}';
+		return json.c_str();
+	}
+
+	json_int(json, "ready", 1);
+	json_int(json, "weight", calc_total_weight());
+	json_int(json, "limit", weight_limit());
+
+	json_key(json, "pack");
+	json += '[';
+	bool first = true;
+	for (int i = 0; i < INVEN_PACK; i++)
+	{
+		object_type const *o_ptr = &p_ptr->inventory[i];
+		if (!o_ptr->k_ptr) continue;
+		if (!first) json += ',';
+		first = false;
+		json_object(json, i, o_ptr);
+	}
+	json += "],";
+
+	json_key(json, "equip");
+	json += '[';
+	first = true;
+	for (int i = INVEN_WIELD; i < INVEN_TOTAL; i++)
+	{
+		int const part = p_ptr->body_parts[i - INVEN_WIELD];
+		if (!part) continue;
+		if (!first) json += ',';
+		first = false;
+		object_type const *o_ptr = &p_ptr->inventory[i];
+		if (o_ptr->k_ptr)
+		{
+			json_object(json, i, o_ptr);
+			json.pop_back();
+			json += ',';
+		}
+		else
+		{
+			json += '{';
+			json_int(json, "i", i);
+			json_int(json, "empty", 1);
+		}
+		json_int(json, "part", part, false);
+		json += '}';
+	}
+	json += "],";
+
+	json_key(json, "floor");
+	json += '[';
+	first = true;
+	for (auto const o_idx : cave[p_ptr->py][p_ptr->px].o_idxs)
+	{
+		object_type const *o_ptr = &o_list[o_idx];
+		if (!o_ptr->k_ptr) continue;
+		if (!first) json += ',';
+		first = false;
+		json_object(json, -o_idx, o_ptr);
+	}
+	json += "]}";
+
+	return json.c_str();
+}
+
+/*
+ * Returns what the player knows about an item (see web_inventory_json for
+ * the index) as plain text, lines separated by newlines.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_object_desc(int item)
+{
+	json.clear();
+
+	if (!(character_dungeon && cave && p_ptr)) return json.c_str();
+	if (item >= INVEN_TOTAL || (item < 0 && -item >= o_max)) return json.c_str();
+
+	object_type *o_ptr = get_object(item);
+	if (!o_ptr->k_ptr) return json.c_str();
+
+	char *buf = nullptr;
+	std::size_t len = 0;
+	FILE *fff = open_memstream(&buf, &len);
+	if (!fff) return json.c_str();
+
+	bool const known = object_out_desc(o_ptr, fff, false, false);
+	fclose(fff);
+
+	if (known && buf) json.assign(buf, len);
+	free(buf);
+	return json.c_str();
+}
+
+/*
+ * Returns the player's recall of a visible monster as JSON
+ * {"name": ..., "text": [[attr, "text"], ...]}.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
+{
+	json.clear();
+
+	if (!(character_dungeon && cave && p_ptr) || m_idx <= 0 || m_idx >= m_max)
+	{
+		json = "{}";
+		return json.c_str();
+	}
+
+	monster_type const *m_ptr = &m_list[m_idx];
+	if (!m_ptr->r_idx || !m_ptr->ml)
+	{
+		json = "{}";
+		return json.c_str();
+	}
+
+	char name[160];
+	monster_desc(name, m_ptr, 0x88);
+
+	auto const previous_hook = text_out_hook;
+	text_runs.clear();
+	web_scratch_term_begin();
+	text_out_hook = text_out_to_json;
+	monster_description_out(m_ptr->r_idx, m_ptr->ego);
+	text_out_hook = previous_hook;
+	web_scratch_term_end();
+
+	json += '{';
+	json_str(json, "name", name);
+	json_key(json, "text");
+	json += '[';
+	json += text_runs;
+	json += "]}";
+	text_runs.clear();
+	return json.c_str();
+}
+
+/*
+ * Returns the character summary shown on the web character sheet.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_character_json()
+{
+	json.clear();
+	json += '{';
+
+	if (!(character_dungeon && cave && p_ptr))
+	{
+		json_int(json, "ready", 0, false);
+		json += '}';
+		return json.c_str();
+	}
+
+	static char const *const stat_names[6] = { "STR", "INT", "WIS", "DEX", "CON", "CHR" };
+
+	json_int(json, "ready", 1);
+	json_key(json, "stats");
+	json += '[';
+	for (int i = 0; i < 6; i++)
+	{
+		char use[32];
+		char top[32];
+		cnv_stat(p_ptr->stat_use[i], use);
+		cnv_stat(p_ptr->stat_top[i], top);
+		if (i) json += ',';
+		json += '{';
+		json_str(json, "name", stat_names[i]);
+		json_str(json, "use", use);
+		json_str(json, "top", top);
+		json_int(json, "drained", p_ptr->stat_cur[i] < p_ptr->stat_max[i] ? 1 : 0, false);
+		json += '}';
+	}
+	json += "],";
+
+	json_str(json, "god", deity_info[p_ptr->pgod].name);
+	json_int(json, "exp", p_ptr->exp);
+	json_int(json, "maxExp", p_ptr->max_exp);
+	json_int(json, "nextExp", p_ptr->lev < PY_MAX_LEVEL ? static_cast<long>(player_exp[p_ptr->lev - 1]) * p_ptr->expfact / 100L : 0);
+	json_int(json, "toHit", p_ptr->dis_to_h);
+	json_int(json, "toDam", p_ptr->dis_to_d);
+	json_int(json, "ac", p_ptr->dis_ac);
+	json_int(json, "toAc", p_ptr->dis_to_a);
+	json_int(json, "blows", p_ptr->num_blow);
+	json_int(json, "shots", p_ptr->num_fire);
+	json_int(json, "infra", p_ptr->see_infra * 10);
+	json_int(json, "maxDepth", max_dlv[dungeon_type]);
+	json_int(json, "turn", turn, false);
+	json += '}';
 
 	return json.c_str();
 }
