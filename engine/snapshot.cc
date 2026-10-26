@@ -62,10 +62,13 @@ enum HeaderSlot {
 	H_PTR_ATTR,
 	H_PTR_LAYER,
 	H_PTR_EFFECT,
+	H_AT_COMMAND,
+	H_TURN,
+	H_FLOOR_OBJECTS,
 	H_COUNT
 };
 
-constexpr int32_t SNAPSHOT_VERSION = 1;
+constexpr int32_t SNAPSHOT_VERSION = 2;
 
 enum Layer : uint8_t {
 	LAYER_UNKNOWN = 0,
@@ -276,6 +279,9 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	header[H_PTR_ATTR] = ptr(attr_buf.data());
 	header[H_PTR_LAYER] = ptr(layer_buf.data());
 	header[H_PTR_EFFECT] = ptr(effect_buf.data());
+	header[H_AT_COMMAND] = (inkey_flag && !character_icky) ? 1 : 0;
+	header[H_TURN] = static_cast<int32_t>(turn);
+	header[H_FLOOR_OBJECTS] = 0;
 
 	if (!ready)
 	{
@@ -298,6 +304,7 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	header[H_HALLUCINATING] = p_ptr->image ? 1 : 0;
 	header[H_PANEL_ROW] = panel_row_min;
 	header[H_PANEL_COL] = panel_col_min;
+	header[H_FLOOR_OBJECTS] = static_cast<int32_t>(cave[p_ptr->py][p_ptr->px].o_idxs.size());
 
 	for (int y = 0; y < h; y++)
 	{

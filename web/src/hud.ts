@@ -199,7 +199,7 @@ export class Hud {
 
     const palette = this.palette();
     const lines: HTMLElement[] = [];
-    let history = messages.filter((m) => m.text.trim() !== '');
+    let history = messages.filter((m) => /[^\s=\-_~*]/.test(m.text));
     if (currentText && history.length && currentText.startsWith(history[0].text.slice(0, 20))) history = history.slice(1);
     const historyCount = currentText ? VISIBLE_MESSAGES - 1 : VISIBLE_MESSAGES;
 

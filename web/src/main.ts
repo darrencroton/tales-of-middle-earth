@@ -1,7 +1,7 @@
 import './styles.css';
 import { Engine } from './engine.ts';
 import { Hud, rowSegments } from './hud.ts';
-import { attachPinch, attachSwipe } from './input/gestures.ts';
+import { attachPinch, attachSwipe, attachTap } from './input/gestures.ts';
 import {
   compositionDelta,
   directionKeys,
@@ -13,7 +13,11 @@ import {
 } from './input/keys.ts';
 import { FireEffect } from './render/fire.ts';
 import { MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
-import { buildMaterials } from './render/materials.ts';
+import { buildMaterials, type FeatureInfo, type Material } from './render/materials.ts';
+import { COMMAND_GROUPS, commandKeys, contextActions, type Action } from './play/actions.ts';
+import { classifyPrompt, directionDigit, isAdjacent, menuChoiceAt } from './play/prompts.ts';
+import { TargetPicker } from './play/targeting.ts';
+import { STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
 import type { GameState, LevelSnapshot } from './render/snapshot.ts';
 import {
   collectFiles,
@@ -36,6 +40,11 @@ declare global {
       sendText(text: string): void;
       mode(): ViewMode;
       stats(): { renderMs: number; zoom: number };
+      tapCell(x: number, y: number): void;
+      mapCellCentre(x: number, y: number): { x: number; y: number };
+      terminalCellCentre(col: number, row: number): { x: number; y: number };
+      actions(): string[];
+      travelling(): boolean;
     };
   }
 }
@@ -46,6 +55,9 @@ const KEYBOARD_SENTINEL = ' ';
 const EFFECT_LINGER_MS = 160;
 const HIGHLIGHT_MS = 2500;
 const MAX_EFFECT_CELLS = 600;
+const TRAVEL_STEP_MS = 45;
+const BACKSLASH = 92;
+const CTRL_S = 0x13;
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -68,7 +80,9 @@ const infoBody = byId<HTMLDivElement>('info-body');
 const settingsDialog = byId<HTMLDialogElement>('settings');
 const settingsForm = byId<HTMLFormElement>('settings-form');
 const importFile = byId<HTMLInputElement>('import-file');
-const ctrlButton = toolbar.querySelector<HTMLButtonElement>('[data-action="ctrl"]');
+const commandsDialog = byId<HTMLDialogElement>('commands');
+const commandsBody = byId<HTMLDivElement>('commands-body');
+const toast = byId<HTMLDivElement>('toast');
 
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 let settings: Settings = loadSettings(reducedMotion);
@@ -86,6 +100,15 @@ let basePanel = { row: -1, col: -1 };
 let lastSnap: LevelSnapshot | null = null;
 let lastState: GameState | null = null;
 let materialsLoaded = false;
+let features: FeatureInfo[] = [];
+let materials: Material[] = [];
+let travel: Travel | null = null;
+let travelTimer = 0;
+let picker: TargetPicker | null = null;
+let lastSavedTurn = -1;
+let autosaveSyncPending = false;
+let currentActions: Action[] = [];
+let actionsKey = '';
 let dirty = true;
 let effectsAt = 0;
 let hasEffects = false;
@@ -108,7 +131,15 @@ const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
 
 function setCtrlLatched(value: boolean): void {
   ctrlLatched = value;
-  ctrlButton?.setAttribute('aria-pressed', String(value));
+  for (const el of document.querySelectorAll('[data-ctrl-toggle]')) el.setAttribute('aria-pressed', String(value));
+}
+
+let toastTimer = 0;
+function showToast(text: string): void {
+  toast.textContent = text;
+  toast.classList.add('visible');
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => toast.classList.remove('visible'), 2200);
 }
 
 /* Opening screen: after Begin, step through tome2's module and news screens. */
@@ -172,11 +203,14 @@ function refresh(): void {
   if (!snap.inDungeon) {
     setMode('title');
     terminal.setMode({ kind: 'full' });
+    updateActionBar();
     return;
   }
 
   if (!materialsLoaded) {
-    map.setMaterials(buildMaterials(engine.features()));
+    features = engine.features();
+    materials = buildMaterials(features);
+    map.setMaterials(materials);
     materialsLoaded = true;
   }
   map.setPalette(buffer.paletteRgb);
@@ -209,6 +243,271 @@ function refresh(): void {
       rowSegments(buffer.chars.subarray(0, buffer.cols), buffer.attrs.subarray(0, buffer.cols), buffer.palette),
     );
   }
+  updateActionBar();
+}
+
+/* Action bar */
+
+function underfootName(snap: LevelSnapshot): string {
+  return features[snap.feat[snap.py * snap.width + snap.px]]?.name.toLowerCase() ?? '';
+}
+
+function updateActionBar(): void {
+  const snap = lastSnap;
+  const actions = contextActions({
+    mode,
+    prompt: classifyPrompt(rowZeroText()),
+    atCommand: !!snap?.atCommand,
+    underfoot: snap && snap.inDungeon ? underfootName(snap) : '',
+    floorObjects: snap?.floorObjects ?? 0,
+  });
+  const key = actions.map((a) => a.id).join(',');
+  if (key === actionsKey) return;
+  actionsKey = key;
+  currentActions = actions;
+  toolbar.replaceChildren(
+    ...actions.map((action) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.action = action.id;
+      button.className = action.primary ? 'action primary' : 'action';
+      button.setAttribute('aria-label', action.label);
+      const icon = document.createElement('span');
+      icon.className = 'action-icon';
+      icon.textContent = action.icon;
+      const label = document.createElement('span');
+      label.className = 'action-label';
+      label.textContent = action.label;
+      button.append(icon, label);
+      return button;
+    }),
+  );
+}
+
+function runAction(action: Action): void {
+  switch (action.effect.kind) {
+    case 'keys':
+      send(action.effect.keys);
+      break;
+    case 'keyboard':
+      if (document.activeElement === keyboardInput) keyboardInput.blur();
+      else keyboardInput.focus();
+      break;
+    case 'menu':
+      menu.showModal();
+      break;
+    case 'commands':
+      commandsDialog.showModal();
+      break;
+    case 'ctrl':
+      setCtrlLatched(!ctrlLatched);
+      break;
+  }
+}
+
+function buildCommandSheet(): void {
+  const sections = COMMAND_GROUPS.map((group) => {
+    const section = document.createElement('section');
+    const heading = document.createElement('h3');
+    heading.textContent = group.title;
+    const grid = document.createElement('div');
+    grid.className = 'command-grid';
+    for (const def of group.commands) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'command';
+      button.dataset.keys = commandKeys(def).join(',');
+      const icon = document.createElement('span');
+      icon.className = 'action-icon';
+      icon.textContent = def.icon;
+      const label = document.createElement('span');
+      label.textContent = def.label;
+      button.append(icon, label);
+      grid.append(button);
+    }
+    section.append(heading, grid);
+    return section;
+  });
+
+  const keys = document.createElement('section');
+  const heading = document.createElement('h3');
+  heading.textContent = 'Keys';
+  const grid = document.createElement('div');
+  grid.className = 'command-grid';
+  const extra: [string, string, string][] = [
+    ['⌨', 'Keyboard', 'keyboard'],
+    ['^', 'Ctrl + next key', 'ctrl'],
+    ['⎋', 'Escape', 'escape'],
+    ['⏎', 'Enter', 'enter'],
+  ];
+  for (const [iconText, labelText, kind] of extra) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'command';
+    button.dataset.special = kind;
+    if (kind === 'ctrl') button.dataset.ctrlToggle = '';
+    const icon = document.createElement('span');
+    icon.className = 'action-icon';
+    icon.textContent = iconText;
+    const label = document.createElement('span');
+    label.textContent = labelText;
+    button.append(icon, label);
+    grid.append(button);
+  }
+  keys.append(heading, grid);
+  commandsBody.replaceChildren(...sections, keys);
+}
+
+commandsBody.addEventListener('click', (e) => {
+  const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button.command');
+  if (!button) return;
+  commandsDialog.close();
+  if (button.dataset.keys) {
+    send(button.dataset.keys.split(',').map(Number));
+    return;
+  }
+  switch (button.dataset.special) {
+    case 'keyboard':
+      keyboardInput.focus();
+      break;
+    case 'ctrl':
+      setCtrlLatched(!ctrlLatched);
+      break;
+    case 'escape':
+      send([KEY_ESCAPE]);
+      break;
+    case 'enter':
+      send([KEY_ENTER]);
+      break;
+  }
+});
+
+buildCommandSheet();
+
+/* Travel and targeting */
+
+function travelContext(): TravelContext | null {
+  if (!lastSnap || !lastState?.player) return null;
+  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp };
+}
+
+function stopAutomation(message: string | null = null): void {
+  window.clearTimeout(travelTimer);
+  travelTimer = 0;
+  travel = null;
+  picker = null;
+  map.setPath(null);
+  if (message) showToast(message);
+  requestFrame();
+}
+
+function stepTravel(): void {
+  travelTimer = 0;
+  const ctx = travelContext();
+  if (!travel || !ctx) return;
+  const step = travel.step(ctx);
+  if (step.kind === 'stop') {
+    stopAutomation(STOP_MESSAGES[step.reason]);
+    return;
+  }
+  map.setPath(step.path);
+  engine.sendKeys(step.keys);
+  requestFrame();
+}
+
+function startTravel(goal: MapPoint): void {
+  const ctx = travelContext();
+  if (!ctx) return;
+  stopAutomation();
+  travel = new Travel(goal, ctx);
+  stepTravel();
+}
+
+function startTargeting(goal: MapPoint): void {
+  stopAutomation();
+  picker = new TargetPicker(goal, lastState?.monsters?.length ?? 0);
+  engine.sendKeys(picker.begin());
+}
+
+function stepTargeting(): void {
+  const snap = lastSnap;
+  if (!picker || !snap) return;
+  const cursor = buffer.cursorY >= 0 ? terminalToDungeon(snap, buffer.cursorX, buffer.cursorY) : null;
+  const prompt = classifyPrompt(rowZeroText());
+  const targeting = !snap.atCommand && prompt !== 'aim' && prompt !== 'more';
+  const step = picker.step(cursor, { x: snap.px, y: snap.py }, targeting);
+  if (step.kind === 'keys') engine.sendKeys(step.keys);
+  else stopAutomation(step.kind === 'fail' ? 'Could not target there.' : null);
+}
+
+/* Taps */
+
+function onStageTap(clientX: number, clientY: number): void {
+  if (title.isVisible) return;
+  if (travel || picker) {
+    stopAutomation();
+    return;
+  }
+  const prompt = classifyPrompt(rowZeroText());
+  if (prompt === 'more') {
+    send([0x20]);
+    return;
+  }
+
+  const snap = lastSnap;
+  if (mode === 'map' && snap) {
+    const cell = map.cellAt(clientX, clientY);
+    if (!cell) return;
+    tapMapCell(snap, cell, prompt);
+    return;
+  }
+
+  const hit = terminal.cellAt(clientX, clientY);
+  if (!hit) return;
+  if (mode === 'overlay' && !hit.inside) {
+    send([KEY_ESCAPE]);
+    return;
+  }
+  const letter = menuChoiceAt(buffer.rowText(hit.y), hit.x);
+  if (letter) send([letter.charCodeAt(0)]);
+  else if (/Press any key/.test(buffer.screenText())) send([0x20]);
+}
+
+function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
+  const player = { x: snap.px, y: snap.py };
+  const near = isAdjacent(player.x, player.y, cell.x, cell.y);
+  const digit = (dx: number, dy: number) => directionKeys(directionDigit(dx, dy) ?? '5', false);
+
+  if (prompt === 'direction') {
+    if (near) send(digit(cell.x - player.x, cell.y - player.y));
+    return;
+  }
+  if (prompt === 'aim') {
+    if (near) send(digit(cell.x - player.x, cell.y - player.y));
+    else startTargeting(cell);
+    return;
+  }
+  if (!snap.atCommand) return;
+  if (cell.x === player.x && cell.y === player.y) {
+    if (snap.floorObjects > 0) send([BACKSLASH, 'g'.charCodeAt(0)]);
+    return;
+  }
+  startTravel(cell);
+}
+
+attachTap(stage, onStageTap);
+
+/* Autosave */
+
+function autosave(): void {
+  const snap = engine.state === 'running' ? engine.snapshot() : null;
+  if (snap && snap.inDungeon && snap.atCommand && !snap.icky && !travel && !picker && snap.turn !== lastSavedTurn) {
+    lastSavedTurn = snap.turn;
+    autosaveSyncPending = true;
+    engine.sendKeys([BACKSLASH, CTRL_S]);
+    return;
+  }
+  engine.syncNow().catch((err) => console.error('Saving to browser storage failed', err));
 }
 
 /** Collects bolt and explosion glyphs drawn over the map during an animation pause. */
@@ -313,6 +612,15 @@ const engine = new Engine(buffer, terminal, {
       hasEffects = false;
     }
     hud.tick();
+    if (autosaveSyncPending) {
+      autosaveSyncPending = false;
+      engine.syncNow().catch((err) => console.error('Autosave sync failed', err));
+    }
+    if (travel && !travelTimer) {
+      travelTimer = window.setTimeout(stepTravel, animating() ? TRAVEL_STEP_MS : 0);
+    } else if (picker) {
+      stepTargeting();
+    }
     requestFrame();
   },
   onEffectFrame() {
@@ -324,6 +632,7 @@ const engine = new Engine(buffer, terminal, {
 
 function send(codes: number[] | null): void {
   if (!codes || codes.length === 0) return;
+  if (travel || picker) stopAutomation();
   engine.sendKeys(codes);
   if (ctrlLatched) setCtrlLatched(false);
 }
@@ -352,17 +661,15 @@ window.addEventListener('resize', updateAppHeight);
 updateAppHeight();
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    engine.syncNow().catch((err) => console.error('Saving to browser storage failed', err));
-  } else {
-    requestFrame();
-  }
+  if (document.visibilityState === 'hidden') autosave();
+  else requestFrame();
 });
+window.addEventListener('pagehide', () => autosave());
 
 /* Hardware keyboard and soft keyboard */
 
 function dialogOpen(): boolean {
-  return menu.open || info.open || settingsDialog.open;
+  return menu.open || info.open || settingsDialog.open || commandsDialog.open;
 }
 
 /** Elements whose own keyboard behaviour (Tab, Enter, Space) must not be taken over. */
@@ -480,30 +787,15 @@ stage.addEventListener(
 
 toolbar.addEventListener('click', (e) => {
   const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
-  if (!button) return;
-  switch (button.dataset.action) {
-    case 'keyboard':
-      if (document.activeElement === keyboardInput) keyboardInput.blur();
-      else keyboardInput.focus();
-      break;
-    case 'escape':
-      send([KEY_ESCAPE]);
-      break;
-    case 'enter':
-      send([KEY_ENTER]);
-      break;
-    case 'ctrl':
-      setCtrlLatched(!ctrlLatched);
-      break;
-    case 'menu':
-      menu.showModal();
-      break;
-  }
+  const action = currentActions.find((a) => a.id === button?.dataset.action);
+  if (action) runAction(action);
 });
 
 /* Toolbar buttons must not steal focus from the soft keyboard. */
 toolbar.addEventListener('pointerdown', (e) => {
-  if ((e.target as HTMLElement).closest('button[data-action]:not([data-action="menu"])')) e.preventDefault();
+  if ((e.target as HTMLElement).closest('button[data-action]:not([data-action="menu"]):not([data-action="commands"])')) {
+    e.preventDefault();
+  }
 });
 
 /* Menu and dialogs */
@@ -646,6 +938,13 @@ window.__tome = {
   sendText: (text) => engine.sendKeys(translateText(text)),
   mode: () => mode,
   stats: () => ({ renderMs: lastRenderMs, zoom: map.zoom }),
+  tapCell: (x, y) => {
+    if (lastSnap) tapMapCell(lastSnap, { x, y }, classifyPrompt(rowZeroText()));
+  },
+  mapCellCentre: (x, y) => map.cellCentre(x, y),
+  terminalCellCentre: (col, row) => terminal.cellCentre(col, row),
+  actions: () => currentActions.map((a) => a.id),
+  travelling: () => travel !== null,
 };
 
 /* Service worker */

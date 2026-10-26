@@ -310,11 +310,12 @@ body {
   padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
   background: var(--panel);
   border-top: 1px solid var(--panel-border);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-#toolbar button,
+#toolbar .action,
 dialog button {
-  flex: 1 1 0;
   min-height: 44px;
   border: 1px solid var(--panel-border);
   border-radius: 8px;
@@ -325,11 +326,96 @@ dialog button {
   touch-action: manipulation;
 }
 
-#toolbar button:active,
-#toolbar button[aria-pressed="true"] {
+#toolbar .action {
+  flex: 1 0 auto;
+  min-width: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 6px;
+}
+
+.action-icon {
+  font-family: var(--mono);
+  font-size: 18px;
+  line-height: 1.1;
+  color: var(--accent);
+}
+
+.action-label {
+  font-size: 11px;
+  line-height: 1.1;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+#toolbar .action.primary {
+  border-color: var(--accent);
+  background: linear-gradient(to bottom, #3b2a12, #24190c);
+  box-shadow: 0 0 10px rgb(217 164 65 / 0.25);
+}
+
+#toolbar .action.primary .action-label {
+  color: var(--fg);
+}
+
+#toolbar .action:active,
+[data-ctrl-toggle][aria-pressed="true"] {
   background: var(--button-active);
   border-color: var(--accent);
-  color: var(--accent);
+}
+
+#toast {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  max-width: calc(100% - 32px);
+  transform: translate(-50%, 8px);
+  padding: 8px 14px;
+  border: 1px solid rgb(217 164 65 / 0.45);
+  border-radius: 8px;
+  background: rgb(12 10 8 / 0.88);
+  color: var(--fg);
+  font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+#toast.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+#commands h3 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.command-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
+}
+
+.command-grid .command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 14px;
+  text-align: left;
+}
+
+#commands .action-icon {
+  width: 1.2em;
+  text-align: center;
 }
 
 #keyboard-input {
@@ -381,7 +467,8 @@ dialog button {
 
   #toolbar {
     flex-direction: column;
-    width: 72px;
+    width: 76px;
+    overflow-y: auto;
     padding: 6px calc(6px + env(safe-area-inset-right)) 6px 6px;
     border-top: 0;
     border-left: 1px solid var(--panel-border);
@@ -676,7 +763,7 @@ dialog button {
 /* Dialogs: translucent panels over the dimmed game. */
 
 dialog {
-  width: min(440px, calc(100vw - 32px));
+  width: min(520px, calc(100vw - 32px));
   max-height: calc(var(--app-height) - 32px);
   overflow: auto;
   border: 1px solid rgb(217 164 65 / 0.45);

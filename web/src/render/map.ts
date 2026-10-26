@@ -46,6 +46,8 @@ export class MapRenderer {
   private cssWidth = 0;
   private cssHeight = 0;
   private lastTime = 0;
+  private path: MapPoint[] = [];
+  private view = { originX: 0, originY: 0, cellW: 1, cellH: 1 };
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -81,6 +83,32 @@ export class MapRenderer {
     if (effects.length === 0 && this.effects.length === 0) return;
     this.effects = effects;
     this.updateEmissive();
+  }
+
+  /** Travel route drawn as a fading trail of dots. */
+  setPath(path: MapPoint[] | null): void {
+    this.path = path ?? [];
+  }
+
+  /** Dungeon cell under a viewport point (CSS pixels), or null off the level. */
+  cellAt(clientX: number, clientY: number): MapPoint | null {
+    if (!this.snap) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const { originX, originY, cellW, cellH } = this.view;
+    const x = Math.floor(((clientX - rect.left) * this.dpr) / cellW + originX);
+    const y = Math.floor(((clientY - rect.top) * this.dpr) / cellH + originY);
+    if (x < 0 || y < 0 || x >= this.snap.width || y >= this.snap.height) return null;
+    return { x, y };
+  }
+
+  /** Viewport point (CSS pixels) at the centre of a dungeon cell. */
+  cellCentre(x: number, y: number): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    const { originX, originY, cellW, cellH } = this.view;
+    return {
+      x: rect.left + ((x - originX + 0.5) * cellW) / this.dpr,
+      y: rect.top + ((y - originY + 0.5) * cellH) / this.dpr,
+    };
   }
 
   setReticle(point: MapPoint | null): void {
@@ -149,6 +177,7 @@ export class MapRenderer {
 
     const originX = this.camX - cols / 2;
     const originY = this.camY - rows / 2;
+    this.view = { originX, originY, cellW, cellH };
     const x0 = Math.max(0, Math.floor(originX));
     const y0 = Math.max(0, Math.floor(originY));
     const x1 = Math.min(snap.width - 1, Math.ceil(originX + cols));
@@ -199,6 +228,18 @@ export class MapRenderer {
     if (this.highlight && performance.now() < this.highlightUntil) {
       ctx.strokeStyle = toCss(scale(ACCENT, pulse));
       ctx.strokeRect(px(this.highlight.x) + line / 2, py(this.highlight.y) + line / 2, cellW - line, cellH - line);
+    }
+
+    if (this.path.length > 0) {
+      const dot = Math.max(2, Math.min(cellW, cellH) * 0.14);
+      this.path.forEach((p, i) => {
+        if (p.x < x0 || p.x > x1 || p.y < y0 || p.y > y1) return;
+        const fade = 1 - i / (this.path.length + 4);
+        ctx.fillStyle = `rgba(217,164,65,${(0.35 + 0.5 * fade) * pulse})`;
+        ctx.beginPath();
+        ctx.arc(px(p.x) + cellW / 2, py(p.y) + cellH / 2, i === this.path.length - 1 ? dot * 1.8 : dot, 0, Math.PI * 2);
+        ctx.fill();
+      });
     }
 
     if (this.reticle) {

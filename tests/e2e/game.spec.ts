@@ -40,7 +40,7 @@ test('loads the engine and lays out the screen without overflow', async ({ page 
   expect(layout.canvasHeight).toBeGreaterThan(0);
   expect(layout.overlap).toBe(false);
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
-  await expect(page.locator('#toolbar button')).toHaveCount(5);
+  expect(await page.locator('#toolbar .action').count()).toBeGreaterThanOrEqual(3);
   expect(errors).toEqual([]);
 });
 

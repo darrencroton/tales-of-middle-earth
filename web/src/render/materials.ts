@@ -33,6 +33,10 @@ export interface Material {
   /** Amplitude of time-varying colour shimmer. */
   dance: number;
   emit: Emission | null;
+  /** The player can walk onto it. */
+  walkable: boolean;
+  /** A door (open or closed). */
+  door: boolean;
 }
 
 const FLOOR_BG: RGB = [0.11, 0.1, 0.09];
@@ -45,6 +49,8 @@ function material(partial: Partial<Material> & Pick<Material, 'bg'>): Material {
     blocksLight: false,
     dance: 0,
     emit: null,
+    walkable: true,
+    door: false,
     ...partial,
   };
 }
@@ -129,10 +135,9 @@ function fallback(f: FeatureInfo): Material {
 
 export function classifyFeature(f: FeatureInfo): Material {
   const name = f.name.toLowerCase();
-  for (const [pattern, make] of RULES) {
-    if (pattern.test(name)) return make(f);
-  }
-  return fallback(f);
+  const rule = RULES.find(([pattern]) => pattern.test(name));
+  const m = rule ? rule[1](f) : fallback(f);
+  return { ...m, walkable: (f.flags & FB_NO_WALK) === 0, door: (f.flags & FB_DOOR) !== 0 };
 }
 
 export function buildMaterials(features: readonly FeatureInfo[]): Material[] {

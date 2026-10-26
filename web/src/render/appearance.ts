@@ -48,6 +48,8 @@ const UNKNOWN_MATERIAL: Material = {
   blocksLight: false,
   dance: 0,
   emit: null,
+  walkable: false,
+  door: false,
 };
 
 export function rememberedColour(c: RGB, brightness: number): RGB {

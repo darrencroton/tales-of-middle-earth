@@ -105,3 +105,35 @@ export function attachPinch(
   element.addEventListener('touchend', end);
   element.addEventListener('touchcancel', end);
 }
+
+export const TAP_MAX_MOVE = 12;
+export const TAP_MAX_MS = 450;
+
+/**
+ * Reports single-pointer taps (touch, pen or mouse) that barely moved.
+ */
+export function attachTap(element: HTMLElement, onTap: (clientX: number, clientY: number) => void): void {
+  const down = new Map<number, { x: number; y: number; t: number }>();
+  let multi = false;
+
+  element.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    down.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
+    if (down.size > 1) multi = true;
+  });
+
+  element.addEventListener('pointerup', (e) => {
+    const start = down.get(e.pointerId);
+    down.delete(e.pointerId);
+    const wasMulti = multi;
+    if (down.size === 0) multi = false;
+    if (!start || wasMulti) return;
+    const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+    if (moved <= TAP_MAX_MOVE && performance.now() - start.t <= TAP_MAX_MS) onTap(e.clientX, e.clientY);
+  });
+
+  element.addEventListener('pointercancel', (e) => {
+    down.delete(e.pointerId);
+    if (down.size === 0) multi = false;
+  });
+}
