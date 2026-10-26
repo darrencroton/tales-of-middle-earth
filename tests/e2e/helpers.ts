@@ -53,6 +53,16 @@ export async function waitForSettle(page: Page, before: string, timeout = 10_000
   return current;
 }
 
+/** Dismisses any pending -more- prompts so the next key reaches the command prompt. */
+export async function dismissMore(page: Page): Promise<string> {
+  let text = await screenText(page);
+  for (let i = 0; i < 10 && /-more-/.test(text.split('\n')[0] ?? ''); i++) {
+    await sendText(page, '\u001b');
+    text = await waitForSettle(page, text, 3_000);
+  }
+  return text;
+}
+
 type Step = [RegExp, string | ((savefile: string) => string)];
 
 /* Prompt/answer pairs for the birth sequence, checked in order. */

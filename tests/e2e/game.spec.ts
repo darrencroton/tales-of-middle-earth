@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import {
   createCharacter,
+  dismissMore,
   findPlayer,
   isOnMap,
   screenText,
@@ -71,6 +72,7 @@ test('creates a character, walks by swipe, saves, and reloads the save', async (
   expect(moved, `player missing after swipe:\n${text}`).not.toBeNull();
   expect(moved).not.toEqual(start);
 
+  await dismissMore(page);
   await sendText(page, '\u0013');
   await waitForScreen(page, /Saving game|Game saved|done/i, 15_000).catch(() => undefined);
   await page.evaluate(() => window.__tome?.engine.syncNow());
