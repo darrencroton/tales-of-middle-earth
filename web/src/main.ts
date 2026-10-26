@@ -35,6 +35,7 @@ import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
 import { TitleScreen } from './title.ts';
 import { titleName, type GameApi } from './ui/api.ts';
 import { GameFeel } from './feel.ts';
+import { Coach } from './ui/coach.ts';
 import { INVEN_WIELD, itemActions, itemMacro, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { openCharacter, openKnowledge } from './ui/character.ts';
 import { el, iconText } from './ui/dom.ts';
@@ -576,6 +577,7 @@ function refresh(): void {
     lastState = state;
     hud.update(state, snap.py, snap.px);
     if (state.player) feel.update(state.player);
+    coach.update(mode === 'map' && snap.atCommand, snap.turn);
     hud.updateMessages(
       state.messages ?? [],
       state.messageTotal ?? 0,
@@ -1182,6 +1184,7 @@ const director = new Director({
 });
 
 const feel = new GameFeel(byId<HTMLElement>('stage'), () => settings.animation);
+const coach = new Coach(byId<HTMLElement>('stage'));
 const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
   onChoose: (choice) => director.choose(choice),
   onSettings: () => openSettingsSheet(),

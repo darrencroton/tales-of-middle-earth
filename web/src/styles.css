@@ -2447,3 +2447,74 @@ button {
   animation: none;
   opacity: 0.6;
 }
+
+/* First-game tips */
+
+.coach {
+  position: absolute;
+  left: 50%;
+  bottom: 0.75rem;
+  z-index: 5;
+  width: min(30rem, calc(100% - 1.5rem));
+  padding: 0.75rem 0.9rem 0.8rem;
+  border: 1px solid rgb(217 164 65 / 0.45);
+  border-radius: 12px;
+  background: rgb(14 11 8 / 0.92);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  transform: translateX(-50%);
+}
+
+.coach-title {
+  margin: 0 0 0.4rem;
+  color: var(--accent-bright);
+  font-weight: 600;
+}
+
+.coach-tips {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 0.6rem;
+  padding: 0;
+  list-style: none;
+  color: var(--fg);
+  font-size: var(--fs-small);
+  line-height: 1.4;
+}
+
+.coach-tips li {
+  display: flex;
+  gap: 0.55rem;
+}
+
+.coach-icon {
+  flex: 0 0 1.2em;
+  color: var(--accent);
+  text-align: center;
+}
+
+.coach-close {
+  display: block;
+  margin-left: auto;
+  min-height: calc(var(--touch) * 0.8);
+  padding: 0 1.1rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: rgb(217 164 65 / 0.15);
+  color: var(--accent-bright);
+  cursor: pointer;
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .coach {
+    left: 0.6rem;
+    bottom: 0.6rem;
+    width: min(22rem, 44%);
+    padding: 0.55rem 0.7rem 0.6rem;
+    transform: none;
+  }
+
+  .coach-tips {
+    gap: 0.2rem;
+    margin-bottom: 0.4rem;
+  }
+}

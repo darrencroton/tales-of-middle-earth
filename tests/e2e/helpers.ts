@@ -104,6 +104,8 @@ export async function createCharacter(page: Page, name: string): Promise<void> {
   expect(await inDungeon(page), `expected the town map, got:\n${await screenText(page)}`).toBe(true);
   await dismissMore(page);
   await waitAtCommand(page);
+  const coach = page.locator('.coach-close');
+  if (await coach.isVisible()) await coach.click();
 }
 
 export async function viewMode(page: Page): Promise<string> {
