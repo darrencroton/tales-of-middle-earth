@@ -5,7 +5,10 @@ import { syncToStorage, type EmscriptenFS } from './saves.ts';
 
 /** Functions the C++ frontend (engine/main-web.cc) calls through Module.tome. */
 export interface TomeBridge {
+  /** Set once saves were loaded; syncing is disabled while unset. */
   storagePath?: string;
+  /** Set when loading saves from IndexedDB failed. */
+  storageError?: string;
   waitKey(): Promise<number>;
   pollKey(): number;
   drawText(x: number, y: number, attr: number, text: Uint8Array): void;
@@ -73,7 +76,7 @@ export class Engine {
   private waiter: ((key: number) => void) | null = null;
   private module: EmscriptenModule | null = null;
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
-  private syncInFlight: Promise<void> | null = null;
+  private syncChain: Promise<void> = Promise.resolve();
   private quitMessage: string | null = null;
   private cursorDrawn = false;
   private readonly buffer: TerminalBuffer;
@@ -127,18 +130,22 @@ export class Engine {
     }
   }
 
-  async syncNow(): Promise<void> {
+  /** Error message when saves could not be loaded, which disables syncing. */
+  get storageError(): string | null {
+    return this.bridge.storageError ?? null;
+  }
+
+  /** Writes the in-memory save tree to IndexedDB; calls are serialised. */
+  syncNow(): Promise<void> {
     if (this.syncTimer) {
       clearTimeout(this.syncTimer);
       this.syncTimer = null;
     }
     const fs = this.fs;
-    if (!fs || !this.savePath) return;
-    if (this.syncInFlight) await this.syncInFlight.catch(() => undefined);
-    this.syncInFlight = syncToStorage(fs).finally(() => {
-      this.syncInFlight = null;
-    });
-    return this.syncInFlight;
+    if (!fs || !this.savePath) return Promise.resolve();
+    const run = this.syncChain.catch(() => undefined).then(() => syncToStorage(fs));
+    this.syncChain = run;
+    return run;
   }
 
   private scheduleSync(): void {
@@ -202,7 +209,11 @@ export class Engine {
       this.module = await createModule({
         tome: this.bridge,
         arguments: args,
-        locateFile: (path) => new URL(path, engineUrl).href,
+        locateFile: (path) => {
+          const url = new URL(path, engineUrl);
+          url.search = new URL(engineUrl).search;
+          return url.href;
+        },
         print: (text) => console.log(text),
         printErr: (text) => console.warn(text),
         setStatus: (text) => {
@@ -227,9 +238,14 @@ export class Engine {
     this.state = 'exited';
     this.waiter = null;
     const message = this.quitMessage ?? (status === 0 ? null : `Exited with status ${status}`);
-    this.syncNow()
-      .catch((err) => console.error('Final save sync failed', err))
-      .finally(() => this.events.onExit(message));
+    this.syncNow().then(
+      () => this.events.onExit(message),
+      (err) => {
+        console.error('Final save sync failed', err);
+        this.state = 'failed';
+        this.events.onError(`The game ended, but saving to browser storage failed (${String(err)}). Recent progress may be lost.`);
+      },
+    );
   }
 
   private fail(message: string): void {

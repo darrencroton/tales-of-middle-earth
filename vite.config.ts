@@ -7,6 +7,19 @@ const root = resolve(import.meta.dirname, 'web');
 const publicDir = resolve(root, 'public');
 const engineFiles = ['engine/tome.js', 'engine/tome.wasm', 'engine/tome.data'];
 
+/** Content hash of the engine build, used to version its URLs so a deploy never mixes old and new engines. */
+function engineVersion(): string {
+  const hash = createHash('sha256');
+  for (const file of engineFiles) {
+    const full = join(publicDir, file);
+    if (!existsSync(full)) return 'dev';
+    hash.update(readFileSync(full));
+  }
+  return hash.digest('hex').slice(0, 12);
+}
+
+const ENGINE_VERSION = engineVersion();
+
 function listFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir).flatMap((name) => {
@@ -35,7 +48,7 @@ function serviceWorker(): Plugin {
       for (const file of listFiles(publicDir)) {
         const path = relative(publicDir, file).split(sep).join('/');
         if (path === 'sw.js' || path.endsWith('.gitignore')) continue;
-        urls.add(`./${path}`);
+        urls.add(engineFiles.includes(path) ? `./${path}?v=${ENGINE_VERSION}` : `./${path}`);
         hash.update(path).update(readFileSync(file));
       }
 
@@ -63,7 +76,9 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) =>
+        Promise.all(keys.filter((key) => key.startsWith('tome2mobile-') && key !== CACHE).map((key) => caches.delete(key))),
+      )
       .then(() => self.clients.claim()),
   );
 });
@@ -99,6 +114,9 @@ export default defineConfig({
     target: 'es2022',
   },
   plugins: [serviceWorker()],
+  define: {
+    __ENGINE_VERSION__: JSON.stringify(ENGINE_VERSION),
+  },
   server: {
     host: true,
   },

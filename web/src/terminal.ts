@@ -82,6 +82,10 @@ export class TerminalBuffer {
       this.attrs[offset + col] = attr;
       if (ch !== BLANK && ch !== 0) this.extendBounds(col, y);
     }
+    if (y === this.cursorY && this.cursorX >= start && this.cursorX < end) {
+      this.cursorX = -1;
+      this.cursorY = -1;
+    }
     this.dirty.add(y);
   }
 
