@@ -6,7 +6,7 @@ import { directionKeys, KEY_BACKSLASH as BACKSLASH, KEY_ENTER, KEY_ESCAPE, trans
 import { attachSoftKeyboard } from './input/softkeyboard.ts';
 import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
-import { MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
+import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, type FeatureInfo, type Material } from './render/materials.ts';
 import { COMMAND_GROUPS, commandKeys, contextActions, pickupCommand, type Action, type CommandDef, type NativeView } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
@@ -608,23 +608,26 @@ function showHits(previous: GameState, next: GameState): void {
   if (mode !== 'map' || (next.player?.status.hallucinating ?? 0) > 0) return;
   const before = new Map((previous.monsters ?? []).map((m) => [m.id, m]));
   const seen = new Set<number>();
+  let marked = false;
+  const mark = (point: MapPoint, text: string, kind: string) => {
+    map.markHit(point);
+    marked = true;
+    const at = map.cellCentre(point.x, point.y);
+    feel.floatAt(at.x, at.y, text, kind);
+  };
   for (const m of next.monsters ?? []) {
     seen.add(m.id);
     const was = before.get(m.id);
-    if (!was || m.hp >= was.hp) continue;
-    map.markHit({ x: m.x, y: m.y });
-    const at = map.cellCentre(m.x, m.y);
-    feel.floatAt(at.x, at.y, `−${was.hp - m.hp}`, isHostile(m) ? 'damage' : 'damage ally');
+    if (was && m.hp < was.hp) mark(m, `−${was.hp - m.hp}`, isHostile(m) ? 'damage' : 'damage ally');
   }
   const fresh = (next.messages ?? []).slice(0, Math.max(0, (next.messageTotal ?? 0) - (previous.messageTotal ?? 0)));
   for (const was of before.values()) {
     if (seen.has(was.id)) continue;
     const name = was.name.toLowerCase();
-    if (!fresh.some((m) => KILLED.test(m.text) && m.text.toLowerCase().includes(name))) continue;
-    map.markHit({ x: was.x, y: was.y });
-    const at = map.cellCentre(was.x, was.y);
-    feel.floatAt(at.x, at.y, 'Slain', 'kill');
+    if (fresh.some((m) => KILLED.test(m.text) && m.text.toLowerCase().includes(name))) mark(was, 'Slain', 'kill');
   }
+  /* With animation off no frames are scheduled, so the flash is cleared explicitly. */
+  if (marked) window.setTimeout(() => requestFrame(), HIT_FLASH_MS + 50);
 }
 
 /* Shops */

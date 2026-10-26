@@ -16,6 +16,8 @@ export interface MapPoint {
   y: number;
 }
 
+/** How long a hurt creature's cell flashes. */
+export const HIT_FLASH_MS = 450;
 export const MIN_ZOOM = 12;
 export const MAX_ZOOM = 48;
 export const CELL_ASPECT = 0.62;
@@ -179,9 +181,9 @@ export class MapRenderer {
     this.foe = point;
   }
 
-  /** Flashes a cell where a creature was just hurt. */
-  markHit(point: MapPoint, durationMs = 450): void {
-    this.hits.push({ ...point, until: performance.now() + durationMs });
+  /** Flashes a cell where a creature was just hurt; the caller redraws once the flash has ended. */
+  markHit(point: MapPoint): void {
+    this.hits.push({ ...point, until: performance.now() + HIT_FLASH_MS });
   }
 
   flashHighlight(point: MapPoint, durationMs = 2500): void {
@@ -325,7 +327,7 @@ export class MapRenderer {
     const now = performance.now();
     this.hits = this.hits.filter((h) => h.until > now);
     for (const hit of this.hits) {
-      const k = (hit.until - now) / 450;
+      const k = (hit.until - now) / HIT_FLASH_MS;
       ctx.fillStyle = `rgba(255,70,50,${(0.45 * k).toFixed(3)})`;
       ctx.fillRect(px(hit.x), py(hit.y), cellW, cellH);
     }
