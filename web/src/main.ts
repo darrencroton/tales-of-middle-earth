@@ -237,6 +237,11 @@ function flash(point: MapPoint): void {
 
 function openEntity(entity: HudEntity): void {
   if (travel || picker) stopAutomation(null, 'entity');
+  if ((lastState?.player?.status.hallucinating ?? 0) > 0) {
+    flash(entity.kind === 'monster' ? entity.monster : entity.object);
+    showToast('You cannot trust your eyes right now.');
+    return;
+  }
   if (entity.kind === 'monster') {
     flash(entity.monster);
     openMonster(api, entity.monster);

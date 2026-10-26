@@ -147,9 +147,14 @@ export function describeCell(api: GameApi, point: MapPoint): CellDescription | n
   const i = point.y * snap.width + point.x;
   const known = (snap.info[i] & (CAVE_MARK | CAVE_SEEN)) !== 0;
   const terrain = known ? (api.features()[snap.feat[i]]?.name ?? 'something') : '';
-  const monsters = (state?.monsters ?? []).filter((m) => m.x === point.x && m.y === point.y);
-  const objects = (state?.objects ?? []).filter((o) => o.x === point.x && o.y === point.y);
   const player = snap.px === point.x && snap.py === point.y;
+  const hallucinating = (state?.player?.status.hallucinating ?? 0) > 0;
+  const here = <T extends { x: number; y: number }>(list: readonly T[] | undefined) => (list ?? []).filter((t) => t.x === point.x && t.y === point.y);
+  if (hallucinating && (here(state?.monsters).length || here(state?.objects).length)) {
+    return { point, text: 'You cannot make out what is there.', monsters: [], objects: [], terrain, known, player };
+  }
+  const monsters = here(state?.monsters);
+  const objects = here(state?.objects);
 
   const things: string[] = [];
   if (player) things.push('yourself');

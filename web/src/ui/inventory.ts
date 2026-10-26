@@ -36,6 +36,7 @@ function tabs(api: GameApi, inventory: InventoryState, current: InventoryTab): H
   for (const [tab, label] of entries) {
     const button = el('button', tab === current ? 'segment selected' : 'segment', label);
     button.type = 'button';
+    button.dataset.nav = '';
     button.setAttribute('role', 'tab');
     button.setAttribute('aria-selected', String(tab === current));
     button.addEventListener('click', () => openInventory(api, tab, true));
