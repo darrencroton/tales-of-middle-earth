@@ -133,7 +133,17 @@ test('tome2 menus show as tappable lists with a movable highlight', async ({ pag
 
   await page.keyboard.press('C');
   await expect.poll(() => viewMode(page)).toBe('overlay');
-  await page.mouse.click(5, 5);
+  const outside = await page.evaluate(() => {
+    const map = document.querySelector('#map')!.getBoundingClientRect();
+    const corners = [
+      [map.left + 3, map.top + 3],
+      [map.right - 3, map.top + 3],
+      [map.left + 3, map.bottom - 3],
+      [map.right - 3, map.bottom - 3],
+    ];
+    return corners.find(([x, y]) => !document.elementFromPoint(x, y)?.closest('.termview, #hud, #toolbar')) ?? corners[0];
+  });
+  await page.mouse.click(outside[0], outside[1]);
   await expect.poll(() => viewMode(page)).toBe('map');
 });
 

@@ -3,9 +3,11 @@ import {
   beginNewCharacter,
   canvasBrightness,
   createCharacter,
+  dismissMore,
   jumpToLevel,
   playerRegion,
   viewMode,
+  waitAtCommand,
   waitForEngine,
 } from './helpers.ts';
 
@@ -87,6 +89,12 @@ test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }
 
   await jumpToLevel(page, 5);
   await expect.poll(() => viewMode(page)).toBe('map');
+  await page.locator('#toolbar [data-action="inventory"]').click();
+  await page.locator('.sheet .item-row', { hasText: 'Torch' }).first().click();
+  await page.locator('.sheet .action-button', { hasText: /^(Wield|Wear)$/ }).click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  await dismissMore(page);
+  await waitAtCommand(page);
   await expect(page.locator('#hud .meta')).toContainText('(L5)');
   await expect
     .poll(async () => canvasBrightness(page, '#map', await playerRegion(page)), { timeout: 10_000 })

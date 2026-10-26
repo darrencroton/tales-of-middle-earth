@@ -313,11 +313,10 @@ export class Director {
     return false;
   }
 
-  /** A tome2 question on the prompt line that the native views would hide. */
+  /** A -more- on the prompt line that the native views would hide (yes/no questions show as a card). */
   private promptShowing(): boolean {
     if (this.phase !== 'birth' && this.phase !== 'loading') return false;
-    const rowZero = this.deps.buffer.rowText(0).trim();
-    return /\[y\/n\]|-more-/.test(rowZero);
+    return /-more-/.test(this.deps.buffer.rowText(0).trim());
   }
 
   /** Toolbar actions for the native screens, or null for the defaults. */

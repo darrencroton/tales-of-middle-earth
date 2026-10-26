@@ -86,6 +86,7 @@ export async function createCharacter(page: Page, name: string): Promise<void> {
 
   for (let i = 0; i < 60 && !(await inDungeon(page)); i++) {
     const candidates = [
+      '.prompt-card .card-button.primary',
       '#toolbar [data-action="yes"]',
       '.director .birth-confirm',
       '#toolbar [data-action="accept"]',
@@ -155,9 +156,22 @@ export async function playerPos(page: Page): Promise<{ x: number; y: number }> {
 
 /** Uses tome2's wizard commands (page loaded with ?wizard) to jump to a dungeon level and wield a torch. */
 export async function jumpToLevel(page: Page, level: number): Promise<void> {
+  const rowZero = async () => (await screenText(page)).split('\n')[0] ?? '';
   let text = await screenText(page);
-  for (const step of ['\u0001', ' ', ' ', 'y', 'j', ' ', `${level}\r`, ' ', ' ', 'w', 'c', ' ']) {
-    await sendText(page, step);
+  await sendText(page, '\u0001');
+  text = await waitForSettle(page, text, 5_000);
+  for (let i = 0; i < 10 && !/Debug Command/.test(await rowZero()); i++) {
+    await sendText(page, /\[y\/n\]/.test(await rowZero()) ? 'y' : ' ');
     text = await waitForSettle(page, text, 5_000);
   }
+  await sendText(page, 'j');
+  text = await waitForSettle(page, text, 5_000);
+  for (let i = 0; i < 5 && !/Jump to level/.test(await rowZero()); i++) {
+    await sendText(page, ' ');
+    text = await waitForSettle(page, text, 5_000);
+  }
+  await sendText(page, `${level}\r`);
+  await waitForSettle(page, text, 5_000);
+  await dismissMore(page);
+  await waitAtCommand(page);
 }
