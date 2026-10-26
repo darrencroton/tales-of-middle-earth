@@ -165,6 +165,19 @@ export async function canvasBrightness(
   );
 }
 
+/** A canvas region (as fractions of the map canvas) centred on the player, so it stays valid when the camera is clamped at an edge. */
+export async function playerRegion(page: Page, size = 0.1): Promise<{ x: number; y: number; w: number; h: number }> {
+  return page.evaluate((s) => {
+    const tome = window.__tome!;
+    const snap = tome.engine.snapshot()!;
+    const centre = tome.mapCellCentre(snap.px, snap.py);
+    const rect = document.querySelector('#map')!.getBoundingClientRect();
+    const fx = (centre.x - rect.left) / rect.width;
+    const fy = (centre.y - rect.top) / rect.height;
+    return { x: Math.max(0, fx - s / 2), y: Math.max(0, fy - s / 2), w: s, h: s };
+  }, size);
+}
+
 /** Uses tome2's wizard commands (page loaded with ?wizard) to jump to a dungeon level and wield a torch. */
 export async function jumpToLevel(page: Page, level: number): Promise<void> {
   let text = await screenText(page);

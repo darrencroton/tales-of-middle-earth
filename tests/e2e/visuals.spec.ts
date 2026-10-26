@@ -3,6 +3,7 @@ import {
   canvasBrightness,
   createCharacter,
   jumpToLevel,
+  playerRegion,
   sendText,
   viewMode,
   waitForEngine,
@@ -65,7 +66,7 @@ test('renders the lit map, HUD and translucent panels in the dungeon', async ({ 
   await expect.poll(() => viewMode(page)).toBe('map');
   await expect(page.locator('#hud .meta')).toContainText('(L5)');
   await expect
-    .poll(() => canvasBrightness(page, '#map', { x: 0.45, y: 0.45, w: 0.1, h: 0.1 }), { timeout: 10_000 })
+    .poll(async () => canvasBrightness(page, '#map', await playerRegion(page)), { timeout: 10_000 })
     .toBeGreaterThan(8);
   await testInfo.attach('dungeon', { body: await page.screenshot(), contentType: 'image/png' });
 
