@@ -142,13 +142,13 @@ export class Sheets {
       this.back();
       return;
     }
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('input, textarea, select')) return;
     if (e.key === 'Backspace' && this.stack.length > 1) {
       e.preventDefault();
       this.back();
       return;
     }
-    const target = e.target as HTMLElement | null;
-    if (target?.closest('input, textarea, select')) return;
     if (this.nav.handleKey(e)) e.preventDefault();
   }
 

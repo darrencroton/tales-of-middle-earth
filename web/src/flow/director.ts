@@ -531,7 +531,7 @@ export class Director {
             'muted',
             kind === 'reroll'
               ? 'Reroll for different attributes, or accept them.'
-              : 'Begin your adventure in the town of Bree, or start over.',
+              : 'Begin your adventure, or start over.',
           ),
         );
         const body = el('div', 'birth-body single');

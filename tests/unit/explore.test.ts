@@ -63,6 +63,17 @@ describe('explore', () => {
   });
 });
 
+describe('explore stops when hurt', () => {
+  it('keeps watching health across targets', () => {
+    const snap = level(['#########', '#@.$....?', '#########']);
+    const explore = new Explore(new Set());
+    const ctx = (px: number, hp: number) => ({ snap: { ...snap, px, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp });
+    assert.equal(explore.step(ctx(1, 10)).kind, 'keys');
+    assert.equal(explore.step(ctx(2, 10)).kind, 'keys');
+    assert.deepEqual(explore.step(ctx(3, 9)), { kind: 'stop', reason: 'hurt' });
+  });
+});
+
 describe('suggested gear', () => {
   const dagger = { i: 0, name: 'a Dagger', tval: 23 } as ItemState;
   const torch = { i: 1, name: '3 Wooden Torches', tval: 39 } as ItemState;

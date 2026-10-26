@@ -74,7 +74,7 @@ test('tapping the map travels there along a known path', async ({ page }) => {
   const after = Math.max(Math.abs(end.x - target!.x), Math.abs(end.y - target!.y));
   const context = `stopped (${cause || 'never started'}) at ${JSON.stringify(end)} from ${JSON.stringify(start)} towards ${JSON.stringify(target)}\n${await screenText(page)}`;
   if (after > 0 && cause !== 'interrupted') {
-    await expect(page.locator('#toast'), context).toContainText(/creature|hurt|blocked/);
+    await expect(page.locator('#toast'), context).toContainText(/near|hurt|blocked/);
   }
   expect(after, context).toBeLessThan(before);
 });

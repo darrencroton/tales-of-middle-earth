@@ -577,7 +577,7 @@ function refresh(): void {
     lastState = state;
     hud.update(state, snap.py, snap.px);
     if (state.player) feel.update(state.player);
-    coach.update(mode === 'map' && snap.atCommand, snap.turn);
+    coach.update(mode === 'map' && snap.atCommand && !looking && lookCard.hidden && !map.overview, snap.turn);
     hud.updateMessages(
       state.messages ?? [],
       state.messageTotal ?? 0,

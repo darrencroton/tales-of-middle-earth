@@ -53,7 +53,7 @@ export function sanitiseSettings(raw: unknown, defaults: Settings): Settings {
     typeof value.zoom === 'number' && Number.isFinite(value.zoom)
       ? Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value.zoom))
       : defaults.zoom;
-  const textSize = typeof value.textSize === 'string' && value.textSize in TEXT_SIZE_PX ? (value.textSize as TextSize) : defaults.textSize;
+  const textSize = typeof value.textSize === 'string' && Object.hasOwn(TEXT_SIZE_PX, value.textSize) ? (value.textSize as TextSize) : defaults.textSize;
   return { animation, glyphs, zoom, textSize };
 }
 

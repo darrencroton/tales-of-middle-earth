@@ -205,7 +205,7 @@ describe('targeting', () => {
 describe('actions', () => {
   it('prefixes commands with a keymap bypass', () => {
     assert.deepEqual(commandKeys({ command: 'R', then: '&\r' }), [92, ...keys('R&\r')]);
-    for (const group of COMMAND_GROUPS) for (const c of group.commands) assert.ok(c.command.length >= 1);
+    for (const group of COMMAND_GROUPS) for (const c of group.commands) assert.ok(c.command.length >= 1 || c.native);
   });
 
   it('offers situational actions for what is underfoot', () => {
@@ -253,6 +253,11 @@ describe('actions', () => {
       ['equip', 'Light'],
     ]);
     assert.deepEqual(fight[0].effect, { kind: 'keys', keys: [92, 59, 54] });
+    const crowded = contextActions({ ...base, foe: '6', gear: 'light', floorObjects: 1, underfoot: 'down staircase' });
+    assert.ok(crowded.length <= 7);
+    assert.deepEqual(crowded.map((a) => a.id), ['attack', 'equip', 'pickup', 'descend', 'inventory', 'commands', 'menu']);
+    const busy = contextActions({ ...base, gear: 'light', underfoot: 'down staircase' }).map((a) => a.id);
+    assert.deepEqual(busy, ['equip', 'descend', 'explore', 'inventory', 'rest', 'commands', 'menu']);
     const sheet = COMMAND_GROUPS.flatMap((g) => g.commands);
     assert.equal(sheet.find((c) => c.label === 'Inventory')?.native, 'inventory');
     assert.equal(sheet.find((c) => c.label === 'Look')?.native, 'look');

@@ -202,7 +202,7 @@ export interface Situation {
   hungry: boolean;
 }
 
-const HEALING = /Cure (Light|Serious|Critical) Wounds|Healing|\bLife\b/i;
+const HEALING = /Cure (Light|Serious|Critical) Wounds|\bHealing\b|\bof Life\b/i;
 
 /**
  * The most useful thing to do with the pack right now: drink a known

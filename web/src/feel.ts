@@ -93,7 +93,11 @@ export class GameFeel {
         vibrate([30, 60, 30]);
         break;
       case 'depth': {
-        const where = event.feet ? `${event.feet} ft · ${event.deeper ? 'Descending' : 'Climbing up'}` : 'A moment of rest';
+        const where = event.feet
+          ? `${event.feet} ft · ${event.deeper ? 'Descending' : 'Climbing up'}`
+          : event.place === 'Town'
+            ? 'A moment of rest'
+            : 'Out in the open';
         this.showBanner(event.place, where, 'depth');
         break;
       }

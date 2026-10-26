@@ -78,6 +78,7 @@ export class Explore {
 
   private readonly isExit: (index: number) => boolean;
   private headingForExit = false;
+  private lastHp: number | null = null;
 
   /**
    * `skip` persists between explorations of the same level; `isExit` marks
@@ -89,6 +90,8 @@ export class Explore {
   }
 
   step(ctx: TravelContext): TravelStep {
+    if (this.lastHp !== null && ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };
+    this.lastHp = ctx.hp;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       if (!this.travel) {
         if (this.targets >= MAX_TARGETS) return { kind: 'stop', reason: 'limit' };

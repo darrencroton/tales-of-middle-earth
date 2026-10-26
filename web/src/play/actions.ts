@@ -86,6 +86,7 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
   {
     title: 'Movement & world',
     commands: [
+      { label: 'Explore', icon: '⇢', command: '', native: 'explore' },
       { label: 'Rest', icon: '☾', command: 'R', then: '&\r' },
       { label: 'Search', icon: '∴', command: 's' },
       { label: 'Open', icon: '⊐', command: 'o' },
@@ -148,8 +149,10 @@ export interface ActionContext {
   foe?: string | null;
 }
 
-/* More buttons than this crowd a phone's toolbar; Look (also a long press) gives way. */
+/* More buttons than this crowd a phone's toolbar. */
 const MAX_MAP_ACTIONS = 7;
+/* Buttons that give way, in order, when the toolbar is full; all are also under More. */
+const OVERFLOW_ORDER = ['look', 'cast', 'rest', 'explore'];
 
 const KEYBOARD: Action = { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } };
 const MENU: Action = { id: 'menu', label: 'Menu', icon: '☰', effect: { kind: 'menu' } };
@@ -276,7 +279,12 @@ export function contextActions(ctx: ActionContext): Action[] {
       { id: 'commands', label: 'More', icon: '⋯', effect: { kind: 'commands' } },
       MENU,
     ];
-    return actions.length > MAX_MAP_ACTIONS ? actions.filter((a) => a.id !== 'look') : actions;
+    for (const id of OVERFLOW_ORDER) {
+      if (actions.length <= MAX_MAP_ACTIONS) break;
+      const index = actions.findIndex((a) => a.id === id);
+      if (index >= 0) actions.splice(index, 1);
+    }
+    return actions;
   }
 
   if (ctx.mode === 'overlay' || ctx.mode === 'screen') return ctx.listShown ? [ESCAPE, MENU] : [ESCAPE, UP, DOWN, MENU];

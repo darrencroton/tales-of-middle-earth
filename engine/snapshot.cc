@@ -671,7 +671,10 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_object_desc(int index)
 	auto const &c_ptr = cave[p_ptr->py][p_ptr->px];
 	if (c_ptr.feat != FEAT_SHOP) return json.c_str();
 
-	auto &stock = town_info[p_ptr->town_num].store[c_ptr.special].stock;
+	auto &stores = town_info[p_ptr->town_num].store;
+	if (c_ptr.special < 0 || static_cast<std::size_t>(c_ptr.special) >= stores.size()) return json.c_str();
+
+	auto &stock = stores[c_ptr.special].stock;
 	if (index < 0 || index >= static_cast<int>(stock.size())) return json.c_str();
 
 	return describe_object(&stock[index]);
