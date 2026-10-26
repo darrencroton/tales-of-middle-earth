@@ -17,7 +17,7 @@ const BACKSLASH = 92;
 const WALK = ';'.charCodeAt(0);
 const OPEN = 'o'.charCodeAt(0);
 
-export type TravelStopReason = 'arrived' | 'monster' | 'hurt' | 'blocked' | 'unreachable' | 'interrupted' | 'limit' | 'explored' | 'item';
+export type TravelStopReason = 'arrived' | 'monster' | 'hurt' | 'blocked' | 'unreachable' | 'interrupted' | 'limit' | 'explored' | 'item' | 'exit';
 
 export type TravelStep =
   | { kind: 'keys'; keys: number[]; path: Point[] }
@@ -40,6 +40,7 @@ export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
   limit: 'You stop to get your bearings.',
   explored: 'Nothing left to explore within reach.',
   item: 'You found something.',
+  exit: 'Explored. The way down is here.',
 };
 
 /** Walkable, known cells; visible monsters block except at the goal. */

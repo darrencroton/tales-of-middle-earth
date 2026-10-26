@@ -142,8 +142,8 @@ export interface ActionContext {
   alwaysPickup: boolean;
   /** In town, where there is nothing to explore. */
   town?: boolean;
-  /** Gear worth equipping from the pack. */
-  gear?: 'weapon' | 'light' | null;
+  /** Something worth using from the pack. */
+  gear?: 'weapon' | 'light' | 'heal' | 'eat' | null;
   /** Direction digit of the weakest hostile creature next to the player. */
   foe?: string | null;
 }
@@ -163,10 +163,16 @@ function command(id: string, label: string, icon: string, def: Pick<CommandDef, 
   return { id, label, icon, effect: { kind: 'keys', keys: commandKeys(def) }, primary };
 }
 
-function gearAction(kind: 'weapon' | 'light'): Action {
-  return kind === 'weapon'
-    ? { id: 'equip', label: 'Wield', icon: '†', effect: { kind: 'native', view: 'equip' }, primary: true }
-    : { id: 'equip', label: 'Light', icon: '☀', effect: { kind: 'native', view: 'equip' }, primary: true };
+const GEAR_ACTIONS: Readonly<Record<'weapon' | 'light' | 'heal' | 'eat', [string, string]>> = {
+  weapon: ['Wield', '†'],
+  light: ['Light', '☀'],
+  heal: ['Heal', '✚'],
+  eat: ['Eat', '◓'],
+};
+
+function gearAction(kind: keyof typeof GEAR_ACTIONS): Action {
+  const [label, icon] = GEAR_ACTIONS[kind];
+  return { id: 'equip', label, icon, effect: { kind: 'native', view: 'equip' }, primary: true };
 }
 
 /** Situational actions for the terrain and items under the player. */

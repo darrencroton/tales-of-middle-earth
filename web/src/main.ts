@@ -1,6 +1,6 @@
 import './styles.css';
 import { Engine } from './engine.ts';
-import { Hud, rowSegments, type HudEntity } from './hud.ts';
+import { Hud, rowSegments, statusLabels, type HudEntity } from './hud.ts';
 import { attachMapGestures, attachPinch } from './input/gestures.ts';
 import {
   compositionDelta,
@@ -276,7 +276,7 @@ function openNative(view: NativeView): void {
       startExplore();
       break;
     case 'equip':
-      equipSuggested();
+      useSuggested();
       break;
     case 'overview':
       setOverview(true);
@@ -623,7 +623,13 @@ function gearSuggestion(): GearSuggestion | null {
   const snap = lastSnap;
   if (!snap?.inDungeon || !snap.atCommand) return null;
   const inventory = engine.inventory();
-  return inventory?.ready ? suggestedGear(inventory, snap.depth > 0) : null;
+  const player = lastState?.player;
+  if (!inventory?.ready || !player) return null;
+  return suggestedGear(inventory, {
+    inDungeon: snap.depth > 0,
+    hurt: player.mhp > 0 && player.chp < player.mhp / 2,
+    hungry: statusLabels(player).some((l) => l === 'Hungry' || l === 'Weak'),
+  });
 }
 
 /** Direction of the weakest hostile creature next to the player, if any. */
@@ -635,10 +641,12 @@ function adjacentFoe(): string | null {
   return foes.length ? directionDigit(foes[0].x - snap.px, foes[0].y - snap.py) : null;
 }
 
-function equipSuggested(): void {
+function useSuggested(): void {
   const gear = gearSuggestion();
-  const wear = gear ? itemActions(gear.item, 'pack').find((a) => a.command === 'w') : undefined;
-  if (gear && wear) runMacro(itemMacro(wear, gear.item, 'pack'));
+  if (!gear) return;
+  const command = gear.kind === 'heal' ? 'q' : gear.kind === 'eat' ? 'E' : 'w';
+  const action = itemActions(gear.item, 'pack').find((a) => a.command === command);
+  if (action) runMacro(itemMacro(action, gear.item, 'pack'));
 }
 
 function updateActionBar(force = false): void {
@@ -831,13 +839,17 @@ function startTravel(goal: MapPoint): void {
   stepTravel();
 }
 
+/* Terrain that leads further down, matching the Descend action. */
+const DOWN_EXIT = /down staircase|shaft down|quest down|quest entrance|path to the next/;
+
 /** Walks to unexplored places until something needs attention. */
 function startExplore(): void {
   const ctx = travelContext();
   if (!ctx) return;
   stopAutomation(null, 'explore');
   recentreMap();
-  travel = new Explore(exploreSkip);
+  const snap = ctx.snap;
+  travel = new Explore(exploreSkip, (i) => DOWN_EXIT.test(features[snap.feat[i]]?.name.toLowerCase() ?? ''));
   stepTravel();
 }
 

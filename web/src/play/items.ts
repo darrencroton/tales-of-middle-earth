@@ -190,18 +190,35 @@ export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace
 }
 
 export interface GearSuggestion {
-  kind: 'weapon' | 'light';
+  kind: 'weapon' | 'light' | 'heal' | 'eat';
   item: ItemState;
 }
 
+export interface Situation {
+  /** Below the town, where a light is needed. */
+  inDungeon: boolean;
+  /** Health under half. */
+  hurt: boolean;
+  hungry: boolean;
+}
+
+const HEALING = /Cure (Light|Serious|Critical) Wounds|Healing|\bLife\b/i;
+
 /**
- * Something useful to equip from the pack: a weapon when none is wielded,
- * or (below the town) a light source when none is lit.
+ * The most useful thing to do with the pack right now: drink a known
+ * healing potion when hurt, eat when hungry, wield a weapon when none is
+ * wielded, or (below the town) light a light source.
  */
-export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>, inDungeon: boolean): GearSuggestion | null {
+export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>, situation: Situation): GearSuggestion | null {
   const equipped = (index: number) => inventory.equip.some((slot) => slot.i === index && slot.name);
-  const weapon = !equipped(INVEN_WIELD) ? inventory.pack.find((i) => WEAPON_TVALS.has(i.tval)) : undefined;
-  if (weapon) return { kind: 'weapon', item: weapon };
-  const light = inDungeon && !equipped(INVEN_LITE) ? inventory.pack.find((i) => i.tval === TV.LITE) : undefined;
-  return light ? { kind: 'light', item: light } : null;
+  const find = (kind: GearSuggestion['kind'], test: (item: ItemState) => boolean): GearSuggestion | null => {
+    const item = inventory.pack.find(test);
+    return item ? { kind, item } : null;
+  };
+  return (
+    (situation.hurt ? find('heal', (i) => (i.tval === TV.POTION || i.tval === TV.POTION2) && HEALING.test(i.name)) : null) ??
+    (situation.hungry ? find('eat', (i) => i.tval === TV.FOOD) : null) ??
+    (!equipped(INVEN_WIELD) ? find('weapon', (i) => WEAPON_TVALS.has(i.tval)) : null) ??
+    (situation.inDungeon && !equipped(INVEN_LITE) ? find('light', (i) => i.tval === TV.LITE) : null)
+  );
 }
