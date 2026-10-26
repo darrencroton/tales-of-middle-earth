@@ -20,6 +20,7 @@ import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
 import { STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
+import { Explore } from './play/explore.ts';
 import { isHostile, type GameState, type LevelSnapshot } from './render/snapshot.ts';
 import {
   collectFiles,
@@ -33,7 +34,8 @@ import { ANIMATION_FPS, applyTextSize, loadSettings, saveSettings, type Settings
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
 import { TitleScreen } from './title.ts';
 import { titleName, type GameApi } from './ui/api.ts';
-import { INVEN_WIELD } from './play/items.ts';
+import { GameFeel } from './feel.ts';
+import { INVEN_WIELD, itemActions, itemMacro, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { openCharacter, openKnowledge } from './ui/character.ts';
 import { el, iconText } from './ui/dom.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
@@ -54,6 +56,7 @@ declare global {
   interface Window {
     __tome?: {
       engine: Engine;
+      feel: GameFeel;
       buffer: TerminalBuffer;
       screenText(): string;
       sendText(text: string): void;
@@ -122,7 +125,9 @@ let lastState: GameState | null = null;
 let materialsLoaded = false;
 let features: FeatureInfo[] = [];
 let materials: Material[] = [];
-let travel: Travel | null = null;
+let travel: Travel | Explore | null = null;
+const exploreSkip = new Set<number>();
+let exploreDepth = -1;
 let travelTimer = 0;
 let lastStopCause = '';
 let picker: TargetPicker | null = null;
@@ -266,6 +271,12 @@ function openNative(view: NativeView): void {
       break;
     case 'lookDone':
       setLooking(false);
+      break;
+    case 'explore':
+      startExplore();
+      break;
+    case 'equip':
+      equipSuggested();
       break;
     case 'overview':
       setOverview(true);
@@ -500,6 +511,10 @@ function refresh(): void {
   }
   map.setPalette(buffer.paletteRgb);
   map.setSnapshot(snap);
+  if (snap.depth !== exploreDepth) {
+    exploreSkip.clear();
+    exploreDepth = snap.depth;
+  }
 
   if (hasEffects && performance.now() - effectsAt > EFFECT_LINGER_MS) {
     map.setEffects([]);
@@ -560,6 +575,7 @@ function refresh(): void {
   if (state) {
     lastState = state;
     hud.update(state, snap.py, snap.px);
+    if (state.player) feel.update(state.player);
     hud.updateMessages(
       state.messages ?? [],
       state.messageTotal ?? 0,
@@ -602,6 +618,29 @@ function underfootName(snap: LevelSnapshot): string {
   return features[snap.feat[snap.py * snap.width + snap.px]]?.name.toLowerCase() ?? '';
 }
 
+/** A weapon or light worth equipping from the pack. */
+function gearSuggestion(): GearSuggestion | null {
+  const snap = lastSnap;
+  if (!snap?.inDungeon || !snap.atCommand) return null;
+  const inventory = engine.inventory();
+  return inventory?.ready ? suggestedGear(inventory, snap.depth > 0) : null;
+}
+
+/** Direction of the weakest hostile creature next to the player, if any. */
+function adjacentFoe(): string | null {
+  const snap = lastSnap;
+  if (!snap?.inDungeon || !snap.atCommand) return null;
+  const foes = (lastState?.monsters ?? []).filter((m) => isHostile(m) && isAdjacent(m.x, m.y, snap.px, snap.py));
+  foes.sort((a, b) => a.hp / Math.max(1, a.maxhp) - b.hp / Math.max(1, b.maxhp));
+  return foes.length ? directionDigit(foes[0].x - snap.px, foes[0].y - snap.py) : null;
+}
+
+function equipSuggested(): void {
+  const gear = gearSuggestion();
+  const wear = gear ? itemActions(gear.item, 'pack').find((a) => a.command === 'w') : undefined;
+  if (gear && wear) runMacro(itemMacro(wear, gear.item, 'pack'));
+}
+
 function updateActionBar(force = false): void {
   const snap = lastSnap;
   const directed = mode === 'screen' ? director.actions() : null;
@@ -623,6 +662,9 @@ function updateActionBar(force = false): void {
       underfoot: snap && snap.inDungeon ? underfootName(snap) : '',
       floorObjects: snap?.floorObjects ?? 0,
       alwaysPickup: alwaysPickup(),
+      gear: gearSuggestion()?.kind ?? null,
+      foe: adjacentFoe(),
+      town: !!snap?.inDungeon && snap.depth === 0 && !snap.wild,
     });
   currentActions = actions;
   const key = actions.map((a) => `${a.id}:${a.label}`).join(',');
@@ -766,7 +808,13 @@ function stepTravel(): void {
   if (!travel || !ctx) return;
   const step = travel.step(ctx);
   if (step.kind === 'stop') {
-    stopAutomation(STOP_MESSAGES[step.reason], step.reason);
+    const dark = step.reason === 'explored' && travel instanceof Explore && gearSuggestion()?.kind === 'light';
+    const message = dark
+      ? 'It is too dark to explore. Tap Light to light your way.'
+      : step.creature
+        ? `You stop: ${titleName(step.creature)} is near.`
+        : STOP_MESSAGES[step.reason];
+    stopAutomation(message, step.reason);
     return;
   }
   map.setPath(step.path);
@@ -780,6 +828,16 @@ function startTravel(goal: MapPoint): void {
   stopAutomation(null, 'new travel');
   recentreMap();
   travel = new Travel(goal, ctx);
+  stepTravel();
+}
+
+/** Walks to unexplored places until something needs attention. */
+function startExplore(): void {
+  const ctx = travelContext();
+  if (!ctx) return;
+  stopAutomation(null, 'explore');
+  recentreMap();
+  travel = new Explore(exploreSkip);
   stepTravel();
 }
 
@@ -1111,6 +1169,7 @@ const director = new Director({
   },
 });
 
+const feel = new GameFeel(byId<HTMLElement>('stage'), () => settings.animation);
 const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
   onChoose: (choice) => director.choose(choice),
   onSettings: () => openSettingsSheet(),
@@ -1470,6 +1529,7 @@ importFile.addEventListener('change', () => {
 
 window.__tome = {
   engine,
+  feel,
   buffer,
   screenText: () => buffer.screenText(),
   sendText: (text) => engine.sendKeys(translateText(text)),

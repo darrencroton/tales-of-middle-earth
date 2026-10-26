@@ -1,6 +1,6 @@
 import type { PromptKind } from './prompts.ts';
 
-export type NativeView = 'inventory' | 'equipment' | 'look' | 'lookDone' | 'character' | 'knowledge' | 'history' | 'overview' | 'overviewDone' | 'finish';
+export type NativeView = 'inventory' | 'equipment' | 'look' | 'lookDone' | 'character' | 'knowledge' | 'history' | 'overview' | 'overviewDone' | 'finish' | 'explore' | 'equip';
 
 export type ActionEffect =
   | { kind: 'keys'; keys: number[] }
@@ -140,7 +140,16 @@ export interface ActionContext {
   underfoot: string;
   floorObjects: number;
   alwaysPickup: boolean;
+  /** In town, where there is nothing to explore. */
+  town?: boolean;
+  /** Gear worth equipping from the pack. */
+  gear?: 'weapon' | 'light' | null;
+  /** Direction digit of the weakest hostile creature next to the player. */
+  foe?: string | null;
 }
+
+/* More buttons than this crowd a phone's toolbar; Look (also a long press) gives way. */
+const MAX_MAP_ACTIONS = 7;
 
 const KEYBOARD: Action = { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } };
 const MENU: Action = { id: 'menu', label: 'Menu', icon: '☰', effect: { kind: 'menu' } };
@@ -152,6 +161,12 @@ const DOWN: Action = { id: 'down', label: 'Down', icon: '▼', effect: { kind: '
 
 function command(id: string, label: string, icon: string, def: Pick<CommandDef, 'command' | 'then'>, primary = false): Action {
   return { id, label, icon, effect: { kind: 'keys', keys: commandKeys(def) }, primary };
+}
+
+function gearAction(kind: 'weapon' | 'light'): Action {
+  return kind === 'weapon'
+    ? { id: 'equip', label: 'Wield', icon: '†', effect: { kind: 'native', view: 'equip' }, primary: true }
+    : { id: 'equip', label: 'Light', icon: '☀', effect: { kind: 'native', view: 'equip' }, primary: true };
 }
 
 /** Situational actions for the terrain and items under the player. */
@@ -243,15 +258,19 @@ export function contextActions(ctx: ActionContext): Action[] {
   }
 
   if (ctx.mode === 'map' && ctx.atCommand) {
-    return [
+    const actions: Action[] = [
+      ...(ctx.foe ? [{ id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true } as Action] : []),
+      ...(ctx.gear ? [gearAction(ctx.gear)] : []),
       ...situationalActions(ctx.underfoot, ctx.floorObjects, ctx.alwaysPickup),
+      ...(ctx.town ? [] : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
       { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
-      command('rest', 'Rest', '☾', { command: 'R', then: '&\r' }),
+      ...(ctx.foe ? [] : [command('rest', 'Rest', '☾', { command: 'R', then: '&\r' })]),
       command('cast', 'Cast', '✦', { command: 'm' }),
       { id: 'look', label: 'Look', icon: '◉', effect: { kind: 'native', view: 'look' } },
       { id: 'commands', label: 'More', icon: '⋯', effect: { kind: 'commands' } },
       MENU,
     ];
+    return actions.length > MAX_MAP_ACTIONS ? actions.filter((a) => a.id !== 'look') : actions;
   }
 
   if (ctx.mode === 'overlay' || ctx.mode === 'screen') return ctx.listShown ? [ESCAPE, MENU] : [ESCAPE, UP, DOWN, MENU];

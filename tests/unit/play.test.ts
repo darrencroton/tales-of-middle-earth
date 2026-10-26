@@ -148,7 +148,7 @@ describe('travel', () => {
     assert.deepEqual(travel.step(ctx(snap)), { kind: 'stop', reason: 'blocked' });
 
     travel = new Travel({ x: 5, y: 0 }, ctx(snap));
-    assert.deepEqual(travel.step(ctx(snap, [monster(7, 5, 5)])), { kind: 'stop', reason: 'monster' });
+    assert.deepEqual(travel.step(ctx(snap, [monster(7, 5, 5)])), { kind: 'stop', reason: 'monster', creature: 'kobold' });
   });
 
   it('ignores known distant or sleeping creatures and allies', () => {
@@ -162,7 +162,7 @@ describe('travel', () => {
     const snap = level(['......'], { x: 0, y: 0 });
     const known = [monster(1, 2, 0)];
     const travel = new Travel({ x: 5, y: 0 }, ctx(snap, known));
-    assert.deepEqual(travel.step(ctx(snap, known)), { kind: 'stop', reason: 'monster' });
+    assert.deepEqual(travel.step(ctx(snap, known)), { kind: 'stop', reason: 'monster', creature: 'kobold' });
   });
 
   it('stops when the engine is no longer waiting for a command', () => {
@@ -246,6 +246,13 @@ describe('actions', () => {
     assert.deepEqual(inventory?.effect, { kind: 'native', view: 'inventory' });
     assert.deepEqual(contextActions({ ...base, looking: true }).map((a) => a.id), ['lookdone']);
     assert.deepEqual(contextActions({ ...base, overview: true }).map((a) => a.id), ['overviewdone']);
+    assert.deepEqual(contextActions(base).find((a) => a.id === 'explore')?.effect, { kind: 'native', view: 'explore' });
+    const fight = contextActions({ ...base, foe: '6', gear: 'light' });
+    assert.deepEqual(fight.slice(0, 2).map((a) => [a.id, a.label]), [
+      ['attack', 'Attack'],
+      ['equip', 'Light'],
+    ]);
+    assert.deepEqual(fight[0].effect, { kind: 'keys', keys: [92, 59, 54] });
     const sheet = COMMAND_GROUPS.flatMap((g) => g.commands);
     assert.equal(sheet.find((c) => c.label === 'Inventory')?.native, 'inventory');
     assert.equal(sheet.find((c) => c.label === 'Look')?.native, 'look');

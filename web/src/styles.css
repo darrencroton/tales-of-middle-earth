@@ -2316,3 +2316,134 @@ button {
   font-size: var(--fs-large);
   font-weight: 600;
 }
+
+/* Game feel */
+
+.feel-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.feel-vignette {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  --strength: 0.6;
+}
+
+.feel-vignette.hurt {
+  background: radial-gradient(ellipse at center, transparent 45%, rgb(200 30 20 / 0.75) 100%);
+  animation: feel-flash 520ms ease-out;
+}
+
+.feel-vignette.levelup {
+  background: radial-gradient(ellipse at center, rgb(255 210 110 / 0.35) 0%, transparent 70%);
+  animation: feel-flash 1400ms ease-out;
+}
+
+@keyframes feel-flash {
+  from {
+    opacity: var(--strength);
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.feel-layer.low::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 55%, rgb(170 20 20 / 0.55) 100%);
+  animation: feel-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes feel-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.feel-banner {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  max-width: calc(100% - 2rem);
+  padding: 0.6rem 1.4rem;
+  border-top: 1px solid rgb(217 164 65 / 0.5);
+  border-bottom: 1px solid rgb(217 164 65 / 0.5);
+  background: linear-gradient(to right, transparent, rgb(10 8 6 / 0.85) 20%, rgb(10 8 6 / 0.85) 80%, transparent);
+  text-align: center;
+  opacity: 0;
+  transform: translate(-50%, -6px);
+  transition:
+    opacity 400ms ease,
+    transform 400ms ease;
+}
+
+.feel-banner.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.feel-banner strong {
+  color: var(--accent-bright);
+  font-size: var(--fs-title);
+  letter-spacing: 0.04em;
+}
+
+.feel-banner.levelup strong {
+  color: #ffd56a;
+  text-shadow: 0 0 12px rgb(255 190 80 / 0.7);
+}
+
+.feel-banner span {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.feel-float {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  font-weight: 700;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px #000;
+  transform: translate(-50%, 0);
+  animation: feel-rise 1400ms ease-out forwards;
+}
+
+.feel-float.gold {
+  color: #ffd56a;
+}
+
+.feel-float.still {
+  animation: none;
+}
+
+@keyframes feel-rise {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -3rem);
+  }
+}
+
+.feel-layer.still.low::before {
+  animation: none;
+  opacity: 0.6;
+}

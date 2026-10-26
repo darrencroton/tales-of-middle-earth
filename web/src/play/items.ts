@@ -1,4 +1,4 @@
-import type { ItemState } from '../render/snapshot.ts';
+import type { InventoryState, ItemState } from '../render/snapshot.ts';
 import { keyCodes, type Macro, type MacroScreen } from './macro.ts';
 
 export type ItemPlace = 'pack' | 'equip' | 'floor';
@@ -20,7 +20,7 @@ export const INVEN_WIELD = 24;
 const BACKSLASH = 92;
 const ENTER = 13;
 
-const TV = {
+export const TV = {
   PARCHMENT: 8,
   CORPSE: 9,
   SHOT: 16,
@@ -43,6 +43,9 @@ const TV = {
 const WEAPON_TVALS = new Set([6, 15, 19, 20, 21, 22, 23, 24]);
 
 /** Equipment slot groups, keyed by their first inventory index. */
+/** Equipment index of the light source slot. */
+export const INVEN_LITE = 36;
+
 export const SLOT_NAMES: Readonly<Record<number, string>> = {
   24: 'Weapon',
   27: 'Launcher',
@@ -184,4 +187,21 @@ export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace
       return;
     }
   }
+}
+
+export interface GearSuggestion {
+  kind: 'weapon' | 'light';
+  item: ItemState;
+}
+
+/**
+ * Something useful to equip from the pack: a weapon when none is wielded,
+ * or (below the town) a light source when none is lit.
+ */
+export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>, inDungeon: boolean): GearSuggestion | null {
+  const equipped = (index: number) => inventory.equip.some((slot) => slot.i === index && slot.name);
+  const weapon = !equipped(INVEN_WIELD) ? inventory.pack.find((i) => WEAPON_TVALS.has(i.tval)) : undefined;
+  if (weapon) return { kind: 'weapon', item: weapon };
+  const light = inDungeon && !equipped(INVEN_LITE) ? inventory.pack.find((i) => i.tval === TV.LITE) : undefined;
+  return light ? { kind: 'light', item: light } : null;
 }

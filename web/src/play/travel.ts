@@ -17,9 +17,11 @@ const BACKSLASH = 92;
 const WALK = ';'.charCodeAt(0);
 const OPEN = 'o'.charCodeAt(0);
 
-export type TravelStopReason = 'arrived' | 'monster' | 'hurt' | 'blocked' | 'unreachable' | 'interrupted' | 'limit';
+export type TravelStopReason = 'arrived' | 'monster' | 'hurt' | 'blocked' | 'unreachable' | 'interrupted' | 'limit' | 'explored' | 'item';
 
-export type TravelStep = { kind: 'keys'; keys: number[]; path: Point[] } | { kind: 'stop'; reason: TravelStopReason };
+export type TravelStep =
+  | { kind: 'keys'; keys: number[]; path: Point[] }
+  | { kind: 'stop'; reason: TravelStopReason; /** The creature that stopped travel. */ creature?: string };
 
 export interface TravelContext {
   snap: LevelSnapshot;
@@ -36,6 +38,8 @@ export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
   unreachable: 'There is no known way there.',
   interrupted: null,
   limit: 'You stop to get your bearings.',
+  explored: 'Nothing left to explore within reach.',
+  item: 'You found something.',
 };
 
 /** Walkable, known cells; visible monsters block except at the goal. */
@@ -75,8 +79,12 @@ export class Travel {
   private steps = 0;
   private finishing = false;
 
-  constructor(goal: Point, start: TravelContext) {
+  private readonly dangerRadius: number;
+
+  /** `dangerRadius`: awake hostile creatures this close stop travel. */
+  constructor(goal: Point, start: TravelContext, dangerRadius = DANGER_RADIUS) {
     this.goal = goal;
+    this.dangerRadius = dangerRadius;
     this.known = new Set(start.monsters.filter(hostile).map((m) => m.id));
     this.lastHp = start.hp;
   }
@@ -97,9 +105,9 @@ export class Travel {
     for (const m of ctx.monsters) {
       if (!hostile(m)) continue;
       if (m.x === this.goal.x && m.y === this.goal.y) continue;
-      if (!this.known.has(m.id)) return { kind: 'stop', reason: 'monster' };
-      if (!m.asleep && Math.max(Math.abs(m.x - pos.x), Math.abs(m.y - pos.y)) <= DANGER_RADIUS) {
-        return { kind: 'stop', reason: 'monster' };
+      if (!this.known.has(m.id)) return { kind: 'stop', reason: 'monster', creature: m.name };
+      if (!m.asleep && Math.max(Math.abs(m.x - pos.x), Math.abs(m.y - pos.y)) <= this.dangerRadius) {
+        return { kind: 'stop', reason: 'monster', creature: m.name };
       }
     }
 
