@@ -89,3 +89,22 @@ describe('helpers', () => {
     assert.deepEqual(directionKeys('9', true), [KEY_BACKSLASH, 46, 57]);
   });
 });
+
+describe('compositionDelta', async () => {
+  const { compositionDelta } = await import('../../web/src/input/keys.ts');
+
+  it('sends only newly composed characters', () => {
+    assert.deepEqual(compositionDelta('', 'a'), { backspaces: 0, text: 'a' });
+    assert.deepEqual(compositionDelta('a', 'ab'), { backspaces: 0, text: 'b' });
+  });
+
+  it('backspaces over replaced or deleted characters', () => {
+    assert.deepEqual(compositionDelta('teh', 'the'), { backspaces: 2, text: 'he' });
+    assert.deepEqual(compositionDelta('abc', 'ab'), { backspaces: 1, text: '' });
+  });
+
+  it('does not backspace over characters that were never sent', () => {
+    assert.deepEqual(compositionDelta('a日', 'a'), { backspaces: 0, text: '' });
+    assert.deepEqual(compositionDelta('a日b', 'a'), { backspaces: 1, text: '' });
+  });
+});

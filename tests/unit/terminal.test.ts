@@ -73,3 +73,15 @@ describe('parseDownloadStatus', () => {
     assert.equal(parseDownloadStatus('Downloading data... (5/0)'), null);
   });
 });
+
+describe('soft cursor', () => {
+  it('is cleared when text is drawn over it', () => {
+    const term = new TerminalBuffer(10, 2);
+    term.setCursor(3, 1);
+    term.drawText(0, 1, 1, bytes('ab'));
+    assert.equal(term.cursorX, 3);
+    term.drawText(2, 1, 1, bytes('xyz'));
+    assert.equal(term.cursorX, -1);
+    assert.equal(term.cursorY, -1);
+  });
+});

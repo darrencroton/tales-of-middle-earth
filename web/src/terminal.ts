@@ -82,6 +82,10 @@ export class TerminalBuffer {
       this.attrs[offset + col] = attr;
       if (ch !== BLANK && ch !== 0) this.extendBounds(col, y);
     }
+    if (y === this.cursorY && this.cursorX >= start && this.cursorX < end) {
+      this.cursorX = -1;
+      this.cursorY = -1;
+    }
     this.dirty.add(y);
   }
 
@@ -206,6 +210,34 @@ export class CanvasRenderer {
     this.ctx = ctx;
   }
 
+  /**
+   * Terminal cell under a viewport point (CSS pixels) and whether it lies
+   * inside the drawn region (the panel, in panel mode).
+   */
+  cellAt(clientX: number, clientY: number): { x: number; y: number; inside: boolean } | null {
+    if (this.mode.kind === 'hidden') return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const region = this.region();
+    const pad = this.mode.kind === 'panel' ? PANEL_PADDING_CELLS : 0;
+    const col = Math.floor(((clientX - rect.left) * this.dpr - this.offsetX) / this.cellW) - pad + region.x0;
+    const row = Math.floor(((clientY - rect.top) * this.dpr - this.offsetY) / this.cellH) - pad + region.y0;
+    const inside = col >= region.x0 - pad && col <= region.x1 + pad && row >= region.y0 - pad && row <= region.y1 + pad;
+    const x = Math.max(0, Math.min(this.buffer.cols - 1, col));
+    const y = Math.max(0, Math.min(this.buffer.rows - 1, row));
+    return { x, y, inside };
+  }
+
+  /** Viewport point (CSS pixels) at the centre of a terminal cell. */
+  cellCentre(col: number, row: number): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    const region = this.region();
+    const pad = this.mode.kind === 'panel' ? PANEL_PADDING_CELLS : 0;
+    return {
+      x: rect.left + (this.offsetX + (col - region.x0 + pad + 0.5) * this.cellW) / this.dpr,
+      y: rect.top + (this.offsetY + (row - region.y0 + pad + 0.5) * this.cellH) / this.dpr,
+    };
+  }
+
   setMode(mode: TerminalMode): void {
     const same =
       mode.kind === this.mode.kind &&
@@ -300,7 +332,7 @@ export class CanvasRenderer {
   }
 
   render(): void {
-    const { ctx, buffer, cellW, cellH } = this;
+    const { ctx, buffer } = this;
 
     if (this.mode.kind === 'hidden') {
       buffer.takeDirtyRows();
@@ -309,6 +341,7 @@ export class CanvasRenderer {
     }
 
     if (this.mode.kind === 'full') this.fitContent();
+    const { cellW, cellH } = this;
     const region = this.region();
     const pad = this.mode.kind === 'panel' ? PANEL_PADDING_CELLS : 0;
     const fontPx = Math.max(1, Math.floor(Math.min(cellH * 0.9, cellW / CHAR_ASPECT)));

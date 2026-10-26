@@ -37,12 +37,13 @@ EM_ASYNC_JS(void, web_mount_storage, (const char *path_ptr), {
 	const path = UTF8ToString(path_ptr);
 	FS.mkdirTree(path);
 	FS.mount(IDBFS, { autoPersist: false }, path);
-	await new Promise((resolve) => {
-		FS.syncfs(true, (err) => {
-			if (err) console.error('IDBFS load failed', err);
-			resolve();
-		});
+	const error = await new Promise((resolve) => {
+		FS.syncfs(true, (err) => resolve(err || null));
 	});
+	if (error) {
+		console.error('IDBFS load failed', error);
+		Module.tome.storageError = String(error);
+	}
 	Module.tome.storagePath = path;
 });
 

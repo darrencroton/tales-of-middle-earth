@@ -60,6 +60,19 @@ export function statusLabels(player: Pick<PlayerState, 'status' | 'food'>): stri
   return labels;
 }
 
+const STRANGE_GLYPHS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+/** Hides a creature's identity while the player is hallucinating. */
+export function disguiseMonster(m: MonsterState): MonsterState {
+  const seed = (m.id * 2654435761) >>> 0;
+  return { ...m, name: 'Something strange', ch: STRANGE_GLYPHS.charCodeAt(seed % STRANGE_GLYPHS.length), attr: 1 + (seed % 15), unique: 0 };
+}
+
+/** Hides an item's identity while the player is hallucinating. */
+export function disguiseObject(o: ObjectState): ObjectState {
+  return { ...o, name: 'Something odd', ch: '&'.charCodeAt(0), attr: 1 + ((o.id * 7) % 15) };
+}
+
 export function sortByDistance<T extends { x: number; y: number }>(items: T[], px: number, py: number): T[] {
   return [...items].sort((a, b) => Math.hypot(a.x - px, a.y - py) - Math.hypot(b.x - px, b.y - py));
 }
@@ -76,7 +89,7 @@ export class Hud {
   private lastStateKey = '';
   private lastMessagesKey = '';
   private turn = 0;
-  private readonly seenAt = new Map<number, number>();
+  private readonly seenAt = new Map<string, number>();
 
   constructor(root: HTMLElement, messagesEl: HTMLElement, palette: () => readonly string[], callbacks: HudCallbacks) {
     this.root = root;
@@ -117,8 +130,11 @@ export class Hud {
     player.append(who, bars, meta, chips);
 
     const list = el('ul', 'hud-entities');
-    for (const m of sortByDistance(state.monsters ?? [], px, py)) list.append(this.monsterItem(m, palette));
-    for (const o of sortByDistance(state.objects ?? [], px, py)) list.append(this.objectItem(o, palette));
+    const hallucinating = (p.status.hallucinating ?? 0) > 0;
+    const monsters = hallucinating ? (state.monsters ?? []).map(disguiseMonster) : (state.monsters ?? []);
+    const objects = hallucinating ? (state.objects ?? []).map(disguiseObject) : (state.objects ?? []);
+    for (const m of sortByDistance(monsters, px, py)) list.append(this.monsterItem(m, palette));
+    for (const o of sortByDistance(objects, px, py)) list.append(this.objectItem(o, palette));
 
     this.root.replaceChildren(player, list);
   }
@@ -166,12 +182,14 @@ export class Hud {
    * messages, which fade as turns pass.
    */
   updateMessages(messages: readonly MessageState[], total: number, current: TextSegment[]): void {
-    for (let age = 0; age < messages.length; age++) {
-      const index = total - 1 - age;
-      if (!this.seenAt.has(index)) this.seenAt.set(index, this.turn);
-    }
-    for (const index of this.seenAt.keys()) {
-      if (index < total - 200) this.seenAt.delete(index);
+    const keyOf = (m: MessageState, age: number) => `${total - 1 - age}\u0000${m.text}`;
+    messages.forEach((m, age) => {
+      const k = keyOf(m, age);
+      if (!this.seenAt.has(k)) this.seenAt.set(k, this.turn);
+    });
+    if (this.seenAt.size > 400) {
+      const keep = new Set(messages.map(keyOf));
+      for (const k of this.seenAt.keys()) if (!keep.has(k)) this.seenAt.delete(k);
     }
 
     const currentText = current.map((s) => s.text).join('').trim();
@@ -181,14 +199,13 @@ export class Hud {
 
     const palette = this.palette();
     const lines: HTMLElement[] = [];
-    let history = messages.filter((m) => m.text.trim() !== '');
+    let history = messages.filter((m) => /[^\s=\-_~*]/.test(m.text));
     if (currentText && history.length && currentText.startsWith(history[0].text.slice(0, 20))) history = history.slice(1);
     const historyCount = currentText ? VISIBLE_MESSAGES - 1 : VISIBLE_MESSAGES;
 
     history.slice(0, historyCount).reverse().forEach((m, i, arr) => {
       const age = arr.length - 1 - i;
-      const index = total - 1 - messages.indexOf(m);
-      const turns = this.turn - (this.seenAt.get(index) ?? this.turn);
+      const turns = this.turn - (this.seenAt.get(keyOf(m, messages.indexOf(m))) ?? this.turn);
       const line = el('div', 'msg', m.text);
       line.style.color = palette[m.color] ?? '#ddd';
       line.style.opacity = String(Math.max(0.22, 0.85 - turns * 0.12 - age * 0.18));

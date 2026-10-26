@@ -44,7 +44,7 @@ The visual design takes inspiration from [Brogue: Community Edition](https://git
   - Flames ignite from the bottom with a flare, and embers drift upward.
   - The title "ToME" is a Brogue-style mosaic of stone cells, lit from below by the flame columns: crimson at the top, molten gold at the base, flickering with the fire.
   - The subtitle and the Ring verse fade in.
-  - **Begin** sets off an eruption of flame, then steps automatically through tome2's module and news screens into character creation. There is also a link to play the Theme module.
+  - **Enter Middle-earth** sets off an eruption of flame, then steps automatically through tome2's module and news screens into character creation. There is also a link to play the Theme module.
   - The opening screen replaces the old loading splash and also shows download progress, errors and the end-of-game message.
 - **Character creation:** a flame backdrop burns behind the screens, and the text is scaled to fit.
 - **Display settings:**
@@ -52,11 +52,22 @@ The visual design takes inspiration from [Brogue: Community Edition](https://git
   - glyph set
   - zoom
 
-**Milestone 3 — touch play** (next)
+**Milestone 3 — touch play** ✅
 
-- Tap to travel, and tap to target.
-- A context action bar and quick menus for inventory and spells.
-- Autosave when the app is sent to the background.
+- **Tap to travel:**
+  - Tap a place on the map to walk there along a known path. Closed doors are opened on the way.
+  - As in Brogue, travel stops when you arrive, when you're hurt, when a new creature appears, or when an awake hostile creature comes within two steps.
+  - Tap again to stop.
+- **Tap to target:**
+  - At an aiming prompt, tap a creature or place.
+  - The app drives tome2's own targeting: it cycles through targets, then falls back to moving a free cursor to the tapped cell.
+- **Tap menus:** tap a line in any tome2 list (inventory, spells, shops, character creation) to choose it. Tap outside a panel to close it.
+- **Context action bar:**
+  - The buttons follow what the game is waiting for: Continue at *-more-*, Yes/No, Nearest target when aiming, or Escape in menus.
+  - At the command prompt you get Items, Rest, Cast and Look, plus Pick up, Descend or Ascend when they apply.
+  - **More** opens a sheet of every command.
+  - Commands are sent with tome2's keymap bypass (`\`), so they also work with the roguelike keyset.
+- **Autosave:** when the app is hidden or closed at the command prompt, the game saves itself (Ctrl+S) and flushes to browser storage.
 
 ---
 
@@ -74,6 +85,7 @@ web/                Vite + TypeScript app (no framework)
   src/hud.ts          Sidebar (bars, entities) and fading messages
   src/title.ts        Opening screen (flames, mosaic title, embers, Begin flow)
   src/settings.ts     Display settings (stored per browser)
+  src/play/           Touch play: prompts, pathfinding, travel, targeting, context actions
   src/input/          Keyboard and swipe translation to engine keycodes
   src/saves.ts        Save export/import (.tome2save bundles)
 tests/unit/         node:test unit tests

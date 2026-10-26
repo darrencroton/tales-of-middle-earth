@@ -1,11 +1,23 @@
 import './styles.css';
 import { Engine } from './engine.ts';
 import { Hud, rowSegments } from './hud.ts';
-import { attachPinch, attachSwipe } from './input/gestures.ts';
-import { directionKeys, KEY_BACKSPACE, KEY_ENTER, KEY_ESCAPE, translateKey, translateText } from './input/keys.ts';
+import { attachPinch, attachSwipe, attachTap } from './input/gestures.ts';
+import {
+  compositionDelta,
+  directionKeys,
+  KEY_BACKSPACE,
+  KEY_ENTER,
+  KEY_ESCAPE,
+  translateKey,
+  translateText,
+} from './input/keys.ts';
 import { FireEffect } from './render/fire.ts';
 import { MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
-import { buildMaterials } from './render/materials.ts';
+import { buildMaterials, type FeatureInfo, type Material } from './render/materials.ts';
+import { COMMAND_GROUPS, commandKeys, contextActions, pickupCommand, type Action, type CommandDef } from './play/actions.ts';
+import { classifyPrompt, directionDigit, isAdjacent, menuChoiceAt } from './play/prompts.ts';
+import { TargetPicker } from './play/targeting.ts';
+import { STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
 import type { GameState, LevelSnapshot } from './render/snapshot.ts';
 import {
   collectFiles,
@@ -28,6 +40,12 @@ declare global {
       sendText(text: string): void;
       mode(): ViewMode;
       stats(): { renderMs: number; zoom: number };
+      tapCell(x: number, y: number): void;
+      mapCellCentre(x: number, y: number): { x: number; y: number };
+      terminalCellCentre(col: number, row: number): { x: number; y: number };
+      actions(): string[];
+      travelling(): boolean;
+      lastStopCause(): string;
     };
   }
 }
@@ -36,7 +54,11 @@ type ViewMode = 'title' | 'map' | 'overlay';
 
 const KEYBOARD_SENTINEL = ' ';
 const EFFECT_LINGER_MS = 160;
-const MAX_EFFECT_CELLS = 48;
+const HIGHLIGHT_MS = 2500;
+const MAX_EFFECT_CELLS = 600;
+const TRAVEL_STEP_MS = 45;
+const BACKSLASH = 92;
+const CTRL_S = 0x13;
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -59,7 +81,9 @@ const infoBody = byId<HTMLDivElement>('info-body');
 const settingsDialog = byId<HTMLDialogElement>('settings');
 const settingsForm = byId<HTMLFormElement>('settings-form');
 const importFile = byId<HTMLInputElement>('import-file');
-const ctrlButton = toolbar.querySelector<HTMLButtonElement>('[data-action="ctrl"]');
+const commandsDialog = byId<HTMLDialogElement>('commands');
+const commandsBody = byId<HTMLDivElement>('commands-body');
+const toast = byId<HTMLDivElement>('toast');
 
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 let settings: Settings = loadSettings(reducedMotion);
@@ -73,9 +97,20 @@ map.glyphMode = settings.glyphs;
 
 let mode: ViewMode = 'title';
 let base: ScreenCopy | null = null;
+let basePanel = { row: -1, col: -1 };
 let lastSnap: LevelSnapshot | null = null;
 let lastState: GameState | null = null;
 let materialsLoaded = false;
+let features: FeatureInfo[] = [];
+let materials: Material[] = [];
+let travel: Travel | null = null;
+let travelTimer = 0;
+let lastStopCause = '';
+let picker: TargetPicker | null = null;
+let lastSavedTurn = -1;
+let autosaveSyncPending = false;
+let currentActions: Action[] = [];
+let actionsKey = '';
 let dirty = true;
 let effectsAt = 0;
 let hasEffects = false;
@@ -84,16 +119,32 @@ let lastRenderMs = 0;
 
 const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
   onEntity: (point) => {
-    map.flashHighlight(point);
+    map.flashHighlight(point, HIGHLIGHT_MS);
+    dirty = true;
     requestFrame();
+    window.setTimeout(() => {
+      dirty = true;
+      requestFrame();
+    }, HIGHLIGHT_MS + 50);
   },
   onMore: () => send([0x20]),
-  onHistory: () => showHistory(),
+  onHistory: () => {
+    if (travel || picker) stopAutomation(null, 'history');
+    showHistory();
+  },
 });
 
 function setCtrlLatched(value: boolean): void {
   ctrlLatched = value;
-  ctrlButton?.setAttribute('aria-pressed', String(value));
+  for (const el of document.querySelectorAll('[data-ctrl-toggle]')) el.setAttribute('aria-pressed', String(value));
+}
+
+let toastTimer = 0;
+function showToast(text: string): void {
+  toast.textContent = text;
+  toast.classList.add('visible');
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => toast.classList.remove('visible'), 2200);
 }
 
 /* Opening screen: after Begin, step through tome2's module and news screens. */
@@ -157,11 +208,14 @@ function refresh(): void {
   if (!snap.inDungeon) {
     setMode('title');
     terminal.setMode({ kind: 'full' });
+    updateActionBar();
     return;
   }
 
   if (!materialsLoaded) {
-    map.setMaterials(buildMaterials(engine.features()));
+    features = engine.features();
+    materials = buildMaterials(features);
+    map.setMaterials(materials);
     materialsLoaded = true;
   }
   map.setPalette(buffer.paletteRgb);
@@ -194,12 +248,291 @@ function refresh(): void {
       rowSegments(buffer.chars.subarray(0, buffer.cols), buffer.attrs.subarray(0, buffer.cols), buffer.palette),
     );
   }
+  updateActionBar();
+}
+
+/* Action bar */
+
+function underfootName(snap: LevelSnapshot): string {
+  return features[snap.feat[snap.py * snap.width + snap.px]]?.name.toLowerCase() ?? '';
+}
+
+function updateActionBar(): void {
+  const snap = lastSnap;
+  const actions = contextActions({
+    mode,
+    prompt: classifyPrompt(rowZeroText()),
+    atCommand: !!snap?.atCommand,
+    underfoot: snap && snap.inDungeon ? underfootName(snap) : '',
+    floorObjects: snap?.floorObjects ?? 0,
+    alwaysPickup: alwaysPickup(),
+  });
+  currentActions = actions;
+  const key = actions.map((a) => a.id).join(',');
+  if (key === actionsKey) return;
+  actionsKey = key;
+  toolbar.replaceChildren(
+    ...actions.map((action) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.action = action.id;
+      button.className = action.primary ? 'action primary' : 'action';
+      button.setAttribute('aria-label', action.label);
+      const icon = document.createElement('span');
+      icon.className = 'action-icon';
+      icon.textContent = action.icon;
+      const label = document.createElement('span');
+      label.className = 'action-label';
+      label.textContent = action.label;
+      button.append(icon, label);
+      return button;
+    }),
+  );
+}
+
+function runAction(action: Action): void {
+  if (travel || picker) stopAutomation(null, 'action');
+  switch (action.effect.kind) {
+    case 'keys':
+      send(action.effect.keys);
+      break;
+    case 'keyboard':
+      if (document.activeElement === keyboardInput) keyboardInput.blur();
+      else keyboardInput.focus();
+      break;
+    case 'menu':
+      menu.showModal();
+      break;
+    case 'commands':
+      commandsDialog.showModal();
+      break;
+    case 'ctrl':
+      setCtrlLatched(!ctrlLatched);
+      break;
+  }
+}
+
+const sheetCommands = new WeakMap<HTMLElement, CommandDef>();
+
+function alwaysPickup(): boolean {
+  return !!lastState?.player?.alwaysPickup;
+}
+
+function buildCommandSheet(): void {
+  const sections = COMMAND_GROUPS.map((group) => {
+    const section = document.createElement('section');
+    const heading = document.createElement('h3');
+    heading.textContent = group.title;
+    const grid = document.createElement('div');
+    grid.className = 'command-grid';
+    for (const def of group.commands) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'command';
+      sheetCommands.set(button, def);
+      const icon = document.createElement('span');
+      icon.className = 'action-icon';
+      icon.textContent = def.icon;
+      const label = document.createElement('span');
+      label.textContent = def.label;
+      button.append(icon, label);
+      grid.append(button);
+    }
+    section.append(heading, grid);
+    return section;
+  });
+
+  const keys = document.createElement('section');
+  const heading = document.createElement('h3');
+  heading.textContent = 'Keys';
+  const grid = document.createElement('div');
+  grid.className = 'command-grid';
+  const extra: [string, string, string][] = [
+    ['⌨', 'Keyboard', 'keyboard'],
+    ['^', 'Ctrl + next key', 'ctrl'],
+    ['⎋', 'Escape', 'escape'],
+    ['⏎', 'Enter', 'enter'],
+  ];
+  for (const [iconText, labelText, kind] of extra) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'command';
+    button.dataset.special = kind;
+    if (kind === 'ctrl') button.dataset.ctrlToggle = '';
+    const icon = document.createElement('span');
+    icon.className = 'action-icon';
+    icon.textContent = iconText;
+    const label = document.createElement('span');
+    label.textContent = labelText;
+    button.append(icon, label);
+    grid.append(button);
+  }
+  keys.append(heading, grid);
+  commandsBody.replaceChildren(...sections, keys);
+}
+
+commandsBody.addEventListener('click', (e) => {
+  const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button.command');
+  if (!button) return;
+  commandsDialog.close();
+  const def = sheetCommands.get(button);
+  if (def) {
+    send(commandKeys(def, alwaysPickup()));
+    return;
+  }
+  switch (button.dataset.special) {
+    case 'keyboard':
+      keyboardInput.focus();
+      break;
+    case 'ctrl':
+      setCtrlLatched(!ctrlLatched);
+      break;
+    case 'escape':
+      send([KEY_ESCAPE]);
+      break;
+    case 'enter':
+      send([KEY_ENTER]);
+      break;
+  }
+});
+
+buildCommandSheet();
+
+/* Travel and targeting */
+
+function travelContext(): TravelContext | null {
+  if (!lastSnap || !lastState?.player) return null;
+  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp };
+}
+
+function stopAutomation(message: string | null, cause: string): void {
+  if (travel || picker) lastStopCause = cause;
+  window.clearTimeout(travelTimer);
+  travelTimer = 0;
+  travel = null;
+  picker = null;
+  map.setPath(null);
+  if (message) showToast(message);
+  requestFrame();
+}
+
+function stepTravel(): void {
+  travelTimer = 0;
+  if (!engine.awaitingInput) return;
+  const ctx = travelContext();
+  if (!travel || !ctx) return;
+  const step = travel.step(ctx);
+  if (step.kind === 'stop') {
+    stopAutomation(STOP_MESSAGES[step.reason], step.reason);
+    return;
+  }
+  map.setPath(step.path);
+  engine.sendKeys(step.keys);
+  requestFrame();
+}
+
+function startTravel(goal: MapPoint): void {
+  const ctx = travelContext();
+  if (!ctx) return;
+  stopAutomation(null, 'new travel');
+  travel = new Travel(goal, ctx);
+  stepTravel();
+}
+
+function startTargeting(goal: MapPoint): void {
+  stopAutomation(null, 'new target');
+  picker = new TargetPicker(goal, lastState?.monsters?.length ?? 0);
+  engine.sendKeys(picker.begin());
+}
+
+function stepTargeting(): void {
+  const snap = lastSnap;
+  if (!picker || !snap) return;
+  const cursor = buffer.cursorY >= 0 ? terminalToDungeon(snap, buffer.cursorX, buffer.cursorY) : null;
+  const prompt = classifyPrompt(rowZeroText());
+  const targeting = !snap.atCommand && prompt !== 'aim' && prompt !== 'more';
+  const step = picker.step(cursor, { x: snap.px, y: snap.py }, targeting);
+  if (step.kind === 'keys') engine.sendKeys(step.keys);
+  else stopAutomation(step.kind === 'fail' ? 'Could not target there.' : null, 'target');
+}
+
+/* Taps */
+
+function onStageTap(clientX: number, clientY: number, target: EventTarget | null): void {
+  if (title.isVisible) return;
+  if (target instanceof Element && target.closest('#messages')) return;
+  if (travel || picker) {
+    stopAutomation(null, 'tap');
+    return;
+  }
+  const prompt = classifyPrompt(rowZeroText());
+  if (prompt === 'more') {
+    send([0x20]);
+    return;
+  }
+
+  const snap = lastSnap;
+  if (mode === 'map' && snap) {
+    const cell = map.cellAt(clientX, clientY);
+    if (!cell) return;
+    tapMapCell(snap, cell, prompt);
+    return;
+  }
+
+  const hit = terminal.cellAt(clientX, clientY);
+  if (!hit) return;
+  if (mode === 'overlay' && !hit.inside) {
+    send([KEY_ESCAPE]);
+    return;
+  }
+  const letter = menuChoiceAt(buffer.rowText(hit.y), hit.x);
+  if (letter) send([letter.charCodeAt(0)]);
+  else if (/Press any key/.test(buffer.screenText())) send([0x20]);
+}
+
+function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
+  const player = { x: snap.px, y: snap.py };
+  const near = isAdjacent(player.x, player.y, cell.x, cell.y);
+  const digit = (dx: number, dy: number) => directionKeys(directionDigit(dx, dy) ?? '5', false);
+
+  if (prompt === 'direction') {
+    if (near) send(digit(cell.x - player.x, cell.y - player.y));
+    return;
+  }
+  if (prompt === 'aim') {
+    if (near) send(digit(cell.x - player.x, cell.y - player.y));
+    else startTargeting(cell);
+    return;
+  }
+  if (!snap.atCommand) return;
+  if (cell.x === player.x && cell.y === player.y) {
+    if (snap.floorObjects > 0) send([BACKSLASH, pickupCommand(alwaysPickup()).charCodeAt(0)]);
+    return;
+  }
+  startTravel(cell);
+}
+
+attachTap(stage, onStageTap);
+
+/* Autosave */
+
+function autosave(): void {
+  if (travel || picker) stopAutomation(null, 'autosave');
+  const snap = engine.state === 'running' ? engine.snapshot() : null;
+  if (snap && snap.inDungeon && snap.atCommand && !snap.icky && snap.turn !== lastSavedTurn) {
+    lastSavedTurn = snap.turn;
+    autosaveSyncPending = true;
+    engine.sendKeys([BACKSLASH, CTRL_S]);
+    return;
+  }
+  engine.syncNow().catch((err) => console.error('Saving to browser storage failed', err));
 }
 
 /** Collects bolt and explosion glyphs drawn over the map during an animation pause. */
 function captureEffects(): void {
   const snap = lastSnap;
   if (!snap || !snap.inDungeon || snap.icky || !base) return;
+  if (snap.panelRow !== basePanel.row || snap.panelCol !== basePanel.col) return;
   const effects: MapEffect[] = [];
   for (let row: number = snap.rowMap; row < buffer.rows - 1; row++) {
     for (let col: number = snap.colMap; col < buffer.cols; col++) {
@@ -235,9 +568,9 @@ function frame(now: number): void {
   const due = fps > 0 && now - lastFrame >= 1000 / fps - 2;
 
   if (dirty || due) {
-    if (dirty && engine.state === 'running') {
+    if (dirty) {
       dirty = false;
-      refresh();
+      if (engine.state === 'running') refresh();
     }
     lastFrame = now;
     const started = performance.now();
@@ -264,6 +597,13 @@ const engine = new Engine(buffer, terminal, {
     layout();
     dirty = true;
     requestFrame();
+    const storageError = engine.storageError;
+    if (storageError) {
+      showMessage(
+        'Saves unavailable',
+        `Saved games could not be loaded from this browser's storage (${storageError}). Saving to the browser is switched off for this session so existing saves are not overwritten. You can still play and use Export saves to keep a copy.`,
+      );
+    }
   },
   onExit(message) {
     title.showEnd(message ?? 'The game has ended. Your progress is saved in this browser.', false, [
@@ -281,12 +621,28 @@ const engine = new Engine(buffer, terminal, {
     advanceIntro();
     refresh();
     dirty = true;
-    if (lastSnap?.inDungeon && !lastSnap.icky) base = buffer.copy();
+    if (lastSnap?.inDungeon && !lastSnap.icky) {
+      base = buffer.copy();
+      basePanel = { row: lastSnap.panelRow, col: lastSnap.panelCol };
+    }
     if (hasEffects) {
       map.setEffects([]);
       hasEffects = false;
     }
     hud.tick();
+    if (autosaveSyncPending) {
+      autosaveSyncPending = false;
+      engine.syncNow().catch((err) => console.error('Autosave sync failed', err));
+    }
+    if (engine.pendingKeys > 0) {
+      requestFrame();
+      return;
+    }
+    if (travel && !travelTimer) {
+      travelTimer = window.setTimeout(stepTravel, animating() ? TRAVEL_STEP_MS : 0);
+    } else if (picker) {
+      stepTargeting();
+    }
     requestFrame();
   },
   onEffectFrame() {
@@ -298,6 +654,7 @@ const engine = new Engine(buffer, terminal, {
 
 function send(codes: number[] | null): void {
   if (!codes || codes.length === 0) return;
+  if (travel || picker) stopAutomation(null, 'send');
   engine.sendKeys(codes);
   if (ctrlLatched) setCtrlLatched(false);
 }
@@ -326,17 +683,24 @@ window.addEventListener('resize', updateAppHeight);
 updateAppHeight();
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    engine.syncNow().catch((err) => console.error('Saving to browser storage failed', err));
-  } else {
-    requestFrame();
-  }
+  if (document.visibilityState === 'hidden') autosave();
+  else requestFrame();
 });
+window.addEventListener('pagehide', () => autosave());
 
 /* Hardware keyboard and soft keyboard */
 
 function dialogOpen(): boolean {
-  return menu.open || info.open || settingsDialog.open;
+  return menu.open || info.open || settingsDialog.open || commandsDialog.open;
+}
+
+const CONTROL_KEYS = new Set(['Tab', 'Enter', ' ']);
+
+/** True when the focused element handles this key itself (text fields: all keys; buttons and links: Tab, Enter, Space). */
+function controlOwnsKey(target: EventTarget | null, key: string): boolean {
+  if (!(target instanceof HTMLElement) || target === keyboardInput) return false;
+  if (target.closest('input, select, textarea, [contenteditable]')) return true;
+  return CONTROL_KEYS.has(key) && target.closest('button, a') !== null;
 }
 
 window.addEventListener('keydown', (e) => {
@@ -347,7 +711,7 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
-  if (dialogOpen() || e.isComposing) return;
+  if (dialogOpen() || e.isComposing || controlOwnsKey(e.target, e.key)) return;
   const codes = translateKey(e, ctrlLatched);
   if (!codes) return;
   e.preventDefault();
@@ -356,7 +720,27 @@ window.addEventListener('keydown', (e) => {
 
 keyboardInput.value = KEYBOARD_SENTINEL;
 
+let composing = false;
+let composed = '';
+
+function inputText(): string {
+  const value = keyboardInput.value;
+  return value.startsWith(KEYBOARD_SENTINEL) ? value.slice(KEYBOARD_SENTINEL.length) : value;
+}
+
+keyboardInput.addEventListener('compositionstart', () => {
+  composing = true;
+  composed = '';
+});
+
+keyboardInput.addEventListener('compositionend', () => {
+  composing = false;
+  composed = '';
+  keyboardInput.value = KEYBOARD_SENTINEL;
+});
+
 keyboardInput.addEventListener('beforeinput', (e) => {
+  if (composing || e.isComposing) return;
   if (e.inputType === 'insertText' && e.data) {
     e.preventDefault();
     send(translateText(e.data, ctrlLatched));
@@ -370,12 +754,19 @@ keyboardInput.addEventListener('beforeinput', (e) => {
 });
 
 keyboardInput.addEventListener('input', () => {
+  if (composing) {
+    const current = inputText();
+    const delta = compositionDelta(composed, current);
+    composed = current;
+    send([...Array<number>(delta.backspaces).fill(KEY_BACKSPACE), ...translateText(delta.text, ctrlLatched)]);
+    return;
+  }
   const value = keyboardInput.value;
   if (value === KEYBOARD_SENTINEL) return;
   if (value === '') {
     send([KEY_BACKSPACE]);
   } else {
-    send(translateText(value.startsWith(KEYBOARD_SENTINEL) ? value.slice(1) : value, ctrlLatched));
+    send(translateText(inputText(), ctrlLatched));
   }
   keyboardInput.value = KEYBOARD_SENTINEL;
 });
@@ -418,30 +809,15 @@ stage.addEventListener(
 
 toolbar.addEventListener('click', (e) => {
   const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
-  if (!button) return;
-  switch (button.dataset.action) {
-    case 'keyboard':
-      if (document.activeElement === keyboardInput) keyboardInput.blur();
-      else keyboardInput.focus();
-      break;
-    case 'escape':
-      send([KEY_ESCAPE]);
-      break;
-    case 'enter':
-      send([KEY_ENTER]);
-      break;
-    case 'ctrl':
-      setCtrlLatched(!ctrlLatched);
-      break;
-    case 'menu':
-      menu.showModal();
-      break;
-  }
+  const action = currentActions.find((a) => a.id === button?.dataset.action);
+  if (action) runAction(action);
 });
 
 /* Toolbar buttons must not steal focus from the soft keyboard. */
 toolbar.addEventListener('pointerdown', (e) => {
-  if ((e.target as HTMLElement).closest('button[data-action]:not([data-action="menu"])')) e.preventDefault();
+  if ((e.target as HTMLElement).closest('button[data-action]:not([data-action="menu"]):not([data-action="commands"])')) {
+    e.preventDefault();
+  }
 });
 
 /* Menu and dialogs */
@@ -515,7 +891,7 @@ async function exportSaves(): Promise<void> {
     showMessage('Export saves', 'The game is still loading. Try again in a moment.');
     return;
   }
-  await engine.syncNow();
+  await engine.syncNow().catch((err) => console.warn('Sync before export failed; exporting from memory', err));
   const files = collectFiles(fs, root);
   if (files.length === 0) {
     showMessage('Export saves', 'There are no saved games yet. Save in-game with Ctrl+S first.');
@@ -529,6 +905,10 @@ async function importSaves(file: File): Promise<void> {
   const root = engine.savePath;
   if (!fs || !root) {
     showMessage('Import saves', 'The game is still loading. Try again in a moment.');
+    return;
+  }
+  if (engine.storageError) {
+    showMessage('Import saves', 'Browser storage is unavailable this session, so imported saves would be lost on restart.');
     return;
   }
   const files = decodeBundle(await file.text());
@@ -584,6 +964,14 @@ window.__tome = {
   sendText: (text) => engine.sendKeys(translateText(text)),
   mode: () => mode,
   stats: () => ({ renderMs: lastRenderMs, zoom: map.zoom }),
+  tapCell: (x, y) => {
+    if (lastSnap) tapMapCell(lastSnap, { x, y }, classifyPrompt(rowZeroText()));
+  },
+  mapCellCentre: (x, y) => map.cellCentre(x, y),
+  terminalCellCentre: (col, row) => terminal.cellCentre(col, row),
+  actions: () => currentActions.map((a) => a.id),
+  travelling: () => travel !== null,
+  lastStopCause: () => lastStopCause,
 };
 
 /* Service worker */
@@ -596,8 +984,36 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 
 /* Start */
 
+/**
+ * Holds an exclusive lock for this page so that two tabs never load and sync
+ * the same saves. Resolves false when another tab already holds it.
+ */
+function acquireSessionLock(): Promise<boolean> {
+  if (!('locks' in navigator)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    navigator.locks
+      .request('tome2mobile-session', { ifAvailable: true }, (lock) => {
+        if (!lock) {
+          resolve(false);
+          return undefined;
+        }
+        resolve(true);
+        return new Promise<void>(() => undefined);
+      })
+      .catch(() => resolve(true));
+  });
+}
+
 layout();
 const engineArgs = new URLSearchParams(location.search).has('wizard') ? ['-w'] : [];
-engine.start(new URL('engine/tome.js', document.baseURI).href, engineArgs).catch((err) => {
-  console.error(err);
+acquireSessionLock().then((acquired) => {
+  if (!acquired) {
+    title.showEnd('ToME 2 is already open in another tab or window. Close it, then reload this page.', true, [
+      { label: 'Reload', run: () => location.reload() },
+    ]);
+    return;
+  }
+  engine.start(new URL(`engine/tome.js?v=${__ENGINE_VERSION__}`, document.baseURI).href, engineArgs).catch((err) => {
+    console.error(err);
+  });
 });

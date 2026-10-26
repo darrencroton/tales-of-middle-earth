@@ -53,6 +53,16 @@ export async function waitForSettle(page: Page, before: string, timeout = 10_000
   return current;
 }
 
+/** Dismisses any pending -more- prompts so the next key reaches the command prompt. */
+export async function dismissMore(page: Page): Promise<string> {
+  let text = await screenText(page);
+  for (let i = 0; i < 10 && /-more-/.test(text.split('\n')[0] ?? ''); i++) {
+    await sendText(page, '\u001b');
+    text = await waitForSettle(page, text, 3_000);
+  }
+  return text;
+}
+
 type Step = [RegExp, string | ((savefile: string) => string)];
 
 /* Prompt/answer pairs for the birth sequence, checked in order. */
@@ -153,6 +163,19 @@ export async function canvasBrightness(
     },
     [selector, region] as const,
   );
+}
+
+/** A canvas region (as fractions of the map canvas) centred on the player, so it stays valid when the camera is clamped at an edge. */
+export async function playerRegion(page: Page, size = 0.1): Promise<{ x: number; y: number; w: number; h: number }> {
+  return page.evaluate((s) => {
+    const tome = window.__tome!;
+    const snap = tome.engine.snapshot()!;
+    const centre = tome.mapCellCentre(snap.px, snap.py);
+    const rect = document.querySelector('#map')!.getBoundingClientRect();
+    const fx = (centre.x - rect.left) / rect.width;
+    const fy = (centre.y - rect.top) / rect.height;
+    return { x: Math.max(0, fx - s / 2), y: Math.max(0, fy - s / 2), w: s, h: s };
+  }, size);
 }
 
 /** Uses tome2's wizard commands (page loaded with ?wizard) to jump to a dungeon level and wield a torch. */

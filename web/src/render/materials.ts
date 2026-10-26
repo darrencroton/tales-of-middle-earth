@@ -33,6 +33,10 @@ export interface Material {
   /** Amplitude of time-varying colour shimmer. */
   dance: number;
   emit: Emission | null;
+  /** The player can walk onto it. */
+  walkable: boolean;
+  /** A door (open or closed). */
+  door: boolean;
 }
 
 const FLOOR_BG: RGB = [0.11, 0.1, 0.09];
@@ -45,6 +49,8 @@ function material(partial: Partial<Material> & Pick<Material, 'bg'>): Material {
     blocksLight: false,
     dance: 0,
     emit: null,
+    walkable: true,
+    door: false,
     ...partial,
   };
 }
@@ -75,7 +81,7 @@ const RULES: Rule[] = [
   [/jammed door|locked door|^door$/, () => material({ glyph: '+', fg: [0.85, 0.6, 0.32], bg: [0.3, 0.18, 0.08], blocksLight: true })],
   [/open door|broken door/, () => material({ glyph: "'", fg: [0.85, 0.6, 0.32], bg: [0.2, 0.13, 0.07] })],
   [/staircase|shaft|quest (entrance|exit|down level|up level)|town exit|path to the/, () =>
-    material({ fg: [1, 1, 0.95], bg: [0.16, 0.15, 0.17] })],
+    material({ bg: [0.16, 0.15, 0.17] })],
   [/pool of deep lava/, () =>
     material({ glyph: '≈', fg: [1, 0.78, 0.35], bg: [0.78, 0.22, 0.03], dance: 0.22, emit: { colour: [1, 0.42, 0.12], radius: 4 } })],
   [/shallow lava/, () =>
@@ -129,10 +135,9 @@ function fallback(f: FeatureInfo): Material {
 
 export function classifyFeature(f: FeatureInfo): Material {
   const name = f.name.toLowerCase();
-  for (const [pattern, make] of RULES) {
-    if (pattern.test(name)) return make(f);
-  }
-  return fallback(f);
+  const rule = RULES.find(([pattern]) => pattern.test(name));
+  const m = rule ? rule[1](f) : fallback(f);
+  return { ...m, walkable: (f.flags & FB_NO_WALK) === 0, door: (f.flags & FB_DOOR) !== 0 };
 }
 
 export function buildMaterials(features: readonly FeatureInfo[]): Material[] {

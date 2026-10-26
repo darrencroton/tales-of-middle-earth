@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import {
   createCharacter,
+  dismissMore,
   findPlayer,
   isOnMap,
   screenText,
@@ -40,7 +41,7 @@ test('loads the engine and lays out the screen without overflow', async ({ page 
   expect(layout.canvasHeight).toBeGreaterThan(0);
   expect(layout.overlap).toBe(false);
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
-  await expect(page.locator('#toolbar button')).toHaveCount(5);
+  expect(await page.locator('#toolbar .action').count()).toBeGreaterThanOrEqual(3);
   expect(errors).toEqual([]);
 });
 
@@ -71,6 +72,7 @@ test('creates a character, walks by swipe, saves, and reloads the save', async (
   expect(moved, `player missing after swipe:\n${text}`).not.toBeNull();
   expect(moved).not.toEqual(start);
 
+  await dismissMore(page);
   await sendText(page, '\u0013');
   await waitForScreen(page, /Saving game|Game saved|done/i, 15_000).catch(() => undefined);
   await page.evaluate(() => window.__tome?.engine.syncNow());

@@ -18,7 +18,7 @@ export const LAYER_MULTI_HUED = 0x80;
 
 export const NO_EFFECT = 0xff;
 
-export const SNAPSHOT_VERSION = 1;
+export const SNAPSHOT_VERSION = 2;
 
 /* Header slot indices, matching HeaderSlot in engine/snapshot.cc. */
 const H = {
@@ -44,7 +44,10 @@ const H = {
   PTR_ATTR: 19,
   PTR_LAYER: 20,
   PTR_EFFECT: 21,
-  COUNT: 22,
+  AT_COMMAND: 22,
+  TURN: 23,
+  FLOOR_OBJECTS: 24,
+  COUNT: 25,
 } as const;
 
 export interface LevelSnapshot {
@@ -63,6 +66,10 @@ export interface LevelSnapshot {
   panelCol: number;
   rowMap: number;
   colMap: number;
+  /** Engine is waiting for a command (not a prompt or menu). */
+  atCommand: boolean;
+  turn: number;
+  floorObjects: number;
   feat: Uint8Array;
   info: Uint16Array;
   glyph: Uint8Array;
@@ -107,6 +114,9 @@ export function readSnapshot(memory: SnapshotMemory, headerPtr: number): LevelSn
     panelCol: header[H.PANEL_COL],
     rowMap: header[H.ROW_MAP],
     colMap: header[H.COL_MAP],
+    atCommand: header[H.AT_COMMAND] !== 0,
+    turn: header[H.TURN],
+    floorObjects: header[H.FLOOR_OBJECTS],
     feat: bytes(header[H.PTR_FEAT]),
     info: memory.HEAPU16.slice(header[H.PTR_INFO] >> 1, (header[H.PTR_INFO] >> 1) + n),
     glyph: bytes(header[H.PTR_GLYPH]),
@@ -135,6 +145,8 @@ export interface PlayerState {
   depth: number;
   dungeon: string;
   wild: number;
+  /** 1 when the always_pickup option is on. */
+  alwaysPickup: number;
   status: Record<string, number>;
 }
 
