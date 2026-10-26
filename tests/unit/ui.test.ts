@@ -13,6 +13,7 @@ import { readableColour } from '../../web/src/render/colour.ts';
 import type { ItemState } from '../../web/src/render/snapshot.ts';
 import { descriptionParagraphs } from '../../web/src/ui/inventory.ts';
 import { parseStore, stackSize, storeMacro } from '../../web/src/ui/store.ts';
+import { parseSkills, skillMoveKeys } from '../../web/src/ui/skills.ts';
 import { parseRows, type ChoiceBlock, type TermRow } from '../../web/src/ui/termparse.ts';
 
 const codes = (s: string) => [...s].map((c) => c.charCodeAt(0));
@@ -212,5 +213,46 @@ describe('text colours', () => {
     const blue = readableColour('rgb(0, 64, 255)');
     assert.notEqual(blue, 'rgb(0, 64, 255)');
     assert.equal(readableColour('#123'), '#123');
+  });
+});
+
+describe('skills screen', () => {
+  const lines = [
+    '                            ToME Skills Screen',
+    'Enter to develop a branch, up/down to move, right/left to modify, ? for help',
+    'Skill points left: 2',
+    'General ability to fight.',
+    '',
+    '',
+    '',
+    '[-]Combat                                                    02.000 [0.800]',
+    '     - Weaponmastery                                          01.000 [0.850]',
+    '         . Sword-mastery                                      00.000 [0.400]',
+    '     + Magic                                                  00.000 [0.000]',
+  ];
+  const colours: Record<number, [number, number, number][]> = { 3: [[0, 80, 11]], 9: [[0, 80, 3]], 10: [[0, 80, 8]] };
+  const screen = parseSkills(rows(lines, colours))!;
+
+  it('reads points, description and the skill tree', () => {
+    assert.equal(screen.points, 2);
+    assert.equal(screen.description, 'General ability to fight.');
+    assert.deepEqual(
+      screen.skills.map((s) => [s.name, s.depth, s.branch, s.value, s.mod, s.selected, s.state]),
+      [
+        ['Combat', 0, 'open', 2, 0.8, true, 'normal'],
+        ['Weaponmastery', 1, 'open', 1, 0.85, false, 'normal'],
+        ['Sword-mastery', 2, null, 0, 0.4, false, 'learnable'],
+        ['Magic', 1, 'closed', 0, 0, false, 'untrained'],
+      ],
+    );
+  });
+
+  it('moves the cursor to a tapped skill', () => {
+    assert.equal(skillMoveKeys(screen, screen.skills[2]), '22');
+    assert.equal(skillMoveKeys(screen, screen.skills[0]), '');
+  });
+
+  it('ignores other screens', () => {
+    assert.equal(parseSkills(rows(['Options'])), null);
   });
 });

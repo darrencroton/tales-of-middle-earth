@@ -5,7 +5,7 @@
 export function cleanPrompt(text: string): string {
   let t = text.replace(/\s+/g, ' ').trim();
   const help = /Help file '([^']+)'/.exec(t);
-  if (help) return `Help: ${help[1].replace(/\.txt$/, '')}`;
+  if (help) return `Help: ${help[1].replace(/\.(txt|hlp)$/, '').replace(/[_-]/g, ' ')}`;
   t = t.replace(/\[[^\]]*\]/g, ' ');
   t = t.replace(/\(([^()]*)\)/g, (group, inner: string) => (isKeyHint(inner) ? ' ' : group));
   const parts = t.split(',').map((p) => p.trim());

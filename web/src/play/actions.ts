@@ -134,7 +134,7 @@ export interface ActionContext {
   /** A native card is answering the current question. */
   cardShown?: boolean;
   /** Which special tome2 screen is open. */
-  screen?: 'skills' | 'options' | null;
+  screen?: 'skills' | 'options' | 'help' | null;
   atCommand: boolean;
   /** Name of the terrain under the player, lower case. */
   underfoot: string;
@@ -214,9 +214,16 @@ export function contextActions(ctx: ActionContext): Action[] {
       { id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] } },
       UP,
       DOWN,
-      { id: 'raise', label: 'Raise', icon: '+', effect: { kind: 'keys', keys: text('6') }, primary: true },
       { id: 'lower', label: 'Lower', icon: '−', effect: { kind: 'keys', keys: text('4') } },
-      { id: 'expand', label: 'Open', icon: '▾', effect: { kind: 'keys', keys: [13] } },
+      { id: 'raise', label: 'Raise', icon: '+', effect: { kind: 'keys', keys: text('6') }, primary: true },
+    ];
+  }
+  if (ctx.screen === 'help') {
+    return [
+      { id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] } },
+      { id: 'helpback', label: 'Back', icon: '‹', effect: { kind: 'keys', keys: [8] } },
+      { id: 'pageup', label: 'Page up', icon: '▲', effect: { kind: 'keys', keys: text('-') } },
+      { id: 'pagedown', label: 'Page down', icon: '▼', effect: { kind: 'keys', keys: text(' ') }, primary: true },
     ];
   }
   if (ctx.screen === 'options') {

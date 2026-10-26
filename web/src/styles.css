@@ -753,8 +753,22 @@ button {
   gap: 0.8rem;
 }
 
-.tv-title {
+.tv-titles {
   flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tv-subtitle {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.tv-meta-unit {
+  color: var(--faint);
+}
+
+.tv-title {
   margin: 0;
   color: var(--accent);
   font-size: var(--fs-title);
@@ -808,6 +822,12 @@ button {
 
 .tv-gap {
   height: 0.6em;
+}
+
+.tv-rule {
+  margin: 0.5rem 0;
+  border: 0;
+  border-top: 1px solid var(--panel-border);
 }
 
 .tv-pre {
@@ -950,6 +970,73 @@ button {
 
 .tv-option.on .switch::after {
   transform: translateX(1.2em);
+}
+
+/* Skills */
+
+.skill-description {
+  margin: 0 0 0.8rem;
+  color: var(--accent-bright);
+  line-height: 1.5;
+}
+
+.skill-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: calc(var(--touch) * 0.9);
+  margin: 0 0 0.3rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--button);
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.skill-row.current {
+  border-color: var(--accent);
+  background: rgb(217 164 65 / 0.14);
+}
+
+.skill-row.untrained {
+  color: var(--faint);
+  background: transparent;
+}
+
+.skill-row.learnable .skill-name {
+  color: #e8a35a;
+}
+
+.skill-row.max .skill-name {
+  color: #8fb8ff;
+}
+
+.skill-branch {
+  flex: 0 0 1em;
+  color: var(--accent);
+}
+
+.skill-name {
+  flex: 1 1 auto;
+}
+
+.skill-value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.skill-level {
+  font-weight: 600;
+}
+
+.skill-mod {
+  color: var(--muted);
+  font-size: var(--fs-small);
 }
 
 /* Sheets: native panels over the game. */

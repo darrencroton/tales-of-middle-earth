@@ -256,6 +256,7 @@ describe('actions', () => {
     assert.equal(classifyPrompt('Inscription: ', true), 'text');
     assert.equal(classifyPrompt('Inscription: '), 'other');
     assert.equal(classifyPrompt('Jump to level? ', true), 'other');
+    assert.equal(classifyPrompt('Select a skill (a-98), @ to select by name, +/- to scroll:', true), 'item');
   });
 
   it('recognises yes/no prompts with extra answers', () => {

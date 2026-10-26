@@ -147,7 +147,8 @@ export function splitMenuCell(cell: Cell): Cell[] {
   });
 }
 
-function sliceCell(cell: Cell, start: number, end: number): Cell {
+/** Characters [start, end) of a cell, keeping colours. */
+export function sliceCell(cell: Cell, start: number, end: number): Cell {
   const runs: Run[] = [];
   let pos = 0;
   for (const run of cell.runs) {
@@ -171,6 +172,8 @@ function toChoice(row: number, cell: Cell, meta: Cell[]): ChoiceBlock | null {
   const found = choiceKey(cell.text);
   if (!found) return null;
   let label = dropChars(cell, found.length);
+  const number = /^\d+\) (?=\S)/.exec(label.text);
+  if (number) label = dropChars(label, number[0].length);
   let symbol: Run | null = null;
   const symbolMatch = /^([^\w\s]) (?=\S)/.exec(label.text);
   if (symbolMatch && label.runs[0]) {

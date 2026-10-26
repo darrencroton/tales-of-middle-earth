@@ -2,7 +2,7 @@ import { readableColour } from '../render/colour.ts';
 import { el } from './dom.ts';
 import { ListNav, type NavDirection } from './listnav.ts';
 import { isInstructionLine } from './prompttext.ts';
-import { bufferRows, parseRows, type Block, type ChoiceBlock, type OptionBlock, type Run, type TextBlock } from './termparse.ts';
+import { bufferRows, parseRows, sliceCell, type Block, type Cell, type ChoiceBlock, type OptionBlock, type Run, type TextBlock } from './termparse.ts';
 
 export interface TermViewCallbacks {
   /** A menu choice was tapped or activated. */
@@ -40,6 +40,8 @@ export interface TermViewOptions {
   title?: string;
   /** Small text beside the heading, e.g. gold in a shop. */
   badge?: string;
+  /** A line under the heading. */
+  subtitle?: string;
   /** Lists to switch between (pack, equipment, floor). */
   tabs?: TermViewTab[];
   /** Terminal rows to leave out (shop command lists, page markers). */
@@ -49,6 +51,15 @@ export interface TermViewOptions {
 }
 
 const WHITE = 1;
+/* Columns shown with a unit instead of a heading. */
+const UNITS: Readonly<Record<string, string>> = { weight: ' lb', price: ' gold' };
+/* Words that make a row a set of column headings rather than content. */
+const HEADING = /^(Name|Item|Description|School|Level|Lv|Cost|Mana|Fail|Info|Weight|Price|Qty|Skill)$/i;
+/* A cell split into one cell per word ("Level Cost Fail" → three cells). */
+function words(cell: Cell): Cell[] {
+  return [...cell.text.matchAll(/\S+/g)].map((m) => sliceCell(cell, m.index, m.index + m[0].length));
+}
+
 /* Cells up to this length are kept on one line when a row wraps. */
 const SHORT_CELL = 28;
 
@@ -142,7 +153,7 @@ export class TermView {
     const parsed = parseRows(bufferRows(source, region.y0, region.y1), region.y0, region.x0, region.x1);
     const hide = options.hideRow;
     const blocks = hide ? parsed.filter((b) => b.kind === 'gap' || b.kind === 'pre' || !hide(b.row)) : parsed;
-    const key = JSON.stringify([options.layout, options.title, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, blocks]);
+    const key = JSON.stringify([options.layout, options.title, options.subtitle, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, blocks]);
     this.root.hidden = false;
     this.tabs = options.tabs ?? [];
     if (key === this.renderedKey) return;
@@ -160,6 +171,24 @@ export class TermView {
     const current = items.find((c) => c.classList.contains('current'));
     const previous = activeKey ? items.find((c) => c.dataset.key === activeKey || c.dataset.option === activeKey) : undefined;
     this.nav.setActive(current ?? previous ?? items[0] ?? null, true);
+  }
+
+  /**
+   * Shows a native view in the same panel (headings, highlight, keys),
+   * rebuilt only when `key` changes.
+   */
+  renderCustom(options: TermViewOptions, key: string, build: () => HTMLElement[]): void {
+    this.root.hidden = false;
+    this.tabs = options.tabs ?? [];
+    const fullKey = `custom\u0000${options.layout}\u0000${options.title}\u0000${options.badge}\u0000${key}`;
+    if (fullKey === this.renderedKey) return;
+    this.renderedKey = fullKey;
+    this.blocks = [];
+    this.root.className = `termview ${options.layout}`;
+    this.renderHeader(options);
+    this.body.replaceChildren(...build());
+    const current = this.body.querySelector<HTMLElement>('.current');
+    this.nav.setActive(current ?? this.body.querySelector<HTMLElement>('[data-nav]'), true);
   }
 
   move(direction: NavDirection): void {
@@ -185,7 +214,10 @@ export class TermView {
     const parts: HTMLElement[] = [];
     if (options.title || options.badge) {
       const line = el('div', 'tv-title-line');
-      if (options.title) line.append(el('h2', 'tv-title', options.title));
+      const titles = el('div', 'tv-titles');
+      if (options.title) titles.append(el('h2', 'tv-title', options.title));
+      if (options.subtitle) titles.append(el('p', 'tv-subtitle', options.subtitle));
+      line.append(titles);
       if (options.badge) line.append(el('span', 'tv-badge', options.badge));
       parts.push(line);
     }
@@ -221,23 +253,47 @@ export class TermView {
   }
 
   /**
-   * A text row just above the first choice whose cells line up with the
-   * choices' columns ("Name  School  Level  Cost  Fail  Info") labels each
-   * value instead of being shown.
+   * A text row just above the first choice that holds column headings
+   * ("Name  School  Level  Cost  Fail  Info") is not shown; each value in
+   * the choices is labelled with the heading above its column instead.
    */
-  private columnHeadings(blocks: Block[]): { index: number; labels: string[] } | null {
+  private columnHeadings(blocks: Block[]): { index: number; cells: Cell[] } | null {
     const first = blocks.findIndex((b) => b.kind === 'choice');
-    if (first < 1) return null;
-    const metaCount = Math.max(...blocks.filter((b): b is ChoiceBlock => b.kind === 'choice').map((c) => c.meta.length));
-    if (metaCount < 1) return null;
     for (let i = first - 1; i >= 0 && i >= first - 2; i--) {
       const block = blocks[i];
       if (block.kind === 'gap') continue;
       if (block.kind !== 'text') return null;
-      if (block.cells.length === metaCount + 1) return { index: i, labels: block.cells.slice(1).map((c) => c.text.trim()) };
-      return null;
+      const cells = block.cells.flatMap(words);
+      return cells.length > 0 && cells.every((c) => HEADING.test(c.text)) ? { index: i, cells } : null;
     }
     return null;
+  }
+
+  /** Values of a choice paired with the heading of the column each starts under. */
+  private labelledMeta(meta: Cell[], headings: Cell[] | null): { label: string; cell: Cell }[] {
+    if (!headings || headings.length < 2) return meta.map((cell) => ({ label: '', cell }));
+    const starts = headings.slice(1).map((h) => h.col);
+    const out: { label: string; cell: Cell }[] = [];
+    for (const cell of meta) {
+      let pieces = [cell];
+      for (const start of starts) {
+        pieces = pieces.flatMap((piece) => {
+          const at = start - piece.col;
+          if (at <= 0 || at >= piece.text.length || piece.text[at - 1] !== ' ') return [piece];
+          return [sliceCell(piece, 0, at - 1), sliceCell(piece, at, piece.text.length)];
+        });
+      }
+      for (const piece of pieces) {
+        const end = piece.col + piece.text.length - 1;
+        let label = '';
+        headings.slice(1).forEach((h, i) => {
+          const next = i + 2 < headings.length ? headings[i + 2].col : Infinity;
+          if (end >= h.col && piece.col < next) label = label || h.text.trim();
+        });
+        out.push({ label, cell: piece });
+      }
+    }
+    return out;
   }
 
   private renderBlocks(blocks: Block[], describe: [string, string] | null): HTMLElement[] {
@@ -260,7 +316,12 @@ export class TermView {
           break;
         }
         case 'text': {
-          if (isInstructionLine(this.textOf(block))) return;
+          const text = this.textOf(block);
+          if (isInstructionLine(text)) return;
+          if (/^[=\-_~*#+]{5,}$/.test(text.trim())) {
+            out.push(el('hr', 'tv-rule'));
+            return;
+          }
           const line = el('p', block.cells.length > 1 ? 'tv-text cells' : 'tv-text');
           block.cells.forEach((cell) => {
             const part = el('span', cell.text.length <= SHORT_CELL ? 'tv-cell short' : 'tv-cell');
@@ -282,7 +343,7 @@ export class TermView {
           break;
         }
         case 'choice':
-          out.push(this.choiceRow(block, index, headings?.labels ?? null, describe));
+          out.push(this.choiceRow(block, index, headings?.cells ?? null, describe));
           break;
       }
     });
@@ -295,7 +356,7 @@ export class TermView {
     return block.cells.map((c) => c.text).join('  ');
   }
 
-  private choiceRow(block: ChoiceBlock, index: number, labels: string[] | null, describe: [string, string] | null): HTMLElement {
+  private choiceRow(block: ChoiceBlock, index: number, headings: Cell[] | null, describe: [string, string] | null): HTMLElement {
     const button = el('button', `tv-choice${block.current ? ' current' : ''}`);
     button.type = 'button';
     button.dataset.nav = '';
@@ -309,16 +370,17 @@ export class TermView {
     main.append(label);
     button.append(main);
 
-    if (block.meta.some((cell) => cell.text.trim())) {
+    const meta = this.labelledMeta(block.meta, headings).filter((m) => m.cell.text.trim());
+    if (meta.length) {
       const metas = el('span', 'tv-metas');
-      block.meta.forEach((cell, i) => {
-        if (!cell.text.trim()) return;
+      for (const { label, cell } of meta) {
         const chip = el('span', 'tv-meta');
-        const heading = labels?.[i];
-        if (heading) chip.append(el('span', 'tv-meta-label', heading));
+        const unit = UNITS[label.toLowerCase()];
+        if (label && !unit) chip.append(el('span', 'tv-meta-label', label));
         for (const run of cell.runs) chip.append(this.span(run));
+        if (unit) chip.append(el('span', 'tv-meta-unit', unit));
         metas.append(chip);
-      });
+      }
       button.append(metas);
     }
 

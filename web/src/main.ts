@@ -44,6 +44,7 @@ import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
 import { cleanPrompt, describableRange } from './ui/prompttext.ts';
 import { openStoreItem, parseStore, type StoreScreen } from './ui/store.ts';
+import { parseSkills, skillMoveKeys, skillsElements } from './ui/skills.ts';
 
 declare global {
   interface Window {
@@ -391,9 +392,13 @@ function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
     const lines = buffer.screenText().split('\n');
     const goldRow = lines.findIndex((l) => /Gold Remaining/.test(l));
     const headerRow = lines.findIndex((l) => /Item Description|Weight\s+Price/.test(l));
-    const name = lines.slice(0, 5).map((l) => /\s{2,}(\S.*?)\s*\(\d+\)\s*$/.exec(l)?.[1]).find(Boolean);
+    const heading = lines.slice(0, 5).find((l) => /\(\d+\)\s*$/.test(l));
+    const parts = heading?.trim().split(/\s{2,}/) ?? [];
+    const name = parts.at(-1)?.replace(/\s*\(\d+\)$/, '');
+    const keeper = parts.length > 1 ? parts[0].replace(/\s*\(/, ' (') : undefined;
     const gold = goldRow >= 0 ? /Gold Remaining:\s*(\d+)/.exec(lines[goldRow])?.[1] : undefined;
     options.title = name ?? (store.home ? 'Your home' : 'Shop');
+    if (keeper) options.subtitle = keeper;
     if (gold) options.badge = `${gold} gold`;
     const firstShown = headerRow >= 0 ? headerRow : 1;
     const lastShown = goldRow >= 0 ? goldRow : store.commandsRow;
@@ -417,7 +422,9 @@ function toggleOption(option: OptionBlock, options: OptionBlock[]): void {
 
 function updatePromptCard(): void {
   const kind = currentPrompt();
-  const show = CARD_KINDS.has(kind) && !macros.running && !picker && !title.isVisible && engine.pendingKeys === 0;
+  const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
+  const show =
+    CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !picker && !title.isVisible && engine.pendingKeys === 0;
   if (show) promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()));
   else promptCard.hide();
 }
@@ -459,7 +466,24 @@ function refresh(): void {
   if (snap.icky) {
     setMode('overlay');
     const region = (base ? buffer.diffBounds(base, 1) : null) ?? { x0: 0, y0: 1, x1: buffer.cols - 1, y1: buffer.rows - 1 };
-    termView.render(buffer, region, panelOptions('panel'));
+    const skills = parseSkills(bufferRows(buffer, 0, buffer.rows - 1));
+    if (skills) {
+      termView.renderCustom(
+        { layout: 'panel', title: 'Skills', badge: `${skills.points} point${skills.points === 1 ? '' : 's'} to spend` },
+        JSON.stringify(skills),
+        () =>
+          skillsElements(skills, (skill) => {
+            if (skill.selected) {
+              if (skill.branch) send([KEY_ENTER]);
+            } else {
+              const keys = skillMoveKeys(skills, skill);
+              if (keys) send(keyCodes(keys));
+            }
+          }),
+      );
+    } else {
+      termView.render(buffer, region, panelOptions('panel'));
+    }
     map.setReticle(null);
   } else {
     setMode('map');
@@ -529,7 +553,7 @@ function updateActionBar(force = false): void {
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
-      screen: !termView.visible ? null : termView.options().length ? 'options' : /Skills Screen/.test(buffer.screenText()) ? 'skills' : null,
+      screen: !termView.visible ? null : termView.options().length ? 'options' : /Skills Screen/.test(buffer.screenText()) ? 'skills' : /Help file '/.test(rowZeroText()) ? 'help' : null,
       looking,
       overview: map.overview,
       atCommand: !!snap?.atCommand,
