@@ -13,6 +13,9 @@ import { directionDigit } from './prompts.ts';
 const MSTATUS_FRIEND = 2;
 const MAX_STEPS = 400;
 const DANGER_RADIUS = 2;
+const BACKSLASH = 92;
+const WALK = ';'.charCodeAt(0);
+const OPEN = 'o'.charCodeAt(0);
 
 export type TravelStopReason = 'arrived' | 'monster' | 'hurt' | 'blocked' | 'unreachable' | 'interrupted' | 'limit';
 
@@ -68,6 +71,7 @@ export class Travel {
   private lastHp: number;
   private lastPos: Point | null = null;
   private lastWasMove = false;
+  private lastDoor: Point | null = null;
   private steps = 0;
   private finishing = false;
 
@@ -105,18 +109,28 @@ export class Travel {
     const next = path[0];
     const digit = directionDigit(next.x - pos.x, next.y - pos.y)!.charCodeAt(0);
     const mat = ctx.materials[snap.feat[next.y * snap.width + next.x]];
+    const closedDoor = !!mat && mat.door && !mat.walkable;
+    const retryingDoor =
+      closedDoor &&
+      this.lastDoor?.x === next.x &&
+      this.lastDoor.y === next.y &&
+      this.lastPos?.x === pos.x &&
+      this.lastPos.y === pos.y;
+    if (retryingDoor) return { kind: 'stop', reason: 'blocked' };
 
     this.steps++;
     this.lastHp = ctx.hp;
     this.lastPos = pos;
 
-    if (mat && mat.door && !mat.walkable) {
+    if (closedDoor) {
       this.lastWasMove = false;
-      return { kind: 'keys', keys: [92, 'o'.charCodeAt(0), digit], path };
+      this.lastDoor = next;
+      return { kind: 'keys', keys: [BACKSLASH, OPEN, digit], path };
     }
 
     this.lastWasMove = true;
+    this.lastDoor = null;
     if (goalIsMonster && path.length === 1) this.finishing = true;
-    return { kind: 'keys', keys: [digit], path };
+    return { kind: 'keys', keys: [BACKSLASH, WALK, digit], path };
   }
 }

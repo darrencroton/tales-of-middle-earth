@@ -14,7 +14,7 @@ import {
 import { FireEffect } from './render/fire.ts';
 import { MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, type FeatureInfo, type Material } from './render/materials.ts';
-import { COMMAND_GROUPS, commandKeys, contextActions, type Action } from './play/actions.ts';
+import { COMMAND_GROUPS, commandKeys, contextActions, pickupCommand, type Action, type CommandDef } from './play/actions.ts';
 import { classifyPrompt, directionDigit, isAdjacent, menuChoiceAt } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
 import { STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
@@ -126,7 +126,10 @@ const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
     }, HIGHLIGHT_MS + 50);
   },
   onMore: () => send([0x20]),
-  onHistory: () => showHistory(),
+  onHistory: () => {
+    if (travel || picker) stopAutomation();
+    showHistory();
+  },
 });
 
 function setCtrlLatched(value: boolean): void {
@@ -260,11 +263,12 @@ function updateActionBar(): void {
     atCommand: !!snap?.atCommand,
     underfoot: snap && snap.inDungeon ? underfootName(snap) : '',
     floorObjects: snap?.floorObjects ?? 0,
+    alwaysPickup: alwaysPickup(),
   });
+  currentActions = actions;
   const key = actions.map((a) => a.id).join(',');
   if (key === actionsKey) return;
   actionsKey = key;
-  currentActions = actions;
   toolbar.replaceChildren(
     ...actions.map((action) => {
       const button = document.createElement('button');
@@ -285,6 +289,7 @@ function updateActionBar(): void {
 }
 
 function runAction(action: Action): void {
+  if (travel || picker) stopAutomation();
   switch (action.effect.kind) {
     case 'keys':
       send(action.effect.keys);
@@ -305,6 +310,12 @@ function runAction(action: Action): void {
   }
 }
 
+const sheetCommands = new WeakMap<HTMLElement, CommandDef>();
+
+function alwaysPickup(): boolean {
+  return !!lastState?.player?.alwaysPickup;
+}
+
 function buildCommandSheet(): void {
   const sections = COMMAND_GROUPS.map((group) => {
     const section = document.createElement('section');
@@ -316,7 +327,7 @@ function buildCommandSheet(): void {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'command';
-      button.dataset.keys = commandKeys(def).join(',');
+      sheetCommands.set(button, def);
       const icon = document.createElement('span');
       icon.className = 'action-icon';
       icon.textContent = def.icon;
@@ -362,8 +373,9 @@ commandsBody.addEventListener('click', (e) => {
   const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button.command');
   if (!button) return;
   commandsDialog.close();
-  if (button.dataset.keys) {
-    send(button.dataset.keys.split(',').map(Number));
+  const def = sheetCommands.get(button);
+  if (def) {
+    send(commandKeys(def, alwaysPickup()));
     return;
   }
   switch (button.dataset.special) {
@@ -442,8 +454,9 @@ function stepTargeting(): void {
 
 /* Taps */
 
-function onStageTap(clientX: number, clientY: number): void {
+function onStageTap(clientX: number, clientY: number, target: EventTarget | null): void {
   if (title.isVisible) return;
+  if (target instanceof Element && target.closest('#messages')) return;
   if (travel || picker) {
     stopAutomation();
     return;
@@ -489,7 +502,7 @@ function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<type
   }
   if (!snap.atCommand) return;
   if (cell.x === player.x && cell.y === player.y) {
-    if (snap.floorObjects > 0) send([BACKSLASH, 'g'.charCodeAt(0)]);
+    if (snap.floorObjects > 0) send([BACKSLASH, pickupCommand(alwaysPickup()).charCodeAt(0)]);
     return;
   }
   startTravel(cell);
@@ -500,8 +513,9 @@ attachTap(stage, onStageTap);
 /* Autosave */
 
 function autosave(): void {
+  if (travel || picker) stopAutomation();
   const snap = engine.state === 'running' ? engine.snapshot() : null;
-  if (snap && snap.inDungeon && snap.atCommand && !snap.icky && !travel && !picker && snap.turn !== lastSavedTurn) {
+  if (snap && snap.inDungeon && snap.atCommand && !snap.icky && snap.turn !== lastSavedTurn) {
     lastSavedTurn = snap.turn;
     autosaveSyncPending = true;
     engine.sendKeys([BACKSLASH, CTRL_S]);
@@ -672,13 +686,13 @@ function dialogOpen(): boolean {
   return menu.open || info.open || settingsDialog.open || commandsDialog.open;
 }
 
-/** Elements whose own keyboard behaviour (Tab, Enter, Space) must not be taken over. */
-function isControl(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    target !== keyboardInput &&
-    target.closest('button, a, input, select, textarea, [contenteditable]') !== null
-  );
+const CONTROL_KEYS = new Set(['Tab', 'Enter', ' ']);
+
+/** True when the focused element handles this key itself (text fields: all keys; buttons and links: Tab, Enter, Space). */
+function controlOwnsKey(target: EventTarget | null, key: string): boolean {
+  if (!(target instanceof HTMLElement) || target === keyboardInput) return false;
+  if (target.closest('input, select, textarea, [contenteditable]')) return true;
+  return CONTROL_KEYS.has(key) && target.closest('button, a') !== null;
 }
 
 window.addEventListener('keydown', (e) => {
@@ -689,7 +703,7 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
-  if (dialogOpen() || e.isComposing || isControl(e.target)) return;
+  if (dialogOpen() || e.isComposing || controlOwnsKey(e.target, e.key)) return;
   const codes = translateKey(e, ctrlLatched);
   if (!codes) return;
   e.preventDefault();
@@ -883,6 +897,10 @@ async function importSaves(file: File): Promise<void> {
   const root = engine.savePath;
   if (!fs || !root) {
     showMessage('Import saves', 'The game is still loading. Try again in a moment.');
+    return;
+  }
+  if (engine.storageError) {
+    showMessage('Import saves', 'Browser storage is unavailable this session, so imported saves would be lost on restart.');
     return;
   }
   const files = decodeBundle(await file.text());

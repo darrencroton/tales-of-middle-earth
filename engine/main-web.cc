@@ -43,7 +43,6 @@ EM_ASYNC_JS(void, web_mount_storage, (const char *path_ptr), {
 	if (error) {
 		console.error('IDBFS load failed', error);
 		Module.tome.storageError = String(error);
-		return;
 	}
 	Module.tome.storagePath = path;
 });

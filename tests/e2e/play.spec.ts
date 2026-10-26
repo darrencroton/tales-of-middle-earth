@@ -93,6 +93,13 @@ test('the action bar follows the game and menus can be tapped', async ({ page })
   const point = await page.evaluate((r) => window.__tome!.terminalCellCentre(20, r), row);
   await page.mouse.click(point.x, point.y);
   await expect(page.locator('#messages')).toContainText('light source', { timeout: 10_000 });
+
+  await waitAtCommand(page);
+  await page.locator('#toolbar [data-action="menu"]').focus();
+  await page.keyboard.press('i');
+  await expect.poll(() => viewMode(page)).toBe('overlay');
+  await page.keyboard.press('Escape');
+  await expect.poll(() => viewMode(page)).toBe('map');
 });
 
 test('hiding the app autosaves at the command prompt', async ({ page }) => {

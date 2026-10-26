@@ -22,6 +22,7 @@
 #include "object_flag.hpp"
 #include "object_kind.hpp"
 #include "object_type.hpp"
+#include "options.hpp"
 #include "player_class.hpp"
 #include "player_race.hpp"
 #include "player_spec.hpp"
@@ -401,6 +402,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	json_int(json, "depth", dun_level);
 	json_str(json, "dungeon", game->edit_data.d_info[dungeon_type].name);
 	json_int(json, "wild", p_ptr->wild_mode ? 1 : 0);
+	json_int(json, "alwaysPickup", options->always_pickup ? 1 : 0);
 	json_key(json, "status");
 	json += '{';
 	json_int(json, "blind", p_ptr->blind);

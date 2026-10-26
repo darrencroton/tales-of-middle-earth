@@ -112,7 +112,10 @@ export const TAP_MAX_MS = 450;
 /**
  * Reports single-pointer taps (touch, pen or mouse) that barely moved.
  */
-export function attachTap(element: HTMLElement, onTap: (clientX: number, clientY: number) => void): void {
+export function attachTap(
+  element: HTMLElement,
+  onTap: (clientX: number, clientY: number, target: EventTarget | null) => void,
+): void {
   const down = new Map<number, { x: number; y: number; t: number }>();
   let multi = false;
 
@@ -129,7 +132,7 @@ export function attachTap(element: HTMLElement, onTap: (clientX: number, clientY
     if (down.size === 0) multi = false;
     if (!start || wasMulti) return;
     const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
-    if (moved <= TAP_MAX_MOVE && performance.now() - start.t <= TAP_MAX_MS) onTap(e.clientX, e.clientY);
+    if (moved <= TAP_MAX_MOVE && performance.now() - start.t <= TAP_MAX_MS) onTap(e.clientX, e.clientY, e.target);
   });
 
   element.addEventListener('pointercancel', (e) => {

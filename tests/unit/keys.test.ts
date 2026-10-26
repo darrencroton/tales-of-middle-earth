@@ -102,4 +102,9 @@ describe('compositionDelta', async () => {
     assert.deepEqual(compositionDelta('teh', 'the'), { backspaces: 2, text: 'he' });
     assert.deepEqual(compositionDelta('abc', 'ab'), { backspaces: 1, text: '' });
   });
+
+  it('does not backspace over characters that were never sent', () => {
+    assert.deepEqual(compositionDelta('a日', 'a'), { backspaces: 0, text: '' });
+    assert.deepEqual(compositionDelta('a日b', 'a'), { backspaces: 1, text: '' });
+  });
 });

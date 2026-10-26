@@ -142,7 +142,7 @@ export class Engine {
       this.syncTimer = null;
     }
     const fs = this.fs;
-    if (!fs || !this.savePath) return Promise.resolve();
+    if (!fs || !this.savePath || this.storageError) return Promise.resolve();
     const run = this.syncChain.catch(() => undefined).then(() => syncToStorage(fs));
     this.syncChain = run;
     return run;

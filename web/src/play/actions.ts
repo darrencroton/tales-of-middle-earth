@@ -23,12 +23,20 @@ export interface CommandDef {
   command: string;
   /** Extra keys sent after the command (e.g. rest duration). */
   then?: string;
+  /** Pick-up command, whose key depends on the always_pickup option. */
+  pickup?: boolean;
+}
+
+/** tome2 picks up with 'g' normally and with ',' when always_pickup is on. */
+export function pickupCommand(alwaysPickup: boolean): string {
+  return alwaysPickup ? ',' : 'g';
 }
 
 const BACKSLASH = 92;
 
-export function commandKeys(def: Pick<CommandDef, 'command' | 'then'>): number[] {
-  const keys = [BACKSLASH, ...[...def.command].map((c) => c.charCodeAt(0))];
+export function commandKeys(def: Pick<CommandDef, 'command' | 'then' | 'pickup'>, alwaysPickup = false): number[] {
+  const command = def.pickup ? pickupCommand(alwaysPickup) : def.command;
+  const keys = [BACKSLASH, ...[...command].map((c) => c.charCodeAt(0))];
   if (def.then) keys.push(...[...def.then].map((c) => c.charCodeAt(0)));
   return keys;
 }
@@ -43,7 +51,7 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
       { label: 'Equipment', icon: '[', command: 'e' },
       { label: 'Wear / wield', icon: '|', command: 'w' },
       { label: 'Take off', icon: '⤴', command: 't' },
-      { label: 'Pick up', icon: '⇡', command: 'g' },
+      { label: 'Pick up', icon: '⇡', command: 'g', pickup: true },
       { label: 'Drop', icon: '⇣', command: 'd' },
       { label: 'Quaff', icon: '!', command: 'q' },
       { label: 'Read', icon: '?', command: 'r' },
@@ -113,6 +121,7 @@ export interface ActionContext {
   /** Name of the terrain under the player, lower case. */
   underfoot: string;
   floorObjects: number;
+  alwaysPickup: boolean;
 }
 
 const KEYBOARD: Action = { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } };
@@ -125,9 +134,9 @@ function command(id: string, label: string, icon: string, def: Pick<CommandDef, 
 }
 
 /** Situational actions for the terrain and items under the player. */
-export function situationalActions(underfoot: string, floorObjects: number): Action[] {
+export function situationalActions(underfoot: string, floorObjects: number, alwaysPickup = false): Action[] {
   const actions: Action[] = [];
-  if (floorObjects > 0) actions.push(command('pickup', 'Pick up', '⇡', { command: 'g' }, true));
+  if (floorObjects > 0) actions.push(command('pickup', 'Pick up', '⇡', { command: pickupCommand(alwaysPickup) }, true));
   if (/down staircase|shaft down|quest down|quest entrance|town exit|path to the next/.test(underfoot)) {
     actions.push(command('descend', 'Descend', '>', { command: '>' }, true));
   }
@@ -174,7 +183,7 @@ export function contextActions(ctx: ActionContext): Action[] {
 
   if (ctx.mode === 'map' && ctx.atCommand) {
     return [
-      ...situationalActions(ctx.underfoot, ctx.floorObjects),
+      ...situationalActions(ctx.underfoot, ctx.floorObjects, ctx.alwaysPickup),
       command('inventory', 'Items', '≡', { command: 'i' }),
       command('rest', 'Rest', '☾', { command: 'R', then: '&\r' }),
       command('cast', 'Cast', '✦', { command: 'm' }),

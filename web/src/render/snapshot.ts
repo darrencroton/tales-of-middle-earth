@@ -145,6 +145,8 @@ export interface PlayerState {
   depth: number;
   dungeon: string;
   wild: number;
+  /** 1 when the always_pickup option is on. */
+  alwaysPickup: number;
   status: Record<string, number>;
 }
 

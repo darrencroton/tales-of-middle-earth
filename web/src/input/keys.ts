@@ -96,9 +96,10 @@ export function translateText(text: string, ctrlLatched = false): number[] {
 /**
  * Difference between successive IME composition strings, as backspaces to
  * undo and new text to send, so composed text reaches the game exactly once.
+ * Backspaces cover only characters that were actually sent.
  */
 export function compositionDelta(previous: string, next: string): { backspaces: number; text: string } {
   let common = 0;
   while (common < previous.length && common < next.length && previous[common] === next[common]) common++;
-  return { backspaces: previous.length - common, text: next.slice(common) };
+  return { backspaces: translateText(previous.slice(common)).length, text: next.slice(common) };
 }

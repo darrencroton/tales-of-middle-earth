@@ -139,7 +139,7 @@ describe('travel', () => {
     const snap = level(['.....'], { x: 0, y: 0 });
     const travel = new Travel({ x: 2, y: 0 }, ctx(snap));
     const first = travel.step(ctx(snap));
-    assert.deepEqual(first.kind === 'keys' && first.keys, keys('6'));
+    assert.deepEqual(first.kind === 'keys' && first.keys, [92, ...keys(';6')]);
     snap.px = 2;
     assert.deepEqual(travel.step(ctx(snap)), { kind: 'stop', reason: 'arrived' });
   });
@@ -148,6 +148,13 @@ describe('travel', () => {
     const snap = level(['.+..'], { x: 0, y: 0 });
     const step = new Travel({ x: 3, y: 0 }, ctx(snap)).step(ctx(snap));
     assert.deepEqual(step.kind === 'keys' && step.keys, [92, ...keys('o6')]);
+  });
+
+  it('stops when a door stays shut after an attempt to open it', () => {
+    const snap = level(['.+..'], { x: 0, y: 0 });
+    const travel = new Travel({ x: 3, y: 0 }, ctx(snap));
+    assert.equal(travel.step(ctx(snap)).kind, 'keys');
+    assert.deepEqual(travel.step(ctx(snap)), { kind: 'stop', reason: 'blocked' });
   });
 
   it('stops when hurt, blocked, or a new creature appears', () => {
@@ -227,8 +234,17 @@ describe('actions', () => {
     assert.deepEqual(situationalActions('open floor', 0), []);
   });
 
+  it('picks up with the key that matches the always_pickup option', () => {
+    const pickup = (always: boolean) => situationalActions('open floor', 1, always)[0].effect;
+    assert.deepEqual(pickup(false), { kind: 'keys', keys: [92, ...keys('g')] });
+    assert.deepEqual(pickup(true), { kind: 'keys', keys: [92, ...keys(',')] });
+    const sheet = COMMAND_GROUPS.flatMap((g) => g.commands).find((c) => c.pickup)!;
+    assert.deepEqual(commandKeys(sheet, true), [92, ...keys(',')]);
+    assert.deepEqual(commandKeys(sheet, false), [92, ...keys('g')]);
+  });
+
   it('adapts to prompts and the command state', () => {
-    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0 };
+    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false };
     assert.deepEqual(contextActions({ ...base, prompt: 'more' }).map((a) => a.id), ['continue', 'skip', 'menu']);
     assert.ok(contextActions({ ...base, prompt: 'yesno' }).some((a) => a.id === 'yes'));
     assert.ok(contextActions({ ...base, prompt: 'aim' }).some((a) => a.id === 'nearest'));
