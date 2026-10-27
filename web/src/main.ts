@@ -1,4 +1,6 @@
 import './styles.css';
+import { GameAudio } from './audio/audio.ts';
+import { doorKinds } from './audio/cues.ts';
 import { Engine } from './engine.ts';
 import { Hud, rowSegments, statusLabels, type HudEntity } from './hud.ts';
 import { attachMapGestures, attachPinch } from './input/gestures.ts';
@@ -7,7 +9,7 @@ import { attachSoftKeyboard } from './input/softkeyboard.ts';
 import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
-import { buildMaterials, type FeatureInfo, type Material } from './render/materials.ts';
+import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
 import { COMMAND_GROUPS, commandKeys, contextActions, pickupCommand, type Action, type CommandDef, type NativeView } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
@@ -63,6 +65,7 @@ declare global {
       lastStopCause(): string;
       macroRunning(): boolean;
       director: Director;
+      audio: GameAudio;
     };
   }
 }
@@ -73,6 +76,7 @@ const EFFECT_LINGER_MS = 160;
 const HIGHLIGHT_MS = 2500;
 const MAX_EFFECT_CELLS = 600;
 const TRAVEL_STEP_MS = 45;
+const PLACE_POLL_MS = 2000;
 const CTRL_S = 0x13;
 const CTRL_X = 0x18;
 const SPACE = 0x20;
@@ -101,6 +105,7 @@ const lookBanner = byId<HTMLDivElement>('look-banner');
 
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 let settings: Settings = loadSettings(reducedMotion);
+const audio = new GameAudio(settings.music, settings.sound);
 applySettings();
 
 const buffer = new TerminalBuffer();
@@ -135,14 +140,22 @@ let effectsAt = 0;
 let hasEffects = false;
 let ctrlLatched = false;
 let lastRenderMs = 0;
+let placeKey = '';
+let placeAt = 0;
+let inStore = false;
+/** The end-of-game summary has been shown; the lament plays until the title. */
+let ended = false;
 let looking = false;
 let quitting = false;
 /** Sheets covered by a tome2 screen, reopened once it closes. */
 let returnTo: SheetTrail | null = null;
 const macros = new MacroRunner();
 
+let sheetDepth = 0;
 const sheets = new Sheets(document.body, () => {
   app.classList.toggle('sheet-open', sheets.isOpen);
+  if (sheets.depth !== sheetDepth) audio.cue(sheets.depth > sheetDepth ? 'ui-open' : 'ui-close');
+  sheetDepth = sheets.depth;
   updateActionBar();
 });
 
@@ -518,12 +531,24 @@ function renderFullSheet(sheet: FullSheet): void {
 }
 
 /** Reads engine state and decides how the screen is presented. */
+/** Tells the soundtrack where the player is: on a new level, or every couple of seconds for time of day. */
+function updatePlace(snap: LevelSnapshot): void {
+  const key = `${snap.depth}:${snap.wild}:${snap.width}x${snap.height}`;
+  const now = performance.now();
+  if (key === placeKey && now - placeAt < PLACE_POLL_MS) return;
+  placeKey = key;
+  placeAt = now;
+  audio.setPlace(engine.place());
+}
+
 function refresh(): void {
   const snap = engine.snapshot();
   if (!snap) return;
   lastSnap = snap;
 
   if (!snap.inDungeon) {
+    ended = false;
+    audio.setView('title');
     setMode(title.isVisible ? 'title' : 'screen');
     if (!director.render()) {
       const options = panelOptions('full');
@@ -536,10 +561,12 @@ function refresh(): void {
     return;
   }
   director.hide();
+  updatePlace(snap);
 
   if (!materialsLoaded) {
     features = engine.features();
     materials = buildMaterials(features);
+    audio.setDoors(doorKinds(features, FB_DOOR, FB_NO_WALK));
     map.setMaterials(materials);
     materialsLoaded = true;
   }
@@ -564,6 +591,7 @@ function refresh(): void {
     const abilities = skills ? null : parseAbilities(rows);
     const fullSheet = skills || abilities ? null : parseFullSheet(rows);
     const tomb = parseTomb(rows);
+    if (tomb) ended = true;
     if (termView.visible && currentBox()) {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
@@ -614,6 +642,11 @@ function refresh(): void {
     hud.update(state, snap.py, snap.px);
     if (state.player) feel.update(state.player);
     if (previous && previous.player?.name === state.player?.name) showHits(previous, state);
+    const store = currentStore();
+    if (store && !inStore) audio.cue('shop');
+    inStore = !!store;
+    audio.setView(ended ? 'gameover' : 'game');
+    audio.update(snap, state, inStore);
     coach.update(mode === 'map' && snap.atCommand && !looking && lookCard.hidden && !map.overview, snap.turn);
     hud.updateMessages(
       state.messages ?? [],
@@ -1160,6 +1193,7 @@ function captureEffects(): void {
   }
   if (effects.length > MAX_EFFECT_CELLS) return;
   map.setEffects(effects);
+  audio.effects(effects);
   hasEffects = effects.length > 0;
   effectsAt = performance.now();
 }
@@ -1258,7 +1292,11 @@ const engine = new Engine(buffer, {
       const notify = pendingSync === 'toast';
       pendingSync = null;
       engine.syncNow().then(
-        () => notify && showToast(engine.storageError ? 'Saved for this session only' : 'Game saved'),
+        () => {
+          if (!notify) return;
+          showToast(engine.storageError ? 'Saved for this session only' : 'Game saved');
+          audio.cue('save');
+        },
         (err) => {
           console.error('Save sync failed', err);
           showToast('Saving to browser storage failed');
@@ -1282,6 +1320,9 @@ const engine = new Engine(buffer, {
       stepTargeting();
     }
     requestFrame();
+  },
+  onKey(code) {
+    audio.keyConsumed(code, lastSnap?.atCommand ?? false);
   },
   onEffectFrame() {
     director.effectFrame();
@@ -1405,6 +1446,11 @@ function controlOwnsKey(target: EventTarget | null, key: string): boolean {
   return CONTROL_KEYS.has(key) && target.closest('button, a') !== null;
 }
 
+/* Browsers only start audio from a gesture; this also resumes audio the system interrupted. */
+for (const type of ['pointerdown', 'touchend', 'keydown'] as const) {
+  window.addEventListener(type, () => audio.unlock(), { capture: true, passive: true });
+}
+
 window.addEventListener('keydown', (e) => {
   if (sheets.isOpen) {
     sheets.handleKey(e);
@@ -1500,6 +1546,7 @@ function openSettingsSheet(): void {
     saveSettings(settings);
     applySettings();
     engine.setAutoMore(settings.messages === 'flow');
+    audio.setVolumes(settings.music, settings.sound);
     map.zoom = settings.zoom;
     pinchStartZoom = settings.zoom;
     map.glyphMode = settings.glyphs;
@@ -1686,6 +1733,7 @@ window.__tome = {
   lastStopCause: () => lastStopCause,
   macroRunning: () => macros.running,
   director,
+  audio,
 };
 
 /* Service worker */

@@ -8,6 +8,7 @@
  * are included in all such copies.
  */
 
+#include "cave.hpp"
 #include "cave_type.hpp"
 #include "defines.hpp"
 #include "dungeon_info_type.hpp"
@@ -16,6 +17,7 @@
 #include "game.hpp"
 #include "deity_type.hpp"
 #include "inventory.hpp"
+#include "levels.hpp"
 #include "monster1.hpp"
 #include "monster2.hpp"
 #include "monster_race.hpp"
@@ -31,6 +33,7 @@
 #include "player_race.hpp"
 #include "player_spec.hpp"
 #include "player_type.hpp"
+#include "quest_type.hpp"
 #include "spells1.hpp"
 #include "store_info_type.hpp"
 #include "store_type.hpp"
@@ -38,6 +41,8 @@
 #include "town_type.hpp"
 #include "util.hpp"
 #include "variable.hpp"
+#include "wilderness_map.hpp"
+#include "wilderness_type_info.hpp"
 #include "xtra1.hpp"
 
 #include <emscripten.h>
@@ -745,6 +750,88 @@ EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
 	json += text_runs;
 	json += "]}";
 	text_runs.clear();
+	return json.c_str();
+}
+
+/*
+ * Returns where the player is, for the soundtrack: dungeon, town, quest,
+ * wilderness terrain, time of day and how far the main story has come.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_place_json()
+{
+	json.clear();
+	json += '{';
+
+	if (!(level_ready()))
+	{
+		json_int(json, "ready", 0, false);
+		json += '}';
+		return json.c_str();
+	}
+
+	auto const &d_info = game->edit_data.d_info;
+	auto const &wf_info = game->edit_data.wf_info;
+	auto const &wilderness = game->wilderness;
+
+	json_int(json, "ready", 1);
+	json_int(json, "dungeon", dungeon_type);
+	json_str(json, "dungeonName", d_info[dungeon_type].name);
+	json_int(json, "depth", dun_level);
+	json_int(json, "maxDepth", d_info[dungeon_type].maxdepth);
+	json_int(json, "wild", p_ptr->wild_mode ? 1 : 0);
+
+	/* tome2 keeps town_num from the last surface area, so dungeon towns come from the dungeon's own list. */
+	int town = 0;
+	if (dun_level)
+	{
+		auto const &d_ptr = d_info[dungeon_type];
+		for (int i = 0; i < d_ptr.t_num && i < TOWN_DUNGEON; i++)
+		{
+			if (d_ptr.t_level[i] == dun_level) town = d_ptr.t_idx[i];
+		}
+	}
+	else if (!p_ptr->wild_mode && p_ptr->town_num > 0 && p_ptr->town_num < 1000)
+	{
+		town = p_ptr->town_num;
+	}
+	json_int(json, "town", town);
+	json_int(json, "townDestroyed", (town > 0 && town_info && town_info[town].destroyed) ? 1 : 0);
+	json_int(json, "quest", dun_level ? is_quest(dun_level) : p_ptr->inside_quest);
+
+	auto const level_name = get_dungeon_name();
+	json_str(json, "levelName", level_name ? *level_name : std::string());
+
+	std::string terrain;
+	int terrain_idx = -1;
+	if (p_ptr->wilderness_x >= 0 && p_ptr->wilderness_y >= 0 &&
+	    static_cast<std::size_t>(p_ptr->wilderness_x) < wilderness.width() &&
+	    static_cast<std::size_t>(p_ptr->wilderness_y) < wilderness.height())
+	{
+		auto const feat = wilderness(p_ptr->wilderness_x, p_ptr->wilderness_y).feat;
+		if (feat >= 0 && static_cast<std::size_t>(feat) < wf_info.size())
+		{
+			if (wf_info[feat].name) terrain = wf_info[feat].name;
+			terrain_idx = wf_info[feat].terrain_idx;
+		}
+	}
+	while (!terrain.empty() && terrain.back() == ' ') terrain.pop_back();
+	json_str(json, "terrain", terrain);
+	json_int(json, "terrainIdx", terrain_idx);
+
+	json_int(json, "night", (turn % (10L * DAY)) < ((10L * DAY) / 2) ? 0 : 1);
+
+	auto const done = [](int q) {
+		auto const status = quest[q].status;
+		return status == QUEST_STATUS_COMPLETED || status == QUEST_STATUS_REWARDED || status == QUEST_STATUS_FINISHED;
+	};
+	int stage = 0;
+	if (done(QUEST_NECRO)) stage = 1;
+	if (done(QUEST_SAURON)) stage = 2;
+	if (done(QUEST_MORGOTH)) stage = 3;
+	json_int(json, "stage", stage);
+	json_int(json, "lev", p_ptr->lev, false);
+	json += '}';
+
 	return json.c_str();
 }
 

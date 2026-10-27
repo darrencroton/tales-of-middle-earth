@@ -1,3 +1,4 @@
+import type { VolumeLevel } from './audio/audio.ts';
 import type { GlyphMode } from './render/appearance.ts';
 import { MAX_ZOOM, MIN_ZOOM } from './render/map.ts';
 
@@ -12,9 +13,13 @@ export interface Settings {
   zoom: number;
   textSize: TextSize;
   messages: MessageFlow;
+  music: VolumeLevel;
+  sound: VolumeLevel;
 }
 
 const STORAGE_KEY = 'tome2mobile.settings';
+
+export const VOLUME_LEVELS: readonly VolumeLevel[] = ['off', 'low', 'medium', 'high'];
 
 export const ANIMATION_FPS: Record<AnimationLevel, number> = {
   full: 20,
@@ -44,6 +49,8 @@ export function defaultSettings(prefersReducedMotion: boolean): Settings {
     zoom: 22,
     textSize: 'medium',
     messages: 'flow',
+    music: 'medium',
+    sound: 'medium',
   };
 }
 
@@ -59,7 +66,8 @@ export function sanitiseSettings(raw: unknown, defaults: Settings): Settings {
       : defaults.zoom;
   const textSize = typeof value.textSize === 'string' && Object.hasOwn(TEXT_SIZE_PX, value.textSize) ? (value.textSize as TextSize) : defaults.textSize;
   const messages = value.messages === 'flow' || value.messages === 'pause' ? value.messages : defaults.messages;
-  return { animation, glyphs, zoom, textSize, messages };
+  const volume = (v: unknown, fallback: VolumeLevel): VolumeLevel => (VOLUME_LEVELS.includes(v as VolumeLevel) ? (v as VolumeLevel) : fallback);
+  return { animation, glyphs, zoom, textSize, messages, music: volume(value.music, defaults.music), sound: volume(value.sound, defaults.sound) };
 }
 
 export function loadSettings(prefersReducedMotion: boolean): Settings {

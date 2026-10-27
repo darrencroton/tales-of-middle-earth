@@ -115,6 +115,17 @@ The game now plays through a phone-first interface; tome2's 80×24 screens only 
 - **Fewer taps:** *Dungeon* in town walks to the nearest known way down; *Stop* (or a tap on the map) interrupts resting and running; travel no longer stops for creatures that are asleep when first seen.
 - **Fixes:** saving reports success only once the save reached browser storage and is offered only at the command prompt; *Save and quit* warns when browser storage is unavailable instead of discarding the game; a save import that cannot be written in full is refused before anything changes; inscriptions and names cannot turn into stray control keys; clearing an inscription works; native floor pick-up honours the always-pickup option; a mouse release outside the map no longer disables taps; option switches follow tome2's cursor; sheets stay above the on-screen keyboard; long lists of saved heroes scroll; *Animation: Off* also stops the CSS pulses; new app versions wait until no game is in progress before taking over.
 
+**Soundtrack and sound** ✅
+
+Everything is synthesised live with the Web Audio API: no audio files, nothing to download, and it works offline.
+
+- **A theme for every place.** The title has its own theme (heroic, wistful, firelit), and its leitmotif returns across the game. Each town has a character: Bree's jig in the Prancing Pony, Gondolin's bright harps and fountains, Minas Anor's horns and processional drums, Lothlórien's timeless choir, Khazad-dûm's deep voices and anvils. Destroyed towns play a lament of their own theme.
+- **Every dungeon sounds like itself:** Mirkwood's skittering harp, Moria's drums in the deep, the Barrow-downs' cold voices, Mordor's war march, Mount Doom's fire, the drowned halls of Númenor, the music box of the Illusory Castle, the near-silence of the Void, and more. Quest levels (Thieves!, the Black Rider, the Wight's grave, the fall of Gondolin, Wolves!, a haunted house…) have their own music, and the deepest level of a dungeon, where its master waits, plays with more urgency.
+- **The world outside:** the overworld map has a travelling theme that changes with the story (darker once the Necromancer falls and Sauron stirs, triumphant after Sauron, at peace after Morgoth). Wilderness areas follow the land: grassland, forest, mountains, marsh, desert, ice, coast and the ash-plains near the Enemy. Towns and the wild change at night (crickets instead of birdsong, a slower, softer tune).
+- **Music that stays out of the way:** each theme states its motif, answers it and varies it, then rests for a while so the ambience (wind, cave air, dripping water, fire, the sea, birds) carries on alone. Danger brings in drums and tension at the next bar, and quietens again as it passes. At low health the music muffles and a heartbeat sounds while you are threatened.
+- **Sound effects** for what happens: hits (weightier for big and critical hits), misses, being hurt, bites and claws, kills (a triumphant chord for a slain unique), doors creaking open and shut (and heard opening nearby), locks, stairs, travel, coins, pick-ups, potions, scrolls, food, spells, bolts and explosions by element, traps, teleports, breath attacks, status changes, a shop bell, level-ups, and a warning when a powerful or unique foe appears. Musical sounds play in the key of the current music.
+- **Settings → Music / Sound effects:** Off, Low, Medium or High each. On iPhone the sound follows the silent switch and mixes with other audio.
+
 ---
 
 ## Architecture
@@ -133,6 +144,7 @@ web/                Vite + TypeScript app (no framework)
   src/flow/           Start-up and character creation driven behind native screens
   src/ui/             Sheets, list navigation, HTML rendering of tome2 screens, native views
   src/settings.ts     Settings (stored per browser)
+  src/audio/          Soundtrack and sound effects, synthesised with Web Audio
   src/play/           Touch play: prompts, pathfinding, travel, targeting, actions, item macros
   src/input/          Keyboard and gesture handling
   src/saves.ts        Save export/import (.tome2save bundles)
