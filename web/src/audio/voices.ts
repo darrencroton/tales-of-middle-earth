@@ -61,9 +61,17 @@ function vibrato(core: AudioCore, targets: OscillatorNode[], t: number, stop: nu
   depth.gain.setValueAtTime(0, t);
   depth.gain.linearRampToValueAtTime(cents, t + delay + 0.4);
   depth.gain.setValueAtTime(0, stop);
-  core.lfo(rate).connect(depth);
+  const lfo = core.lfo(rate);
+  lfo.connect(depth);
   for (const target of targets) depth.connect(target.detune);
-  targets[0].addEventListener('ended', () => depth.disconnect(), { once: true });
+  targets[0].addEventListener(
+    'ended',
+    () => {
+      lfo.disconnect(depth);
+      depth.disconnect();
+    },
+    { once: true },
+  );
 }
 
 /** Slow pitch drift across a held note, so stacked pad voices beat gently against each other. */
