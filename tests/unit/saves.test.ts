@@ -96,7 +96,7 @@ describe('bundle encoding', () => {
 
   it('rejects foreign or malicious bundles', () => {
     assert.throws(() => decodeBundle('not json'), /invalid JSON/);
-    assert.throws(() => decodeBundle('{"format":"other"}'), /Not a tome2mobile save/);
+    assert.throws(() => decodeBundle('{"format":"other"}'), /Not a ToME save/);
     assert.throws(() => decodeBundle(JSON.stringify({ format: SAVE_FORMAT, version: 99, files: [] })), /newer version/);
     assert.throws(
       () => decodeBundle(JSON.stringify({ format: SAVE_FORMAT, version: 1, files: [{ path: '../x', data: '' }] })),

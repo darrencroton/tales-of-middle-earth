@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://darrencroton.github.io/tome2mobile/">
+  <a href="https://darrencroton.github.io/tales-of-middle-earth/">
     <img src="docs/images/title.jpg" alt="ToME — Tales of Middle-earth: the title screen, a mosaic logo lit by rising flames" width="100%" />
   </a>
 </p>
@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://darrencroton.github.io/tome2mobile/"><img src="https://img.shields.io/badge/%E2%96%B6%20Play%20now-in%20your%20browser-d4a24c?style=for-the-badge&labelColor=1a0f08" alt="Play now in your browser" /></a>
+  <a href="https://darrencroton.github.io/tales-of-middle-earth/"><img src="https://img.shields.io/badge/%E2%96%B6%20Play%20now-in%20your%20browser-d4a24c?style=for-the-badge&labelColor=1a0f08" alt="Play now in your browser" /></a>
 </p>
 
 ---
@@ -83,7 +83,7 @@ This is the full ToME 2 game, with an interface designed from scratch for phones
 
 The game runs in any modern browser. Add it to your home screen and it becomes a web app: full screen, and playable offline once it has loaded.
 
-- **iPhone and iPad:** open the [game](https://darrencroton.github.io/tome2mobile/) in Safari, tap **Share**, then **Add to Home Screen**.
+- **iPhone and iPad:** open the [game](https://darrencroton.github.io/tales-of-middle-earth/) in Safari, tap **Share**, then **Add to Home Screen**.
 - **Android:** open it in Chrome, tap **⋮**, then **Install app** (or **Add to Home screen**).
 - **Desktop:** in Chrome or Edge, click the install icon in the address bar.
 

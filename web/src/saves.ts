@@ -64,15 +64,15 @@ export function decodeBundle(text: string): SaveFile[] {
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error('Not a tome2mobile save file (invalid JSON).');
+    throw new Error('Not a ToME save file (invalid JSON).');
   }
 
   const bundle = parsed as Partial<SaveBundle> | null;
   if (!bundle || bundle.format !== SAVE_FORMAT) {
-    throw new Error('Not a tome2mobile save file.');
+    throw new Error('Not a ToME save file.');
   }
   if (typeof bundle.version !== 'number' || bundle.version > SAVE_FORMAT_VERSION) {
-    throw new Error('This save file was made by a newer version of tome2mobile.');
+    throw new Error('This save file was made by a newer version of the game.');
   }
   if (!Array.isArray(bundle.files)) {
     throw new Error('Save file is missing its file list.');

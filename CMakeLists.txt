@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
-project(tome2mobile C CXX)
+project(tales-of-middle-earth C CXX)
 
 if(NOT EMSCRIPTEN)
-	message(FATAL_ERROR "tome2mobile must be configured with emcmake (Emscripten).")
+	message(FATAL_ERROR "tales-of-middle-earth must be configured with emcmake (Emscripten).")
 endif()
 
 set(CMAKE_CXX_STANDARD 17)

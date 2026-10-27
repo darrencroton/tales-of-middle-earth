@@ -36,7 +36,7 @@ function listFiles(dir: string): string[] {
  */
 function serviceWorker(): Plugin {
   return {
-    name: 'tome2mobile-service-worker',
+    name: 'tales-service-worker',
     apply: 'build',
     generateBundle(_options, bundle) {
       const missing = engineFiles.filter((f) => !existsSync(join(publicDir, f)));
