@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { createCharacter, inDungeon, waitAtCommand, waitForEngine } from './helpers.ts';
 
 test('loads the engine and lays out the opening screen without overflow', async ({ page }) => {
@@ -117,15 +117,25 @@ test('imports a save bundle and keeps it after the restart', async ({ page }) =>
 test.describe('iOS home-screen app', () => {
   test.use({ viewport: { width: 402, height: 812 }, contextOptions: { screen: { width: 402, height: 874 } } });
 
-  test('fills the screen when the viewport is shorter than the screen', async ({ page }) => {
+  const safeBottom = (page: Page) => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim());
+  const insets = async (page: Page) => {
+    await page.addStyleTag({ content: ':root { --safe-top: 62px; --safe-bottom: 34px; }' });
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+  };
+
+  test('drops the bottom inset when the view ends a status bar short of the screen', async ({ page }) => {
     await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true }));
     await page.goto('./');
     await waitForEngine(page);
-    const height = (selector: string) => page.evaluate((s) => document.querySelector(s)!.getBoundingClientRect().height, selector);
-    expect(await height('#app')).toBe(812);
-    await page.addStyleTag({ content: ':root { --safe-top: 62px; }' });
-    await page.evaluate(() => window.dispatchEvent(new Event('resize')));
-    expect(await height('#app')).toBe(874);
-    expect(await height('#title-screen')).toBe(874);
+    await insets(page);
+    expect(await safeBottom(page)).toBe('0px');
+    expect(await page.evaluate(() => document.getElementById('app')!.getBoundingClientRect().bottom)).toBe(812);
+  });
+
+  test('keeps the bottom inset in the browser', async ({ page }) => {
+    await page.goto('./');
+    await waitForEngine(page);
+    await insets(page);
+    expect(await safeBottom(page)).toBe('34px');
   });
 });

@@ -52,7 +52,7 @@ tests/e2e/             Playwright (phone portrait, phone landscape, tablet)
 - **Level readiness:** `engine/snapshot.cc` reports `inDungeon` from `character_generated`, not `character_dungeon`, so the map stays native while a new level is generated (quest hooks print `-more-` messages mid-generation).
 - **Messages:** Settings → Messages defaults to *Flow past*, which sets tome2's `auto_more` through `web_set_auto_more` (re-applied on every snapshot so a loaded savefile cannot undo it). Messages then only appear in the HUD log and history.
 - **Return to sheets** (`main.ts` `coverSheets`/`reopenSheets`, `Sheets.snapshot`/`restore`): sheets covered by a tome2 screen are saved and reopened at the next idle at the command prompt (or straight away when tome2's knowledge menu is redirected). `SheetContent.rebuild` refreshes a sheet whose data may have changed (character).
-- **iOS home-screen layout:** iOS can lay a standalone app out one status bar short of the screen; when `navigator.standalone` and the shortfall equals `--safe-top`, `html.fill-screen` sizes `#app`, sheets and the title to `--screen-height`.
+- **iOS home-screen layout:** iOS can give a standalone app a view one status bar short of the screen; the strip below is outside the page and cannot be drawn on. When `navigator.standalone` and the shortfall equals `--safe-top`, `html.short-view` sets `--safe-bottom` to 0, since the view already ends above the home indicator.
 - **Service worker:** a new worker waits; the page asks it to take over (and reloads) only while no game is in progress.
 - **Keys:** `keyCodes`/`typedAnswer` in `input/keys.ts` are the only text encoders; the engine drops codes outside 0..255.
 

@@ -1351,16 +1351,16 @@ function safeTop(): number {
 }
 
 /**
- * Full screen height when an iOS home-screen app lays out shorter than the
- * screen by the status bar, which leaves an unused strip at the bottom.
+ * True when an iOS home-screen app's view is shorter than the screen by the
+ * status bar: the view then ends above the home indicator.
  */
-function standaloneScreenHeight(): number | null {
-  if ((navigator as Navigator & { standalone?: boolean }).standalone !== true) return null;
+function shortStandaloneView(): boolean {
+  if ((navigator as Navigator & { standalone?: boolean }).standalone !== true) return false;
   const portrait = window.innerHeight >= window.innerWidth;
   const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
   const missing = full - window.innerHeight;
   const top = safeTop();
-  return missing > 0 && top > 0 && Math.abs(missing - top) <= 2 ? full : null;
+  return missing > 0 && top > 0 && Math.abs(missing - top) <= 2;
 }
 
 /**
@@ -1377,9 +1377,7 @@ function updateAppHeight(): void {
     root.style.setProperty('--app-height', `${Math.round(visible)}px`);
     root.style.setProperty('--app-top', `${Math.round(viewport?.offsetTop ?? 0)}px`);
   }
-  const full = standaloneScreenHeight();
-  root.classList.toggle('fill-screen', full !== null);
-  if (full !== null) root.style.setProperty('--screen-height', `${full}px`);
+  root.classList.toggle('short-view', shortStandaloneView());
 }
 
 new ResizeObserver(() => layout()).observe(stage);
