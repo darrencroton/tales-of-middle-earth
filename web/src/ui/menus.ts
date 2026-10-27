@@ -204,7 +204,7 @@ export function askText(sheets: Sheets, title: string, label: string, initial = 
       onClose: () => finish(null),
     });
     requestAnimationFrame(() => {
-      input.focus();
+      input.focus({ preventScroll: true });
       input.select();
     });
   });

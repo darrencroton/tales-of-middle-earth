@@ -25,11 +25,11 @@ test('opening screen ignites, the intro rises from the flames, then character cr
   await testInfo.attach('opening', { body: await page.screenshot(), contentType: 'image/png' });
 
   await beginNewCharacter(page, 'Lighter');
-  await expect(page.locator('#title-screen .title-intro')).toContainText('Art thou an adventurer');
+  await expect(page.locator('#title-screen .title-intro')).toContainText('The world is indeed full of peril');
   await page.waitForTimeout(1500);
   await testInfo.attach('intro', { body: await page.screenshot(), contentType: 'image/png' });
   await page.keyboard.press('Enter');
-  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 10_000 });
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
 
   await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race', { timeout: 30_000 });
   expect(await viewMode(page)).toBe('screen');

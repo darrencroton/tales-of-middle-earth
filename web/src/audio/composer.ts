@@ -30,9 +30,9 @@ interface PhraseNote {
 const DEFAULT_SECTIONS: Record<Role, SectionKind[]> = {
   drone: ['intro', 'a', 'b', 'breath', 'outro'],
   pad: ['intro', 'a', 'b', 'breath', 'outro'],
-  bass: ['a', 'b'],
-  arp: ['a', 'b'],
-  melody: ['a', 'b'],
+  bass: ['a', 'b', 'breath'],
+  arp: ['a', 'b', 'breath'],
+  melody: ['a', 'b', 'breath'],
   counter: ['b'],
   bells: ['breath', 'b'],
   perc: ['a', 'b'],
@@ -93,17 +93,23 @@ export function secondsPerBar(theme: Pick<Theme, 'bpm' | 'meter'>): number {
   return (theme.meter * 60) / theme.bpm;
 }
 
-/** Sections of one piece: an opening, statements of the motif and its answer, a breath, a close. */
-export function planPiece(theme: Theme, rng: Rng): PieceSection[] {
+/**
+ * Sections of one piece: the motif, its answer, a breath where the melody
+ * only echoes, and variations. Only a theme's first piece has an intro, and
+ * pieces follow each other without a pause.
+ */
+export function planPiece(theme: Theme, rng: Rng, first = true): PieceSection[] {
   const p = theme.chords.length;
   const half = Math.max(2, Math.round(p / 2));
   const s = (kind: SectionKind, bars: number, variation = 0): PieceSection => ({ kind, bars, variation });
   const templates: PieceSection[][] = [
-    [s('intro', 2), s('a', p), s('b', p), s('breath', half), s('a', p, 1), s('outro', 2)],
-    [s('intro', 2), s('a', p), s('a', p, 1), s('b', p), s('breath', half), s('a', p, 2), s('outro', 2)],
-    [s('intro', 2), s('breath', half), s('a', p), s('b', p, 1), s('a', p, 1), s('outro', 2)],
+    [s('a', p), s('b', p), s('a', p, 1), s('breath', half), s('b', p, 1), s('a', p, 2)],
+    [s('a', p), s('a', p, 1), s('b', p), s('breath', half), s('a', p, 2)],
+    [s('a', p), s('b', p), s('breath', half), s('a', p, 1), s('b', p, 1)],
   ];
-  return rng.pick(templates);
+  const piece = rng.pick(templates);
+  const intro = theme.intro ?? 1;
+  return first && intro > 0 ? [s('intro', intro), ...piece] : piece;
 }
 
 function phraseFromText(text: string): PhraseNote[] {
@@ -146,8 +152,9 @@ export class Composer {
     this.answer = theme.answer ? phraseFromText(theme.answer) : null;
   }
 
-  plan(): PieceSection[] {
-    return planPiece(this.theme, this.rng);
+  /** The next piece; only the first has an intro. */
+  plan(first = false): PieceSection[] {
+    return planPiece(this.theme, this.rng, first);
   }
 
   /** Chord degree for a bar of a section. */
@@ -285,7 +292,8 @@ export class Composer {
       const strong = at === 0 || (meter >= 4 && at === meter / 2) || n.beats >= meter / 2;
       const degree = strong ? this.snap(n.degree, n.accidental, pcs) : n.degree;
       const accent = at === 0 ? 0.1 : 0;
-      events.push(this.note(at, n.beats, this.midi(degree, layer.octave ?? 0, n.accidental), 0.72 + accent, layer.inst, 'melody'));
+      const echo = section.kind === 'breath' ? 0.7 : 1;
+      events.push(this.note(at, n.beats, this.midi(degree, layer.octave ?? 0, n.accidental), (0.72 + accent) * echo, layer.inst, 'melody'));
     }
   }
 
@@ -378,9 +386,22 @@ export class Composer {
     } else if (section.kind === 'b') {
       const base = this.answer ?? this.transpose(this.motif, 2);
       phrase = section.variation === 0 ? base : this.rng.chance(0.5) ? this.improvise(base) : this.ornament(base);
+    } else if (section.kind === 'breath') {
+      phrase = this.echo(section.bars);
     }
     this.cache.set(key, phrase);
     return phrase;
+  }
+
+  /** The motif's opening bar, heard on every other bar of a breath. */
+  private echo(bars: number): PhraseNote[] {
+    const meter = this.theme.meter;
+    const opening = this.motif.filter((n) => n.start < meter);
+    const result: PhraseNote[] = [];
+    for (let bar = 0; bar < bars; bar += 2) {
+      for (const n of opening) result.push({ ...n, start: n.start + bar * meter, beats: Math.min(n.beats, meter - n.start) });
+    }
+    return result;
   }
 
   private ornament(phrase: readonly PhraseNote[]): PhraseNote[] {
@@ -445,4 +466,63 @@ export function pickVoicing(pcs: readonly number[], previous: readonly number[],
     if (best >= 0) chosen.add(best);
   }
   return [...chosen].sort((a, b) => a - b);
+}
+
+export type TransitionKind = 'dominant' | 'plagal' | 'common';
+
+export interface Pivot {
+  kind: TransitionKind;
+  /** Chord tones (MIDI) around the middle of the new theme's range. */
+  chord: number[];
+  bass: number;
+}
+
+const PLAGAL_SCALES: ReadonlySet<string> = new Set(['ionian', 'mixolydian', 'pentatonic']);
+const COMMON_SCALES: ReadonlySet<string> = new Set(['lydian', 'wholeTone', 'hirajoshi']);
+
+/**
+ * How music moves into a theme: bright places are reached through their
+ * subdominant (IV → I, warm and settled), dreamlike ones through a chord
+ * that keeps the previous tonic as a common tone, and dark or tense ones
+ * through their dominant seventh (V7 → i), which pulls hard into the key.
+ */
+export function transitionKind(to: Pick<Theme, 'scale'>): TransitionKind {
+  if (PLAGAL_SCALES.has(to.scale)) return 'plagal';
+  if (COMMON_SCALES.has(to.scale)) return 'common';
+  return 'dominant';
+}
+
+/** The chord that leads from one theme's key into the next. */
+export function pivotChord(from: Pick<Theme, 'root'> | null, to: Pick<Theme, 'root' | 'scale'>): Pivot {
+  const scale = SCALES[to.scale];
+  let kind = transitionKind(to);
+  let intervals: number[] = [];
+  let bass = 0;
+  if (kind === 'common') {
+    const fromPc = from ? ((from.root % 12) + 12) % 12 : null;
+    const degree = [3, 5, 1, 4, 2, 6]
+      .filter((d) => d < scale.length)
+      .find((d) => fromPc !== null && chordDegrees(d).some((x) => ((degreeToMidi(to.root, scale, x) % 12) + 12) % 12 === fromPc));
+    if (degree === undefined) kind = 'plagal';
+    else {
+      intervals = chordDegrees(degree).map((x) => degreeToMidi(0, scale, x));
+      bass = degreeToMidi(0, scale, degree);
+    }
+  }
+  if (kind === 'plagal') {
+    intervals = [5, 9, 12, 14];
+    bass = 5;
+  } else if (kind === 'dominant') {
+    intervals = [7, 11, 14, 17];
+    bass = 7;
+  }
+  const chord = pickVoicing(
+    intervals.map((i) => (to.root + i) % 12),
+    [],
+    to.root + 7,
+  );
+  let low = to.root + bass - 12;
+  while (low > 52) low -= 12;
+  while (low < 36) low += 12;
+  return { kind, chord, bass: low };
 }

@@ -28,6 +28,7 @@ import {
 import { ANIMATION_FPS, applyTextSize, loadSettings, saveSettings, type Settings } from './settings.ts';
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
 import { TitleScreen } from './title.ts';
+import { openSoundtrack } from './ui/soundtrack.ts';
 import { titleName, type GameApi } from './ui/api.ts';
 import { GameFeel } from './feel.ts';
 import { Coach } from './ui/coach.ts';
@@ -1362,6 +1363,7 @@ const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.
   onReady: () => adoptUpdate?.(),
   onSettings: () => openSettingsSheet(),
   onSaves: () => openSavesMenu(),
+  onMusic: () => openSoundtrack(sheets, audio),
   onHidden: () => {
     dirty = true;
     requestFrame();
@@ -1417,12 +1419,15 @@ function updateAppHeight(): void {
   if (keyboard) {
     root.style.setProperty('--app-height', `${Math.round(visible)}px`);
     root.style.setProperty('--app-top', `${Math.round(viewport?.offsetTop ?? 0)}px`);
+  } else if (window.scrollY !== 0) {
+    window.scrollTo(0, 0);
   }
   root.classList.toggle('short-view', shortStandaloneView());
 }
 
 new ResizeObserver(() => layout()).observe(stage);
 window.visualViewport?.addEventListener('resize', updateAppHeight);
+window.visualViewport?.addEventListener('scroll', updateAppHeight);
 window.addEventListener('resize', updateAppHeight);
 window.addEventListener('orientationchange', () => window.setTimeout(updateAppHeight, 250));
 updateAppHeight();
@@ -1445,9 +1450,10 @@ function controlOwnsKey(target: EventTarget | null, key: string): boolean {
 }
 
 /* Browsers only start audio from a gesture; this also resumes audio the system interrupted. */
-for (const type of ['pointerdown', 'touchend', 'keydown'] as const) {
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const) {
   window.addEventListener(type, () => audio.unlock(), { capture: true, passive: true });
 }
+audio.start();
 
 window.addEventListener('keydown', (e) => {
   if (sheets.isOpen) {
@@ -1736,6 +1742,10 @@ window.__tome = {
 
 /* Service worker */
 
+/** How often an open app asks for a new version, and the least time between two asks when it returns to the foreground. */
+const UPDATE_EVERY_MS = 30 * 60_000;
+const UPDATE_RECHECK_MS = 60_000;
+
 /** Set once a service worker is registered: asks a waiting update to take over if the title screen idles. */
 let adoptUpdate: (() => void) | null = null;
 
@@ -1759,6 +1769,15 @@ function watchUpdates(registration: ServiceWorkerRegistration): void {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (director.atTitle) location.reload();
   });
+  let checkedAt = performance.now();
+  const check = () => {
+    const now = performance.now();
+    if (document.visibilityState !== 'visible' || now - checkedAt < UPDATE_RECHECK_MS) return;
+    checkedAt = now;
+    registration.update().catch(() => undefined);
+  };
+  document.addEventListener('visibilitychange', check);
+  window.setInterval(check, UPDATE_EVERY_MS);
 }
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

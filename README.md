@@ -7,8 +7,7 @@
 <h1 align="center">ToME — Tales of Middle-earth</h1>
 
 <p align="center">
-  <strong>A classic roguelike adventure through Tolkien's Middle-earth, rebuilt for your phone.</strong><br />
-  Free · no account · no ads · plays offline
+  <strong>A classic roguelike adventure through Tolkien's Middle-earth, rebuilt for your phone.</strong>
 </p>
 
 <p align="center">
@@ -32,6 +31,19 @@ Every level is generated fresh, every hero is different, and death is permanent.
 
 Prefer a world closer to the books? Choose **Theme module** on the title screen for an alternative take on Middle-earth.
 
+<table>
+  <tr>
+    <td width="33%"><img src="docs/images/intro.jpg" alt="The opening: a Tolkien quote fades in over the title and rising embers" /></td>
+    <td width="33%"><img src="docs/images/creation.jpg" alt="Character creation: choosing a High-Elf from a grid of races, with a description card" /></td>
+    <td width="33%"><img src="docs/images/town.jpg" alt="Bree by day: shaded tiles, townsfolk, the HUD with health, mana and sanity bars, and the smart toolbar" /></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="docs/images/character.jpg" alt="The character sheet: attributes, combat and progress at a glance" /></td>
+    <td width="33%"><img src="docs/images/inventory.jpg" alt="The inventory: pack and equipment tabs, weight carried, tappable items" /></td>
+    <td width="33%"><img src="docs/images/soundtrack.jpg" alt="The soundtrack: every theme grouped by where it plays, with Play all" /></td>
+  </tr>
+</table>
+
 ## Made for touch
 
 This is the full ToME 2 game, with an interface designed from scratch for phones and tablets.
@@ -50,7 +62,7 @@ This is the full ToME 2 game, with an interface designed from scratch for phones
 
 **Fights you can feel.** Damage numbers float off wounded foes, the screen flashes red when you're hit, and banners celebrate a new level or a deeper descent.
 
-**Music for every place.** Each town, dungeon, quest and stretch of wilderness has its own theme, composed live on your device as you play, so it is never quite the same twice. Bree has a fireside jig, Lothlórien a timeless choir, Moria has drums in the deep, and the road between them changes as your story unfolds. The music rests now and then to let the wind, dripping caves and crackling fires come through, swells when danger is near, and muffles to a heartbeat when you are badly hurt. Sound effects bring every swing, creaking door, clinking coin and spell to life.
+**Music for every place.** The soundtrack is composed live on your device as you play, so it is never quite the same twice. It is built from a handful of leitmotifs that follow you through the story: the hero's horn call opens the game, becomes a walking song on the road and a fanfare in Minas Anor; the Bree jig slows to a fireside lullaby in a safe haven and turns sly and minor for thieves; the Dwarf march rings out in Khazad-dûm and falls to slow drums in the deep of Moria; the Shadow's theme marches in Mordor, whispers in Dol Guldur and blazes at Mount Doom. When you move on, the music finishes its phrase and turns into the new key through a pivot chord rather than stopping dead. It swells when danger is near and muffles to a heartbeat when you are badly hurt, and sound effects bring every swing, creaking door, clinking coin and spell to life. Every theme can be heard from **Soundtrack** on the title screen.
 
 **Your way.** Portrait or landscape, phone, tablet or desktop. Four text sizes, adjustable animation, separate music and sound volumes, classic ASCII symbols if you prefer them, and full keyboard support with all the original ToME keys.
 
@@ -69,7 +81,7 @@ This is the full ToME 2 game, with an interface designed from scratch for phones
 
 ## Install it on your device
 
-The game runs in any modern browser. Add it to your home screen to play full screen and offline, like any other app.
+The game runs in any modern browser. Add it to your home screen and it becomes a web app: full screen, and playable offline once it has loaded.
 
 - **iPhone and iPad:** open the [game](https://darrencroton.github.io/tome2mobile/) in Safari, tap **Share**, then **Add to Home Screen**.
 - **Android:** open it in Chrome, tap **⋮**, then **Install app** (or **Add to Home screen**).

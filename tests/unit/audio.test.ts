@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Composer, fitRange, planPiece, pickVoicing, RANGES, secondsPerBar } from '../../web/src/audio/composer.ts';
+import { Composer, fitRange, pickVoicing, pivotChord, planPiece, RANGES, secondsPerBar, transitionKind } from '../../web/src/audio/composer.ts';
 import {
   danger,
   doorCues,
@@ -13,8 +13,21 @@ import {
   playerCues,
 } from '../../web/src/audio/cues.ts';
 import { sceneFor, sceneKey, themeFor, type Place } from '../../web/src/audio/places.ts';
-import { PERCUSSION, THEME_LIST, themeById, themeGain } from '../../web/src/audio/themes.ts';
-import { chordDegrees, degreeToMidi, melodyBeats, parseMelody, Rng, SCALES } from '../../web/src/audio/theory.ts';
+import { measuredLevel, PERCUSSION, THEME_LIST, themeById, themeGain } from '../../web/src/audio/themes.ts';
+import {
+  augmentMelody,
+  chordDegrees,
+  degreeToMidi,
+  invertMelody,
+  melodyBars,
+  melodyBeats,
+  parseMelody,
+  Rng,
+  SCALES,
+  staccatoMelody,
+  stretchChords,
+  transposeMelody,
+} from '../../web/src/audio/theory.ts';
 import type { MonsterState } from '../../web/src/render/snapshot.ts';
 
 const place = (patch: Partial<Place> = {}): Place => ({
@@ -85,6 +98,15 @@ describe('music theory', () => {
     assert.throws(() => parseMelody('0 x'));
   });
 
+  it('transforms melodies', () => {
+    assert.equal(transposeMelody('0 2*2 | r 4#*.5', 2), '2 4*2 | r 6#*0.5');
+    assert.equal(invertMelody('4 5', 4), '4 3');
+    assert.equal(augmentMelody('0 1*.5 | 2', 2), '0*2 1 2*2');
+    assert.equal(staccatoMelody('0*2 1*.5'), '0 r 1*0.5');
+    assert.equal(melodyBars('0 | 1 | 2 | 3', 2, 1), '1 | 2');
+    assert.deepEqual(stretchChords([0, 4], 2), [0, 0, 4, 4]);
+  });
+
   it('repeats a random sequence for the same seed', () => {
     const a = new Rng(42);
     const b = new Rng(42);
@@ -103,6 +125,11 @@ describe('themes', () => {
       const bars = theme.chords.length * theme.meter;
       assert.ok(melodyBeats(parseMelody(theme.motif)) <= bars, `${theme.id} motif is longer than its progression`);
       if (theme.answer) assert.ok(melodyBeats(parseMelody(theme.answer)) <= bars, `${theme.id} answer is longer than its progression`);
+      for (const text of [theme.motif, theme.answer ?? '']) {
+        if (!text.includes('|')) continue;
+        text.split('|').forEach((bar, i) => assert.equal(melodyBeats(parseMelody(bar)), theme.meter, `${theme.id} bar ${i + 1} fills its metre`));
+      }
+      assert.ok(theme.name.length > 2, `${theme.id} has a name`);
       assert.ok(theme.bpm >= 30 && theme.bpm <= 200, `${theme.id} tempo`);
       assert.ok(theme.layers.some((l) => l.role === 'pad' || l.role === 'drone'), `${theme.id} has a bed`);
       assert.ok(theme.layers.some((l) => l.role === 'melody'), `${theme.id} has a melody`);
@@ -182,9 +209,52 @@ describe('composer', () => {
   it('plans pieces that state the motif and fit the progression', () => {
     for (const theme of THEME_LIST) {
       const piece = planPiece(theme, new Rng(7));
-      assert.equal(piece[0].kind, 'intro');
+      assert.equal(piece[0].kind, (theme.intro ?? 1) > 0 ? 'intro' : 'a');
       assert.ok(piece.some((s) => s.kind === 'a'));
       assert.ok(piece.every((s) => s.bars > 0));
+      assert.ok(piece.every((s) => s.kind !== 'outro'), `${theme.id} ends without an outro`);
+      const repeat = planPiece(theme, new Rng(7), false);
+      assert.equal(repeat[0].kind, 'a', `${theme.id} repeats straight into the motif`);
+    }
+  });
+
+  it('starts the title theme on its melody', () => {
+    const title = themeById('title');
+    const composer = new Composer(title, 3);
+    const first = composer.plan(true)[0];
+    assert.equal(first.kind, 'a');
+    const notes = composer.bar(first, 0, 0, 0).filter((n) => n.role === 'melody');
+    assert.ok(notes.some((n) => n.at === 0), 'melody on the first beat');
+    assert.ok(notes.every((n) => n.beats <= 2), 'no long held notes in the call');
+  });
+
+  it('echoes the motif in breath sections', () => {
+    const theme = themeById('bree');
+    const composer = new Composer(theme, 3);
+    const breath = { kind: 'breath' as const, bars: 4, variation: 0 };
+    const melody = (bar: number) => composer.bar(breath, bar, bar, 0).filter((n) => n.role === 'melody');
+    assert.ok(melody(0).length > 0);
+    assert.equal(melody(1).length, 0);
+  });
+
+  it('leads into a new key through a fitting pivot chord', () => {
+    const bree = themeById('bree');
+    const mordor = themeById('mordor');
+    const ice = themeById('ice');
+    const road = themeById('overworld');
+    const toMordor = pivotChord(bree, mordor);
+    assert.equal(transitionKind(mordor), 'dominant');
+    assert.equal(toMordor.kind, 'dominant');
+    const pcs = toMordor.chord.map((m) => (m - mordor.root + 120) % 12).sort((a, b) => a - b);
+    assert.deepEqual(pcs, [2, 5, 7, 11], 'V7 of the new key, with its leading tone');
+    assert.equal(pivotChord(mordor, bree).kind, 'plagal');
+    const dreamy = pivotChord(road, ice);
+    assert.equal(dreamy.kind, 'common');
+    assert.ok(dreamy.chord.some((m) => m % 12 === road.root % 12), 'keeps the old tonic as a common tone');
+    assert.equal(pivotChord(bree, themeById('lorien')).kind, 'plagal', 'no common tone: falls back to IV');
+    for (const theme of THEME_LIST) {
+      const pivot = pivotChord(themeById('title'), theme);
+      assert.ok(pivot.chord.length >= 3 && pivot.bass >= 36 && pivot.bass <= 52, `${theme.id} pivot`);
     }
   });
 
@@ -377,7 +447,7 @@ describe('theme loudness', () => {
     for (const theme of THEME_LIST) {
       const gain = themeGain(theme.id);
       assert.ok(gain >= 0.5 && gain <= 2, `${theme.id} gain ${gain}`);
-      assert.notEqual(gain, 1, `${theme.id} has no measured level`);
+      assert.notEqual(measuredLevel(theme.id), undefined, `${theme.id} has no measured level`);
     }
   });
 });

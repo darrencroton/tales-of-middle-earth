@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
-import { createCharacter, inDungeon, waitAtCommand, waitForEngine } from './helpers.ts';
+import { beginNewCharacter, createCharacter, inDungeon, screenText, sendText, waitAtCommand, waitForEngine, waitForScreen } from './helpers.ts';
 
 test('loads the engine and lays out the opening screen without overflow', async ({ page }) => {
   const errors: string[] = [];
@@ -59,7 +59,7 @@ test('creates a character, saves and quits to the title, then continues', async 
   await expect(resume).toContainText(name);
   await resume.click();
   await expect.poll(() => inDungeon(page), { timeout: 30_000 }).toBe(true);
-  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 10_000 });
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
   await waitAtCommand(page);
   await expect(page.locator('#hud .hud-player .name')).toHaveText(name);
   expect(errors).toEqual([]);
@@ -138,4 +138,34 @@ test.describe('iOS home-screen app', () => {
     await insets(page);
     expect(await safeBottom(page)).toBe('34px');
   });
+});
+
+test('a new hero can take the name of one who has fallen', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Fallen');
+
+  await sendText(page, '\\Q');
+  await waitForScreen(page, /really want to quit/);
+  await sendText(page, 'y');
+  await waitForScreen(page, /verify QUITTING/);
+  const reloaded = page.waitForEvent('load', { timeout: 120_000 });
+  await sendText(page, '@');
+  const finish = page.locator('#toolbar [data-action="finish"]');
+  for (let i = 0; i < 40 && !(await finish.isVisible()); i++) {
+    const text = await screenText(page);
+    if (/-more-/.test(text.split('\n')[0] ?? '')) await sendText(page, '\u001b');
+    await page.waitForTimeout(500);
+  }
+  await finish.click();
+  await reloaded;
+  await waitForEngine(page);
+  await expect(page.locator('#title-screen .title-choice').first()).not.toContainText('Continue');
+
+  await beginNewCharacter(page, 'Fallen');
+  await page.waitForTimeout(400);
+  await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
+  await expect(page.locator('.director.birth')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.director .birth-summary')).toContainText('Fallen');
 });

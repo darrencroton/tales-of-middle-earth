@@ -14,8 +14,8 @@ test('music follows the player from the title to town and dungeon, and actions m
   await page.goto('/?wizard');
   await waitForEngine(page);
 
-  /* Audio waits for a gesture, then plays the title theme. */
-  expect((await audioStatus(page)).state).toBe('off');
+  /* Without autoplay permission, audio waits for a gesture, then plays the title theme. */
+  expect(['suspended', 'running']).toContain((await audioStatus(page)).state);
   await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
   await expect.poll(async () => (await audioStatus(page)).state).toBe('running');
   expect((await audioStatus(page)).theme).toBe('title');
@@ -58,4 +58,40 @@ test('the settings sheet changes music and sound volumes', async ({ page }) => {
   await page.locator('.segmented[aria-label="Sound effects"] .segment', { hasText: 'High' }).click();
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('tome2mobile.settings') ?? '{}'));
   expect(stored).toMatchObject({ music: 'off', sound: 'high' });
+});
+
+test('the soundtrack plays any theme from the title screen and returns to the title music', async ({ page }) => {
+  await page.goto('/');
+  await waitForEngine(page);
+  await page.locator('#title-screen [data-link="music"]').click();
+  const sheet = page.locator('.sheet-soundtrack');
+  await expect(sheet).toBeVisible();
+  await sheet.locator('.soundtrack-row', { hasText: 'Drums in the Deep' }).click();
+  await expect.poll(async () => (await audioStatus(page)).theme).toBe('moria');
+  await expect(sheet.locator('.soundtrack-row.playing')).toContainText('Drums in the Deep');
+  await expect(sheet.locator('.soundtrack-now')).toContainText('Drums in the Deep');
+  await sheet.locator('.sheet-action', { hasText: 'Play all' }).click();
+  await expect.poll(async () => (await audioStatus(page)).theme).toBe('title');
+  await page.keyboard.press('Escape');
+  await expect(sheet).toBeHidden();
+  await expect.poll(async () => (await audioStatus(page)).theme).toBe('title');
+  expect(await page.evaluate(() => window.__tome!.audio.listeningTo)).toBeNull();
+});
+
+test('the soundtrack plays even when music and sound are off', async ({ page }) => {
+  await page.goto('/');
+  await waitForEngine(page);
+  await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
+  await expect.poll(async () => (await audioStatus(page)).ticking).toBe(true);
+  await page.evaluate(() => window.__tome!.audio.setVolumes('off', 'off'));
+  await expect.poll(async () => (await audioStatus(page)).ticking).toBe(false);
+
+  await page.locator('#title-screen [data-link="music"]').click();
+  await page.locator('.sheet-soundtrack .soundtrack-row', { hasText: 'The Golden Wood' }).click();
+  await expect.poll(async () => (await audioStatus(page)).theme).toBe('lorien');
+  await expect.poll(async () => (await audioStatus(page)).ticking).toBe(true);
+  await expect.poll(async () => (await audioStatus(page)).state).toBe('running');
+
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await audioStatus(page)).ticking).toBe(false);
 });

@@ -214,7 +214,6 @@ export function themeFor(scene: Scene): Theme {
         { role: 'melody', inst: 'strings', octave: 1 },
       ],
       ambience: [['wind', 0.45], ['fire', 0.12]],
-      gap: [30, 70],
     });
   }
   if (scene.night) {
@@ -228,7 +227,7 @@ export function themeFor(scene: Scene): Theme {
     });
   }
   if (scene.climax) {
-    theme = variant(theme, theme.id, { floor: Math.max(theme.floor ?? 0, 0.5), bpm: Math.round(theme.bpm * 1.06), gap: [8, 20] });
+    theme = variant(theme, theme.id, { floor: Math.max(theme.floor ?? 0, 0.5), bpm: Math.round(theme.bpm * 1.06) });
   }
   if (scene.depth > 0) {
     const shade = Math.min(0.3, scene.depth / 150);

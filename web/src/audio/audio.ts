@@ -17,6 +17,7 @@ import {
 import { MusicPlayer } from './music.ts';
 import { sceneFor, sceneKey, themeFor, type Place, type View } from './places.ts';
 import { SoundEffects } from './sfx.ts';
+import { THEME_LIST, themeById, type Theme } from './themes.ts';
 
 export type VolumeLevel = 'off' | 'low' | 'medium' | 'high';
 
@@ -52,8 +53,9 @@ interface Intent {
 
 /**
  * The game's sound: music chosen by place and story, ambience beneath it,
- * and effects for what happens. Audio starts on the first touch or key
- * (browsers require a gesture) and pauses while the page is hidden.
+ * and effects for what happens. Audio starts at once where the browser
+ * allows it, otherwise on the first touch or key, and pauses while the page
+ * is hidden. The soundtrack can also be listened to on its own.
  */
 export class GameAudio {
   private ctx: AudioContext | null = null;
@@ -88,6 +90,11 @@ export class GameAudio {
   private hurtAt = -Infinity;
   private nextBeat = 0;
 
+  /** Soundtrack listening: one theme, or every theme in turn. */
+  private listening: { theme: Theme; all: boolean } | null = null;
+  /** Called when the theme being listened to changes (null when listening stops). */
+  onListen: ((id: string | null) => void) | null = null;
+
   constructor(music: VolumeLevel, sound: VolumeLevel) {
     this.musicVolume = music;
     this.soundVolume = sound;
@@ -95,9 +102,10 @@ export class GameAudio {
   }
 
   /** Audio state, the theme playing and the latest sounds, for the debug hook and tests. */
-  get status(): { state: string; theme: string | null; scene: string; intensity: number; recent: CueId[] } {
+  get status(): { state: string; ticking: boolean; theme: string | null; scene: string; intensity: number; recent: CueId[] } {
     return {
       state: this.ctx?.state ?? 'off',
+      ticking: this.timer !== 0,
       theme: this.music?.theme?.id ?? null,
       scene: this.key,
       intensity: Math.round(this.intensity * 100) / 100,
@@ -105,15 +113,40 @@ export class GameAudio {
     };
   }
 
-  /** Starts audio from inside a user gesture; safe to call often. */
+  /**
+   * Starts audio without waiting for a gesture. Browsers that allow it
+   * (installed apps, sites played before) begin at once; the rest keep the
+   * audio suspended until `unlock` runs inside a gesture.
+   */
+  start(): void {
+    if (document.visibilityState !== 'visible') return;
+    this.create();
+  }
+
+  /** Starts or resumes audio from inside a user gesture; safe to call often. */
   unlock(): void {
-    if (this.ctx) {
-      if (this.ctx.state !== 'running' && this.audible() && document.visibilityState === 'visible') void this.ctx.resume().catch(() => undefined);
-      return;
+    const created = !this.ctx;
+    if (!this.create() || !this.ctx) return;
+    if (this.ctx.state === 'running' && !created) return;
+    if (document.visibilityState !== 'visible') return;
+    try {
+      const silent = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
+      const source = this.ctx.createBufferSource();
+      source.buffer = silent;
+      source.connect(this.ctx.destination);
+      source.start();
+    } catch {
+      /* The silent buffer only helps older iOS start audio. */
     }
-    if (!this.audible()) return;
+    void this.ctx.resume().catch(() => undefined);
+  }
+
+  /** Creates the audio graph once; false when audio is off or unavailable. */
+  private create(): boolean {
+    if (this.ctx) return true;
+    if (!this.audible()) return false;
     const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Context) return;
+    if (!Context) return false;
     try {
       const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
       if (session) session.type = 'ambient';
@@ -126,21 +159,55 @@ export class GameAudio {
       this.music = new MusicPlayer(this.core);
       this.ambience = new AmbiencePlayer(this.core);
       this.sfx = new SoundEffects(this.core);
-      const silent = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
-      const source = this.ctx.createBufferSource();
-      source.buffer = silent;
-      source.connect(this.ctx.destination);
-      source.start();
-      void this.ctx.resume().catch(() => undefined);
+      if (this.ctx.state !== 'running') void this.ctx.resume().catch(() => undefined);
     } catch (err) {
       console.warn('Audio is unavailable', err);
       this.ctx = null;
       this.core = null;
-      return;
+      return false;
     }
     this.applyVolumes(true);
     this.applyScene(true);
     this.startTimer();
+    return true;
+  }
+
+  /** The theme being listened to, if any. */
+  get listeningTo(): string | null {
+    return this.listening?.theme.id ?? null;
+  }
+
+  /**
+   * Plays a theme from the soundtrack (or every theme in turn for 'all')
+   * instead of the music for the current place; null returns to it.
+   */
+  listen(id: string | 'all' | null): void {
+    if (id === null) {
+      if (!this.listening) return;
+      this.listening = null;
+      this.applyVolumes(false);
+      this.applyScene(true);
+      this.syncRunning();
+      this.onListen?.(null);
+      return;
+    }
+    const theme = id === 'all' ? THEME_LIST[0] : themeById(id);
+    this.listening = { theme, all: id === 'all' };
+    this.unlock();
+    this.applyVolumes(false);
+    this.syncRunning();
+    this.playListened();
+  }
+
+  private playListened(): void {
+    const listening = this.listening;
+    if (!listening) return;
+    if (this.music) {
+      this.music.play(listening.theme);
+      this.ambience?.set([]);
+      if (this.sfx) this.sfx.key = { root: listening.theme.root, scale: listening.theme.scale };
+    }
+    this.onListen?.(listening.theme.id);
   }
 
   setVolumes(music: VolumeLevel, sound: VolumeLevel): void {
@@ -148,6 +215,12 @@ export class GameAudio {
     this.soundVolume = sound;
     if (!this.ctx) return;
     this.applyVolumes(false);
+    this.syncRunning();
+  }
+
+  /** Runs the audio while anything is audible and the page is visible; suspends it otherwise. */
+  private syncRunning(): void {
+    if (!this.ctx) return;
     if (!this.audible()) {
       void this.ctx.suspend().catch(() => undefined);
       this.stopTimer();
@@ -287,7 +360,12 @@ export class GameAudio {
   }
 
   private audible(): boolean {
-    return this.musicVolume !== 'off' || this.soundVolume !== 'off';
+    return this.musicVolume !== 'off' || this.soundVolume !== 'off' || this.listening !== null;
+  }
+
+  /** Music volume, raised from off while the soundtrack is being listened to. */
+  private effectiveMusic(): VolumeLevel {
+    return this.listening && this.musicVolume === 'off' ? 'medium' : this.musicVolume;
   }
 
   private applyVolumes(immediate: boolean): void {
@@ -299,9 +377,9 @@ export class GameAudio {
       if (immediate) param.setValueAtTime(value, now);
       else param.setTargetAtTime(value, now, 0.15);
     };
-    set(core.musicVolume.gain, VOLUME_GAIN[this.musicVolume] * 0.75);
+    set(core.musicVolume.gain, VOLUME_GAIN[this.effectiveMusic()] * 0.75);
     set(core.soundVolume.gain, VOLUME_GAIN[this.soundVolume]);
-    if (this.musicVolume === 'off') this.music?.stop();
+    if (this.effectiveMusic() === 'off') this.music?.stop();
     else this.applyScene(true);
   }
 
@@ -311,6 +389,10 @@ export class GameAudio {
     if (!force && key === this.key) return;
     this.key = key;
     if (!this.music || !this.ambience || !this.sfx) return;
+    if (this.listening) {
+      this.playListened();
+      return;
+    }
     const theme = themeFor(scene);
     this.sfx.key = { root: theme.root, scale: theme.scale };
     this.ambience.set(theme.ambience);
@@ -335,7 +417,13 @@ export class GameAudio {
     const dt = TICK_MS / 1000;
     const tau = this.intensityTarget > this.intensity ? 2.5 : 12;
     this.intensity += (this.intensityTarget - this.intensity) * (1 - Math.exp(-dt / tau));
-    this.music?.setIntensity(this.intensity);
+    this.music?.setIntensity(this.listening ? 0 : this.intensity);
+    const listening = this.listening;
+    if (listening?.all && this.music && this.music.piecesDone >= 1) {
+      const next = THEME_LIST[(THEME_LIST.indexOf(listening.theme) + 1) % THEME_LIST.length];
+      this.listening = { theme: next, all: true };
+      this.playListened();
+    }
     try {
       this.music?.tick();
       this.ambience?.tick();
