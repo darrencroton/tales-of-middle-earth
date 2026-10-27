@@ -44,6 +44,13 @@ const THEME_INTRO_LINES = ['A module for ToME,', 'set in the world of Middle-ear
 
 /* tome2's own intro and credits screens, replaced by the title screen's intro. */
 const INTRO_SCREEN = /Art thou an adventurer|DarkGod|furiosity|\[Press any key to continue\]/;
+/* The rolled hero, shown after the last birth choice. */
+const HERO_SCREEN = /'r' to reroll|'S' to start over, or ESC to continue/;
+
+interface BirthPick {
+  step: BirthStep;
+  key: string;
+}
 
 const STEP_ORDER: BirthStep[] = ['race', 'modifier', 'class', 'specialisation', 'god'];
 const STEP_SHORT: Record<BirthStep, string> = {
@@ -76,6 +83,14 @@ export class Director {
   private renderedKey = '';
   private nameSent = false;
   private lastAuto = '';
+  /** Options chosen so far, in order, for going back a step. */
+  private picks: BirthPick[] = [];
+  private lastChoice: BirthChoiceScreen | null = null;
+  /** Earlier picks re-entered after a restart, while going back. */
+  private replay: BirthPick[] | null = null;
+  private replayed: BirthStep | null = null;
+  /** Option highlighted once going back reaches its step. */
+  private returnKey: string | null = null;
 
   constructor(deps: DirectorDeps) {
     this.deps = deps;
@@ -234,6 +249,8 @@ export class Director {
       this.heroName = name;
       this.phase = 'creating';
       this.nameSent = false;
+      this.picks = [];
+      this.lastChoice = null;
       this.deps.send(keyCodes('a'));
       this.title?.showIntro(this.module === 'Theme' ? THEME_INTRO_LINES : INTRO_LINES, () => {
         this.title?.leave();
@@ -272,6 +289,7 @@ export class Director {
       return;
     }
     if (answer(/modify the options\s*\[y\/n\]/, keyCodes('n'))) return;
+    if (this.replay && answer(/Use same character as last time/, keyCodes('n'))) return;
     if (answer(/Number of quests\?/, [ENTER])) return;
     if (answer(/Enter minimum attribute for/, [ENTER])) return;
     if (/Enter your player's name above/.test(screen)) {
@@ -281,14 +299,71 @@ export class Director {
       this.deps.send([...keyCodes(this.heroName), ENTER]);
       return;
     }
+    const current = parseBirthChoice(bufferRows(this.deps.buffer, 0, this.deps.buffer.rows - 1), screen);
+    if (current || HERO_SCREEN.test(screen)) this.track(current);
+    if (current && this.continueReplay(current)) return;
     if (this.pendingKey) {
-      const current = parseBirthChoice(bufferRows(this.deps.buffer, 0, this.deps.buffer.rows - 1), screen);
       const arrived = current?.options.find((o) => o.current)?.key === this.pendingKey;
       const choose = arrived && this.chooseWhenReady;
       this.pendingKey = null;
       this.chooseWhenReady = false;
       if (choose) this.deps.send([ENTER]);
     }
+  }
+
+  /** Records the option chosen on each step as tome2 moves past it (or back, on a restart). */
+  private track(choice: BirthChoiceScreen | null): void {
+    const previous = this.lastChoice;
+    this.lastChoice = choice;
+    if (previous && choice && previous.step === choice.step) return;
+    const at = choice ? STEP_ORDER.indexOf(choice.step) : STEP_ORDER.length;
+    this.picks = this.picks.filter((p) => STEP_ORDER.indexOf(p.step) < at);
+    if (!previous || STEP_ORDER.indexOf(previous.step) >= at) return;
+    if (this.replayed === previous.step) {
+      this.replayed = null;
+      return;
+    }
+    const pick = previous.options.find((o) => o.current);
+    if (pick) this.picks.push({ step: previous.step, key: pick.key });
+  }
+
+  /** Re-enters the next earlier pick while going back; false once there is nothing left to replay. */
+  private continueReplay(choice: BirthChoiceScreen): boolean {
+    if (!this.replay) return false;
+    const next = this.replay[0];
+    if (!next || next.step !== choice.step) {
+      const key = next ? null : this.returnKey;
+      this.replay = null;
+      this.returnKey = null;
+      this.choice = choice;
+      if (key) this.preview(key);
+      this.deps.requestRefresh();
+      return !!key;
+    }
+    this.replay.shift();
+    this.picks.push(next);
+    this.replayed = next.step;
+    this.deps.send(keyCodes(next.key));
+    return true;
+  }
+
+  /** Returns to the previous birth step: tome2 starts over and the earlier picks are made again. */
+  back(): void {
+    if (this.replay || this.picks.length === 0) return;
+    this.returnKey = this.picks[this.picks.length - 1].key;
+    this.replay = this.picks.slice(0, -1);
+    this.replayed = null;
+    this.pendingKey = null;
+    this.chooseWhenReady = false;
+    this.deps.send(keyCodes('S'));
+  }
+
+  /** Highlights a random option so its description shows; Choose confirms it. */
+  private randomOption(): void {
+    const options = this.choice?.options.filter((o) => !o.current) ?? [];
+    const usual = options.filter((o) => !o.unusual);
+    const pool = usual.length ? usual : options;
+    if (pool.length) this.preview(pool[Math.floor(Math.random() * pool.length)].key);
   }
 
   hide(): void {
@@ -305,6 +380,10 @@ export class Director {
       return true;
     }
     if (this.phase !== 'birth') return false;
+    if (this.replay) {
+      this.showWaiting('');
+      return true;
+    }
     const screen = this.screen();
     const rows = bufferRows(this.deps.buffer, 0, this.deps.buffer.rows - 1);
     const choice = parseBirthChoice(rows, screen);
@@ -339,10 +418,14 @@ export class Director {
   actions(): Action[] | null {
     if (this.view.hidden || this.promptShowing()) return null;
     const menu: Action = { id: 'menu', label: 'Menu', icon: '☰', effect: { kind: 'menu' } };
+    if (this.replay) return [menu];
+    const back: Action[] = this.picks.length
+      ? [{ id: 'back', label: 'Back', icon: '‹', effect: { kind: 'run', run: () => this.back() } }]
+      : [];
     if (this.choice) {
       return [
-        { id: 'back', label: 'Start over', icon: '↺', effect: { kind: 'keys', keys: keyCodes('S') } },
-        { id: 'random', label: 'Random', icon: '⚄', effect: { kind: 'keys', keys: keyCodes('*') } },
+        ...back,
+        { id: 'random', label: 'Random', icon: '⚄', effect: { kind: 'run', run: () => this.randomOption() } },
         { id: 'choose', label: 'Choose', icon: '✔', effect: { kind: 'keys', keys: [ENTER] }, primary: true },
         menu,
       ];
@@ -350,6 +433,7 @@ export class Director {
     const screen = this.screen();
     if (/'r' to reroll/.test(screen)) {
       return [
+        ...back,
         { id: 'reroll', label: 'Reroll', icon: '⚄', effect: { kind: 'keys', keys: keyCodes('r') } },
         { id: 'accept', label: 'Accept', icon: '✔', effect: { kind: 'keys', keys: [ESCAPE] }, primary: true },
         menu,
@@ -357,6 +441,7 @@ export class Director {
     }
     if (/'S' to start over, or ESC to continue/.test(screen)) {
       return [
+        ...back,
         { id: 'restart', label: 'Start over', icon: '↺', effect: { kind: 'keys', keys: keyCodes('S') } },
         { id: 'begin', label: 'Begin adventure', icon: '▸', effect: { kind: 'keys', keys: [ESCAPE] }, primary: true },
         menu,
@@ -366,7 +451,13 @@ export class Director {
   }
 
   handleKey(e: KeyboardEvent): boolean {
-    if (this.view.hidden || !this.choice) return false;
+    if (this.view.hidden) return false;
+    const back = e.key === 'Backspace' || (e.key === 'Escape' && this.choice);
+    if (back && this.phase === 'birth' && this.picks.length && !this.replay) {
+      this.back();
+      return true;
+    }
+    if (!this.choice) return false;
     const options = this.choice.options;
     const index = options.findIndex((o) => o.current);
     switch (e.key) {

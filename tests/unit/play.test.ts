@@ -174,6 +174,39 @@ describe('travel', () => {
     assert.deepEqual(travel.step(ctx(snap, known)), { kind: 'stop', reason: 'monster', creature: 'kobold' });
   });
 
+  it('stops only once for the same creature while it stays in sight', () => {
+    const snap = level(['......'], { x: 0, y: 0 });
+    const leper = [monster(1, 2, 0)];
+    const noticed = new Set<number>();
+    const first = new Travel({ x: 5, y: 0 }, ctx(snap, leper), { noticed });
+    assert.deepEqual(first.step(ctx(snap, leper)), { kind: 'stop', reason: 'monster', creature: 'kobold' });
+    const second = new Travel({ x: 5, y: 0 }, ctx(snap, leper), { noticed });
+    assert.equal(second.step(ctx(snap, leper)).kind, 'keys');
+    snap.px = 1;
+    const other = [...leper, monster(2, 1, 1)];
+    assert.deepEqual(second.step(ctx(snap, other)), { kind: 'stop', reason: 'monster', creature: 'kobold' });
+  });
+
+  it('still stops when hurt by a creature it has noticed', () => {
+    const snap = level(['......'], { x: 0, y: 0 });
+    const leper = [monster(1, 2, 0)];
+    const noticed = new Set([1]);
+    const travel = new Travel({ x: 5, y: 0 }, ctx(snap, leper), { noticed });
+    assert.equal(travel.step(ctx(snap, leper)).kind, 'keys');
+    snap.px = 1;
+    assert.deepEqual(travel.step(ctx(snap, leper, 8)), { kind: 'stop', reason: 'hurt' });
+  });
+
+  it('forgets a noticed creature once it is out of sight', () => {
+    const snap = level(['......'], { x: 0, y: 0 });
+    const noticed = new Set([1]);
+    new Travel({ x: 5, y: 0 }, ctx(snap), { noticed });
+    assert.equal(noticed.size, 0);
+    const back = [monster(1, 2, 0)];
+    const travel = new Travel({ x: 5, y: 0 }, ctx(snap, back), { noticed });
+    assert.deepEqual(travel.step(ctx(snap, back)), { kind: 'stop', reason: 'monster', creature: 'kobold' });
+  });
+
   it('stops when the engine is no longer waiting for a command', () => {
     const snap = level(['...'], { x: 0, y: 0 });
     const travel = new Travel({ x: 2, y: 0 }, ctx(snap));

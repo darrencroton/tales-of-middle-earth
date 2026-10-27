@@ -35,7 +35,7 @@ import { el, iconText } from './ui/dom.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
 import { askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate } from './ui/menus.ts';
-import { Sheets } from './ui/sheet.ts';
+import { Sheets, type SheetTrail } from './ui/sheet.ts';
 import { bufferRows, parseRows, type ChoiceBlock, type OptionBlock } from './ui/termparse.ts';
 import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.ts';
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
@@ -119,6 +119,8 @@ let features: FeatureInfo[] = [];
 let materials: Material[] = [];
 let travel: Travel | Explore | null = null;
 const exploreSkip = new Set<number>();
+/** Creatures that have already stopped travel on this level. */
+const noticed = new Set<number>();
 let exploreDepth = -1;
 let travelTimer = 0;
 let lastStopCause = '';
@@ -135,6 +137,8 @@ let ctrlLatched = false;
 let lastRenderMs = 0;
 let looking = false;
 let quitting = false;
+/** Sheets covered by a tome2 screen, reopened once it closes. */
+let returnTo: SheetTrail | null = null;
 const macros = new MacroRunner();
 
 const sheets = new Sheets(document.body, () => {
@@ -198,19 +202,20 @@ const api: GameApi = {
   state: () => lastState,
   features: () => features,
   send: (keys) => {
-    sheets.closeAll();
+    coverSheets(false);
     send(keys);
   },
   command: (command) => {
-    sheets.closeAll();
     if (!lastSnap?.atCommand) {
+      coverSheets(false);
       showToast('Finish what you are doing first.');
       return;
     }
+    coverSheets(true);
     send([BACKSLASH, ...keyCodes(command)]);
   },
-  runMacro: (macro) => {
-    sheets.closeAll();
+  runMacro: (macro, comeBack = false) => {
+    coverSheets(comeBack);
     runMacro(macro);
   },
   travelTo: (point) => {
@@ -221,6 +226,26 @@ const api: GameApi = {
   highlight: (point) => flash(point),
   askText: (title, label, initial) => askText(sheets, title, label, initial),
 };
+
+/** Closes the sheets; with `comeBack` they reopen once the game is back at the map. */
+function coverSheets(comeBack: boolean): void {
+  returnTo = comeBack ? sheets.snapshot() : null;
+  sheets.closeAll();
+}
+
+/** Reopens sheets covered by a tome2 screen once that screen has closed. */
+function reopenSheets(): void {
+  const snap = lastSnap;
+  if (!returnTo || macros.running || !snap) return;
+  if (quitting || !snap.inDungeon) {
+    returnTo = null;
+    return;
+  }
+  if (!snap.atCommand || snap.icky) return;
+  const trail = returnTo;
+  returnTo = null;
+  if (!sheets.isOpen) sheets.restore(trail);
+}
 
 function flash(point: MapPoint): void {
   map.flashHighlight(point, HIGHLIGHT_MS);
@@ -522,6 +547,7 @@ function refresh(): void {
   map.setSnapshot(snap);
   if (snap.depth !== exploreDepth) {
     exploreSkip.clear();
+    noticed.clear();
     exploreDepth = snap.depth;
   }
 
@@ -769,6 +795,9 @@ function runAction(action: Action): void {
     case 'nav':
       navigate(action.effect.direction);
       break;
+    case 'run':
+      action.effect.run();
+      break;
   }
 }
 
@@ -787,12 +816,20 @@ function alwaysPickup(): boolean {
   return !!lastState?.player?.alwaysPickup;
 }
 
+/* Native views that open over the Commands sheet, so Back returns to it. */
+const STACKED_VIEWS = new Set<NativeView>(['inventory', 'equipment', 'character', 'knowledge', 'history']);
+
 function openCommands(): void {
   const body = el('div', 'commands');
   const run = (def: CommandDef) => {
-    if (def.native) {
+    if (def.native && STACKED_VIEWS.has(def.native)) {
+      openNative(def.native);
+    } else if (def.native) {
       sheets.closeAll();
       openNative(def.native);
+    } else if (def.reading && lastSnap?.atCommand) {
+      coverSheets(true);
+      send(commandKeys(def, alwaysPickup()));
     } else {
       api.send(commandKeys(def, alwaysPickup()));
     }
@@ -882,7 +919,7 @@ function startTravel(goal: MapPoint): void {
   if (!ctx) return;
   stopAutomation(null, 'new travel');
   recentreMap();
-  travel = new Travel(goal, ctx);
+  travel = new Travel(goal, ctx, { noticed });
   stepTravel();
 }
 
@@ -900,7 +937,7 @@ function startExplore(): void {
   stopAutomation(null, 'explore');
   recentreMap();
   const snap = ctx.snap;
-  travel = new Explore(exploreSkip, (i) => isDownExit(snap, i));
+  travel = new Explore(exploreSkip, (i) => isDownExit(snap, i), noticed);
   stepTravel();
 }
 
@@ -953,7 +990,10 @@ function redirectNativeScreen(): boolean {
   }
   if (/Display current knowledge/.test(buffer.screenText())) {
     engine.sendKeys([KEY_ESCAPE]);
-    openKnowledge(api);
+    const trail = returnTo;
+    returnTo = null;
+    if (trail && !sheets.isOpen) sheets.restore(trail);
+    else openKnowledge(api);
     return true;
   }
   return false;
@@ -1232,6 +1272,7 @@ const engine = new Engine(buffer, {
       requestFrame();
       return;
     }
+    reopenSheets();
     if (macros.running) {
       stepMacro();
     } else if (travel && !travelTimer) {
@@ -1298,19 +1339,46 @@ function layout(): void {
   requestFrame();
 }
 
+/** The top safe-area inset in CSS pixels. */
+function safeTop(): number {
+  const probe = el('div');
+  probe.style.cssText = 'position:absolute;visibility:hidden;padding-top:var(--safe-top)';
+  document.body.append(probe);
+  const px = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+  probe.remove();
+  return px;
+}
+
+/**
+ * Full screen height when an iOS home-screen app lays out shorter than the
+ * screen by the status bar, which leaves an unused strip at the bottom.
+ */
+function standaloneScreenHeight(): number | null {
+  if ((navigator as Navigator & { standalone?: boolean }).standalone !== true) return null;
+  const portrait = window.innerHeight >= window.innerWidth;
+  const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+  const missing = full - window.innerHeight;
+  const top = safeTop();
+  return missing > 0 && top > 0 && Math.abs(missing - top) <= 2 ? full : null;
+}
+
 /**
  * The app fills the screen with CSS; only while the on-screen keyboard
  * covers part of it does it shrink to the visible area above the keyboard.
  */
 function updateAppHeight(): void {
+  const root = document.documentElement;
   const viewport = window.visualViewport;
   const visible = viewport?.height ?? window.innerHeight;
   const keyboard = visible < window.innerHeight - KEYBOARD_MIN_PX;
-  document.documentElement.classList.toggle('keyboard-open', keyboard);
+  root.classList.toggle('keyboard-open', keyboard);
   if (keyboard) {
-    document.documentElement.style.setProperty('--app-height', `${Math.round(visible)}px`);
-    document.documentElement.style.setProperty('--app-top', `${Math.round(viewport?.offsetTop ?? 0)}px`);
+    root.style.setProperty('--app-height', `${Math.round(visible)}px`);
+    root.style.setProperty('--app-top', `${Math.round(viewport?.offsetTop ?? 0)}px`);
   }
+  const full = standaloneScreenHeight();
+  root.classList.toggle('fill-screen', full !== null);
+  if (full !== null) root.style.setProperty('--screen-height', `${full}px`);
 }
 
 new ResizeObserver(() => layout()).observe(stage);
@@ -1515,14 +1583,8 @@ function openSavesMenu(): void {
 function openGameMenu(): void {
   const playing = inGame();
   openMenu(sheets, 'Menu', [
-    { label: 'Character', icon: '@', hidden: !playing, run: () => {
-      sheets.closeAll();
-      openCharacter(api);
-    } },
-    { label: 'Messages', icon: '≣', hidden: !playing, run: () => {
-      sheets.closeAll();
-      showHistory();
-    } },
+    { label: 'Character', icon: '@', hidden: !playing, run: () => openCharacter(api) },
+    { label: 'Messages', icon: '≣', hidden: !playing, run: () => showHistory() },
     { label: 'Save game', icon: '⇩', hidden: !playing || !lastSnap?.atCommand, run: () => {
       sheets.closeAll();
       if (!saveGame('toast')) showToast('Finish what you are doing first.');

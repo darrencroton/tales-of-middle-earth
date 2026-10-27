@@ -16,6 +16,8 @@ export interface ItemAction {
   /** Needs text (an inscription) from the player first. */
   needsText?: boolean;
   danger?: boolean;
+  /** Shows a tome2 screen to read; the item sheet reopens when it closes. */
+  reading?: boolean;
 }
 
 export const INVEN_WIELD = 24;
@@ -73,8 +75,9 @@ export function useAction(tval: number): ItemAction | null {
     case TV.POTION2:
       return { id: 'quaff', label: 'Quaff', command: 'q' };
     case TV.SCROLL:
-    case TV.PARCHMENT:
       return { id: 'read', label: 'Read', command: 'r' };
+    case TV.PARCHMENT:
+      return { id: 'read', label: 'Read', command: 'r', reading: true };
     case TV.WAND:
       return { id: 'aim', label: 'Aim', command: 'a' };
     case TV.STAFF:
@@ -82,7 +85,7 @@ export function useAction(tval: number): ItemAction | null {
     case TV.ROD_MAIN:
       return { id: 'zap', label: 'Zap', command: 'z' };
     case TV.BOOK:
-      return { id: 'browse', label: 'Browse', command: 'b' };
+      return { id: 'browse', label: 'Browse', command: 'b', reading: true };
     case TV.FLASK:
       return { id: 'refuel', label: 'Refuel light', command: 'F' };
     case TV.SHOT:

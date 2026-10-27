@@ -24,7 +24,8 @@ export type ActionEffect =
   | { kind: 'commands' }
   | { kind: 'ctrl' }
   | { kind: 'nav'; direction: 'up' | 'down' | 'select' }
-  | { kind: 'native'; view: NativeView };
+  | { kind: 'native'; view: NativeView }
+  | { kind: 'run'; run(): void };
 
 export interface Action {
   id: string;
@@ -46,6 +47,8 @@ export interface CommandDef {
   pickup?: boolean;
   /** Opens a native view instead of sending the command. */
   native?: NativeView;
+  /** Shows a tome2 screen to read; the Commands sheet reopens when it closes. */
+  reading?: boolean;
 }
 
 /** tome2 picks up with 'g' normally and with ',' when always_pickup is on. */
@@ -74,7 +77,7 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
       { label: 'Read', icon: '?', command: 'r' },
       { label: 'Eat', icon: ',', command: 'E' },
       { label: 'Refuel light', icon: '~', command: 'F' },
-      { label: 'Inspect', icon: '⌕', command: 'I' },
+      { label: 'Inspect', icon: '⌕', command: 'I', reading: true },
       { label: 'Inscribe', icon: '✎', command: '{' },
       { label: 'Destroy', icon: '✖', command: 'k' },
     ],
@@ -115,19 +118,19 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
     commands: [
       { label: 'Look', icon: '◉', command: 'l', native: 'look' },
       { label: 'Character', icon: '@', command: 'C', native: 'character' },
-      { label: 'Skills', icon: '±', command: 'G' },
-      { label: 'Abilities', icon: '✪', command: 'N' },
+      { label: 'Skills', icon: '±', command: 'G', reading: true },
+      { label: 'Abilities', icon: '✪', command: 'N', reading: true },
       { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
       { label: 'Knowledge', icon: '¶', command: '~', native: 'knowledge' },
       { label: 'Messages', icon: '≣', command: '\u0010', native: 'history' },
-      { label: 'Help', icon: '?', command: '?' },
+      { label: 'Help', icon: '?', command: '?', reading: true },
     ],
   },
   {
     title: 'Game',
     commands: [
       { label: 'Save', icon: '⇩', command: '\u0013' },
-      { label: 'Options', icon: '=', command: '=' },
+      { label: 'Options', icon: '=', command: '=', reading: true },
     ],
   },
 ];

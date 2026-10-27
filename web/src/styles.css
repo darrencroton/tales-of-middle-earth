@@ -79,6 +79,14 @@ button {
   padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
 }
 
+/* iOS home-screen apps can lay out shorter than the screen; the app then fills the whole screen. */
+html.fill-screen:not(.keyboard-open) #app,
+html.fill-screen:not(.keyboard-open) .sheet-layer,
+html.fill-screen:not(.keyboard-open) #title-screen {
+  bottom: auto;
+  height: var(--screen-height);
+}
+
 /* While the on-screen keyboard is up, fit the app and any sheet in the visible area above it. */
 html.keyboard-open #app,
 html.keyboard-open .sheet-layer {

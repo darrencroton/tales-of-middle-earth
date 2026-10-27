@@ -81,6 +81,14 @@ export class ListNav {
     this.root = root;
     this.scroller = scroller;
     this.attachSwipe();
+    root.addEventListener(
+      'click',
+      (e) => {
+        const item = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-nav]') : null;
+        if (item && root.contains(item)) this.setActive(item, false);
+      },
+      { capture: true },
+    );
   }
 
   items(): HTMLElement[] {

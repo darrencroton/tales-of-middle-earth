@@ -62,10 +62,21 @@ export function travelGrid(snap: LevelSnapshot, materials: readonly Material[]):
   };
 }
 
+export interface TravelOptions {
+  /** Awake hostile creatures this close stop travel. */
+  dangerRadius?: number;
+  /**
+   * Creatures that have already stopped travel once, shared between
+   * journeys; one that drops out of sight is forgotten.
+   */
+  noticed?: Set<number>;
+}
+
 /**
  * Walks the player towards a goal one step per engine idle, stopping in the
  * way Brogue's travel does: on arrival, when hurt, or when danger appears
- * (a new awake hostile creature, or a known one awake and close).
+ * (a new awake hostile creature, or a known one awake and close). Each
+ * creature stops travel only once while it stays in sight.
  */
 export class Travel {
   readonly goal: Point;
@@ -78,11 +89,14 @@ export class Travel {
   private finishing = false;
 
   private readonly dangerRadius: number;
+  private readonly noticed: Set<number>;
 
-  /** `dangerRadius`: awake hostile creatures this close stop travel. */
-  constructor(goal: Point, start: TravelContext, dangerRadius = DANGER_RADIUS) {
+  constructor(goal: Point, start: TravelContext, options: TravelOptions = {}) {
     this.goal = goal;
-    this.dangerRadius = dangerRadius;
+    this.dangerRadius = options.dangerRadius ?? DANGER_RADIUS;
+    this.noticed = options.noticed ?? new Set();
+    const inSight = new Set(start.monsters.map((m) => m.id));
+    for (const id of this.noticed) if (!inSight.has(id)) this.noticed.delete(id);
     this.known = new Set(start.monsters.filter(isHostile).map((m) => m.id));
     this.lastHp = start.hp;
   }
@@ -101,15 +115,13 @@ export class Travel {
 
     const goalIsMonster = ctx.monsters.some((m) => m.x === this.goal.x && m.y === this.goal.y);
     for (const m of ctx.monsters) {
-      if (!isHostile(m)) continue;
+      if (!isHostile(m) || this.noticed.has(m.id)) continue;
       if (m.x === this.goal.x && m.y === this.goal.y) continue;
       if (!this.known.has(m.id)) {
-        if (!m.asleep) return { kind: 'stop', reason: 'monster', creature: m.name };
+        if (!m.asleep) return this.notice(m);
         this.known.add(m.id);
       }
-      if (!m.asleep && Math.max(Math.abs(m.x - pos.x), Math.abs(m.y - pos.y)) <= this.dangerRadius) {
-        return { kind: 'stop', reason: 'monster', creature: m.name };
-      }
+      if (!m.asleep && Math.max(Math.abs(m.x - pos.x), Math.abs(m.y - pos.y)) <= this.dangerRadius) return this.notice(m);
     }
 
     const path = findPath(travelGrid(snap, ctx.materials), pos, this.goal);
@@ -141,5 +153,10 @@ export class Travel {
     this.lastDoor = null;
     if (goalIsMonster && path.length === 1) this.finishing = true;
     return { kind: 'keys', keys: [BACKSLASH, WALK, digit], path };
+  }
+
+  private notice(m: MonsterState): TravelStep {
+    this.noticed.add(m.id);
+    return { kind: 'stop', reason: 'monster', creature: m.name };
   }
 }
