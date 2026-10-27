@@ -1,4 +1,4 @@
-# AGENTS.md — working on tome2mobile
+# AGENTS.md — working on tales-of-middle-earth
 
 ToME 2 (Tales of Middle-earth roguelike) compiled to WebAssembly and played as a phone-first PWA. The C++ engine is unmodified; everything the player sees is ours.
 
