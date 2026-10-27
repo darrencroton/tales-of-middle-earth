@@ -21,6 +21,7 @@ ToME 2 (Tales of Middle-earth roguelike) compiled to WebAssembly and played as a
 - Prefer native/platform solutions over new dependencies; ask before adding packages.
 - Robust error handling; complete, runnable changes.
 - Commit/push only when asked or when checkpointing a long piece of work; open PRs only on request.
+- After opening a PR, watch it: address CI failures and review comments (reviews usually arrive within 10 minutes) and iterate until it is green and clean.
 - (Preferences evolve — update this section when the owner states new ones.)
 
 ## Layout
