@@ -22,6 +22,8 @@ export interface TitleCallbacks {
   onSettings(): void;
   /** Export or import saved games. */
   onSaves(): void;
+  /** Listen to the soundtrack. */
+  onMusic(): void;
   /** The screen has finished leaving. */
   onHidden(): void;
 }
@@ -165,6 +167,7 @@ export class TitleScreen {
 
     find<HTMLButtonElement>('[data-link="settings"]').addEventListener('click', () => this.callbacks.onSettings());
     find<HTMLButtonElement>('[data-link="saves"]').addEventListener('click', () => this.callbacks.onSaves());
+    find<HTMLButtonElement>('[data-link="music"]').addEventListener('click', () => this.callbacks.onMusic());
     this.root.addEventListener('click', (e) => {
       if (this.introDone && !(e.target as HTMLElement).closest('button, a')) this.finishIntro();
     });
@@ -245,27 +248,36 @@ export class TitleScreen {
   }
 
   /**
-   * Fades the verse out and the given lines in over the flames; a tap or key
-   * continues.
+   * Fades the verse out and the given lines in over the flames, line by
+   * line as the verse does; a tap or key continues.
    */
-  showIntro(lines: string[], onContinue: () => void): void {
+  showIntro(lines: string[], cite: string, onContinue: () => void): void {
     this.choices.hidden = true;
     this.links.hidden = true;
     this.status.textContent = '';
     this.root.classList.add('intro');
-    this.intro.replaceChildren(
-      ...lines.map((line, i) => {
-        const p = document.createElement('p');
-        p.textContent = line;
-        p.style.animationDelay = `${300 + i * 260}ms`;
-        return p;
-      }),
-    );
+    const quote = document.createElement('blockquote');
+    quote.className = 'title-verse';
+    const step = 650;
+    lines.forEach((line, i) => {
+      const span = document.createElement('span');
+      span.textContent = line;
+      span.style.animationDelay = `${400 + i * step}ms`;
+      quote.append(span);
+    });
+    let last = 400 + lines.length * step;
+    if (cite) {
+      const source = document.createElement('cite');
+      source.textContent = cite;
+      source.style.animationDelay = `${last}ms`;
+      quote.append(source);
+      last += step;
+    }
     const hint = document.createElement('p');
     hint.className = 'title-intro-hint';
     hint.textContent = 'Tap to begin';
-    hint.style.animationDelay = `${600 + lines.length * 260}ms`;
-    this.intro.append(hint);
+    hint.style.animationDelay = `${last + 400}ms, ${last + 2400}ms`;
+    this.intro.replaceChildren(quote, hint);
     this.intro.hidden = false;
     this.introDone = onContinue;
   }
@@ -360,8 +372,8 @@ export class TitleScreen {
     const cols = Math.max(24, Math.round(this.width / 4));
     const rows = Math.max(24, Math.round(this.height / 4));
     const portrait = this.height > this.width * 1.2;
-    this.flames.style.reach = portrait ? 0.46 : 0.34;
-    this.flames.style.intensity = portrait ? 1 : 0.62;
+    this.flames.style.reach = portrait ? 0.46 : 0.4;
+    this.flames.style.intensity = portrait ? 1 : 0.9;
     this.field.width = cols;
     this.field.height = rows;
     this.flames.resize(cols, rows);

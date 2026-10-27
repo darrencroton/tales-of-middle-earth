@@ -34,16 +34,20 @@ export interface DirectorDeps {
 type Phase = 'boot' | 'title' | 'creating' | 'birth' | 'loading' | 'playing';
 
 const INTRO_LINES = [
-  'Art thou an adventurer,',
-  'one who passes through the waterfalls we call danger',
-  'to find the true nature of the legends beyond them?',
-  'If this is so, then seeketh me.',
+  'The world is indeed full of peril,',
+  'and in it there are many dark places;',
+  'but still there is much that is fair,',
+  'and though in all lands love is now mingled with grief,',
+  'it grows perhaps the greater.',
 ];
+const INTRO_CITE = 'J.R.R. Tolkien · The Fellowship of the Ring';
 
 const THEME_INTRO_LINES = ['A module for ToME,', 'set in the world of Middle-earth.', 'Your story begins here.'];
 
 /* tome2's own intro and credits screens, replaced by the title screen's intro. */
 const INTRO_SCREEN = /Art thou an adventurer|DarkGod|furiosity|\[Press any key to continue\]/;
+/* The first screens of character creation. */
+const BIRTH_SCREEN = /Choose a race|Please answer the following/;
 /* The rolled hero, shown after the last birth choice. */
 const HERO_SCREEN = /'r' to reroll|'S' to start over, or ESC to continue/;
 
@@ -139,7 +143,11 @@ export class Director {
         this.birth(screen, rowZero);
         break;
       case 'loading':
-        if (/-more-/.test(rowZero) || /Press any key/.test(screen)) this.deps.send([SPACE]);
+        if (BIRTH_SCREEN.test(screen)) {
+          this.startBirth(screen, rowZero);
+        } else if (/-more-/.test(rowZero) || /Press any key/.test(screen)) {
+          this.deps.send([SPACE]);
+        }
         break;
       default:
         break;
@@ -252,7 +260,7 @@ export class Director {
       this.picks = [];
       this.lastChoice = null;
       this.deps.send(keyCodes('a'));
-      this.title?.showIntro(this.module === 'Theme' ? THEME_INTRO_LINES : INTRO_LINES, () => {
+      this.title?.showIntro(this.module === 'Theme' ? THEME_INTRO_LINES : INTRO_LINES, this.module === 'Theme' ? '' : INTRO_CITE, () => {
         this.title?.leave();
         this.deps.requestRefresh();
       });
@@ -264,17 +272,21 @@ export class Director {
       this.nameSent = true;
       this.deps.send([...keyCodes(this.heroName), ENTER]);
     } else if (/already exists! Press any key to load/.test(screen)) {
-      this.phase = 'loading';
+      // A fallen hero's savefile: tome2 loads it and starts a new character.
       this.deps.send([SPACE]);
     } else if (/Savefile does not exist/.test(rowZero) || /-more-/.test(rowZero)) {
       // The extra key cuts tome2's sliding intro short; ours is on the title screen.
       this.deps.send([SPACE, SPACE]);
     } else if (INTRO_SCREEN.test(screen)) {
       this.deps.send([SPACE]);
-    } else if (/Choose a race|Please answer the following/.test(screen)) {
-      this.phase = 'birth';
-      this.birth(screen, rowZero);
+    } else if (BIRTH_SCREEN.test(screen)) {
+      this.startBirth(screen, rowZero);
     }
+  }
+
+  private startBirth(screen: string, rowZero: string): void {
+    this.phase = 'birth';
+    this.birth(screen, rowZero);
   }
 
   /** Answers the birth questions the native screens skip. */
@@ -289,7 +301,7 @@ export class Director {
       return;
     }
     if (answer(/modify the options\s*\[y\/n\]/, keyCodes('n'))) return;
-    if (this.replay && answer(/Use same character as last time/, keyCodes('n'))) return;
+    if (answer(/Use same character as last time/, keyCodes('n'))) return;
     if (answer(/Number of quests\?/, [ENTER])) return;
     if (answer(/Enter minimum attribute for/, [ENTER])) return;
     if (/Enter your player's name above/.test(screen)) {

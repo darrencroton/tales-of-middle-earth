@@ -1247,6 +1247,47 @@ html.keyboard-open .sheet-layer {
   font-size: var(--fs-small);
 }
 
+/* Soundtrack */
+
+.soundtrack-now {
+  margin: 0.2rem 0 0.8rem;
+  color: var(--accent-bright);
+  font-family: var(--serif);
+  font-style: italic;
+}
+
+.soundtrack-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.soundtrack-row {
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+
+.soundtrack-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.soundtrack-mood {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.soundtrack-row.playing {
+  border-color: var(--accent);
+  background: linear-gradient(to right, rgb(217 164 65 / 0.18), var(--button));
+}
+
+.soundtrack-row.playing .row-label {
+  color: var(--accent-bright);
+}
+
 /* Segmented controls */
 
 .segmented {
@@ -1922,41 +1963,29 @@ html.keyboard-open .sheet-layer {
   animation-delay: 4400ms;
 }
 
-#title-screen.intro .title-verse,
-#title-screen.intro .title-subtitle {
-  opacity: 0 !important;
-  animation: none;
+#title-screen.intro .title-layout > .title-verse {
+  display: none;
 }
 
 .title-intro {
-  position: absolute;
-  inset: 32% 1.5rem auto;
-  margin: 0 auto;
-  max-width: 34rem;
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: max(1rem, min(4vw, 24px));
-  line-height: 1.7;
-  color: #f3e6c8;
-  text-shadow: 0 0 16px rgb(255 120 30 / 0.55), 0 1px 3px rgb(0 0 0 / 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.title-intro p {
-  margin: 0;
+.title-intro .title-verse span {
   text-wrap: balance;
-  opacity: 0;
-  animation: ember-rise 1800ms ease-out forwards;
 }
 
-.title-intro .title-intro-hint {
-  margin-top: 2rem;
-  font-family: var(--sans);
-  font-style: normal;
+.title-intro-hint {
+  margin: 1.6rem 0 0;
   font-size: var(--fs-small);
-  letter-spacing: 0.2em;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
   text-transform: uppercase;
-  color: rgb(246 212 138 / 0.7);
-  text-shadow: none;
+  color: rgb(246 212 138 / 0.75);
+  opacity: 0;
+  animation: title-rise 2000ms ease-out forwards, title-breathe 3.2s ease-in-out 4s infinite;
 }
 
 .title-footer {
@@ -2077,6 +2106,7 @@ html.keyboard-open .sheet-layer {
 
 .title-links {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
@@ -2140,9 +2170,6 @@ html.keyboard-open .sheet-layer {
     flex: 1 1 10rem;
   }
 
-  .title-intro {
-    inset: 18% 1.5rem auto;
-  }
 }
 
 @media (orientation: landscape) and (min-width: 560px) {
@@ -2164,21 +2191,13 @@ html.keyboard-open .sheet-layer {
   }
 }
 
-@keyframes ember-rise {
-  0% {
-    opacity: 0;
-    transform: translateY(14px) scale(0.98);
-    filter: blur(6px);
-    color: #ff9a3c;
-  }
-  60% {
-    opacity: 1;
-    filter: blur(0.5px);
-  }
+@keyframes title-breathe {
+  0%,
   100% {
     opacity: 1;
-    transform: none;
-    filter: none;
+  }
+  50% {
+    opacity: 0.55;
   }
 }
 
@@ -2206,7 +2225,7 @@ html.keyboard-open .sheet-layer {
   .title-subtitle,
   .title-verse span,
   .title-verse cite,
-  .title-intro p {
+  .title-intro-hint {
     animation: none;
     opacity: 1;
   }

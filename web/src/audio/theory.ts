@@ -120,3 +120,54 @@ export function parseMelody(text: string): MelodyNote[] {
 export function melodyBeats(notes: readonly MelodyNote[]): number {
   return notes.reduce((sum, n) => sum + n.beats, 0);
 }
+
+function formatNote(note: MelodyNote): string {
+  const pitch = note.degree === null ? 'r' : `${note.degree}${note.accidental > 0 ? '#' : note.accidental < 0 ? 'b' : ''}`;
+  return note.beats === 1 ? pitch : `${pitch}*${note.beats}`;
+}
+
+/** Applies `change` to each bar of a melody, keeping the bar lines. */
+function eachBar(text: string, change: (notes: MelodyNote[]) => MelodyNote[]): string {
+  return text
+    .split('|')
+    .map((bar) => change(parseMelody(bar)).map(formatNote).join(' '))
+    .join(' | ');
+}
+
+/** Moves a melody by scale degrees. */
+export function transposeMelody(text: string, degrees: number): string {
+  return eachBar(text, (notes) => notes.map((n) => (n.degree === null ? n : { ...n, degree: n.degree + degrees })));
+}
+
+/** Mirrors a melody's contour around a degree. */
+export function invertMelody(text: string, axis: number): string {
+  return eachBar(text, (notes) => notes.map((n) => (n.degree === null ? n : { ...n, degree: 2 * axis - n.degree, accidental: -n.accidental })));
+}
+
+/** Plays a melody `factor` times slower; bar lines are dropped as the bars grow. */
+export function augmentMelody(text: string, factor: number): string {
+  return parseMelody(text)
+    .map((n) => formatNote({ ...n, beats: n.beats * factor }))
+    .join(' ');
+}
+
+/** Detaches each note of a beat or longer: half the note sounds, the rest is silence. */
+export function staccatoMelody(text: string): string {
+  return eachBar(text, (notes) =>
+    notes.flatMap((n) => (n.degree === null || n.beats < 1 ? [n] : [{ ...n, beats: n.beats / 2 }, { degree: null, accidental: 0, beats: n.beats / 2 }])),
+  );
+}
+
+/** The first `count` bars of a melody written with bar lines. */
+export function melodyBars(text: string, count: number, from = 0): string {
+  return text
+    .split('|')
+    .slice(from, from + count)
+    .map((bar) => bar.trim())
+    .join(' | ');
+}
+
+/** Holds each chord of a progression for `factor` bars. */
+export function stretchChords(chords: readonly number[], factor: number): number[] {
+  return chords.flatMap((c) => Array.from({ length: factor }, () => c));
+}

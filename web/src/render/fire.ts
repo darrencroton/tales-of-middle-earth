@@ -90,9 +90,9 @@ export class FlameField {
         const n = noise.at(fx * 0.09, fy * 0.07) * 0.62 + detail.at(fx * 0.23, fy * 0.19) * 0.38;
         const height = columnHeights[x];
         const falloff = up / Math.max(0.05, height);
-        let h = (n * 1.35 - falloff * 0.9) * (1.15 - falloff * 0.35);
-        h = h <= 0 ? 0 : h * k;
-        heat[y * cols + x] = h;
+        const body = n * 1.35 - falloff * 0.9;
+        const taper = 1.15 - falloff * 0.35;
+        heat[y * cols + x] = body <= 0 || taper <= 0 ? 0 : body * taper * k;
       }
     }
   }

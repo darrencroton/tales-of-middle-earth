@@ -82,7 +82,7 @@ export async function createCharacter(page: Page, name: string): Promise<void> {
   await beginNewCharacter(page, name);
   await page.waitForTimeout(400);
   await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
-  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 10_000 });
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
 
   for (let i = 0; i < 60 && !(await inDungeon(page)); i++) {
     const candidates = [

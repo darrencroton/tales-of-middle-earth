@@ -1,3 +1,4 @@
+import { FlameField } from '../../web/src/render/fire.ts';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { cellAppearance, rememberedColour, type AppearanceContext } from '../../web/src/render/appearance.ts';
@@ -197,5 +198,27 @@ describe('cell appearance', () => {
     const cell = cellAppearance(context(snap), 0, 0)!;
     assert.equal(cell.glyph, 'o');
     assert.ok(cell.fg[0] > 0.5, 'monster colour survives darkness');
+  });
+});
+
+describe('flames', () => {
+  it('stay low on wide and tall screens', () => {
+    for (const [cols, rows, reach] of [[210, 98, 0.34], [98, 210, 0.46], [350, 175, 0.4]] as const) {
+      const flames = new FlameField({ reach, rise: 8, intensity: 1 });
+      flames.resize(cols, rows);
+      for (const t of [0, 3.7, 11.2, 40]) {
+        flames.update(t, 1.2);
+        let top = 0;
+        let bottom = 0;
+        for (let y = 0; y < rows; y++) {
+          for (let x = 0; x < cols; x++) {
+            if (y < rows * 0.3) top = Math.max(top, flames.heat[y * cols + x]);
+            if (y > rows * 0.8) bottom = Math.max(bottom, flames.heat[y * cols + x]);
+          }
+        }
+        assert.equal(top, 0, `heat near the top of ${cols}x${rows} at ${t}s`);
+        assert.ok(bottom > 0.3, `flames at the bottom of ${cols}x${rows}`);
+      }
+    }
   });
 });

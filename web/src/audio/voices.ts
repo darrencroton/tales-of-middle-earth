@@ -153,7 +153,7 @@ function sung(core: AudioCore, dest: AudioNode, t: number, dur: number, f: numbe
 
 function plucked(core: AudioCore, dest: AudioNode, t: number, f: number, vel: number, opts: VoiceOptions, level: number, sustain: number, brightness: number, double: boolean): void {
   const tau = sustain * Math.pow(220 / f, 0.25);
-  const end = t + tau * 5;
+  const end = t + tau * 3.5;
   const g = gain(core);
   g.gain.setValueAtTime(0.0001, t);
   g.gain.linearRampToValueAtTime(level * vel, t + 0.004);
@@ -194,7 +194,7 @@ function horn(core: AudioCore, dest: AudioNode, t: number, dur: number, f: numbe
 
 /** Frequency-modulated tone for bells, gongs and anvils. */
 function struck(core: AudioCore, dest: AudioNode, t: number, f: number, vel: number, level: number, ratio: number, index: number, indexDecay: number, decay: number, attack = 0.002): void {
-  const end = t + decay * 5;
+  const end = t + decay * 4;
   const carrier = osc(core, 'sine', f, t, end);
   const modulator = osc(core, 'sine', f * ratio, t, end);
   const depth = gain(core);
@@ -211,7 +211,7 @@ function struck(core: AudioCore, dest: AudioNode, t: number, f: number, vel: num
 }
 
 function membrane(core: AudioCore, dest: AudioNode, t: number, f: number, vel: number, level: number, bend: number, decay: number, slap: number, slapFreq: number): void {
-  const end = t + decay * 5;
+  const end = t + decay * 4;
   const o = osc(core, 'sine', f * bend, t, end);
   o.frequency.setTargetAtTime(f, t, 0.03);
   const g = gain(core);
