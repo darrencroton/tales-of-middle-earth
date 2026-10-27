@@ -77,3 +77,21 @@ test('the soundtrack plays any theme from the title screen and returns to the ti
   await expect.poll(async () => (await audioStatus(page)).theme).toBe('title');
   expect(await page.evaluate(() => window.__tome!.audio.listeningTo)).toBeNull();
 });
+
+test('the soundtrack plays even when music and sound are off', async ({ page }) => {
+  await page.goto('/');
+  await waitForEngine(page);
+  await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
+  await expect.poll(async () => (await audioStatus(page)).ticking).toBe(true);
+  await page.evaluate(() => window.__tome!.audio.setVolumes('off', 'off'));
+  await expect.poll(async () => (await audioStatus(page)).ticking).toBe(false);
+
+  await page.locator('#title-screen [data-link="music"]').click();
+  await page.locator('.sheet-soundtrack .soundtrack-row', { hasText: 'The Golden Wood' }).click();
+  await expect.poll(async () => (await audioStatus(page)).theme).toBe('lorien');
+  await expect.poll(async () => (await audioStatus(page)).ticking).toBe(true);
+  await expect.poll(async () => (await audioStatus(page)).state).toBe('running');
+
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await audioStatus(page)).ticking).toBe(false);
+});

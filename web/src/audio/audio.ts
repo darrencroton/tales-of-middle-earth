@@ -102,9 +102,10 @@ export class GameAudio {
   }
 
   /** Audio state, the theme playing and the latest sounds, for the debug hook and tests. */
-  get status(): { state: string; theme: string | null; scene: string; intensity: number; recent: CueId[] } {
+  get status(): { state: string; ticking: boolean; theme: string | null; scene: string; intensity: number; recent: CueId[] } {
     return {
       state: this.ctx?.state ?? 'off',
+      ticking: this.timer !== 0,
       theme: this.music?.theme?.id ?? null,
       scene: this.key,
       intensity: Math.round(this.intensity * 100) / 100,
@@ -186,6 +187,7 @@ export class GameAudio {
       this.listening = null;
       this.applyVolumes(false);
       this.applyScene(true);
+      this.syncRunning();
       this.onListen?.(null);
       return;
     }
@@ -193,6 +195,7 @@ export class GameAudio {
     this.listening = { theme, all: id === 'all' };
     this.unlock();
     this.applyVolumes(false);
+    this.syncRunning();
     this.playListened();
   }
 
@@ -212,6 +215,12 @@ export class GameAudio {
     this.soundVolume = sound;
     if (!this.ctx) return;
     this.applyVolumes(false);
+    this.syncRunning();
+  }
+
+  /** Runs the audio while anything is audible and the page is visible; suspends it otherwise. */
+  private syncRunning(): void {
+    if (!this.ctx) return;
     if (!this.audible()) {
       void this.ctx.suspend().catch(() => undefined);
       this.stopTimer();
