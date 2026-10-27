@@ -47,6 +47,25 @@ test('opening screen ignites, the intro rises from the flames, then character cr
   await testInfo.attach('race', { body: await page.screenshot(), contentType: 'image/png' });
   await page.locator('.director .birth-confirm').click();
   await expect(page.locator('.director .birth-summary')).toContainText(otherName);
+
+  /* Back returns to the previous step with the earlier choice highlighted. */
+  const step = await page.locator('.director .birth-header h2').textContent();
+  await page.locator('#toolbar [data-action="back"]').click();
+  await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race');
+  await expect(current).toHaveText(otherName);
+  expect(await page.locator('#toolbar [data-action="back"]').count()).toBe(0);
+  await page.locator('.director .birth-confirm').click();
+  await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
+
+  const second = (await page.locator('.director .birth-option:not(.current):not(.unusual)').last().textContent())!;
+  await page.locator('.director .birth-option', { hasText: second }).click();
+  await expect(current).toHaveText(second);
+  await page.locator('.director .birth-confirm').click();
+  await expect(page.locator('.director .birth-header h2')).not.toHaveText(step!);
+  await page.locator('#toolbar [data-action="back"]').click();
+  await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
+  await expect(current).toHaveText(second);
+  await expect(page.locator('.director .birth-summary')).toContainText(otherName);
 });
 
 test('the Theme module can be chosen from the opening screen', async ({ page }) => {

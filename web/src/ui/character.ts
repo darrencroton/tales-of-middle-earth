@@ -3,6 +3,7 @@ import type { PlayerState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { bar, el, navButton, section } from './dom.ts';
 import { openMenu } from './menus.ts';
+import type { SheetContent } from './sheet.ts';
 
 function stat(label: string, value: string, className = ''): HTMLElement {
   const node = el('div', `stat ${className}`.trim());
@@ -16,9 +17,14 @@ function signed(n: number): string {
 
 /** Character summary with links to tome2's detailed screens. */
 export function openCharacter(api: GameApi): void {
+  const content = characterSheet(api);
+  if (content) api.sheets.open(content);
+}
+
+function characterSheet(api: GameApi): SheetContent | null {
   const player: PlayerState | undefined = api.state()?.player;
   const sheet = api.engine.character();
-  if (!player || !sheet) return;
+  if (!player || !sheet) return null;
   const body = el('div', 'character');
 
   const bars = el('div', 'bars');
@@ -74,13 +80,14 @@ export function openCharacter(api: GameApi): void {
   more.append(navButton('Knowledge', { className: 'action-button', onClick: () => openKnowledge(api) }));
   body.append(section('More', more));
 
-  api.sheets.open({
+  return {
     title: player.name,
     subtitle: `${player.race} ${player.cls}${player.title ? ` · ${player.title}` : ''} · Level ${player.lev}`,
     body,
     className: 'sheet-character',
     initial: more.querySelector<HTMLElement>('[data-nav]'),
-  });
+    rebuild: () => characterSheet(api),
+  };
 }
 
 const KNOWLEDGE: [string, string, string][] = [

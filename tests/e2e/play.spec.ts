@@ -164,7 +164,9 @@ test('abilities, the full sheet and knowledge are native views', async ({ page }
   await page.locator('#toolbar [data-action="done"]').click();
   await waitAtCommand(page);
 
-  await page.locator('.hud-player').click();
+  /* Closing a tome2 screen returns to the sheet it was opened from. */
+  await expect(page.locator('.sheet-title')).toHaveText('Scholar');
+  await expect(page.locator('.sheet .action-button.is-active')).toHaveText('Abilities');
   await page.locator('.sheet .action-button', { hasText: 'Full character sheet' }).click();
   await expect(page.locator('.termview .tv-title')).toHaveText('Character sheet');
   await expect(page.locator('.termview .stat-label', { hasText: 'Fighting' })).toBeVisible();
@@ -172,13 +174,19 @@ test('abilities, the full sheet and knowledge are native views', async ({ page }
   await expect(page.locator('.termview .tv-tab.selected')).toHaveText('Resists');
   await page.locator('#toolbar [data-action="done"]').click();
   await waitAtCommand(page);
+  await expect(page.locator('.sheet-title')).toHaveText('Scholar');
 
-  await page.locator('.hud-player').click();
   await page.locator('.sheet .action-button', { hasText: 'Knowledge' }).click();
   await page.locator('.sheet .row-button', { hasText: 'Quests' }).click();
   await expect(page.locator('.termview .tv-title')).toHaveText(/Quest/);
   await page.locator('#toolbar [data-action="done"]').click();
   await waitAtCommand(page);
+  await expect(page.locator('.sheet-title')).toHaveText('Knowledge');
+  await expect(page.locator('.sheet .row-button.is-active')).toContainText('Quests');
+  await page.locator('.sheet-back').click();
+  await expect(page.locator('.sheet-title')).toHaveText('Scholar');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
 });
 
 test('dragging pans the map without moving, long press describes, sheets open from the HUD', async ({ page }) => {
@@ -239,6 +247,9 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   await expect(page.locator('.sheet .row-button.is-active')).toContainText('Messages');
   await page.keyboard.press('Enter');
   await expect(page.locator('.sheet-title')).toHaveText('Messages');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-title')).toHaveText('Menu');
+  await expect(page.locator('.sheet .row-button.is-active')).toContainText('Messages');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
   expect(await page.evaluate(() => window.__tome!.travelling())).toBe(false);

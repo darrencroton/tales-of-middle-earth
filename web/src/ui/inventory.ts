@@ -121,7 +121,7 @@ export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void 
           });
           return;
         }
-        api.runMacro(itemMacro(action, item, place, '', alwaysPickup));
+        api.runMacro(itemMacro(action, item, place, '', alwaysPickup), action.reading);
       },
     });
     actions.append(button);

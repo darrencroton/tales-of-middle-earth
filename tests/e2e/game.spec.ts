@@ -113,3 +113,19 @@ test('imports a save bundle and keeps it after the restart', async ({ page }) =>
   });
   expect(data).toEqual([4, 5, 6]);
 });
+
+test.describe('iOS home-screen app', () => {
+  test.use({ viewport: { width: 402, height: 812 }, contextOptions: { screen: { width: 402, height: 874 } } });
+
+  test('fills the screen when the viewport is shorter than the screen', async ({ page }) => {
+    await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true }));
+    await page.goto('./');
+    await waitForEngine(page);
+    const height = (selector: string) => page.evaluate((s) => document.querySelector(s)!.getBoundingClientRect().height, selector);
+    expect(await height('#app')).toBe(812);
+    await page.addStyleTag({ content: ':root { --safe-top: 62px; }' });
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+    expect(await height('#app')).toBe(874);
+    expect(await height('#title-screen')).toBe(874);
+  });
+});

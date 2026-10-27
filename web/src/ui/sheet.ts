@@ -22,6 +22,20 @@ export interface SheetContent {
   initial?: HTMLElement | null;
   className?: string;
   onClose?(): void;
+  /** Builds the sheet afresh when it is reopened after a tome2 screen. */
+  rebuild?(): SheetContent | null;
+}
+
+/** Where a sheet was left: its highlighted item (an index into its navigable items) and scroll offset. */
+interface SheetPlace {
+  index: number;
+  scroll: number;
+}
+
+/** Open sheets saved while a tome2 screen covers them. */
+export interface SheetTrail {
+  stack: SheetContent[];
+  places: (SheetPlace | undefined)[];
 }
 
 /**
@@ -41,6 +55,8 @@ export class Sheets {
   private readonly footer: HTMLElement;
   private readonly nav: ListNav;
   private stack: SheetContent[] = [];
+  /** Where to return to on each sheet below the top. */
+  private readonly remembered = new WeakMap<SheetContent, SheetPlace>();
   private readonly onChange: () => void;
   private restoreFocus: Element | null = null;
 
@@ -107,7 +123,32 @@ export class Sheets {
   /** Opens a sheet on top of any already open. */
   open(content: SheetContent): void {
     if (this.stack.length === 0) this.restoreFocus = document.activeElement;
+    else this.rememberActive();
     this.stack.push(content);
+    this.show();
+  }
+
+  /** The open sheets, to reopen with `restore` (null when none are open). */
+  snapshot(): SheetTrail | null {
+    if (this.stack.length === 0) return null;
+    this.rememberActive();
+    return { stack: [...this.stack], places: this.stack.map((c) => this.remembered.get(c)) };
+  }
+
+  /** Reopens saved sheets over whatever is open, rebuilding those that can be. */
+  restore(trail: SheetTrail): void {
+    const stack: SheetContent[] = [];
+    trail.stack.forEach((saved, i) => {
+      const content = saved.rebuild ? saved.rebuild() : saved;
+      if (!content) return;
+      const place = trail.places[i];
+      if (place) this.remembered.set(content, place);
+      stack.push(content);
+    });
+    if (stack.length === 0) return;
+    if (this.stack.length === 0) this.restoreFocus = document.activeElement;
+    else this.rememberActive();
+    this.stack.push(...stack);
     this.show();
   }
 
@@ -183,8 +224,18 @@ export class Sheets {
     if (wasHidden) this.panel.focus({ preventScroll: true });
     const fallback =
       this.body.querySelector<HTMLElement>('[data-nav]') ?? this.footer.querySelector<HTMLElement>('.primary') ?? null;
-    this.nav.setActive(top.initial ?? fallback, false);
+    const place = this.remembered.get(top);
+    if (place) this.body.scrollTop = place.scroll;
+    const previous = place ? this.nav.items()[place.index] : null;
+    this.nav.setActive(previous ?? top.initial ?? fallback, false);
     this.onChange();
+  }
+
+  private rememberActive(): void {
+    const top = this.stack[this.stack.length - 1];
+    if (!top) return;
+    const active = this.nav.active;
+    this.remembered.set(top, { index: active ? this.nav.items().indexOf(active) : -1, scroll: this.body.scrollTop });
   }
 
   private hide(): void {

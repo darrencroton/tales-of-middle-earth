@@ -15,10 +15,13 @@ export interface GameApi {
   features(): readonly FeatureInfo[];
   /** Sends keys to the engine (closing any sheets). */
   send(keys: number[]): void;
-  /** Sends an original-keyset command after '\' (closing any sheets). */
+  /**
+   * Shows a tome2 screen with an original-keyset command after '\'; the
+   * sheets it covers reopen once it is closed.
+   */
   command(command: string): void;
-  /** Runs a scripted exchange with the engine (closing any sheets). */
-  runMacro(macro: Macro): void;
+  /** Runs a scripted exchange with the engine (closing any sheets, or covering them when `comeBack`). */
+  runMacro(macro: Macro, comeBack?: boolean): void;
   travelTo(point: MapPoint): void;
   highlight(point: MapPoint): void;
   /** Asks the player for a line of text in a native sheet. */

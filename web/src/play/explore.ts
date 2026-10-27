@@ -77,16 +77,19 @@ export class Explore {
   private targets = 0;
 
   private readonly isExit: (index: number) => boolean;
+  private readonly noticed: Set<number>;
   private headingForExit = false;
   private lastHp: number | null = null;
 
   /**
    * `skip` persists between explorations of the same level; `isExit` marks
-   * the way down, which exploring heads for once nothing else is left.
+   * the way down, which exploring heads for once nothing else is left;
+   * `noticed` is shared with travel (see `TravelOptions`).
    */
-  constructor(skip: Set<number>, isExit: (index: number) => boolean = () => false) {
+  constructor(skip: Set<number>, isExit: (index: number) => boolean = () => false, noticed: Set<number> = new Set()) {
     this.skip = skip;
     this.isExit = isExit;
+    this.noticed = noticed;
   }
 
   step(ctx: TravelContext): TravelStep {
@@ -104,7 +107,7 @@ export class Explore {
         }
         this.targetIsItem = (ctx.snap.layer[this.target.y * ctx.snap.width + this.target.x] & LAYER_MASK) === LAYER_OBJECT;
         this.targets++;
-        this.travel = new Travel(this.target, ctx, EXPLORE_DANGER_RADIUS);
+        this.travel = new Travel(this.target, ctx, { dangerRadius: EXPLORE_DANGER_RADIUS, noticed: this.noticed });
       }
       const step = this.travel.step(ctx);
       if (step.kind === 'keys') return step;
