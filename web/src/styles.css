@@ -1955,6 +1955,7 @@ html.keyboard-open .sheet-layer {
 
 .title-verse cite {
   margin-top: 6px;
+  text-wrap: balance;
   font-size: 0.8em;
   font-style: normal;
   letter-spacing: 0.18em;

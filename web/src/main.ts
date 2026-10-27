@@ -1742,6 +1742,10 @@ window.__tome = {
 
 /* Service worker */
 
+/** How often an open app asks for a new version, and the least time between two asks when it returns to the foreground. */
+const UPDATE_EVERY_MS = 30 * 60_000;
+const UPDATE_RECHECK_MS = 60_000;
+
 /** Set once a service worker is registered: asks a waiting update to take over if the title screen idles. */
 let adoptUpdate: (() => void) | null = null;
 
@@ -1765,6 +1769,15 @@ function watchUpdates(registration: ServiceWorkerRegistration): void {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (director.atTitle) location.reload();
   });
+  let checkedAt = performance.now();
+  const check = () => {
+    const now = performance.now();
+    if (document.visibilityState !== 'visible' || now - checkedAt < UPDATE_RECHECK_MS) return;
+    checkedAt = now;
+    registration.update().catch(() => undefined);
+  };
+  document.addEventListener('visibilitychange', check);
+  window.setInterval(check, UPDATE_EVERY_MS);
 }
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
