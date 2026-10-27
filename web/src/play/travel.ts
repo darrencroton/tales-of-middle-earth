@@ -62,6 +62,13 @@ export function travelGrid(snap: LevelSnapshot, materials: readonly Material[]):
   };
 }
 
+/** Forgets noticed creatures that are no longer in sight. */
+export function forgetUnseen(noticed: Set<number>, monsters: readonly MonsterState[]): void {
+  if (noticed.size === 0) return;
+  const inSight = new Set(monsters.map((m) => m.id));
+  for (const id of noticed) if (!inSight.has(id)) noticed.delete(id);
+}
+
 export interface TravelOptions {
   /** Awake hostile creatures this close stop travel. */
   dangerRadius?: number;
@@ -95,8 +102,7 @@ export class Travel {
     this.goal = goal;
     this.dangerRadius = options.dangerRadius ?? DANGER_RADIUS;
     this.noticed = options.noticed ?? new Set();
-    const inSight = new Set(start.monsters.map((m) => m.id));
-    for (const id of this.noticed) if (!inSight.has(id)) this.noticed.delete(id);
+    forgetUnseen(this.noticed, start.monsters);
     this.known = new Set(start.monsters.filter(isHostile).map((m) => m.id));
     this.lastHp = start.hp;
   }
@@ -104,6 +110,7 @@ export class Travel {
   step(ctx: TravelContext): TravelStep {
     const { snap } = ctx;
     const pos = { x: snap.px, y: snap.py };
+    forgetUnseen(this.noticed, ctx.monsters);
 
     if (!snap.atCommand || snap.icky) return { kind: 'stop', reason: 'interrupted' };
     if (this.finishing || (pos.x === this.goal.x && pos.y === this.goal.y)) return { kind: 'stop', reason: 'arrived' };

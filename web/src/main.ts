@@ -12,7 +12,7 @@ import { COMMAND_GROUPS, commandKeys, contextActions, pickupCommand, type Action
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
+import { forgetUnseen, STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
 import { Explore, nearestReachable } from './play/explore.ts';
 import { isHostile, type GameState, type LevelSnapshot, type MonsterState } from './render/snapshot.ts';
 import {
@@ -610,6 +610,7 @@ function refresh(): void {
   if (state) {
     const previous = lastState;
     lastState = state;
+    forgetUnseen(noticed, state.monsters ?? []);
     hud.update(state, snap.py, snap.px);
     if (state.player) feel.update(state.player);
     if (previous && previous.player?.name === state.player?.name) showHits(previous, state);

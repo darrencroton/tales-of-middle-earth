@@ -4,7 +4,7 @@ import { COMMAND_GROUPS, commandKeys, contextActions, situationalActions } from 
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
-import { Travel, travelGrid, type TravelContext } from '../../web/src/play/travel.ts';
+import { forgetUnseen, Travel, travelGrid, type TravelContext } from '../../web/src/play/travel.ts';
 import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials } from '../../web/src/render/materials.ts';
 import { CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, NO_EFFECT, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
 
@@ -205,6 +205,26 @@ describe('travel', () => {
     const back = [monster(1, 2, 0)];
     const travel = new Travel({ x: 5, y: 0 }, ctx(snap, back), { noticed });
     assert.deepEqual(travel.step(ctx(snap, back)), { kind: 'stop', reason: 'monster', creature: 'kobold' });
+  });
+
+  it('stops again for a noticed creature that leaves sight and returns mid-journey', () => {
+    const snap = level(['......'], { x: 0, y: 0 });
+    const leper = [monster(1, 2, 0)];
+    const noticed = new Set([1]);
+    const travel = new Travel({ x: 5, y: 0 }, ctx(snap, leper), { noticed });
+    assert.equal(travel.step(ctx(snap, leper)).kind, 'keys');
+    snap.px = 1;
+    assert.equal(travel.step(ctx(snap)).kind, 'keys');
+    assert.equal(noticed.size, 0);
+    snap.px = 2;
+    const back = [monster(1, 3, 0)];
+    assert.deepEqual(travel.step(ctx(snap, back)), { kind: 'stop', reason: 'monster', creature: 'kobold' });
+  });
+
+  it('forgets noticed creatures that are out of sight between journeys', () => {
+    const noticed = new Set([1, 2]);
+    forgetUnseen(noticed, [monster(2, 3, 0)]);
+    assert.deepEqual([...noticed], [2]);
   });
 
   it('stops when the engine is no longer waiting for a command', () => {
