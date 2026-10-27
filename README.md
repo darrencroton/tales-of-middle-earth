@@ -1,250 +1,88 @@
-# tome2mobile
+<p align="center">
+  <a href="https://darrencroton.github.io/tome2mobile/">
+    <img src="docs/images/title.jpg" alt="ToME — Tales of Middle-earth: the title screen, a mosaic logo lit by rising flames" width="100%" />
+  </a>
+</p>
 
-A mobile-friendly web port of **ToME 2 — Tales of Middle-earth**, the Angband-derived roguelike. The original C++ engine is compiled to WebAssembly and runs in the browser as an installable, offline-capable Progressive Web App (PWA). No App Store needed.
+<h1 align="center">ToME — Tales of Middle-earth</h1>
 
-**Play:** <https://darrencroton.github.io/tome2mobile/> (deployed from `main`)
+<p align="center">
+  <strong>A classic roguelike adventure through Tolkien's Middle-earth, rebuilt for your phone.</strong><br />
+  Free · no account · no ads · plays offline
+</p>
 
----
-
-## Status
-
-**Milestone 1 — playable in the browser** ✅
-
-- The tome2 engine runs unmodified as WebAssembly (Emscripten + Asyncify).
-- The classic 80×24 terminal is drawn on a canvas and scaled to fit the screen.
-- Input:
-  - hardware keyboard: arrow keys walk, Shift+arrow runs
-  - on-screen keyboard
-  - swipe to walk; a long swipe runs (replaced in Milestone 4 by drag to pan)
-  - toolbar with Esc, Enter and a sticky Ctrl key
-- Saves persist in the browser (IndexedDB), with export and import of a `.tome2save` backup.
-- It works offline after the first load, through a service worker.
-- CI builds the engine, runs unit and end-to-end tests at phone and tablet screen sizes, then deploys to GitHub Pages.
-
-**Milestone 2 — Brogue-inspired presentation and mobile layout** ✅
-
-The visual design takes inspiration from [Brogue: Community Edition](https://github.com/tmewett/BrogueCE). No Brogue code, colour tables or assets are used; Brogue CE is AGPL-3.0.
-
-- **Lit map from engine state.** The dungeon is drawn from a snapshot of tome2's own lighting data, not from the terminal text:
-  - warm torch light that falls off and flickers
-  - light from lit rooms and from monsters that carry light
-  - glowing lava and fire, blocked by walls
-  - a dim, blue-tinted memory of remembered areas
-  - shimmering water and lava
-  - bolts and explosions that light up their surroundings
-- **Brogue-style glyphs:** solid shaded walls, `·` floor, `≈` water and lava, `♣` trees, `"` grass, `▲` mountains. Classic ASCII is available in settings.
-- **Camera:** follows the player, with pinch-zoom on touch screens and Ctrl+scroll on desktop.
-- **Sidebar:**
-  - Health, Mana and Sanity bars and status chips
-  - visible creatures and items, nearest first, each with a health bar; tap one to highlight it on the map
-  - laid out along the bottom in portrait and on the left in landscape
-- **Messages:** fade as turns pass. Tap them for the full history, or tap *more ▸* to continue.
-- **Translucent panels:** menus, inventory and other tome2 screens appear in a panel over the dimmed map, scaled to fit.
-- **Opening screen:**
-  - Flames ignite from the bottom with a flare, and embers drift upward.
-  - The title "ToME" is a Brogue-style mosaic of stone cells, lit from below by the flame columns: crimson at the top, molten gold at the base, flickering with the fire.
-  - The subtitle and the Ring verse fade in.
-  - **Enter Middle-earth** sets off an eruption of flame, then steps automatically through tome2's module and news screens into character creation. There is also a link to play the Theme module.
-  - The opening screen replaces the old loading splash and also shows download progress, errors and the end-of-game message.
-- **Character creation:** a flame backdrop burns behind the screens, and the text is scaled to fit.
-- **Display settings:**
-  - animation: Full (20 fps), Reduced (8 fps) or Off; defaults to Off when the system's reduced-motion setting is on, and pauses in the background
-  - glyph set
-  - zoom
-
-**Milestone 3 — touch play** ✅
-
-- **Tap to travel:**
-  - Tap a place on the map to walk there along a known path. Closed doors are opened on the way.
-  - As in Brogue, travel stops when you arrive, when you're hurt, when a new creature appears, or when an awake hostile creature comes within two steps.
-  - Tap again to stop.
-- **Tap to target:**
-  - At an aiming prompt, tap a creature or place.
-  - The app drives tome2's own targeting: it cycles through targets, then falls back to moving a free cursor to the tapped cell.
-- **Tap menus:** tap a line in any tome2 list (inventory, spells, shops, character creation) to choose it. Tap outside a panel to close it.
-- **Context action bar:**
-  - The buttons follow what the game is waiting for: Continue at *-more-*, Yes/No, Nearest target when aiming, or Escape in menus.
-  - At the command prompt you get Items, Rest, Cast and Look, plus Pick up, Descend or Ascend when they apply.
-  - **More** opens a sheet of every command.
-  - Commands are sent with tome2's keymap bypass (`\`), so they also work with the roguelike keyset.
-- **Autosave:** when the app is hidden or closed at the command prompt, the game saves itself (Ctrl+S) and flushes to browser storage.
-
-**Milestone 4 — native mobile interface** ✅
-
-The game now plays through a phone-first interface; tome2's 80×24 screens only appear where nothing better exists, and then as readable HTML.
-
-- **One text size everywhere:** messages, panels, menus, sheets and character creation all scale from a single base size. *Settings → Text size* offers Small, Medium, Large and Extra large.
-- **Opening screen:**
-  - The flames are a smooth noise field that drifts slowly upwards (no per-frame randomness), with gentler embers.
-  - It offers **Continue** for each saved hero (with tome2's summary, e.g. "Grodon, the Ent Warrior") and **New character**. Links: Settings, Saves (export/import), Theme module.
-  - tome2's module and news screens are answered automatically. Its sliding intro is replaced by the same words rising from the flames in one piece.
-- **Character creation:** race, race modifier, class, specialisation and god are tappable cards. Tapping one shows its description; tapping again (or *Choose*) confirms. *Random* and *Start over* are on the toolbar. Stats appear on a hero card with *Reroll* and *Accept*; routine questions (options, quests, minimum stats, name) are answered for you.
-- **Native sheets** (bottom sheets on phones, centred cards on wider screens): tap outside or press Escape to close; one row is always highlighted, and arrow keys or swipes move it.
-  - **Inventory and equipment:** tap an item for what you know about it and what you can do: eat, quaff, read, aim, wield, wear, take off, drop one or all, throw, inscribe, destroy. The app answers tome2's item, quantity and inscription prompts itself.
-  - **Character:** tap your name or health bars for attributes, combat, progress, and links to skills, abilities and the full sheet.
-  - **Creatures and items:** tap one in the list under the map for its health, recall text and actions (attack, approach, show on map).
-  - **Game menu:** character, messages, save, settings, how to play, export/import, about, and **Save and quit**, which saves and returns to the title screen.
-  - **Commands:** every command, grouped.
-- **Map:**
-  - **Drag** to look around without moving; your next move (or *Centre*) brings the view back.
-  - **Press and hold**, or use **Look** and tap, to see what is there: "You see a Village idiot (awake, unhurt) on grass", with *About* and *Go there* / *Attack*.
-  - **Level map** shows the whole level; tap a place to travel there.
-- **Play from the toolbar:**
-  - **Explore** walks to the nearest unexplored place or item and keeps going. It stops when a creature comes into view, when one is right beside you, or when you are hurt. Once the level is explored it heads for the way down.
-  - **Attack** appears when a hostile creature is next to you, aimed at the most wounded one.
-  - **Suggestions** from your pack: *Wield* when no weapon is wielded, *Light* in the dark, *Heal* (a known healing potion) when under half health, *Eat* when hungry.
-  - The bar shows what makes sense right now: *Pick up*, *Descend*, *Ascend*, *Drink* and so on appear where they apply.
-- **Game feel:** a red flash when you are hurt (stronger for bigger hits) and a pulse at low health; a banner for a new level or depth; a rising *+gold* when you find money; a short vibration on devices that support it. Animations follow *Settings → Animation*.
-- **First-game tips:** a small card over the map with three tips, which never blocks play and retires after a little play or *Got it*.
-- **Questions as cards:** yes/no, how many (with a stepper and *All*), a line of text, a direction (a 3×3 pad, or tap a neighbouring square) and a target (*Nearest*, *Current target*, or tap the map) appear as a card above the toolbar. tome2's centred message boxes ("Learn this ability?", notices, lettered choices) become cards too.
-- **Native views of tome2 screens:**
-  - **Skills:** a tree with values and gain per point; tap to select, *Raise* / *Lower* on the toolbar.
-  - **Abilities:** cost or *Known* per ability, with *Learn* and *About*.
-  - **Full character sheet:** tabs for Stats, Bonuses, Resists, Traits and Senses. Flag pages list only what applies, with where it comes from (an item, or innate). Tactic and movement have ‹ › steppers.
-  - **Knowledge:** artifacts, uniques, kills, recall depths, quests, notes and more, from a native menu; empty lists say so.
-  - **End of the game:** a summary card (level, experience, gold, depth, cause) with *Continue*, which returns to the title.
-- **Other tome2 screens** (spell lists, help, options, knowledge lists) are rendered as HTML text at the chosen size, without key hints. Menus take their heading as a title; help pages show their own heading; lists such as known uniques line up names and status. Menu entries become tappable rows with a highlight; values are labelled with their column heading ("Level 1 · Cost 1 · Fail 5%"); options become switches; prose reflows; ASCII art keeps its shape.
-- **Shops:** the shop name, keeper and your gold sit in the header; prices and weights carry units. Tap an item for its description and to buy it (with a quantity stepper). The toolbar offers Leave, Sell and More.
-- **Layout:** the HUD and toolbar extend into the safe areas, so nothing is cut off beside a notch or home indicator, in either orientation.
-
-**Polish — review pass** ✅
-
-- **Quest levels stay native.** Entering a quest level (the thieves' hideout under Bree, for one) no longer drops back to the raw 80×24 terminal: the map is drawn from the moment the character exists, including while a new level is generated.
-- **Messages flow past.** By default messages no longer stop the game at `-more-`; they appear in the log under the map (tap it to read back). *Settings → Messages* restores the pauses.
-- **Fights read better:** the creature *Attack* would strike is bracketed in red on the map, a creature that loses health flashes and shows the damage, and experience floats up as it is gained. A level-up banner says how many skill points are waiting, and a *skill points* chip in the HUD opens the skills screen.
-- **Fewer taps:** *Dungeon* in town walks to the nearest known way down; *Stop* (or a tap on the map) interrupts resting and running; travel no longer stops for creatures that are asleep when first seen.
-- **Fixes:** saving reports success only once the save reached browser storage and is offered only at the command prompt; *Save and quit* warns when browser storage is unavailable instead of discarding the game; a save import that cannot be written in full is refused before anything changes; inscriptions and names cannot turn into stray control keys; clearing an inscription works; native floor pick-up honours the always-pickup option; a mouse release outside the map no longer disables taps; option switches follow tome2's cursor; sheets stay above the on-screen keyboard; long lists of saved heroes scroll; *Animation: Off* also stops the CSS pulses; new app versions wait until no game is in progress before taking over.
-
-**Soundtrack and sound** ✅
-
-Everything is synthesised live with the Web Audio API: no audio files, nothing to download, and it works offline.
-
-- **A theme for every place.** The title has its own theme (heroic, wistful, firelit), and its leitmotif returns across the game. Each town has a character: Bree's jig in the Prancing Pony, Gondolin's bright harps and fountains, Minas Anor's horns and processional drums, Lothlórien's timeless choir, Khazad-dûm's deep voices and anvils. Destroyed towns play a lament of their own theme.
-- **Every dungeon sounds like itself:** Mirkwood's skittering harp, Moria's drums in the deep, the Barrow-downs' cold voices, Mordor's war march, Mount Doom's fire, the drowned halls of Númenor, the music box of the Illusory Castle, the near-silence of the Void, and more. Quest levels (Thieves!, the Black Rider, the Wight's grave, the fall of Gondolin, Wolves!, a haunted house…) have their own music, and the deepest level of a dungeon, where its master waits, plays with more urgency.
-- **The world outside:** the overworld map has a travelling theme that changes with the story (darker once the Necromancer falls and Sauron stirs, triumphant after Sauron, at peace after Morgoth). Wilderness areas follow the land: grassland, forest, mountains, marsh, desert, ice, coast and the ash-plains near the Enemy. Towns and the wild change at night (crickets instead of birdsong, a slower, softer tune).
-- **Music that stays out of the way:** each theme states its motif, answers it and varies it, then rests for a while so the ambience (wind, cave air, dripping water, fire, the sea, birds) carries on alone. Danger brings in drums and tension at the next bar, and quietens again as it passes. At low health the music muffles and a heartbeat sounds while you are threatened.
-- **Sound effects** for what happens: hits (weightier for big and critical hits), misses, being hurt, bites and claws, kills (a triumphant chord for a slain unique), doors creaking open and shut (and heard opening nearby), locks, stairs, travel, coins, pick-ups, potions, scrolls, food, spells, bolts and explosions by element, traps, teleports, breath attacks, status changes, a shop bell, level-ups, and a warning when a powerful or unique foe appears. Musical sounds play in the key of the current music.
-- **Settings → Music / Sound effects:** Off, Low, Medium or High each. On iPhone the sound follows the silent switch and mixes with other audio.
+<p align="center">
+  <a href="https://darrencroton.github.io/tome2mobile/"><img src="https://img.shields.io/badge/%E2%96%B6%20Play%20now-in%20your%20browser-d4a24c?style=for-the-badge&labelColor=1a0f08" alt="Play now in your browser" /></a>
+</p>
 
 ---
 
-## Architecture
+## The adventure
 
-```
-external/tome2/     tome2 engine (git submodule → darrencroton/tome2), unmodified
-engine/main-web.cc  Web frontend: implements tome2's Frontend interface, bridges to JS
-engine/snapshot.cc  Exports level, lighting, player, monster and message state to JS
-CMakeLists.txt      Emscripten build: engine + deps → web/public/engine/tome.{js,wasm,data}
-web/                Vite + TypeScript app (no framework)
-  src/engine.ts       Loads the WASM module; key queue, save syncing
-  src/terminal.ts     Terminal cell buffer
-  src/render/         Lit map: snapshot reader, materials, lighting, cell appearance, flames
-  src/hud.ts          Sidebar (bars, entities) and fading messages
-  src/title.ts        Opening screen (flames, mosaic title, embers, Continue / New character, intro)
-  src/flow/           Start-up and character creation driven behind native screens
-  src/ui/             Sheets, list navigation, HTML rendering of tome2 screens, native views
-  src/settings.ts     Settings (stored per browser)
-  src/audio/          Soundtrack and sound effects, synthesised with Web Audio
-  src/play/           Touch play: prompts, pathfinding, travel, targeting, actions, item macros
-  src/input/          Keyboard and gesture handling
-  src/saves.ts        Save export/import (.tome2save bundles)
-tests/unit/         node:test unit tests
-tests/e2e/          Playwright tests (phone portrait, phone landscape, tablet)
-```
+Leave the comfort of Bree and walk out into a wide, dangerous Middle-earth. Explore the wilderness, visit the great towns, and descend into dungeons that grow deadlier with every level: the dark woods of **Mirkwood**, the **Barrow-downs**, the endless halls of **Moria**, the fires of **Mount Doom**. Somewhere far below waits **Sauron** — and deeper still, in **Angband**, the first Dark Lord himself, **Morgoth**.
 
-**Design decisions**
+Every level is generated fresh, every hero is different, and death is permanent. That is what makes each victory count.
 
-- **Engine unmodified:** tome2 is a submodule. Platform gaps are filled at link time with `--wrap` in `main-web.cc`, not by patching the engine:
-  - `getpwuid` gives the game a home directory.
-  - `nanosleep` becomes an asynchronous sleep, so projectile animations repaint.
-- **Asyncify:**
-  - The engine's blocking `inkey()` loop pauses at `process_event()` and resumes when a key arrives.
-  - During long runs without input (resting, running), the engine yields to the browser every 50 ms.
-  - This works on any static host. The alternative, Web Workers with `SharedArrayBuffer`, needs COOP/COEP headers, which GitHub Pages can't send.
-- **Storage:**
-  - Game data (`lib/`, about 4 MB) is preloaded read-only at `/lib`.
-  - `~/.tome` (`/home/web_user/.tome`) is mounted on IDBFS.
-  - It is flushed to IndexedDB shortly after the engine goes idle waiting for input, when the page is hidden, and on exit.
-- **Presentation modes:**
-  - Before a character exists, a director answers tome2's start-up screens and shows native character creation; any screen it does not recognise is shown as HTML text over the flames.
-  - In the dungeon, the lit map replaces tome2's map view, with the sidebar and message area alongside.
-  - When tome2 covers the screen with a menu, the cells that differ from the last map screen are parsed into text, menu choices and art, and shown as an HTML panel over the dimmed map.
-- **Native views and macros:**
-  - The engine exports the pack, equipment, floor items, character summary, item descriptions and monster recall as JSON (`engine/snapshot.cc`). Monster recall runs against an off-screen terminal so the visible screen is untouched.
-  - Actions from native views are sent as short scripts (generators in `src/play/macro.ts`) that read each prompt tome2 shows and answer it: which list the item is in, the item letter, a quantity, an inscription.
-- **Engine snapshot:**
-  - JavaScript calls exported C++ functions while the engine is paused waiting for input, so the state it reads is always consistent.
-  - The terrain, light flags, glyphs and colours for the whole level are copied out of WebAssembly memory once per frame, and only when something changed.
-- **Dependencies:**
-  - fmt, jsoncons and pcg are fetched by CMake at the versions upstream tome2 uses.
-  - Boost headers come from Emscripten's `boost_headers` port (1.83).
-  - Boost.Filesystem 1.83 is compiled from source, single-threaded.
+- **22 races** — Hobbits, Dwarves, Ents, Beornings, Maiar, High-Elves and more, with optional twists such as Vampire or Spectre.
+- **Around 30 classes** — from Warrior and Ranger to Necromancer, Geomancer, Possessor, Symbiant and Bard.
+- **A free-form skill system** — spend points where you like and shape your hero your way.
+- **Gods to follow** — pledge yourself to Eru, Manwë, Tulkas, Varda, Ulmo… or Melkor.
+- **Nearly 900 creatures** and **almost 200 legendary artifacts** to find, wield and lose.
+- **Quests, towns and shops** across the whole of Middle-earth.
 
----
+Prefer a world closer to the books? Choose **Theme module** on the title screen for an alternative take on Middle-earth.
 
-## Building
+## Made for touch
 
-### Prerequisites
+This is the full ToME 2 game, with an interface designed from scratch for phones and tablets.
 
-- **Node.js 22+**
-- **CMake 3.24+**
-- **Emscripten SDK 6.0.13**: install it from <https://emscripten.org/docs/getting_started/downloads.html>, then load its environment in your shell:
+| | |
+|---|---|
+| **Tap** | Walk to any place you can see — doors open on the way. Tap a creature beside you to fight it. |
+| **Press and hold** | Look at anything on the map: *"a Village idiot (awake, unhurt) on grass"*. |
+| **Drag** · **Pinch** | Look around the level without moving · zoom in and out. |
+| **Explore** | One button walks you to the next unexplored room or item, stops when danger appears, and heads for the stairs once the level is done. |
+| **Smart toolbar** | Shows what makes sense right now — *Attack*, *Pick up*, *Descend*, *Heal* when you're badly hurt, *Eat* when hungry, *Light* in the dark. |
 
-  ```zsh
-  source /path/to/emsdk/emsdk_env.sh
-  ```
+**Everything is a tap away.** Your pack, equipment, character sheet, skills, abilities and knowledge are proper mobile screens, not text menus. Tap any item to read about it and use it; tap your name for your character; tap a creature for what you know about it. Questions — *how many?*, *which direction?*, *which target?* — appear as simple cards.
 
-### Steps
+**A dungeon that glows.** Torchlight flickers and fades into darkness, lava casts a molten glow, water shimmers, and spells light up the walls as they fly. Places you've seen linger in a dim, blue memory.
 
-```zsh
-git clone --recurse-submodules https://github.com/darrencroton/tome2mobile.git
-cd tome2mobile
-npm ci
+**Fights you can feel.** Damage numbers float off wounded foes, the screen flashes red when you're hit, and banners celebrate a new level or a deeper descent.
 
-npm run engine:configure   # emcmake cmake -S . -B build
-npm run engine:build       # → web/public/engine/
+**Music for every place.** Each town, dungeon, quest and stretch of wilderness has its own theme, composed live on your device as you play, so it is never quite the same twice. Bree has a fireside jig, Lothlórien a timeless choir, Moria has drums in the deep, and the road between them changes as your story unfolds. The music rests now and then to let the wind, dripping caves and crackling fires come through, swells when danger is near, and muffles to a heartbeat when you are badly hurt. Sound effects bring every swing, creaking door, clinking coin and spell to life.
 
-npm run dev                # http://localhost:5173 (also reachable from your phone on the LAN)
-npm run build              # production build → dist/
-npm run preview            # serve dist/ on http://localhost:4173
-```
+**Your way.** Portrait or landscape, phone, tablet or desktop. Four text sizes, adjustable animation, separate music and sound volumes, classic ASCII symbols if you prefer them, and full keyboard support with all the original ToME keys.
 
-If you cloned without submodules, run `git submodule update --init`.
+## New to roguelikes?
 
-Add `?wizard` to the URL to start tome2 in wizard mode, so its debug commands (Ctrl+A) are available. The end-to-end tests use this to jump to dungeon levels.
+- **Take it slowly.** Nothing moves until you do — the game is turn-based, so there is always time to think.
+- **Read before you fight.** Press and hold a creature to see how dangerous it is.
+- **Use Explore and Rest.** Let the game do the walking, and rest to recover before going deeper.
+- **Check *How to play*** in the game menu (☰) any time for a quick guide to the controls.
 
-### Tests
+## Your saves
 
-```zsh
-npm test           # unit tests (node:test)
-npm run typecheck  # TypeScript
-npm run test:e2e   # Playwright; needs a production build (npm run build) and Chromium
-```
+- The game **saves automatically** when you leave the app, and **☰ → Save and quit** returns you to the title screen.
+- Saves live in your browser on this device. Use **Export saves** (in the ☰ menu or on the title screen) to keep a backup or move your hero to another device, and **Import saves** to bring it back.
+- Clearing your browser's site data deletes your saves, so export a backup first.
 
-The first run of `npx playwright install chromium` downloads the browser.
+## Install it on your device
+
+The game runs in any modern browser. Add it to your home screen to play full screen and offline, like any other app.
+
+- **iPhone and iPad:** open the [game](https://darrencroton.github.io/tome2mobile/) in Safari, tap **Share**, then **Add to Home Screen**.
+- **Android:** open it in Chrome, tap **⋮**, then **Install app** (or **Add to Home screen**).
+- **Desktop:** in Chrome or Edge, click the install icon in the address bar.
+
+New versions install themselves while you're on the title screen, never in the middle of a game.
 
 ---
 
-## Deployment
+## Heritage and credits
 
-`.github/workflows/build-deploy.yml` builds and tests every push and pull request. Pushes to `main` are deployed to GitHub Pages.
+ToME stands on the shoulders of one of gaming's oldest family trees. It descends from **Moria** (Robert Alan Koeneke, 1983) and **Angband** (Alex Cutler and Andy Astrand, 1990), and began life as **PernAngband** before **DarkGod** (Nicolas Casalini) reshaped it into **Tales of Middle-earth**. DarkGod and a large community of contributors built the game you play here; see their [credits](https://github.com/tome2/tome2/blob/master/doc/credits.txt). The game engine is the open-source [tome2/tome2](https://github.com/tome2/tome2), unchanged, running in your browser.
 
-One-off setup: in the repository's **Settings → Pages**, set **Source** to **GitHub Actions**.
+The lighting and look are inspired by [Brogue: Community Edition](https://github.com/tmewett/BrogueCE); no Brogue code or assets are used. And above all, thanks to J.R.R. Tolkien, for the world.
 
----
-
-## Saves
-
-- **Where they live:** saves are stored in your browser for this site. Clearing site data, or uninstalling the home-screen app on some platforms, deletes them.
-- **Backing up:**
-  1. Save in-game with **☰ → Save game** (or Ctrl+S). The game also saves when you leave the app, and on **☰ → Save and quit**.
-  2. Choose **☰ → Export saves** (or **Saves** on the title screen) to download a `.tome2save` backup.
-  3. Use **Import saves** from either place to restore it on any device.
-
----
-
-## Credits and licence
-
-This port is based on **[tome2/tome2](https://github.com/tome2/tome2)**, via the [darrencroton/tome2](https://github.com/darrencroton/tome2) fork. Full credit to the original authors and contributors; see [`external/tome2/doc/credits.txt`](https://github.com/tome2/tome2/blob/master/doc/credits.txt).
-
-The ToME source may be copied and distributed for educational, research and not-for-profit purposes, provided its copyright notices are retained (see the source file headers). This port is distributed free of charge on the same terms.
+ToME is distributed free for educational, research and not-for-profit purposes; see [LICENSE](LICENSE).

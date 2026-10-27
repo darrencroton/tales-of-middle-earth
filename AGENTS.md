@@ -21,6 +21,7 @@ ToME 2 (Tales of Middle-earth roguelike) compiled to WebAssembly and played as a
 - Prefer native/platform solutions over new dependencies; ask before adding packages.
 - Robust error handling; complete, runnable changes.
 - Commit/push only when asked or when checkpointing a long piece of work; open PRs only on request.
+- After opening a PR, watch it: address CI failures and review comments (reviews usually arrive within 10 minutes) and iterate until it is green and clean.
 - (Preferences evolve — update this section when the owner states new ones.)
 
 ## Layout
@@ -53,7 +54,7 @@ tests/e2e/             Playwright (phone portrait, phone landscape, tablet)
 - **Level readiness:** `engine/snapshot.cc` reports `inDungeon` from `character_generated`, not `character_dungeon`, so the map stays native while a new level is generated (quest hooks print `-more-` messages mid-generation).
 - **Messages:** Settings → Messages defaults to *Flow past*, which sets tome2's `auto_more` through `web_set_auto_more` (re-applied on every snapshot so a loaded savefile cannot undo it). Messages then only appear in the HUD log and history.
 - **Return to sheets** (`main.ts` `coverSheets`/`reopenSheets`, `Sheets.snapshot`/`restore`): sheets covered by a tome2 screen are saved and reopened at the next idle at the command prompt (or straight away when tome2's knowledge menu is redirected). `SheetContent.rebuild` refreshes a sheet whose data may have changed (character).
-- **iOS home-screen layout:** iOS can lay a standalone app out one status bar short of the screen; when `navigator.standalone` and the shortfall equals `--safe-top`, `html.fill-screen` sizes `#app`, sheets and the title to `--screen-height`.
+- **iOS home-screen layout:** iOS can give a standalone app a view one status bar short of the screen; the strip below is outside the page and cannot be drawn on. When `navigator.standalone` and the shortfall equals `--safe-top`, `html.short-view` sets `--safe-bottom` to 0, since the view already ends above the home indicator.
 - **Service worker:** a new worker waits; the page asks it to take over (and reloads) only while no game is in progress.
 - **Keys:** `keyCodes`/`typedAnswer` in `input/keys.ts` are the only text encoders; the engine drops codes outside 0..255.
 - **Audio** (`audio/`): `GameAudio` (`audio.ts`) starts on the first gesture and suspends while hidden. `engine.place()` (`web_place_json`: dungeon, town, quest, terrain, night, story stage) → `places.ts` `sceneFor`/`themeFor` picks and adapts a theme from `themes.ts` (pure data: scale, chords, leitmotif in degree notation, layers by role). `composer.ts` writes notes bar by bar (pure, seeded); `music.ts` schedules them just ahead of the audio clock, rests between pieces and crossfades; intensity from `cues.ts` `danger()` brings in layers with `from`. Sound effects come from `cues.ts` (pure: messages, state diffs, door features, command keys confirmed by the turn advancing, projectile colours) → `sfx.ts`. `__tome.audio.status` shows the theme and recent cues. After changing a theme's layers, re-measure its level (`MEASURED_DB` in `themes.ts`) by rendering it with an `OfflineAudioContext`.
