@@ -1,3 +1,4 @@
+import type { Place } from './audio/places.ts';
 import type { FeatureInfo } from './render/materials.ts';
 import {
   readSnapshot,
@@ -44,6 +45,7 @@ interface EmscriptenModule {
   _web_monster_desc(index: number): number;
   _web_character_json(): number;
   _web_set_auto_more(on: number): void;
+  _web_place_json(): number;
 }
 
 interface ModuleOptions {
@@ -72,6 +74,8 @@ export interface EngineEvents {
   onIdle?(): void;
   /** Engine is pausing mid-animation (bolts, explosions). */
   onEffectFrame?(): void;
+  /** Engine took a key from the queue. */
+  onKey?(code: number): void;
 }
 
 const SAVE_SYNC_DELAY_MS = 1500;
@@ -115,6 +119,12 @@ export class Engine {
     const mod = this.module;
     if (!mod || this.state !== 'running') return null;
     return JSON.parse(mod.UTF8ToString(mod._web_state_json(maxMessages))) as GameState;
+  }
+
+  /** Where the player is (dungeon, town, quest, terrain), or null before a level exists. */
+  place(): Place | null {
+    const json = this.callJson<Place>((mod) => mod._web_place_json());
+    return json && json.ready ? json : null;
   }
 
   inventory(): InventoryState | null {
@@ -231,12 +241,23 @@ export class Engine {
       this.scheduleSync();
       this.events.onIdle?.();
       const next = this.queue.shift();
-      if (next !== undefined) return Promise.resolve(next);
+      if (next !== undefined) {
+        this.events.onKey?.(next);
+        return Promise.resolve(next);
+      }
       return new Promise<number>((resolve) => {
-        this.waiter = resolve;
+        this.waiter = (key) => {
+          this.events.onKey?.(key);
+          resolve(key);
+        };
       });
     },
-    pollKey: () => this.queue.shift() ?? -1,
+    pollKey: () => {
+      const next = this.queue.shift();
+      if (next === undefined) return -1;
+      this.events.onKey?.(next);
+      return next;
+    },
     drawText: (x, y, attr, text) => this.buffer.drawText(x, y, attr, text),
     drawCursor: (x, y) => {
       this.cursorDrawn = true;

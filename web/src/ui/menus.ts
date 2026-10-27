@@ -1,5 +1,6 @@
 import { readableColour } from '../render/colour.ts';
 import type { MessageState } from '../render/snapshot.ts';
+import type { VolumeLevel } from '../audio/audio.ts';
 import {
   TEXT_SIZE_LABELS,
   TEXT_SIZE_PX,
@@ -82,6 +83,24 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
   const sample = el('p', 'settings-sample', 'You feel something in the air… The Village idiot drools on you.');
   body.append(section('Text size', textSize, sample));
 
+  const volumes: [VolumeLevel, string][] = [
+    ['off', 'Off'],
+    ['low', 'Low'],
+    ['medium', 'Medium'],
+    ['high', 'High'],
+  ];
+  body.append(
+    section(
+      'Music',
+      segmented<VolumeLevel>('Music', volumes, current.music, (music) => update({ music })),
+      el('p', 'muted', 'Each place has its own theme, and the music follows your story.'),
+    ),
+    section(
+      'Sound effects',
+      segmented<VolumeLevel>('Sound effects', volumes, current.sound, (sound) => update({ sound })),
+      el('p', 'muted', 'Combat, doors, magic and the sounds of the world around you.'),
+    ),
+  );
   body.append(
     section(
       'Animation',

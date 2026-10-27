@@ -50,7 +50,9 @@ This is the full ToME 2 game, with an interface designed from scratch for phones
 
 **Fights you can feel.** Damage numbers float off wounded foes, the screen flashes red when you're hit, and banners celebrate a new level or a deeper descent.
 
-**Your way.** Portrait or landscape, phone, tablet or desktop. Four text sizes, adjustable animation, classic ASCII symbols if you prefer them, and full keyboard support with all the original ToME keys.
+**Music for every place.** Each town, dungeon, quest and stretch of wilderness has its own theme, composed live on your device as you play, so it is never quite the same twice. Bree has a fireside jig, Lothlórien a timeless choir, Moria has drums in the deep, and the road between them changes as your story unfolds. The music rests now and then to let the wind, dripping caves and crackling fires come through, swells when danger is near, and muffles to a heartbeat when you are badly hurt. Sound effects bring every swing, creaking door, clinking coin and spell to life.
+
+**Your way.** Portrait or landscape, phone, tablet or desktop. Four text sizes, adjustable animation, separate music and sound volumes, classic ASCII symbols if you prefer them, and full keyboard support with all the original ToME keys.
 
 ## New to roguelikes?
 

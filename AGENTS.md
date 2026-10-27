@@ -37,6 +37,7 @@ web/src/ui/            Sheets, ListNav, TermView (+termparse, prompttext), promp
 web/src/play/          actions (toolbar), prompts, items (+macros), travel, targeting, pathfinding
 web/src/render/        Lit map, materials, lighting, flames, snapshot types
 web/src/title.ts       Opening screen (flames, mosaic logo, Continue/New, intro)
+web/src/audio/         Soundtrack, ambience and sound effects (Web Audio, no files)
 tests/unit/            node:test, pure modules
 tests/e2e/             Playwright (phone portrait, phone landscape, tablet)
 ```
@@ -56,6 +57,7 @@ tests/e2e/             Playwright (phone portrait, phone landscape, tablet)
 - **iOS home-screen layout:** iOS can give a standalone app a view one status bar short of the screen; the strip below is outside the page and cannot be drawn on. When `navigator.standalone` and the shortfall equals `--safe-top`, `html.short-view` sets `--safe-bottom` to 0, since the view already ends above the home indicator.
 - **Service worker:** a new worker waits; the page asks it to take over (and reloads) only while no game is in progress.
 - **Keys:** `keyCodes`/`typedAnswer` in `input/keys.ts` are the only text encoders; the engine drops codes outside 0..255.
+- **Audio** (`audio/`): `GameAudio` (`audio.ts`) starts on the first gesture and suspends while hidden. `engine.place()` (`web_place_json`: dungeon, town, quest, terrain, night, story stage) → `places.ts` `sceneFor`/`themeFor` picks and adapts a theme from `themes.ts` (pure data: scale, chords, leitmotif in degree notation, layers by role). `composer.ts` writes notes bar by bar (pure, seeded); `music.ts` schedules them just ahead of the audio clock, rests between pieces and crossfades; intensity from `cues.ts` `danger()` brings in layers with `from`. Sound effects come from `cues.ts` (pure: messages, state diffs, door features, command keys confirmed by the turn advancing, projectile colours) → `sfx.ts`. `__tome.audio.status` shows the theme and recent cues. After changing a theme's layers, re-measure its level (`MEASURED_DB` in `themes.ts`) by rendering it with an `OfflineAudioContext`.
 
 ## Build, run, test
 

@@ -51,19 +51,26 @@ describe('settings', () => {
 
   it('sanitises stored values', () => {
     const defaults = defaultSettings(false);
-    assert.deepEqual(sanitiseSettings({ animation: 'reduced', glyphs: 'classic', zoom: 30, textSize: 'large', messages: 'pause' }, defaults), {
-      animation: 'reduced',
-      glyphs: 'classic',
-      zoom: 30,
-      textSize: 'large',
-      messages: 'pause',
-    });
-    assert.deepEqual(sanitiseSettings({ animation: 'wild', glyphs: 7, zoom: 999, textSize: 'huge', messages: 'loud' }, defaults), {
+    assert.deepEqual(
+      sanitiseSettings({ animation: 'reduced', glyphs: 'classic', zoom: 30, textSize: 'large', messages: 'pause', music: 'low', sound: 'off' }, defaults),
+      {
+        animation: 'reduced',
+        glyphs: 'classic',
+        zoom: 30,
+        textSize: 'large',
+        messages: 'pause',
+        music: 'low',
+        sound: 'off',
+      },
+    );
+    assert.deepEqual(sanitiseSettings({ animation: 'wild', glyphs: 7, zoom: 999, textSize: 'huge', messages: 'loud', music: 11, sound: 'max' }, defaults), {
       animation: 'full',
       glyphs: 'brogue',
       zoom: 48,
       textSize: 'medium',
       messages: 'flow',
+      music: 'medium',
+      sound: 'medium',
     });
     assert.deepEqual(sanitiseSettings(null, defaults), defaults);
   });
