@@ -404,6 +404,66 @@ test('explore reveals the level after the suggested weapon and light are equippe
   expect(await known()).toBeGreaterThan(before);
 });
 
+test('a tap on unseen ground strides towards it as far as the light reaches', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Torchbearer');
+  await jumpToLevel(page, 2);
+  await equipSuggested(page);
+  await dismissMore(page);
+  await waitAtCommand(page);
+
+  const target = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const snap = tome.engine.snapshot()!;
+    const features = tome.engine.features();
+    const known = (x: number, y: number) => (snap.info[y * snap.width + x] & 0x11) !== 0;
+    const open = (x: number, y: number) => {
+      const i = y * snap.width + x;
+      return known(x, y) && (features[snap.feat[i]].flags & 1) === 0 && (snap.layer[i] & 0x7f) === 1;
+    };
+    const onMap = (x: number, y: number) => {
+      const p = tome.mapCellCentre(x, y);
+      return document.elementFromPoint(p.x, p.y)?.id === 'map';
+    };
+    const far = Math.max(1, snap.lightRadius) + 3;
+    let best: { x: number; y: number } | null = null;
+    let bestScore = Infinity;
+    for (let y = 0; y < snap.height; y++) {
+      for (let x = 0; x < snap.width; x++) {
+        const d = Math.max(Math.abs(x - snap.px), Math.abs(y - snap.py));
+        if (d < far || d > far + 4 || known(x, y) || !onMap(x, y)) continue;
+        const toTarget = Math.hypot(x - snap.px, y - snap.py);
+        let closer = false;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = snap.px + dx;
+            const ny = snap.py + dy;
+            if ((dx || dy) && open(nx, ny) && Math.hypot(x - nx, y - ny) < toTarget) closer = true;
+          }
+        }
+        if (closer && d < bestScore) {
+          bestScore = d;
+          best = { x, y };
+        }
+      }
+    }
+    return best;
+  });
+  expect(target, 'no unseen cell on the map to stride towards').not.toBeNull();
+
+  const start = await playerPos(page);
+  const point = await page.evaluate(([x, y]) => window.__tome!.mapCellCentre(x, y), [target!.x, target!.y] as const);
+  await page.mouse.click(point.x, point.y);
+  await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 20_000 }).toBe(false);
+  const end = await playerPos(page);
+  const cause = await page.evaluate(() => window.__tome!.lastStopCause());
+  const context = `stopped (${cause || 'never started'}) at ${JSON.stringify(end)} from ${JSON.stringify(start)} towards ${JSON.stringify(target)}\n${await screenText(page)}`;
+  await expect(page.locator('#toast'), context).not.toContainText('no known way');
+  const distance = (p: { x: number; y: number }) => Math.hypot(p.x - target!.x, p.y - target!.y);
+  if (!/monster|hurt/.test(cause)) expect(distance(end), context).toBeLessThan(distance(start));
+});
+
 test('Dungeon walks to the way down and the quest level below Bree stays native', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);

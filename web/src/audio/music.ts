@@ -1,4 +1,4 @@
-import { Composer, pivotChord, secondsPerBar, type PieceSection } from './composer.ts';
+import { barStretch, Composer, pivotChord, secondsPerBar, sombreness, type PieceSection } from './composer.ts';
 import type { AudioCore } from './core.ts';
 import { themeGain, type Instrument, type Role, type Theme } from './themes.ts';
 import { hashString } from './theory.ts';
@@ -12,6 +12,10 @@ const FADE_OUT_S = 1.8;
 const MAX_WAIT_S = 2.4;
 /** Longest pivot between two themes. */
 const MAX_PIVOT_S = 3.2;
+/** How much faster than written a theme plays at full intensity above its floor. */
+const DRIVE = 0.08;
+/** Largest change of drive from one bar to the next. */
+const DRIVE_STEP = 0.02;
 
 const SUSTAINED: ReadonlySet<Role> = new Set(['pad', 'drone']);
 
@@ -28,6 +32,10 @@ interface Playback {
   globalBar: number;
   /** Audio-clock time of the next bar. */
   nextAt: number;
+  /** Length of the last bar written, in seconds. */
+  barSeconds: number;
+  /** Tempo multiplier that follows intensity. */
+  drive: number;
   /** Pieces finished so far. */
   pieces: number;
 }
@@ -93,12 +101,15 @@ export class MusicPlayer {
       bar: 0,
       globalBar: 0,
       nextAt: now + 0.1,
+      barSeconds: secondsPerBar(theme),
+      drive: 1,
       pieces: 0,
     };
     bus.gain.setValueAtTime(0.0001, now);
     if (previous) {
       const cut = this.nextBeat(previous, now);
-      this.release(previous, cut);
+      const gloom = Math.max(sombreness(previous.theme), sombreness(theme));
+      this.release(previous, cut, FADE_OUT_S * (1 + gloom * 0.8));
       bus.gain.linearRampToValueAtTime(level, cut);
       playback.nextAt = cut + this.writePivot(playback, previous.theme, cut);
     } else {
@@ -133,7 +144,11 @@ export class MusicPlayer {
 
   private advance(p: Playback, now: number): void {
     const section = p.piece[p.section];
-    const barSeconds = secondsPerBar(p.theme);
+    const target = 1 + DRIVE * Math.max(0, this.level - (p.theme.floor ?? 0));
+    p.drive += Math.max(-DRIVE_STEP, Math.min(DRIVE_STEP, target - p.drive));
+    const stretch = barStretch(p.theme, section, p.bar, p.section === p.piece.length - 1);
+    const barSeconds = (secondsPerBar(p.theme) * stretch) / p.drive;
+    p.barSeconds = barSeconds;
     const start = Math.max(p.nextAt, now + 0.02);
     this.writeBar(p, section, start, barSeconds);
     p.globalBar++;
@@ -152,7 +167,7 @@ export class MusicPlayer {
 
   /** Where the playing theme can stop: the end of the written bar, or the next beat when that is far off. */
   private nextBeat(p: Playback, now: number): number {
-    const bar = secondsPerBar(p.theme);
+    const bar = p.barSeconds;
     const beat = bar / p.theme.meter;
     const barStart = p.nextAt - bar;
     const soon = now + 0.15;
@@ -169,21 +184,24 @@ export class MusicPlayer {
     const beat = bar / theme.meter;
     const length = bar <= MAX_PIVOT_S ? bar : beat * Math.max(2, Math.floor(MAX_PIVOT_S / beat));
     const bright = theme.bright ?? 0.7;
+    const weight = pivot.weight;
     const pad: Instrument = theme.layers.find((l) => l.role === 'pad')?.inst ?? 'strings';
     const low: Instrument = theme.layers.some((l) => l.inst === 'cello') ? 'cello' : 'strings';
     const voice = (inst: Instrument, t: number, dur: number, midi: number, vel: number, sustained: boolean) => {
       try {
-        playVoice(this.core, inst, this.pan(p, 0), t, dur, midi, vel, { bright, sustained });
+        playVoice(this.core, inst, this.pan(p, 0), t, dur, midi, vel * weight, { bright: bright * (0.7 + 0.3 * weight), sustained });
       } catch (err) {
         console.warn('Music note failed', err);
       }
     };
-    for (const midi of pivot.chord) voice(pad, at, length + 0.3, midi, 0.55, true);
-    voice(low, at, length, pivot.bass, 0.6, false);
+    /* Quieter pivots enter up to half a beat after the cut. */
+    const enter = at + (1 - weight) * beat * 0.5;
+    for (const midi of pivot.chord) voice(pad, enter, length + 0.3 - (enter - at), midi, 0.42, true);
+    voice(low, enter, length - (enter - at), pivot.bass, weight >= 0.6 ? 0.45 : 0.3, weight < 0.6);
     if (pivot.kind === 'common') {
-      pivot.chord.forEach((midi, i) => voice('harp', at + i * beat * 0.5, beat * 2, midi + 12, 0.45, false));
-    } else if (pivot.kind === 'dominant' && theme.layers.some((l) => l.inst === 'timpani' || l.inst === 'drum')) {
-      voice('timpani', at, beat, pivot.bass, 0.5, false);
+      pivot.chord.forEach((midi, i) => voice('harp', at + i * beat * 0.5, beat * 2, midi + 12, 0.38, false));
+    } else if (pivot.kind === 'dominant' && weight > 0.7 && theme.layers.some((l) => l.inst === 'timpani' || l.inst === 'drum')) {
+      voice('timpani', at, beat, pivot.bass, 0.4, false);
     }
     return length;
   }
@@ -216,14 +234,14 @@ export class MusicPlayer {
   }
 
   /** Fades a theme out from `at`. */
-  private release(p: Playback, at: number): void {
+  private release(p: Playback, at: number, fade = FADE_OUT_S): void {
     const now = this.core.now;
     const gain = p.bus.gain;
     gain.cancelScheduledValues(now);
     gain.setValueAtTime(Math.max(0.0001, gain.value), now);
     if (at > now) gain.setValueAtTime(Math.max(0.0001, gain.value), at);
-    gain.linearRampToValueAtTime(0.0001, at + FADE_OUT_S);
-    p.nextAt = at + FADE_OUT_S + 6;
+    gain.linearRampToValueAtTime(0.0001, at + fade);
+    p.nextAt = at + fade + 6;
     this.fading.push(p);
   }
 }

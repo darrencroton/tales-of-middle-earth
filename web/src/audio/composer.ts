@@ -1,5 +1,5 @@
 import { PERCUSSION, type Instrument, type Layer, type Role, type SectionKind, type Theme } from './themes.ts';
-import { chordDegrees, degreeToMidi, parseMelody, Rng, SCALES } from './theory.ts';
+import { chordDegrees, degreeToMidi, parseMelody, Rng, SCALES, type ScaleName } from './theory.ts';
 
 export interface NoteEvent {
   /** Beats from the start of the bar. */
@@ -285,10 +285,12 @@ export class Composer {
     const phrase = this.phraseFor(section);
     const meter = this.theme.meter;
     const from = bar * meter;
+    const delay = layer.delay ?? 0;
     const pcs = this.corePcs(chord);
     for (const n of phrase) {
-      if (n.start < from || n.start >= from + meter) continue;
-      const at = n.start - from;
+      const start = n.start + delay;
+      if (start < from || start >= from + meter) continue;
+      const at = start - from;
       const strong = at === 0 || (meter >= 4 && at === meter / 2) || n.beats >= meter / 2;
       const degree = strong ? this.snap(n.degree, n.accidental, pcs) : n.degree;
       const accent = at === 0 ? 0.1 : 0;
@@ -468,34 +470,79 @@ export function pickVoicing(pcs: readonly number[], previous: readonly number[],
   return [...chosen].sort((a, b) => a - b);
 }
 
-export type TransitionKind = 'dominant' | 'plagal' | 'common';
+export type TransitionKind = 'dominant' | 'plagal' | 'common' | 'minorPlagal' | 'veiled';
 
 export interface Pivot {
   kind: TransitionKind;
   /** Chord tones (MIDI) around the middle of the new theme's range. */
   chord: number[];
   bass: number;
+  /** How present the pivot is: 1 sounds in full, lower values are quieter and sparser. */
+  weight: number;
 }
+
+type Shade = Pick<Theme, 'root' | 'scale' | 'bpm' | 'meter' | 'bright'>;
 
 const PLAGAL_SCALES: ReadonlySet<string> = new Set(['ionian', 'mixolydian', 'pentatonic']);
 const COMMON_SCALES: ReadonlySet<string> = new Set(['lydian', 'wholeTone', 'hirajoshi']);
 
+/** How dark each mode sounds, 0 (bright) .. 1 (darkest). */
+const SCALE_SHADE: Record<ScaleName, number> = {
+  lydian: 0,
+  ionian: 0.1,
+  pentatonic: 0.1,
+  mixolydian: 0.2,
+  dorian: 0.4,
+  wholeTone: 0.5,
+  minorPentatonic: 0.5,
+  aeolian: 0.65,
+  hirajoshi: 0.65,
+  phrygianDominant: 0.7,
+  harmonicMinor: 0.75,
+  phrygian: 0.8,
+  hungarianMinor: 0.85,
+  locrian: 1,
+};
+
+/** Beats per minute counted in quarter notes (6-beat bars count eighths). */
+export function quarterTempo(theme: Pick<Theme, 'bpm' | 'meter'>): number {
+  return theme.meter % 3 === 0 && theme.meter > 3 ? theme.bpm / 2 : theme.bpm;
+}
+
+/** How sombre a theme sounds from its mode, tempo and tone: 0 (bright, lively) .. 1 (dark, slow, muffled). */
+export function sombreness(theme: Pick<Theme, 'scale' | 'bpm' | 'meter' | 'bright'>): number {
+  const slow = Math.max(0, Math.min(1, (100 - quarterTempo(theme)) / 50));
+  const dim = Math.max(0, Math.min(1, (0.8 - (theme.bright ?? 0.7)) / 0.45));
+  return Math.min(1, SCALE_SHADE[theme.scale] * 0.5 + slow * 0.3 + dim * 0.2);
+}
+
+/** Sombreness at or above which a transition only hints at the new key. */
+const VEILED_FROM = 0.6;
+/** Sombreness of a dark key at or above which it is reached through its minor subdominant. */
+const MINOR_PLAGAL_FROM = 0.45;
+
 /**
  * How music moves into a theme: bright places are reached through their
  * subdominant (IV → I, warm and settled), dreamlike ones through a chord
- * that keeps the previous tonic as a common tone, and dark or tense ones
- * through their dominant seventh (V7 → i), which pulls hard into the key.
+ * that keeps the previous tonic as a common tone, sombre ones through
+ * their minor subdominant (iv → i, a soft sigh) or, when either side is
+ * very sombre, through a suspended chord without a leading tone that
+ * barely hints at the new key; only lively dark keys keep the pull of a
+ * dominant seventh (V7 → i).
  */
-export function transitionKind(to: Pick<Theme, 'scale'>): TransitionKind {
-  if (PLAGAL_SCALES.has(to.scale)) return 'plagal';
+export function transitionKind(to: Pick<Theme, 'scale' | 'bpm' | 'meter' | 'bright'>, from: Pick<Theme, 'scale' | 'bpm' | 'meter' | 'bright'> | null = null): TransitionKind {
   if (COMMON_SCALES.has(to.scale)) return 'common';
+  if (PLAGAL_SCALES.has(to.scale)) return 'plagal';
+  const target = sombreness(to);
+  if (Math.max(target, from ? sombreness(from) : 0) >= VEILED_FROM) return 'veiled';
+  if (target >= MINOR_PLAGAL_FROM) return 'minorPlagal';
   return 'dominant';
 }
 
 /** The chord that leads from one theme's key into the next. */
-export function pivotChord(from: Pick<Theme, 'root'> | null, to: Pick<Theme, 'root' | 'scale'>): Pivot {
+export function pivotChord(from: Shade | null, to: Shade): Pivot {
   const scale = SCALES[to.scale];
-  let kind = transitionKind(to);
+  let kind = transitionKind(to, from);
   let intervals: number[] = [];
   let bass = 0;
   if (kind === 'common') {
@@ -510,10 +557,16 @@ export function pivotChord(from: Pick<Theme, 'root'> | null, to: Pick<Theme, 'ro
     }
   }
   if (kind === 'plagal') {
-    intervals = [5, 9, 12, 14];
+    intervals = [5, 9, 12];
     bass = 5;
+  } else if (kind === 'minorPlagal') {
+    intervals = [5, 8, 12];
+    bass = 5;
+  } else if (kind === 'veiled') {
+    intervals = [7, 12, 14];
+    bass = 7;
   } else if (kind === 'dominant') {
-    intervals = [7, 11, 14, 17];
+    intervals = [7, 11, 17];
     bass = 7;
   }
   const chord = pickVoicing(
@@ -524,5 +577,19 @@ export function pivotChord(from: Pick<Theme, 'root'> | null, to: Pick<Theme, 'ro
   let low = to.root + bass - 12;
   while (low > 52) low -= 12;
   while (low < 36) low += 12;
-  return { kind, chord, bass: low };
+  const gloom = Math.max(sombreness(to), from ? sombreness(from) : 0);
+  return { kind, chord, bass: low, weight: Math.max(0.35, 1 - gloom * 0.75) };
+}
+
+/**
+ * How much longer than written a bar lasts: with rubato, the intro and
+ * breaths broaden and the last bar of a piece slows into the next.
+ */
+export function barStretch(theme: Pick<Theme, 'rubato'>, section: PieceSection, bar: number, endsPiece: boolean): number {
+  const rubato = theme.rubato ?? 0;
+  if (rubato <= 0) return 1;
+  if (endsPiece && bar === section.bars - 1) return 1 + rubato * 1.5;
+  if (section.kind === 'breath') return 1 + rubato;
+  if (section.kind === 'intro') return 1 + rubato * 0.5;
+  return 1;
 }
