@@ -1,7 +1,7 @@
 import { SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
 import { itemRecent, recentItem, recentItemAction, recentKey } from '../play/recent.ts';
 import type { EquipSlot, InventoryState, ItemState } from '../render/snapshot.ts';
-import { descriptionParagraphs, pounds, titleName, type GameApi } from './api.ts';
+import { capitalise, descriptionParagraphs, pounds, titleName, type GameApi } from './api.ts';
 import { el, glyph, section } from './dom.ts';
 import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
 
@@ -143,6 +143,14 @@ export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void 
         api.askText('Inscribe', `Inscription for ${item.name}`, item.ins).then((text) => {
           if (text !== null) api.runMacro(itemMacro(action, item, place, text, alwaysPickup));
         });
+        return;
+      }
+      if (action.quantity === 'ask') {
+        api
+          .askQuantity({ title: `${action.label} how many?`, label: capitalise(item.name), max: item.number, verb: action.label, danger: action.danger })
+          .then((count) => {
+            if (count !== null) api.runMacro(itemMacro({ ...action, quantity: count }, item, place, '', alwaysPickup));
+          });
         return;
       }
       if (place === 'pack' && QUICK_USES.has(action.id)) api.remember(itemRecent(action.command, action.label, item));

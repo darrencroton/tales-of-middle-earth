@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { Explore, exploreTarget } from '../../web/src/play/explore.ts';
-import { suggestedGear } from '../../web/src/play/items.ts';
+import { fightingStyle, suggestedGear } from '../../web/src/play/items.ts';
 import type { Material } from '../../web/src/render/materials.ts';
 import { CAVE_MARK, LAYER_OBJECT, LAYER_TERRAIN, type EquipSlot, type ItemState, type LevelSnapshot } from '../../web/src/render/snapshot.ts';
 
@@ -88,6 +88,22 @@ describe('suggested gear', () => {
     assert.equal(suggestedGear({ pack: [torch], equip: armed }, calm)?.kind, 'light');
     assert.equal(suggestedGear({ pack: [torch], equip: armed }, { ...calm, inDungeon: false }), null);
     assert.equal(suggestedGear({ pack: [torch], equip: lit }, calm), null);
+    assert.equal(suggestedGear({ pack: [torch, dagger], equip: [] }, { ...calm, wieldsWeapons: false })?.kind, 'light');
+  });
+
+  it('tells fighters, casters and those who do both apart', () => {
+    const skill = (name: string, value: number, mod: number) => ({ name, value, mod });
+    const warrior = [skill('Combat', 2000, 800), skill('Weaponmastery', 1000, 850)];
+    const sorceror = [skill('Magic', 1000, 1000), skill('Sorcery', 1000, 700)];
+    const mage = [skill('Combat', 1000, 200), skill('Weaponmastery', 700, 500), skill('Magic', 1000, 900)];
+    const paladin = [skill('Combat', 1000, 900), skill('Prayer', 1000, 900)];
+    const monk = [skill('Combat', 1000, 800), skill('Barehand-combat', 1000, 900), skill('Mindcraft', 1000, 500)];
+    assert.deepEqual(fightingStyle(warrior), { weapons: true, magic: false });
+    assert.deepEqual(fightingStyle(sorceror), { weapons: false, magic: true });
+    assert.deepEqual(fightingStyle(mage), { weapons: false, magic: true });
+    assert.deepEqual(fightingStyle(paladin), { weapons: true, magic: true });
+    assert.deepEqual(fightingStyle(monk), { weapons: false, magic: true });
+    assert.deepEqual(fightingStyle([]), { weapons: true, magic: true });
   });
 
   it('suggests healing when hurt and food when hungry', () => {

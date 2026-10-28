@@ -117,7 +117,7 @@ set(TOME_LINK_FLAGS
 	-sENVIRONMENT=web
 	-sEXIT_RUNTIME=1
 	-sEXPORTED_RUNTIME_METHODS=FS,HEAPU8,HEAPU16,HEAP32,UTF8ToString
-	-sEXPORTED_FUNCTIONS=_main,_web_snapshot,_web_features_json,_web_state_json,_web_inventory_json,_web_object_desc,_web_store_object_desc,_web_monster_desc,_web_character_json,_web_set_auto_more,_web_place_json,_web_scores_json,_web_birth_json,_web_spells_json
+	-sEXPORTED_FUNCTIONS=_main,_web_snapshot,_web_features_json,_web_state_json,_web_inventory_json,_web_object_desc,_web_store_object_desc,_web_monster_desc,_web_character_json,_web_set_auto_more,_web_place_json,_web_scores_json,_web_birth_json,_web_spells_json,_web_skills_json,_web_abilities_json,_web_saved_screen
 	-lidbfs.js
 	-Wl,--wrap=nanosleep
 	-Wl,--wrap=getpwuid

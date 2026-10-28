@@ -101,6 +101,17 @@ describe('terminal overlay helpers', () => {
     assert.deepEqual(term.diffBounds(base, 1), { x0: 4, y0: 1, x1: 7, y1: 3 });
   });
 
+  it('counts blank cells as unchanged whatever their colour', () => {
+    const term = new TerminalBuffer(10, 5);
+    term.drawText(0, 2, 1, bytes('map'));
+    const saved = term.copy();
+    saved.attrs.fill(0, 30);
+    saved.attrs[0] = 7;
+    assert.equal(term.diffBounds(saved), null);
+    saved.attrs[1 + 2 * 10] = 3;
+    assert.deepEqual(term.diffBounds(saved), { x0: 1, y0: 2, x1: 1, y1: 2 });
+  });
+
   it('tracks content bounds until cleared', () => {
     const term = new TerminalBuffer(20, 10);
     assert.equal(term.contentBounds(), null);

@@ -19,7 +19,6 @@ export type NativeView =
   | 'finish'
   | 'fallen'
   | 'explore'
-  | 'dungeon'
   | 'equip';
 
 export type ActionEffect =
@@ -186,8 +185,6 @@ export interface ActionContext {
   underfoot: string;
   floorObjects: number;
   alwaysPickup: boolean;
-  /** In town, where there is nothing to explore. */
-  town?: boolean;
   /** On the world map, travelling between places. */
   worldMap?: boolean;
   /** Something worth using from the pack. */
@@ -196,18 +193,18 @@ export interface ActionContext {
   foe?: string | null;
   /** A hostile creature is in view. */
   foeInView?: boolean;
-  /** Name of the spell or power last used, offered again while a foe is in view. */
+  /** Name of what to offer again: a magic user's last spell or power, or another hero's last aimed action while a foe is in view. */
   recast?: string | null;
   /** A launcher and ammunition are ready. */
   canFire?: boolean;
-  /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers. */
+  /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers or does not use them. */
   magic?: string | null;
 }
 
 /* More buttons than this crowd a phone's toolbar. */
 const MAX_MAP_ACTIONS = 7;
 /* Buttons that give way, in order, when the toolbar is full; all are also under More. */
-const OVERFLOW_ORDER = ['look', 'cast', 'rest', 'explore', 'dungeon'];
+const OVERFLOW_ORDER = ['look', 'rest', 'explore', 'fire', 'recast', 'cast'];
 
 const FALLEN: Action = { id: 'fallen', label: 'Your hero', icon: '@', effect: { kind: 'native', view: 'fallen' } };
 const KEYBOARD: Action = { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } };
@@ -242,6 +239,7 @@ export function situationalActions(underfoot: string, floorObjects: number, alwa
   if (/down staircase|shaft down|quest down|quest entrance|town exit|path to the next/.test(underfoot)) {
     actions.push(command('descend', 'Descend', '>', { command: '>' }, true));
   }
+  if (/void jumpgate/.test(underfoot)) actions.push(command('rift', 'Enter rift', '◌', { command: '>' }, true));
   if (/up staircase|shaft up|quest up|quest exit|path to the previous/.test(underfoot)) {
     actions.push(command('ascend', 'Ascend', '<', { command: '<' }, true));
   }
@@ -312,8 +310,8 @@ export function contextActions(ctx: ActionContext): Action[] {
     const situational = situationalActions(ctx.underfoot, ctx.floorObjects, ctx.alwaysPickup);
     const actions: Action[] = [
       ...(ctx.foe ? [{ id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true } as Action] : []),
-      ...(ctx.foeInView && ctx.recast
-        ? [{ id: 'recast', label: ctx.recast, icon: '✺', effect: { kind: 'native', view: 'recast' }, primary: !ctx.foe } as Action]
+      ...(ctx.recast
+        ? [{ id: 'recast', label: ctx.recast, icon: '✺', effect: { kind: 'native', view: 'recast' }, primary: !ctx.foe && !!ctx.foeInView } as Action]
         : []),
       ...(ctx.foeInView && ctx.canFire
         ? [{ id: 'fire', label: 'Fire', icon: '➶', effect: { kind: 'native', view: 'fire' }, primary: !ctx.foe && !ctx.recast } as Action]
@@ -322,11 +320,7 @@ export function contextActions(ctx: ActionContext): Action[] {
       ...situational,
       ...(ctx.worldMap
         ? [command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true)]
-        : ctx.town
-          ? situational.some((a) => a.id === 'descend')
-            ? []
-            : [{ id: 'dungeon', label: 'Dungeon', icon: '⇣', effect: { kind: 'native', view: 'dungeon' } } as Action]
-          : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
+        : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
       { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
       ...(ctx.foe ? [] : [command('rest', 'Rest', '☾', { command: 'R', then: '&\r' })]),
       ...(ctx.magic === null ? [] : [{ id: 'cast', label: ctx.magic ?? 'Cast', icon: '✦', effect: { kind: 'native', view: 'magic' } } as Action]),

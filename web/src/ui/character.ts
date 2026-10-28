@@ -10,8 +10,13 @@ import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
 import {
   abilitiesElements,
   abilityMoveKeys,
+  abilityTableElements,
+  cursorKeys,
+  selectedAbility,
+  selectedSkill,
   skillMoveKeys,
   skillsElements,
+  skillTableElements,
   type AbilitiesScreen,
   type SkillsScreen,
 } from './skills.ts';
@@ -83,6 +88,10 @@ export class CharacterPanel {
   /** The command already sent for `want`, so a refused one is not repeated. */
   private requested: CharacterTab | null = null;
   private asked = '';
+  /** Closes the sheet asking tome2's current message box, without answering it. */
+  private dismissAsk: (() => void) | null = null;
+  /** The sheet was closed while a tome2 screen was open: its last questions are asked on the map, not in a reopened sheet. */
+  private leaving = false;
   private renderedKey = '';
 
   constructor(api: GameApi, deps: CharacterDeps) {
@@ -119,7 +128,8 @@ export class CharacterPanel {
   /** tome2 showed one of the sheet's screens by itself (a typed command): the sheet opens on it. */
   adopt(screen: CharacterScreen): void {
     const tab = screenTab(screen);
-    if (!tab || this.content) return;
+    if (!tab) this.leaving = false;
+    if (!tab || this.content || this.leaving) return;
     this.shown = tab;
     this.open(tab);
     this.render(screen);
@@ -180,9 +190,11 @@ export class CharacterPanel {
       return true;
     }
     this.asked = '';
+    this.dismissAsk?.();
     if (!current) return false;
     if (current !== this.want) return true;
-    const key = JSON.stringify([current, screen.skills, screen.abilities, screen.sheet]);
+    const table = current === 'skills' ? this.api.engine.skillTable() : current === 'abilities' ? this.api.engine.abilityTable() : null;
+    const key = JSON.stringify([current, screen.skills, screen.abilities, screen.sheet, table]);
     if (key === this.renderedKey) return true;
     this.renderedKey = key;
     this.replace(this.build(screen));
@@ -192,10 +204,15 @@ export class CharacterPanel {
   private ask(box: MessageBox): void {
     if (this.asked === box.text) return;
     this.asked = box.text;
+    this.dismissAsk?.();
     let answered = false;
-    const answer = (keys: number[]) => {
+    const close = () => {
       answered = true;
-      this.api.sheets.back();
+      if (this.dismissAsk === close) this.dismissAsk = null;
+      if (this.api.sheets.isTop(content)) this.api.sheets.back();
+    };
+    const answer = (keys: number[]) => {
+      close();
       this.deps.sendKeys(keys);
     };
     const actions: SheetAction[] =
@@ -209,15 +226,19 @@ export class CharacterPanel {
           : [{ id: 'ok', label: 'OK', primary: true, run: () => answer([KEY_ESCAPE]) }];
     const body = el('div', 'prose');
     body.append(el('p', undefined, box.text));
-    this.api.sheets.open({
+    const content: SheetContent = {
       title: 'Character',
       body,
       size: 'fit',
       actions,
       onClose: () => {
+        if (this.dismissAsk === close) this.dismissAsk = null;
         if (!answered) this.deps.sendKeys(box.kind === 'yesno' ? keyCodes('n') : [KEY_ESCAPE]);
+        answered = true;
       },
-    });
+    };
+    this.dismissAsk = close;
+    this.api.sheets.open(content);
   }
 
   private tabs(): SheetTab[] {
@@ -229,7 +250,11 @@ export class CharacterPanel {
     this.want = 'summary';
     this.requested = null;
     this.asked = '';
-    if (this.shown) this.deps.sendKeys([KEY_ESCAPE]);
+    this.dismissAsk = null;
+    if (this.shown) {
+      this.leaving = true;
+      this.deps.sendKeys([KEY_ESCAPE]);
+    }
     this.shown = null;
   }
 
@@ -251,16 +276,31 @@ export class CharacterPanel {
     const body = el('div', 'character-screen');
     if (this.want === 'skills' && screen?.skills) {
       const skills = screen.skills;
-      body.append(
-        ...skillsElements(skills, (skill) => {
-          if (skill.selected) {
-            if (skill.branch) this.deps.sendKeys([KEY_ENTER]);
-          } else {
-            const keys = skillMoveKeys(skills, skill);
-            if (keys) send(keys);
-          }
-        }),
-      );
+      const table = this.api.engine.skillTable();
+      const selected = table ? selectedSkill(table, skills) : -1;
+      if (table && selected >= 0) {
+        body.classList.add('with-detail');
+        body.append(
+          ...skillTableElements(table, selected, (index) => {
+            if (index === selected) {
+              if (table.skills[index].branch) this.deps.sendKeys([KEY_ENTER]);
+            } else {
+              send(cursorKeys(selected, index));
+            }
+          }),
+        );
+      } else {
+        body.append(
+          ...skillsElements(skills, (skill) => {
+            if (skill.selected) {
+              if (skill.branch) this.deps.sendKeys([KEY_ENTER]);
+            } else {
+              const keys = skillMoveKeys(skills, skill);
+              if (keys) send(keys);
+            }
+          }),
+        );
+      }
       return {
         ...base,
         subtitle: points(skills.points),
@@ -275,13 +315,20 @@ export class CharacterPanel {
     }
     if (this.want === 'abilities' && screen?.abilities) {
       const abilities = screen.abilities;
-      body.append(
-        ...abilitiesElements(abilities, (ability) => {
-          const keys = abilityMoveKeys(abilities, ability);
-          if (keys) send(keys);
-        }),
-      );
-      const selected = abilities.abilities.find((a) => a.selected);
+      const table = this.api.engine.abilityTable();
+      const index = table ? selectedAbility(table, abilities) : -1;
+      if (table && index >= 0) {
+        body.classList.add('with-detail');
+        body.append(...abilityTableElements(table, index, (i) => i !== index && send(cursorKeys(index, i))));
+      } else {
+        body.append(
+          ...abilitiesElements(abilities, (ability) => {
+            const keys = abilityMoveKeys(abilities, ability);
+            if (keys) send(keys);
+          }),
+        );
+      }
+      const selected = table && index >= 0 ? { state: table.abilities[index].learnable ? 'learnable' : 'locked' } : abilities.abilities.find((a) => a.selected);
       return {
         ...base,
         subtitle: points(abilities.points),

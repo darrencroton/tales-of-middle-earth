@@ -318,6 +318,9 @@ describe('actions', () => {
     assert.deepEqual(situationalActions('down staircase', 0).map((a) => a.id), ['descend']);
     assert.deepEqual(situationalActions('up staircase', 2).map((a) => a.id), ['pickup', 'ascend']);
     assert.deepEqual(situationalActions('open floor', 0), []);
+    const rift = situationalActions('void jumpgate', 0);
+    assert.deepEqual(rift.map((a) => [a.id, a.label, !!a.primary]), [['rift', 'Enter rift', true]]);
+    assert.deepEqual(rift[0].effect, { kind: 'keys', keys: [92, ...keys('>')] });
   });
 
   it('picks up with the key that matches the always_pickup option', () => {
@@ -364,7 +367,9 @@ describe('actions', () => {
       ['recast', 'Manathrust', true],
       ['fire', 'Fire', false],
     ]);
-    assert.ok(!contextActions({ ...base, recast: 'Manathrust', canFire: true }).some((a) => a.id === 'recast' || a.id === 'fire'));
+    const quiet = contextActions({ ...base, recast: 'Manathrust', canFire: true });
+    assert.deepEqual(quiet.filter((a) => a.id === 'recast' || a.id === 'fire').map((a) => [a.id, !!a.primary]), [['recast', false]]);
+    assert.ok(quiet.some((a) => a.id === 'cast'));
     assert.deepEqual(contextActions(base).find((a) => a.id === 'cast')?.effect, { kind: 'native', view: 'magic' });
     assert.equal(contextActions({ ...base, magic: 'Powers' }).find((a) => a.id === 'cast')?.label, 'Powers');
     assert.ok(!contextActions({ ...base, magic: null }).some((a) => a.id === 'cast'));
@@ -372,7 +377,11 @@ describe('actions', () => {
     assert.ok(crowded.length <= 7);
     assert.deepEqual(crowded.map((a) => a.id), ['attack', 'equip', 'pickup', 'descend', 'inventory', 'commands', 'menu']);
     const busy = contextActions({ ...base, gear: 'light', underfoot: 'down staircase' }).map((a) => a.id);
-    assert.deepEqual(busy, ['equip', 'descend', 'explore', 'inventory', 'rest', 'commands', 'menu']);
+    assert.deepEqual(busy, ['equip', 'descend', 'explore', 'inventory', 'cast', 'commands', 'menu']);
+    const caster = contextActions({ ...base, foe: '6', foeInView: true, recast: 'Manathrust' }).map((a) => a.id);
+    assert.ok(caster.length <= 7 && caster.includes('recast') && caster.includes('cast'), caster.join());
+    const calm = contextActions({ ...base, foeInView: true, recast: 'Manathrust', canFire: true }).map((a) => a.id);
+    assert.ok(calm.length <= 7 && calm.includes('cast') && calm.includes('recast'), calm.join());
     const sheet = COMMAND_GROUPS.flatMap((g) => g.commands);
     assert.equal(sheet.find((c) => c.label === 'Inventory')?.native, 'inventory');
     assert.equal(sheet.find((c) => c.label === 'Look')?.native, 'look');
@@ -389,7 +398,7 @@ describe('actions', () => {
     assert.equal(map.find((a) => a.id === 'walkhere')?.primary, true);
     assert.deepEqual(map.find((a) => a.id === 'walkhere')?.effect, { kind: 'keys', keys: [92, ...keys('>')] });
     assert.ok(!map.some((a) => a.id === 'explore'));
-    assert.ok(contextActions({ ...base, town: true }).some((a) => a.id === 'dungeon'));
+    assert.ok(contextActions(base).some((a) => a.id === 'explore') && !contextActions(base).some((a) => a.id === 'dungeon'));
   });
 
   it('recognises quantity and typed-text prompts', () => {

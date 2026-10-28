@@ -223,6 +223,83 @@ export function askText(
   });
 }
 
+export interface QuantityQuestion {
+  title: string;
+  /** What the number counts, shown above the stepper. */
+  label: string;
+  max: number;
+  /** Starts here; the whole stack by default. */
+  initial?: number;
+  /** Verb for the confirming button ("Drop" → "Drop 3"). */
+  verb: string;
+  danger?: boolean;
+}
+
+/** Asks how many of a stack to use: a stepper starting at all of them, then the confirming button. */
+export function askQuantity(sheets: Sheets, question: QuantityQuestion): Promise<number | null> {
+  return new Promise((resolve) => {
+    const max = Math.max(1, question.max);
+    let value = Math.max(1, Math.min(max, question.initial ?? max));
+    let settled = false;
+    const finish = (n: number | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(n);
+    };
+    const body = el('div', 'ask-quantity');
+    body.append(el('p', 'muted', question.label));
+    const shown = el('span', 'stepper-value', String(value));
+    shown.setAttribute('aria-live', 'polite');
+    const button = (label: string, run: () => void, className = 'stepper-button') => {
+      const b = el('button', className, label);
+      b.type = 'button';
+      b.addEventListener('click', run);
+      return b;
+    };
+    const set = (n: number) => {
+      value = Math.max(1, Math.min(max, n));
+      shown.textContent = String(value);
+      const label = body.closest('.sheet')?.querySelector('[data-action="confirm"] .pop-label');
+      if (label) label.textContent = `${question.verb} ${value}`;
+    };
+    const stepper = el('div', 'stepper');
+    stepper.append(
+      button('−', () => set(value - 1)),
+      shown,
+      button('+', () => set(value + 1)),
+      button('1', () => set(1), 'stepper-button wide'),
+      button(`All ${max}`, () => set(max), 'stepper-button wide'),
+    );
+    body.append(stepper);
+    sheets.open({
+      title: question.title,
+      body,
+      size: 'fit',
+      className: 'sheet-quantity',
+      actions: [
+        { id: 'cancel', label: 'Cancel', run: () => sheets.back() },
+        {
+          id: 'confirm',
+          label: `${question.verb} ${value}`,
+          primary: !question.danger,
+          danger: question.danger,
+          run: () => {
+            finish(value);
+            sheets.back();
+          },
+        },
+      ],
+      onKey: (e) => {
+        const step = e.key === 'ArrowLeft' || e.key === '-' ? -1 : e.key === 'ArrowRight' || e.key === '+' ? 1 : 0;
+        if (!step) return false;
+        set(value + step);
+        return true;
+      },
+      onClose: () => finish(null),
+    });
+  });
+}
+
 /** Yes/no question in a sheet. */
 export function confirmSheet(sheets: Sheets, title: string, message: string, yes: string, run: () => void, danger = false): void {
   const body = el('div', 'prose');

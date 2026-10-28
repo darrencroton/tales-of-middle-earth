@@ -617,7 +617,7 @@ html.keyboard-open .sheet-layer {
   line-height: 1.15;
 }
 
-/* Long toolbar labels (a spell's name, Dungeon) step down a size instead of being cut. */
+/* Long toolbar labels (a spell's name) step down a size instead of being cut. */
 .action-label.long {
   font-size: calc(var(--fs-small) * 0.8);
   letter-spacing: -0.01em;
@@ -1154,6 +1154,48 @@ html.keyboard-open .tv-layer.panel {
   margin: 0 0 0.8rem;
   color: var(--accent-bright);
   line-height: 1.5;
+}
+
+/* The selected row's details stay at the top of the list at one height, so rows never move as the cursor does. */
+.skill-detail {
+  position: sticky;
+  top: -0.6rem;
+  z-index: 1;
+  height: calc(var(--fs-small) * 1.45 * 3 + var(--fs) * 1.4 + 1.3rem);
+  margin: -0.6rem -0.9rem 0.5rem;
+  padding: 0.6rem 0.9rem 0.5rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--panel);
+}
+
+.skill-detail p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  line-height: 1.45;
+}
+
+.skill-detail .skill-detail-title {
+  color: var(--accent-bright);
+  font-size: var(--fs);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.with-detail .skill-row {
+  scroll-margin-top: calc(var(--fs-small) * 1.45 * 3 + var(--fs) * 1.4 + 1.5rem);
+}
+
+@media (max-height: 500px) {
+  .skill-detail {
+    height: calc(var(--fs-small) * 1.45 * 2 + var(--fs) * 1.4 + 1.1rem);
+  }
+
+  .with-detail .skill-row {
+    scroll-margin-top: calc(var(--fs-small) * 1.45 * 2 + var(--fs) * 1.4 + 1.3rem);
+  }
 }
 
 .skill-row {

@@ -2,6 +2,7 @@ import type { Place } from './audio/places.ts';
 import type { FeatureInfo } from './render/materials.ts';
 import {
   readSnapshot,
+  type AbilityTable,
   type BirthData,
   type CharacterState,
   type GameState,
@@ -9,9 +10,10 @@ import {
   type LevelSnapshot,
   type MonsterRecall,
   type ScoreEntry,
+  type SkillTable,
   type SpellState,
 } from './render/snapshot.ts';
-import type { TerminalBuffer } from './terminal.ts';
+import type { ScreenCopy, TerminalBuffer } from './terminal.ts';
 import { syncToStorage, type EmscriptenFS } from './saves.ts';
 
 /** Functions the C++ frontend (engine/main-web.cc) calls through Module.tome. */
@@ -52,6 +54,9 @@ interface EmscriptenModule {
   _web_scores_json(): number;
   _web_birth_json(): number;
   _web_spells_json(): number;
+  _web_skills_json(): number;
+  _web_abilities_json(): number;
+  _web_saved_screen(): number;
 }
 
 interface ModuleOptions {
@@ -159,6 +164,43 @@ export class Engine {
   spells(): SpellState | null {
     const json = this.callJson<SpellState>((mod) => mod._web_spells_json());
     return json && json.ready ? json : null;
+  }
+
+  /** The skills screen's whole list, in its order, with the values it shows. */
+  skillTable(): SkillTable | null {
+    const json = this.callJson<SkillTable>((mod) => mod._web_skills_json());
+    return json && json.ready && Array.isArray(json.skills) ? json : null;
+  }
+
+  /** The abilities screen's whole list, by name. */
+  abilityTable(): AbilityTable | null {
+    const json = this.callJson<AbilityTable>((mod) => mod._web_abilities_json());
+    return json && json.ready && Array.isArray(json.abilities) ? json : null;
+  }
+
+  /** While a tome2 screen covers the map, the screen it was drawn over (null when none is saved). */
+  savedScreen(): ScreenCopy | null {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return null;
+    try {
+      const ptr = mod._web_saved_screen();
+      if (!ptr) return null;
+      const at = ptr >> 2;
+      const cols = mod.HEAP32[at];
+      const rows = mod.HEAP32[at + 1];
+      if (cols !== this.buffer.cols || rows !== this.buffer.rows) return null;
+      const cells = mod.HEAP32.subarray(at + 2, at + 2 + cols * rows);
+      const chars = new Uint8Array(cells.length);
+      const attrs = new Uint8Array(cells.length);
+      for (let i = 0; i < cells.length; i++) {
+        chars[i] = cells[i] & 0xff;
+        attrs[i] = (cells[i] >> 8) & 0xff;
+      }
+      return { chars, attrs };
+    } catch (err) {
+      console.error('Reading the saved screen failed', err);
+      return null;
+    }
   }
 
   /** What the player knows about an item: inventory index, or minus the floor object index. */

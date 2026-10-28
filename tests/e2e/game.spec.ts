@@ -280,9 +280,7 @@ test('a fallen hero can be looked back on and begun anew from the Hall of Fame',
   const finish = page.locator('#toolbar [data-action="finish"]');
   for (let i = 0; i < 40 && !(await finish.isVisible()); i++) {
     if (await page.locator('.prompt-card.death').isVisible()) {
-      await page.locator('.prompt-card.death .card-button', { hasText: 'Your hero' }).click();
-      await expect(page.locator('.sheet-title')).toHaveText('Anew');
-      await page.keyboard.press('Escape');
+      await expect(page.locator('.prompt-card.death .card-button')).toHaveCount(1);
       await page.locator('.prompt-card.death .card-button.primary').click();
     }
     if (/-more-/.test((await screenText(page)).split('\n')[0] ?? '')) await sendText(page, '\u001b');
@@ -328,5 +326,6 @@ test('the world map is entered from the commands and left from the toolbar', asy
   await expect(page.locator('#toolbar [data-action="explore"]')).toHaveCount(0);
   await page.locator('#toolbar [data-action="walkhere"]').click();
   await expect.poll(wild).toBe(false);
-  await expect(page.locator('#toolbar [data-action="dungeon"]')).toBeVisible();
+  await expect(page.locator('#toolbar [data-action="explore"]')).toBeVisible();
+  await expect(page.locator('#toolbar [data-action="dungeon"]')).toHaveCount(0);
 });

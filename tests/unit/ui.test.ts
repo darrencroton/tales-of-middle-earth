@@ -8,13 +8,13 @@ import {
   validCharacterName,
   describesHero,
 } from '../../web/src/flow/birth.ts';
-import { findListedItem, itemActions, itemLetter, itemMacro } from '../../web/src/play/items.ts';
+import { findListedItem, itemActions, itemLetter, itemMacro, quantityAnswer } from '../../web/src/play/items.ts';
 import { MacroRunner, type MacroScreen } from '../../web/src/play/macro.ts';
 import { readableColour } from '../../web/src/render/colour.ts';
 import type { ItemState } from '../../web/src/render/snapshot.ts';
 import { descriptionParagraphs } from '../../web/src/ui/api.ts';
 import { parseStore, stackSize, storeMacro } from '../../web/src/ui/store.ts';
-import { abilityMoveKeys, parseAbilities, parseSkills, skillMoveKeys } from '../../web/src/ui/skills.ts';
+import { abilityMoveKeys, cursorKeys, parseAbilities, parseSkills, selectedSkill, skillMoveKeys } from '../../web/src/ui/skills.ts';
 import { flagLabel, parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
 import { fateText, heroEntry } from '../../web/src/ui/gameover.ts';
 import { findMessageBox } from '../../web/src/ui/msgbox.ts';
@@ -41,7 +41,10 @@ function item(extra: Partial<ItemState>): ItemState {
 
 describe('item actions', () => {
   it('offers the use that suits the item first', () => {
-    assert.deepEqual(itemActions(item({ tval: 80, number: 3 }), 'pack').map((a) => a.id), ['eat', 'drop', 'dropall', 'throw', 'inscribe', 'destroy']);
+    const stack = itemActions(item({ tval: 80, number: 3 }), 'pack');
+    assert.deepEqual(stack.map((a) => a.id), ['eat', 'drop', 'throw', 'inscribe', 'destroy']);
+    assert.deepEqual(stack.filter((a) => a.quantity === 'ask').map((a) => a.id), ['drop', 'destroy']);
+    assert.equal(itemActions(item({ tval: 80 }), 'pack').find((a) => a.id === 'drop')?.quantity, 'all');
     assert.equal(itemActions(item({ tval: 71 }), 'pack')[0].label, 'Quaff');
     assert.equal(itemActions(item({ tval: 23, wear: 1 }), 'pack')[0].label, 'Wield');
     assert.equal(itemActions(item({ tval: 37, wear: 1 }), 'pack')[0].label, 'Wear');
@@ -86,6 +89,13 @@ describe('item actions', () => {
     runner.start(itemMacro({ id: 'dropall', label: 'Drop all', command: 'd', quantity: 'all' }, food, 'pack'));
     assert.deepEqual(runner.step(screen('(Inven: a-f, ESC) Drop which item?')), codes('c'));
     assert.deepEqual(runner.step(screen('Quantity (1-6): 1')), [...codes('6'), 13]);
+
+    runner.start(itemMacro({ id: 'drop', label: 'Drop', command: 'd', quantity: 4 }, food, 'pack'));
+    runner.step(screen('(Inven: a-f, ESC) Drop which item?'));
+    assert.deepEqual(runner.step(screen('Quantity (1-6): 1')), [...codes('4'), 13]);
+    assert.equal(quantityAnswer(9, 6), 6);
+    assert.equal(quantityAnswer('ask', 6), 6);
+    assert.equal(quantityAnswer('one', 6), 1);
 
     runner.start(itemMacro({ id: 'inscribe', label: 'Inscribe', command: '{', needsText: true }, food, 'pack', '@E1'));
     runner.step(screen('(Inven: a-f, ESC) Inscribe which item?'));
@@ -271,6 +281,15 @@ describe('skills screen', () => {
   it('moves the cursor to a tapped skill', () => {
     assert.equal(skillMoveKeys(screen, screen.skills[2]), '22');
     assert.equal(skillMoveKeys(screen, screen.skills[0]), '');
+  });
+
+  it('finds the cursor in the whole list, whatever part tome2 shows', () => {
+    const entry = (name: string, depth: number) => ({ name, depth, branch: 0, value: 0, mod: 0, state: 'normal' as const, misc: 0, desc: '' });
+    const table = { ready: 1, points: 2, skills: [entry('Stealth', 0), entry('Magic', 0), entry('Combat', 0), entry('Weaponmastery', 1)] };
+    assert.equal(selectedSkill(table, screen), 2);
+    assert.equal(cursorKeys(2, 0), '88');
+    assert.equal(cursorKeys(1, 3), '22');
+    assert.equal(cursorKeys(2, 2), '');
   });
 
   it('ignores other screens', () => {
