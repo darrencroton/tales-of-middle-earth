@@ -20,8 +20,9 @@ ToME 2 (Tales of Middle-earth roguelike) compiled to WebAssembly and played as a
 - Comments describe what code does, not why; keep them sparse and match surrounding style.
 - Prefer native/platform solutions over new dependencies; ask before adding packages.
 - Robust error handling; complete, runnable changes.
-- Commit/push only when asked or when checkpointing a long piece of work; open PRs only on request.
-- After opening a PR, watch it: address CI failures and review comments (reviews usually arrive within 10 minutes) and iterate until it is green and clean.
+- Commit/push only when asked or when checkpointing a long piece of work.
+- Standing order: when a substantial piece of work is finished (a feature, several fixes, anything that touches many files), push it to a branch and open a PR without asking; small one-off tweaks wait to be asked.
+- After opening a PR, watch it: address CI failures and review comments (reviews usually arrive within 10 minutes) and iterate until it is green and clean, without waiting to be asked.
 - (Preferences evolve — update this section when the owner states new ones.)
 
 ## Layout
