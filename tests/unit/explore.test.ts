@@ -1,15 +1,26 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Explore, exploreTarget } from '../../web/src/play/explore.ts';
+import { Explore, exploreTarget, landmarkName, nextStop, type ExplorePlan } from '../../web/src/play/explore.ts';
+import { decodeRuns, encodeRuns, levelKey, mergeKnown, missingCells } from '../../web/src/play/mapmemory.ts';
+import { approachTarget, inferredFloor } from '../../web/src/play/travel.ts';
 import { fightingStyle, suggestedGear } from '../../web/src/play/items.ts';
 import type { Material } from '../../web/src/render/materials.ts';
-import { CAVE_MARK, LAYER_OBJECT, LAYER_TERRAIN, type EquipSlot, type ItemState, type LevelSnapshot } from '../../web/src/render/snapshot.ts';
+import { CAVE_MARK, LAYER_MONSTER, LAYER_OBJECT, LAYER_TERRAIN, type EquipSlot, type ItemState, type LevelSnapshot } from '../../web/src/render/snapshot.ts';
 
 const FLOOR = 1;
 const WALL = 2;
-const materials = [undefined, { walkable: true, door: false }, { walkable: false, door: false }] as unknown as Material[];
+const TREE = 3;
+const materials = [
+  undefined,
+  { walkable: true, door: false },
+  { walkable: false, door: false },
+  { walkable: true, door: false, blocksLight: true },
+] as unknown as Material[];
 
-/** '.' known floor, '#' known wall, '?' unknown, '$' known floor with an item, '@' player. */
+/**
+ * '.' known floor, '#' known wall, '?' unknown, ',' unknown floor, '$' known floor with an item,
+ * '@' player, 'T' known walkable thicket, '>' '<' 'F' known floor tiles named by the test.
+ */
 function level(rows: string[]): LevelSnapshot {
   const height = rows.length;
   const width = rows[0].length;
@@ -22,8 +33,9 @@ function level(rows: string[]): LevelSnapshot {
     [...row].forEach((ch, x) => {
       const i = y * width + x;
       if (ch === '?') return;
+      feat[i] = ch === '#' ? WALL : ch === 'T' ? TREE : FLOOR;
+      if (ch === ',') return;
       info[i] = CAVE_MARK;
-      feat[i] = ch === '#' ? WALL : FLOOR;
       layer[i] = ch === '$' ? LAYER_OBJECT : LAYER_TERRAIN;
       if (ch === '@') [px, py] = [x, y];
     }),
@@ -50,23 +62,130 @@ describe('explore target', () => {
 });
 
 describe('explore', () => {
+  const plan = (exit: number, extra: Partial<ExplorePlan> = {}): ExplorePlan => ({ skip: new Set(), isExit: (i) => i === exit, ...extra });
+
   it('heads for the way down once everything is explored, then stops there', () => {
     const snap = level(['######', '#@..>#', '######']);
     const exit = 1 * 6 + 4;
-    const explore = new Explore(new Set(), (i) => i === exit);
+    const explore = new Explore(plan(exit));
     const ctx = { snap: { ...snap, atCommand: true, icky: false }, materials, monsters: [], hp: 10 };
     const step = explore.step(ctx);
     assert.equal(step.kind, 'keys');
     const there = { ...ctx, snap: { ...ctx.snap, px: 4 } };
     assert.deepEqual(explore.step(there), { kind: 'stop', reason: 'exit' });
-    assert.deepEqual(new Explore(new Set(), (i) => i === exit).step(there), { kind: 'stop', reason: 'explored' });
+    assert.deepEqual(new Explore(plan(exit)).step(there), { kind: 'stop', reason: 'exit' });
+    assert.deepEqual(new Explore(plan(exit, { heading: 'up' })).step(there), { kind: 'stop', reason: 'exitUp' });
+  });
+
+  it('does not count walkable thickets that hide the view as unexplored edges', () => {
+    const snap = level(['#####', '#@.T?', '#####']);
+    assert.equal(exploreTarget(snap, materials, new Set()), null);
+  });
+
+  it('tours unvisited landmarks nearest first, then ends at the way on', () => {
+    const snap = level(['##########', '#F.@...F>#', '##########']);
+    const near = 1 * 10 + 1;
+    const far = 1 * 10 + 7;
+    const exit = 1 * 10 + 8;
+    const tour = plan(exit, { isLandmark: (i) => i === near || i === far });
+    assert.deepEqual(nextStop(snap, materials, tour), { x: 1, y: 1, kind: 'landmark', mark: near });
+    tour.skip.add(near);
+    assert.deepEqual(nextStop(snap, materials, tour), { x: 7, y: 1, kind: 'landmark', mark: far });
+    tour.skip.add(far);
+    assert.deepEqual(nextStop(snap, materials, tour), { x: 8, y: 1, kind: 'exit', mark: exit });
+  });
+
+  it('visits a shop door from beside it', () => {
+    const snap = level(['#######', '#@...F#', '#######']);
+    const door = 1 * 7 + 5;
+    const stop = nextStop(snap, materials, plan(-1, { isLandmark: (i) => i === door, besideLandmark: (i) => i === door }));
+    assert.deepEqual(stop, { x: 4, y: 1, kind: 'landmark', mark: door });
+  });
+
+  it('says when a creature is all that stands in the way', () => {
+    const snap = level(['#######', '#@.$..?', '#######']);
+    snap.layer[1 * 7 + 3] = LAYER_MONSTER;
+    const ctx = { snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp: 10 };
+    assert.deepEqual(new Explore(plan(-1)).step(ctx), { kind: 'stop', reason: 'creatureInWay' });
+  });
+
+  it('stops at each landmark it reaches', () => {
+    const snap = level(['######', '#@.F>#', '######']);
+    const fountain = 1 * 6 + 3;
+    const explore = new Explore(plan(1 * 6 + 4, { isLandmark: (i) => i === fountain }));
+    const ctx = (px: number) => ({ snap: { ...snap, px, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp: 10 });
+    assert.equal(explore.step(ctx(1)).kind, 'keys');
+    assert.equal(explore.step(ctx(2)).kind, 'keys');
+    assert.deepEqual(explore.step(ctx(3)), { kind: 'stop', reason: 'landmark', place: fountain });
+  });
+});
+
+describe('travel approach', () => {
+  it('goes to the goal when a known way leads there', () => {
+    const snap = level(['#######', '#@....#', '#######']);
+    assert.deepEqual(approachTarget(snap, materials, { x: 5, y: 1 }), { point: { x: 5, y: 1 }, exact: true });
+  });
+
+  it('goes as far as the known way leads towards an unknown place', () => {
+    const snap = level(['#########', '#@..????#', '#########']);
+    assert.deepEqual(approachTarget(snap, materials, { x: 7, y: 1 }), { point: { x: 3, y: 1 }, exact: false });
+  });
+
+  it('stops beside a wall instead of walking into it', () => {
+    const snap = level(['#######', '#@...##', '#######']);
+    assert.deepEqual(approachTarget(snap, materials, { x: 5, y: 1 }), { point: { x: 4, y: 1 }, exact: false });
+  });
+
+  it('has nowhere to go when nothing known gets closer', () => {
+    const snap = level(['####', '#@#?', '####']);
+    assert.equal(approachTarget(snap, materials, { x: 3, y: 1 }), null);
+  });
+
+  it('follows a mapped corridor whose floor was never seen', () => {
+    const snap = level(['#######', '#@,,,.#', '#######']);
+    assert.equal(inferredFloor(snap, materials, 3, 1), true);
+    assert.deepEqual(approachTarget(snap, materials, { x: 5, y: 1 }), { point: { x: 5, y: 1 }, exact: true });
+    const open = level(['???????', '#@,,,.#', '???????']);
+    assert.equal(inferredFloor(open, materials, 3, 1), false);
+  });
+});
+
+describe('map memory', () => {
+  it('round-trips run-length masks', () => {
+    const mask = new Uint8Array([0, 0, 1, 1, 1, 0, 1, 0, 0, 0]);
+    assert.deepEqual(decodeRuns(encodeRuns(mask), mask.length), mask);
+    assert.deepEqual(decodeRuns(encodeRuns(new Uint8Array(5).fill(1)), 5), new Uint8Array(5).fill(1));
+    assert.equal(decodeRuns(encodeRuns(mask), mask.length + 1), null);
+    assert.equal(decodeRuns('zz,x', 4), null);
+  });
+
+  it('merges remembered grids and finds those forgotten', () => {
+    const mask = new Uint8Array(4);
+    const info = new Uint16Array([CAVE_MARK, 0, CAVE_MARK, 0]);
+    assert.equal(mergeKnown(mask, info), true);
+    assert.equal(mergeKnown(mask, info), false);
+    assert.deepEqual(missingCells(mask, new Uint16Array([0, 0, CAVE_MARK, 0])), [0]);
+  });
+
+  it('keys levels and areas of the land', () => {
+    assert.equal(levelKey({ dungeon: 4, depth: 3, wild: 0 }), 'level:4:3');
+    assert.equal(levelKey({ dungeon: 0, depth: 0, wild: 0, wx: 12, wy: 40 }), 'land:12,40');
+    assert.equal(levelKey({ dungeon: 0, depth: 0, wild: 1, wx: 12, wy: 40 }), null);
+    assert.equal(levelKey({ dungeon: 4, depth: 3, wild: 0, quest: 2 }), null);
+  });
+
+  it('names landmarks', () => {
+    assert.equal(landmarkName('fountain'), 'a fountain');
+    assert.equal(landmarkName('Altar of Being'), 'the Altar of Being');
+    assert.equal(landmarkName('Void Jumpgate'), 'a Void Jumpgate');
+    assert.equal(landmarkName('Building'), 'a shop door');
   });
 });
 
 describe('explore stops when hurt', () => {
   it('keeps watching health across targets', () => {
     const snap = level(['#########', '#@.$....?', '#########']);
-    const explore = new Explore(new Set());
+    const explore = new Explore({ skip: new Set(), isExit: () => false });
     const ctx = (px: number, hp: number) => ({ snap: { ...snap, px, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp });
     assert.equal(explore.step(ctx(1, 10)).kind, 'keys');
     assert.equal(explore.step(ctx(2, 10)).kind, 'keys');

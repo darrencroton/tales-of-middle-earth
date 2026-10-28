@@ -43,6 +43,7 @@
 #include "quest_type.hpp"
 #include "school_book.hpp"
 #include "school_type.hpp"
+#include "seed.hpp"
 #include "skill_descriptor.hpp"
 #include "skills.hpp"
 #include "skills_defs.hpp"
@@ -79,6 +80,9 @@
 /* Off-screen terminal (engine/main-web.cc). */
 void web_scratch_term_begin();
 void web_scratch_term_end();
+
+/* Map memory (engine/memory.cc). */
+void web_memory_tick();
 
 namespace {
 
@@ -535,6 +539,7 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	bool const ready = level_ready();
 
 	if (auto_more_override >= 0 && options) options->auto_more = auto_more_override != 0;
+	web_memory_tick();
 
 	header[H_VERSION] = SNAPSHOT_VERSION;
 	header[H_IN_DUNGEON] = ready ? 1 : 0;
@@ -970,6 +975,14 @@ EMSCRIPTEN_KEEPALIVE char const *web_place_json()
 	json_int(json, "depth", dun_level);
 	json_int(json, "maxDepth", d_info[dungeon_type].maxdepth);
 	json_int(json, "wild", p_ptr->wild_mode ? 1 : 0);
+	json_int(json, "wx", p_ptr->wilderness_x);
+	json_int(json, "wy", p_ptr->wilderness_y);
+
+	/* Fixed at birth: tells apart heroes who share a name. */
+	std::uint8_t seed_bytes[seed_t::n_bytes];
+	seed_flavor().to_bytes(seed_bytes);
+	int32_t const hero_id = static_cast<int32_t>(seed_bytes[0] | (seed_bytes[1] << 8) | (seed_bytes[2] << 16) | (static_cast<uint32_t>(seed_bytes[3]) << 24));
+	json_int(json, "heroId", hero_id);
 
 	/* tome2 keeps town_num from the last surface area, so dungeon towns come from the dungeon's own list. */
 	int town = 0;

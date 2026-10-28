@@ -15,9 +15,10 @@ import { commandGroups, commandKeys, contextActions, waitCommand, type Action, t
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { edgeCell, forgetUnseen, isKnown, STOP_MESSAGES, strideToward, Travel, type TravelContext } from './play/travel.ts';
-import { Explore } from './play/explore.ts';
-import { isHostile, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
+import { approachTarget, edgeCell, forgetUnseen, isKnown, STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
+import { Explore, isBesideFeature, isLandmarkFeature, landmarkName, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
+import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
+import { CAVE_MARK, isHostile, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -83,6 +84,7 @@ declare global {
       actions(): string[];
       travelling(): boolean;
       lastStopCause(): string;
+      exploreStop(): { kind: string; x: number; y: number; heading: string } | null;
       macroRunning(): boolean;
       director: Director;
       audio: GameAudio;
@@ -148,8 +150,21 @@ let travel: Travel | Explore | null = null;
 const exploreSkip = new Set<number>();
 /** Creatures that have already stopped travel on this level. */
 const noticed = new Set<number>();
-let exploreDepth = -1;
+/* Map memory: the level exploring is on (`levelKey`, or a stand-in where there is none), the hero's memory and the land area's remembered grids. */
+let exploreLevel: string | null = null;
+let exploreLevelDepth = -1;
+let exploreLevelDungeon = -1;
+const mapMemory = new MapMemoryStore();
+let heroMemory: HeroMemory | null = null;
+let heroMemoryId = '';
+let landMemory: { key: string; width: number; height: number; mask: Uint8Array; changed: boolean } | null = null;
+let memoryTurn = -1;
+let memoryPos = -1;
+/* Whether exploring may head for the way on (the toolbar's label), by turn and place. */
+let wayOnLabel: { key: string; label: string | null } = { key: '', label: null };
 let travelTimer = 0;
+/** The current travel only gets as near as the known way allows. */
+let travelApproximate = false;
 let lastStopCause = '';
 let picker: TargetPicker | null = null;
 let lastSavedTurn = -1;
@@ -714,6 +729,130 @@ function updatePlace(snap: LevelSnapshot): void {
   audio.setPlace(place);
 }
 
+/* Map memory */
+
+function memoryHeroId(): string | null {
+  const player = lastState?.player;
+  if (!player?.name || player.dead || place?.heroId === undefined) return null;
+  return `${player.name}#${(place.heroId >>> 0).toString(36)}`;
+}
+
+/** Exploring's visits are kept between visits on the land, and on dungeon levels while levels are kept. */
+function keepsVisits(key: string | null): key is string {
+  return !!key && (key.startsWith('land:') || (key.startsWith('level:') && settings.persistentLevels));
+}
+
+/** Puts what the hero remembers of the current level into the store, and the store into storage. */
+function persistMapMemory(): void {
+  if (heroMemory) {
+    if (landMemory?.changed) {
+      mapMemory.setArea(heroMemory, landMemory.key, landMemory.width, landMemory.height, landMemory.mask);
+      landMemory.changed = false;
+    }
+    if (keepsVisits(exploreLevel)) mapMemory.setVisited(heroMemory, exploreLevel, exploreSkip);
+  }
+  mapMemory.save();
+}
+
+/** Which way the hero is now heading, from the level left and the level entered; null keeps it. */
+function headingInto(next: { dungeon: number; depth: number }): 'down' | 'up' | null {
+  if (next.depth === 0) return 'down';
+  if (exploreLevel === null) return null;
+  if (next.dungeon !== exploreLevelDungeon || exploreLevelDepth <= 0) return 'down';
+  if (next.depth === exploreLevelDepth) return null;
+  return next.depth > exploreLevelDepth ? 'down' : 'up';
+}
+
+function enterLevel(key: string, next: { dungeon: number; depth: number }): void {
+  persistMapMemory();
+  const heading = headingInto(next);
+  if (heroMemory && heading) mapMemory.setHeading(heroMemory, heading);
+  exploreLevel = key;
+  exploreLevelDepth = next.depth;
+  exploreLevelDungeon = next.dungeon;
+  exploreSkip.clear();
+  noticed.clear();
+  landMemory = null;
+  memoryTurn = -1;
+  wayOnLabel = { key: '', label: null };
+  if (heroMemory && keepsVisits(key)) for (const cell of heroMemory.visited[key] ?? []) exploreSkip.add(cell);
+}
+
+function featureName(snap: LevelSnapshot, index: number): string {
+  return features[snap.feat[index]]?.name ?? '';
+}
+
+/** Landmarks the hero has stood on or beside count as visited. */
+function noteLandmarks(snap: LevelSnapshot): void {
+  for (let y = snap.py - 1; y <= snap.py + 1; y++) {
+    for (let x = snap.px - 1; x <= snap.px + 1; x++) {
+      if (x < 0 || y < 0 || x >= snap.width || y >= snap.height) continue;
+      const i = y * snap.width + x;
+      if (featureRoles.landmark[snap.feat[i]]) exploreSkip.add(i);
+    }
+  }
+}
+
+/** Keeps the grids of an area of the land the hero has seen, and restores those tome2 has forgotten. */
+function rememberLand(snap: LevelSnapshot, key: string): void {
+  if (!heroMemory || !key.startsWith('land:')) return;
+  if (!landMemory || landMemory.key !== key || landMemory.width !== snap.width || landMemory.height !== snap.height) {
+    landMemory = { key, width: snap.width, height: snap.height, mask: mapMemory.area(heroMemory, key, snap.width, snap.height), changed: false };
+  }
+  if (mergeKnown(landMemory.mask, snap.info)) landMemory.changed = true;
+  const missing = missingCells(landMemory.mask, snap.info);
+  if (missing.length === 0 || engine.markKnown(missing) === 0) return;
+  for (const cell of missing) snap.info[cell] |= CAVE_MARK;
+  dirty = true;
+}
+
+function updateMapMemory(snap: LevelSnapshot): void {
+  const id = memoryHeroId();
+  if (id && id !== heroMemoryId && mapMemory.loaded) {
+    persistMapMemory();
+    heroMemoryId = id;
+    heroMemory = mapMemory.hero(id);
+    exploreLevel = null;
+  }
+  const current = place && place.depth === snap.depth && !!place.wild === snap.wild ? place : null;
+  if (!current) return;
+  const key = levelKey(current) ?? `other:${current.dungeon}:${current.depth}:${current.wild}`;
+  if (key !== exploreLevel) enterLevel(key, current);
+  const pos = snap.py * snap.width + snap.px;
+  if (snap.turn === memoryTurn && pos === memoryPos) return;
+  memoryTurn = snap.turn;
+  memoryPos = pos;
+  noteLandmarks(snap);
+  rememberLand(snap, key);
+}
+
+/* What each terrain feature means to exploring, by feature index (built with the materials). */
+let featureRoles: { down: boolean[]; up: boolean[]; landmark: boolean[]; beside: boolean[] } = { down: [], up: [], landmark: [], beside: [] };
+
+function explorePlan(): ExplorePlan {
+  const heading = (lastSnap?.depth ?? 0) > 0 ? (heroMemory?.heading ?? 'down') : 'down';
+  const role = (table: boolean[]) => (i: number) => !!lastSnap && !!table[lastSnap.feat[i]];
+  return {
+    skip: exploreSkip,
+    heading,
+    isExit: role(featureRoles[heading]),
+    isLandmark: role(featureRoles.landmark),
+    besideLandmark: role(featureRoles.beside),
+  };
+}
+
+/** 'Way down' or 'Way up' once exploring has nothing left but the way on; null otherwise. */
+function wayOnLabelFor(snap: LevelSnapshot | null): string | null {
+  if (!snap?.atCommand || snap.wild || travel || !materialsLoaded) return null;
+  const key = `${exploreLevel}:${snap.turn}:${snap.px},${snap.py}:${exploreSkip.size}:${heroMemory?.heading}`;
+  if (wayOnLabel.key !== key) {
+    const plan = explorePlan();
+    const stop = nextStop(snap, materials, plan);
+    wayOnLabel = { key, label: stop?.kind === 'exit' ? (plan.heading === 'up' ? 'Way up' : 'Way down') : null };
+  }
+  return wayOnLabel.label;
+}
+
 function refresh(): void {
   const snap = engine.snapshot();
   if (!snap) return;
@@ -739,17 +878,19 @@ function refresh(): void {
   if (!materialsLoaded) {
     features = engine.features();
     materials = buildMaterials(features);
+    featureRoles = {
+      down: features.map((f) => WAY_ON.down.test(f.name.toLowerCase())),
+      up: features.map((f) => WAY_ON.up.test(f.name.toLowerCase())),
+      landmark: features.map((f) => isLandmarkFeature(f.name)),
+      beside: features.map((f) => isBesideFeature(f.name)),
+    };
     audio.setDoors(doorKinds(features, FB_DOOR, FB_NO_WALK));
     map.setMaterials(materials);
     materialsLoaded = true;
   }
   map.setPalette(buffer.paletteRgb);
   map.setSnapshot(snap);
-  if (snap.depth !== exploreDepth) {
-    exploreSkip.clear();
-    noticed.clear();
-    exploreDepth = snap.depth;
-  }
+  updateMapMemory(snap);
 
   if (hasEffects && performance.now() - effectsAt > EFFECT_LINGER_MS) {
     map.setEffects([]);
@@ -771,6 +912,13 @@ function refresh(): void {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
       if (chronicles.fall(tomb.name)) chronicles.save();
+      if (heroMemoryId) {
+        mapMemory.forget(heroMemoryId);
+        mapMemory.save();
+        heroMemory = null;
+        heroMemoryId = '';
+        landMemory = null;
+      }
       const tale = chronicles.peek(tomb.name);
       const fallen = memorial?.name === tomb.name ? memorial : null;
       termView.renderCustom({ layout: 'full', title: 'Your adventure has ended' }, `${JSON.stringify(tomb)}:${!!fallen}`, () =>
@@ -1064,6 +1212,7 @@ function updateActionBar(force = false): void {
       canFire: mode === 'map' && !!snap?.atCommand && canFire(),
       magic: mode === 'map' && snap?.atCommand ? magicLabel() : undefined,
       worldMap: !!snap?.inDungeon && snap.depth === 0 && snap.wild,
+      wayOn: mode === 'map' ? wayOnLabelFor(snap) : null,
     });
   currentActions = actions;
   termView.setActions(mode === 'overlay' ? panelActions(actions) : []);
@@ -1236,7 +1385,11 @@ function stepTravel(): void {
       ? 'It is too dark to explore. Tap Light to light your way.'
       : step.creature
         ? `You stop: ${titleName(step.creature)} is near.`
-        : STOP_MESSAGES[step.reason];
+        : step.reason === 'landmark' && step.place !== undefined
+          ? `You come to ${landmarkName(featureName(ctx.snap, step.place))}.`
+          : step.reason === 'arrived' && travelApproximate
+            ? STOP_MESSAGES.closest
+            : STOP_MESSAGES[step.reason];
     stopAutomation(message, step.reason);
     return;
   }
@@ -1245,30 +1398,44 @@ function stepTravel(): void {
   requestFrame();
 }
 
+/**
+ * Walks towards a place on the map: there when a known way leads there,
+ * otherwise as far as the known way goes towards it.
+ */
 function startTravel(goal: MapPoint): void {
   const ctx = travelContext();
   if (!ctx) return;
   stopAutomation(null, 'new travel');
   recentreMap();
-  travel = new Travel(goal, ctx, { noticed });
+  const snap = ctx.snap;
+  const approach = approachTarget(snap, materials, goal);
+  if (!approach && !isAdjacent(snap.px, snap.py, goal.x, goal.y)) {
+    showToast(STOP_MESSAGES.unreachable ?? '');
+    return;
+  }
+  travel = new Travel(approach?.point ?? goal, ctx, { noticed });
+  travelApproximate = !!approach && !approach.exact;
   stepTravel();
 }
 
-/* Terrain that leads further down, matching the Descend action. */
-const DOWN_EXIT = /down staircase|shaft down|quest down|quest entrance|path to the next/;
-
-function isDownExit(snap: LevelSnapshot, index: number): boolean {
-  return DOWN_EXIT.test(features[snap.feat[index]]?.name.toLowerCase() ?? '');
-}
-
-/** Walks to unexplored places until something needs attention. */
+/**
+ * Walks to unexplored places until something needs attention; on an
+ * explored level, tours its landmarks and ends at the way on, which a
+ * further press takes.
+ */
 function startExplore(): void {
   const ctx = travelContext();
   if (!ctx) return;
   stopAutomation(null, 'explore');
   recentreMap();
-  const snap = ctx.snap;
-  travel = new Explore(exploreSkip, (i) => isDownExit(snap, i), noticed);
+  const plan = explorePlan();
+  const stop = nextStop(ctx.snap, materials, plan);
+  if (stop?.kind === 'exit' && stop.x === ctx.snap.px && stop.y === ctx.snap.py) {
+    send([BACKSLASH, (plan.heading === 'up' ? '<' : '>').charCodeAt(0)]);
+    return;
+  }
+  travel = new Explore(plan, noticed);
+  travelApproximate = false;
   stepTravel();
 }
 
@@ -1429,11 +1596,10 @@ function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<type
   startTravel(cell);
 }
 
-/** A tap on unseen ground: walks as far as the light reaches that way, or one step into the dark. */
+/** A tap on unseen ground: walks as near as the known way leads, or one step into the dark. */
 function strideInto(snap: LevelSnapshot, cell: MapPoint): void {
-  const goal = strideToward(snap, materials, cell, Math.max(1, snap.lightRadius));
-  if (goal) {
-    startTravel(goal);
+  if (approachTarget(snap, materials, cell)) {
+    startTravel(cell);
     return;
   }
   const digit = directionDigit(cell.x - snap.px, cell.y - snap.py);
@@ -1481,6 +1647,7 @@ function autosave(): void {
   if (travel || picker) stopAutomation(null, 'autosave');
   const snap = engine.state === 'running' ? engine.snapshot() : null;
   if (snap && snap.turn !== lastSavedTurn && saveGame('silent')) return;
+  persistMapMemory();
   engine.syncNow().catch((err) => console.error('Saving to browser storage failed', err));
 }
 
@@ -1556,6 +1723,7 @@ const engine = new Engine(buffer, {
   onRunning() {
     layout();
     engine.setAutoMore(settings.messages === 'flow');
+    engine.setPersistentLevels(settings.persistentLevels);
     dirty = true;
     requestFrame();
     const storageError = engine.storageError;
@@ -1586,6 +1754,7 @@ const engine = new Engine(buffer, {
   onIdle() {
     /* Storage has been read from the browser by the time the engine first waits for a key. */
     if (!chronicles.loaded) chronicles.load(engine.fs, engine.savePath);
+    if (!mapMemory.loaded) mapMemory.load(engine.fs, engine.savePath);
     director.idle();
     refresh();
     dirty = false;
@@ -1601,6 +1770,7 @@ const engine = new Engine(buffer, {
     if (pendingSync && lastSnap?.atCommand) {
       const notify = pendingSync === 'toast';
       pendingSync = null;
+      persistMapMemory();
       engine.syncNow().then(
         () => {
           if (!notify) return;
@@ -1904,7 +2074,9 @@ toolbar.addEventListener('pointerdown', (e) => {
 
 function openSettingsSheet(): void {
   openSettings(sheets, settings, (next) => {
+    if (settings.persistentLevels && !next.persistentLevels && heroMemory) mapMemory.forgetLevels(heroMemory);
     settings = next;
+    engine.setPersistentLevels(settings.persistentLevels);
     saveSettings(settings);
     applySettings();
     engine.setAutoMore(settings.messages === 'flow');
@@ -1967,9 +2139,18 @@ function returnToTitle(): void {
   memorial = null;
   chronicle = null;
   streak = { count: 0, lastTurn: 0 };
+  persistMapMemory();
   exploreSkip.clear();
   noticed.clear();
-  exploreDepth = -1;
+  exploreLevel = null;
+  exploreLevelDepth = -1;
+  exploreLevelDungeon = -1;
+  heroMemory = null;
+  heroMemoryId = '';
+  landMemory = null;
+  memoryTurn = -1;
+  wayOnLabel = { key: '', label: null };
+  mapMemory.loaded = false;
   placeKey = '';
   styleKey = '';
   place = null;
@@ -2155,6 +2336,12 @@ window.__tome = {
   actions: () => currentActions.map((a) => a.id),
   travelling: () => travel !== null,
   lastStopCause: () => lastStopCause,
+  exploreStop: () => {
+    if (!lastSnap) return null;
+    const plan = explorePlan();
+    const stop = nextStop(lastSnap, materials, plan);
+    return { kind: stop?.kind ?? 'none', x: stop?.x ?? -1, y: stop?.y ?? -1, heading: plan.heading ?? 'down' };
+  },
   macroRunning: () => macros.running,
   director,
   audio,

@@ -57,6 +57,9 @@ interface EmscriptenModule {
   _web_skills_json(): number;
   _web_abilities_json(): number;
   _web_saved_screen(): number;
+  _web_set_persistent_levels(on: number): void;
+  _web_mark_buffer(count: number): number;
+  _web_mark_known(): number;
 }
 
 interface ModuleOptions {
@@ -238,6 +241,27 @@ export class Engine {
     const mod = this.module;
     if (!mod || this.state !== 'running') return;
     mod._web_set_auto_more(on ? 1 : 0);
+  }
+
+  /** Keeps dungeon levels as the hero left them, or makes them anew on each visit (and forgets kept ones). */
+  setPersistentLevels(on: boolean): void {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return;
+    mod._web_set_persistent_levels(on ? 1 : 0);
+  }
+
+  /** Marks grids of the current level (y * width + x) as remembered; returns how many were new. */
+  markKnown(cells: readonly number[]): number {
+    const mod = this.module;
+    if (!mod || this.state !== 'running' || cells.length === 0) return 0;
+    try {
+      const ptr = mod._web_mark_buffer(cells.length);
+      mod.HEAP32.set(cells, ptr >> 2);
+      return mod._web_mark_known();
+    } catch (err) {
+      console.error('Restoring map memory failed', err);
+      return 0;
+    }
   }
 
   features(): FeatureInfo[] {

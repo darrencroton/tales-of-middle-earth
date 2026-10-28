@@ -94,7 +94,7 @@ add_subdirectory(${TOME2_DIR}/src ${CMAKE_BINARY_DIR}/tome2 EXCLUDE_FROM_ALL)
 #
 # Web frontend
 #
-add_executable(tome engine/main-web.cc engine/snapshot.cc)
+add_executable(tome engine/main-web.cc engine/snapshot.cc engine/memory.cc)
 target_include_directories(tome PRIVATE ${TOME2_DIR}/src ${TOME2_DIR}/src/include)
 target_link_libraries(tome PRIVATE game_main game squelch ${LIBS})
 
@@ -117,7 +117,7 @@ set(TOME_LINK_FLAGS
 	-sENVIRONMENT=web
 	-sEXIT_RUNTIME=1
 	-sEXPORTED_RUNTIME_METHODS=FS,HEAPU8,HEAPU16,HEAP32,UTF8ToString
-	-sEXPORTED_FUNCTIONS=_main,_web_snapshot,_web_features_json,_web_state_json,_web_inventory_json,_web_object_desc,_web_store_object_desc,_web_monster_desc,_web_character_json,_web_set_auto_more,_web_place_json,_web_scores_json,_web_birth_json,_web_spells_json,_web_skills_json,_web_abilities_json,_web_saved_screen
+	-sEXPORTED_FUNCTIONS=_main,_web_snapshot,_web_features_json,_web_state_json,_web_inventory_json,_web_object_desc,_web_store_object_desc,_web_monster_desc,_web_character_json,_web_set_auto_more,_web_place_json,_web_scores_json,_web_birth_json,_web_spells_json,_web_skills_json,_web_abilities_json,_web_saved_screen,_web_set_persistent_levels,_web_mark_buffer,_web_mark_known
 	-lidbfs.js
 	-Wl,--wrap=nanosleep
 	-Wl,--wrap=getpwuid

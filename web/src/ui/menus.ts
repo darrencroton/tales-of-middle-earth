@@ -120,6 +120,19 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
   );
   body.append(
     section(
+      'Dungeon levels',
+      segmented<'kept' | 'new'>('Dungeon levels', [['kept', 'Stay as you left them'], ['new', 'New each visit']], current.persistentLevels ? 'kept' : 'new', (value) =>
+        update({ persistentLevels: value === 'kept' }),
+      ),
+      el(
+        'p',
+        'muted',
+        'Levels you leave stay as they were, so you can find your way back through them. Choosing new levels forgets the ones kept so far. Towns and lands you have walked are always remembered.',
+      ),
+    ),
+  );
+  body.append(
+    section(
       'Map symbols',
       segmented<GlyphMode>('Map symbols', [['brogue', 'Shaded'], ['classic', 'Classic ASCII']], current.glyphs, (glyphs) =>
         update({ glyphs }),

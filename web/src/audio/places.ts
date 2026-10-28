@@ -9,6 +9,11 @@ export interface Place {
   depth: number;
   maxDepth: number;
   wild: number;
+  /** Position on the world map. */
+  wx?: number;
+  wy?: number;
+  /** Fixed at birth: tells apart heroes who share a name. */
+  heroId?: number;
   town: number;
   townDestroyed: number;
   quest: number;
