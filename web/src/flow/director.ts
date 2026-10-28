@@ -12,6 +12,7 @@ import { bufferRows } from '../ui/termparse.ts';
 import {
   STEP_TITLES,
   cursorKeysTo,
+  describesHero,
   parseBirthChoice,
   parseSaveIndex,
   parseSavefileScreen,
@@ -260,7 +261,7 @@ export class Director {
     if (this.phase !== 'title') return false;
     const save = this.fallen.find((f) => f.name === hero.name);
     if (!save) return false;
-    return !hero.cls || save.description.includes(hero.cls);
+    return describesHero(save.description, hero.race, hero.cls);
   }
 
   /** Starts a fallen hero again from their beginning; false when there is no savefile to start from. */
