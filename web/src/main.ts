@@ -18,7 +18,7 @@ import { TargetPicker } from './play/targeting.ts';
 import { approachTarget, edgeCell, forgetUnseen, isKnown, STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
 import { Explore, isBesideFeature, isLandmarkFeature, landmarkName, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
-import { CAVE_MARK, isHostile, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
+import { CAVE_MARK, isHostile, LAYER_MASK, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -162,6 +162,12 @@ let memoryTurn = -1;
 let memoryPos = -1;
 /* Whether exploring may head for the way on (the toolbar's label), by turn and place. */
 let wayOnLabel: { key: string; label: string | null } = { key: '', label: null };
+/** Where exploring this level began (the map fills outwards from it), and where the hero stood when it last stopped. */
+let exploreAnchor: MapPoint | null = null;
+let exploreLastStop: MapPoint | null = null;
+/** Items seen on this level while exploring (by cell), and those first seen during the current exploration. */
+const exploreSeenItems = new Set<number>();
+const exploreSpotted = new Map<number, string>();
 let travelTimer = 0;
 /** The current travel only gets as near as the known way allows. */
 let travelApproximate = false;
@@ -775,6 +781,9 @@ function enterLevel(key: string, next: { dungeon: number; depth: number }): void
   landMemory = null;
   memoryTurn = -1;
   wayOnLabel = { key: '', label: null };
+  exploreAnchor = null;
+  exploreLastStop = null;
+  exploreSeenItems.clear();
   if (heroMemory && keepsVisits(key)) for (const cell of heroMemory.visited[key] ?? []) exploreSkip.add(cell);
 }
 
@@ -782,8 +791,9 @@ function featureName(snap: LevelSnapshot, index: number): string {
   return features[snap.feat[index]]?.name ?? '';
 }
 
-/** Landmarks the hero has stood on or beside count as visited. */
-function noteLandmarks(snap: LevelSnapshot): void {
+/** Landmarks the hero has stood on or beside, and items the hero has stood on (or dropped), count as visited. */
+function noteVisited(snap: LevelSnapshot): void {
+  if (snap.floorObjects > 0) exploreSkip.add(snap.py * snap.width + snap.px);
   for (let y = snap.py - 1; y <= snap.py + 1; y++) {
     for (let x = snap.px - 1; x <= snap.px + 1; x++) {
       if (x < 0 || y < 0 || x >= snap.width || y >= snap.height) continue;
@@ -822,7 +832,7 @@ function updateMapMemory(snap: LevelSnapshot): void {
   if (snap.turn === memoryTurn && pos === memoryPos) return;
   memoryTurn = snap.turn;
   memoryPos = pos;
-  noteLandmarks(snap);
+  noteVisited(snap);
   rememberLand(snap, key);
 }
 
@@ -838,6 +848,8 @@ function explorePlan(): ExplorePlan {
     isExit: role(featureRoles[heading]),
     isLandmark: role(featureRoles.landmark),
     besideLandmark: role(featureRoles.beside),
+    anchor: exploreAnchor,
+    collectItems: alwaysPickup(),
   };
 }
 
@@ -1364,6 +1376,10 @@ function travelContext(): TravelContext | null {
 
 function stopAutomation(message: string | null, cause: string): void {
   if (travel || picker) lastStopCause = cause;
+  if (travel instanceof Explore && lastSnap) {
+    exploreAnchor = travel.anchor;
+    exploreLastStop = { x: lastSnap.px, y: lastSnap.py };
+  }
   window.clearTimeout(travelTimer);
   travelTimer = 0;
   travel = null;
@@ -1378,10 +1394,12 @@ function stepTravel(): void {
   if (!engine.awaitingInput) return;
   const ctx = travelContext();
   if (!travel || !ctx) return;
+  if (travel instanceof Explore) noteSpotted(ctx.snap);
   const step = travel.step(ctx);
   if (step.kind === 'stop') {
     const dark = step.reason === 'explored' && travel instanceof Explore && gearSuggestion()?.kind === 'light';
-    const message = dark
+    const spotted = travel instanceof Explore ? spottedText() : null;
+    const reason = dark
       ? 'It is too dark to explore. Tap Light to light your way.'
       : step.creature
         ? `You stop: ${titleName(step.creature)} is near.`
@@ -1390,7 +1408,8 @@ function stepTravel(): void {
           : step.reason === 'arrived' && travelApproximate
             ? STOP_MESSAGES.closest
             : STOP_MESSAGES[step.reason];
-    stopAutomation(message, step.reason);
+    const message = [reason, spotted].filter(Boolean).join(' ');
+    stopAutomation(message || null, step.reason);
     return;
   }
   map.setPath(step.path);
@@ -1418,6 +1437,29 @@ function startTravel(goal: MapPoint): void {
   stepTravel();
 }
 
+/* Exploring carries on from where it began when the hero is about where it last stopped. */
+const ANCHOR_DRIFT = 3;
+
+/** Notes items that come into view while exploring. */
+function noteSpotted(snap: LevelSnapshot): void {
+  const here = snap.py * snap.width + snap.px;
+  for (const o of lastState?.objects ?? []) {
+    const cell = o.y * snap.width + o.x;
+    if (cell === here || exploreSeenItems.has(cell)) continue;
+    exploreSeenItems.add(cell);
+    exploreSpotted.set(cell, o.name);
+  }
+}
+
+/** Items first seen during an exploration that are still lying there, for its closing message. */
+function spottedText(): string | null {
+  const snap = lastSnap;
+  if (!snap || alwaysPickup()) return null;
+  const names = [...exploreSpotted].filter(([cell]) => (snap.layer[cell] & LAYER_MASK) === LAYER_OBJECT).map(([, name]) => name);
+  if (names.length === 0) return null;
+  return names.length === 1 ? `You spotted ${names[0]} on the way.` : `You spotted ${names.length} items on the way.`;
+}
+
 /**
  * Walks to unexplored places until something needs attention; on an
  * explored level, tours its landmarks and ends at the way on, which a
@@ -1428,6 +1470,11 @@ function startExplore(): void {
   if (!ctx) return;
   stopAutomation(null, 'explore');
   recentreMap();
+  const here = { x: ctx.snap.px, y: ctx.snap.py };
+  const resumed = !!exploreLastStop && Math.max(Math.abs(exploreLastStop.x - here.x), Math.abs(exploreLastStop.y - here.y)) <= ANCHOR_DRIFT;
+  if (!exploreAnchor || !resumed) exploreAnchor = here;
+  exploreSpotted.clear();
+  for (const o of lastState?.objects ?? []) exploreSeenItems.add(o.y * ctx.snap.width + o.x);
   const plan = explorePlan();
   const stop = nextStop(ctx.snap, materials, plan);
   if (stop?.kind === 'exit' && stop.x === ctx.snap.px && stop.y === ctx.snap.py) {
@@ -2143,6 +2190,9 @@ function returnToTitle(): void {
   exploreSkip.clear();
   noticed.clear();
   exploreLevel = null;
+  exploreAnchor = null;
+  exploreLastStop = null;
+  exploreSeenItems.clear();
   exploreLevelDepth = -1;
   exploreLevelDungeon = -1;
   heroMemory = null;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Explore, exploreTarget, landmarkName, nextStop, type ExplorePlan } from '../../web/src/play/explore.ts';
+import { Explore, landmarkName, nextStop, type ExplorePlan } from '../../web/src/play/explore.ts';
 import { decodeRuns, encodeRuns, levelKey, mergeKnown, missingCells } from '../../web/src/play/mapmemory.ts';
 import { approachTarget, inferredFloor } from '../../web/src/play/travel.ts';
 import { fightingStyle, suggestedGear } from '../../web/src/play/items.ts';
@@ -43,21 +43,34 @@ function level(rows: string[]): LevelSnapshot {
   return { width, height, px, py, feat, info, layer } as unknown as LevelSnapshot;
 }
 
+const frontier = (snap: LevelSnapshot, extra: Partial<ExplorePlan> = {}) => {
+  const stop = nextStop(snap, materials, { skip: new Set(), isExit: () => false, ...extra });
+  return stop ? { x: stop.x, y: stop.y, kind: stop.kind } : null;
+};
+
 describe('explore target', () => {
   it('walks to the nearest edge of unexplored space', () => {
     const snap = level(['#######', '#@....?', '#######']);
-    assert.deepEqual(exploreTarget(snap, materials, new Set()), { x: 5, y: 1 });
+    assert.deepEqual(frontier(snap), { x: 5, y: 1, kind: 'frontier' });
   });
 
-  it('prefers a nearer item and skips visited places', () => {
+  it('collects items only for a hero who picks things up, and skips visited places', () => {
     const snap = level(['#######', '#@.$..?', '#######']);
-    assert.deepEqual(exploreTarget(snap, materials, new Set()), { x: 3, y: 1 });
-    assert.deepEqual(exploreTarget(snap, materials, new Set([1 * 7 + 3])), { x: 5, y: 1 });
+    assert.deepEqual(frontier(snap), { x: 5, y: 1, kind: 'frontier' });
+    assert.deepEqual(frontier(snap, { collectItems: true }), { x: 3, y: 1, kind: 'item' });
+    assert.deepEqual(frontier(snap, { collectItems: true, skip: new Set([1 * 7 + 3]) }), { x: 5, y: 1, kind: 'frontier' });
   });
 
   it('reports nothing when everything reachable is known', () => {
     const snap = level(['#####', '#@..#', '#####']);
-    assert.equal(exploreTarget(snap, materials, new Set()), null);
+    assert.equal(frontier(snap), null);
+  });
+
+  it('fills the map outwards from where exploring began', () => {
+    const snap = level(['###############', '#?.........@.?#', '###############']);
+    assert.deepEqual(frontier(snap), { x: 12, y: 1, kind: 'frontier' });
+    assert.deepEqual(frontier(snap, { anchor: { x: 3, y: 1 } }), { x: 2, y: 1, kind: 'frontier' });
+    assert.deepEqual(frontier(snap, { anchor: { x: 8, y: 1 } }), { x: 12, y: 1, kind: 'frontier' });
   });
 });
 
@@ -79,7 +92,23 @@ describe('explore', () => {
 
   it('does not count walkable thickets that hide the view as unexplored edges', () => {
     const snap = level(['#####', '#@.T?', '#####']);
-    assert.equal(exploreTarget(snap, materials, new Set()), null);
+    assert.equal(frontier(snap), null);
+  });
+
+  it('moves its anchor to the hero once nothing is left within reach of the old one', () => {
+    const snap = level(['#' + '.'.repeat(40) + '@.?#']);
+    const explore = new Explore(plan(-1, { anchor: { x: 1, y: 0 } }));
+    const ctx = { snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp: 10 };
+    assert.equal(explore.step(ctx).kind, 'keys');
+    assert.deepEqual(explore.anchor, { x: snap.px, y: snap.py });
+  });
+
+  it('walks over items to collect them without stopping', () => {
+    const snap = level(['######', '#@$..?', '######']);
+    const explore = new Explore(plan(-1, { collectItems: true }));
+    const ctx = (px: number, floorObjects: number) => ({ snap: { ...snap, px, atCommand: true, icky: false, floorObjects }, materials, monsters: [], hp: 10 });
+    assert.equal(explore.step(ctx(1, 0)).kind, 'keys');
+    assert.equal(explore.step(ctx(2, 1)).kind, 'keys');
   });
 
   it('tours unvisited landmarks nearest first, then ends at the way on', () => {

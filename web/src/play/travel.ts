@@ -26,7 +26,6 @@ export type TravelStopReason =
   | 'interrupted'
   | 'limit'
   | 'explored'
-  | 'item'
   | 'exit'
   | 'exitUp'
   | 'landmark'
@@ -60,7 +59,6 @@ export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
   interrupted: null,
   limit: 'You stop to get your bearings.',
   explored: 'Nothing left to explore within reach.',
-  item: 'You found something.',
   exit: 'Explored. The way down is here.',
   exitUp: 'Explored. The way up is here.',
   landmark: null,

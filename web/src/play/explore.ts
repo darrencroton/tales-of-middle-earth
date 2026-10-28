@@ -3,10 +3,16 @@ import { CAVE_MARK, CAVE_SEEN, LAYER_MASK, LAYER_OBJECT, type LevelSnapshot } fr
 import type { Point } from './pathfinding.ts';
 import { Travel, travelGrid, type TravelContext, type TravelStep } from './travel.ts';
 
-const MAX_TARGETS = 200;
+const MAX_TARGETS = 500;
 const MAX_RETRIES = 6;
 /* Exploring only stops for awake creatures right next to the player (and new ones). */
 const EXPLORE_DANGER_RADIUS = 1;
+/* Each step between a place and the anchor counts this many times a step from the hero, up to `ANCHOR_REACH` steps. */
+const ANCHOR_WEIGHT = 2;
+/* How far the anchor's pull reaches: once nothing is left that close, the hero becomes the new anchor. */
+const ANCHOR_REACH = 24;
+/* Items to collect count as this many steps nearer than unexplored ground. */
+const ITEM_GREED = 10;
 
 export interface ExplorePlan {
   /** Cells exploring is done with (visited or out of reach); kept between explorations of a level. */
@@ -19,6 +25,10 @@ export interface ExplorePlan {
   besideLandmark?(index: number): boolean;
   /** Which way the way on leads, for the message at the end. */
   heading?: 'down' | 'up';
+  /** Where exploring began: the map fills outwards from here. */
+  anchor?: Point | null;
+  /** Walk over items not yet stood on (the hero picks things up as they go). */
+  collectItems?: boolean;
 }
 
 export type StopKind = 'item' | 'frontier' | 'landmark' | 'exit';
@@ -27,14 +37,20 @@ export interface ExploreStop extends Point {
   kind: StopKind;
   /** The cell that counts as done on arrival (the landmark itself when visited from beside it). */
   mark: number;
+  /** Beyond the anchor's reach (an edge of unexplored space or an item). */
+  far?: boolean;
 }
 
 function known(snap: LevelSnapshot, i: number): boolean {
   return (snap.info[i] & (CAVE_MARK | CAVE_SEEN)) !== 0;
 }
 
+function hasItem(snap: LevelSnapshot, i: number): boolean {
+  return (snap.layer[i] & LAYER_MASK) === LAYER_OBJECT;
+}
+
 /** A known cell the eye can see past from, next to unknown space. */
-function isFrontier(snap: LevelSnapshot, materials: readonly Material[], i: number): boolean {
+export function isFrontier(snap: LevelSnapshot, materials: readonly Material[], i: number): boolean {
   if (!known(snap, i)) return false;
   const m = materials[snap.feat[i]];
   if (!m || !(m.door || (m.walkable && !m.blocksLight))) return false;
@@ -49,19 +65,18 @@ function isFrontier(snap: LevelSnapshot, materials: readonly Material[], i: numb
   return false;
 }
 
-/** Steps from the player to every cell a known way reaches (-1 elsewhere), in breadth-first order. */
-function reach(snap: LevelSnapshot, materials: readonly Material[], throughCreatures: boolean): { depth: Int32Array; order: Int32Array; count: number } {
+/** Steps from `start` to every cell a known way reaches (-1 elsewhere). */
+function reach(snap: LevelSnapshot, materials: readonly Material[], start: number, throughCreatures: boolean): Int32Array {
   const { width, height } = snap;
   const grid = travelGrid(snap, materials, throughCreatures);
   const depth = new Int32Array(width * height).fill(-1);
-  const order = new Int32Array(width * height);
-  const start = snap.py * width + snap.px;
+  const queue = new Int32Array(width * height);
   let head = 0;
   let tail = 0;
   depth[start] = 0;
-  order[tail++] = start;
+  queue[tail++] = start;
   while (head < tail) {
-    const i = order[head++];
+    const i = queue[head++];
     const x = i % width;
     const y = (i - x) / width;
     for (let ny = y - 1; ny <= y + 1; ny++) {
@@ -70,11 +85,11 @@ function reach(snap: LevelSnapshot, materials: readonly Material[], throughCreat
         const next = ny * width + nx;
         if (depth[next] >= 0 || !grid.passable(nx, ny)) continue;
         depth[next] = depth[i] + 1;
-        order[tail++] = next;
+        queue[tail++] = next;
       }
     }
   }
-  return { depth, order, count: tail };
+  return depth;
 }
 
 function stopAt(snap: LevelSnapshot, cell: number, kind: StopKind, mark = cell): ExploreStop {
@@ -83,27 +98,45 @@ function stopAt(snap: LevelSnapshot, cell: number, kind: StopKind, mark = cell):
 }
 
 /**
- * Where exploring goes next: the nearest item lying about or edge of
- * unexplored space; once there are none, the nearest landmark not yet
- * visited; and last the nearest way on (which may be where the player
+ * Where exploring goes next. First the edges of unexplored space (and items
+ * to collect), filling the map outwards from the anchor: a place scores its
+ * steps from the hero plus `ANCHOR_WEIGHT` times its steps from the anchor
+ * (counting at most `ANCHOR_REACH`), so the rooms and side passages near
+ * where exploring began are seen before the far end of a corridor. Once none are left, the nearest landmark not
+ * yet visited; and last the nearest way on (which may be where the hero
  * stands). Null when nothing is left within reach. With `throughCreatures`
  * creatures in view do not block the way.
  */
 export function nextStop(snap: LevelSnapshot, materials: readonly Material[], plan: ExplorePlan, throughCreatures = false): ExploreStop | null {
   const { width } = snap;
   const start = snap.py * width + snap.px;
-  const { depth, order, count } = reach(snap, materials, throughCreatures);
+  const depth = reach(snap, materials, start, throughCreatures);
+  const anchor = plan.anchor ? plan.anchor.y * width + plan.anchor.x : start;
+  const fromAnchor = anchor === start ? depth : reach(snap, materials, anchor, throughCreatures);
+  const anchorGap = fromAnchor[start];
 
-  for (let k = 1; k < count; k++) {
-    const i = order[k];
-    if (plan.skip.has(i)) continue;
-    if ((snap.layer[i] & LAYER_MASK) === LAYER_OBJECT) return stopAt(snap, i, 'item');
-    if (isFrontier(snap, materials, i)) return stopAt(snap, i, 'frontier');
+  let best = -1;
+  let bestKind: StopKind = 'frontier';
+  let bestScore = Infinity;
+  let bestAway = 0;
+  for (let i = 0; i < depth.length; i++) {
+    if (depth[i] <= 0 || plan.skip.has(i)) continue;
+    const item = !!plan.collectItems && hasItem(snap, i);
+    if (!item && !isFrontier(snap, materials, i)) continue;
+    const away = anchorGap < 0 ? 0 : Math.min(ANCHOR_REACH, fromAnchor[i] >= 0 ? fromAnchor[i] : depth[i] + anchorGap);
+    const score = depth[i] + ANCHOR_WEIGHT * away - (item ? ITEM_GREED : 0);
+    if (score < bestScore || (score === bestScore && depth[i] < depth[best])) {
+      best = i;
+      bestKind = item ? 'item' : 'frontier';
+      bestScore = score;
+      bestAway = away;
+    }
   }
+  if (best >= 0) return { ...stopAt(snap, best, bestKind), far: bestAway >= ANCHOR_REACH };
 
   if (plan.isLandmark) {
-    let best: ExploreStop | null = null;
-    let bestDepth = Infinity;
+    let landmark: ExploreStop | null = null;
+    let landmarkDepth = Infinity;
     for (let i = 0; i < depth.length; i++) {
       if (plan.skip.has(i) || !known(snap, i) || !plan.isLandmark(i)) continue;
       const beside = plan.besideLandmark?.(i) ?? false;
@@ -119,11 +152,11 @@ export function nextStop(snap: LevelSnapshot, materials: readonly Material[], pl
           }
         }
       }
-      if (cell < 0 || cell === start || depth[cell] >= bestDepth) continue;
-      best = stopAt(snap, cell, 'landmark', i);
-      bestDepth = depth[cell];
+      if (cell < 0 || cell === start || depth[cell] >= landmarkDepth) continue;
+      landmark = stopAt(snap, cell, 'landmark', i);
+      landmarkDepth = depth[cell];
     }
-    if (best) return best;
+    if (landmark) return landmark;
   }
 
   let exit = -1;
@@ -134,17 +167,12 @@ export function nextStop(snap: LevelSnapshot, materials: readonly Material[], pl
   return exit >= 0 ? stopAt(snap, exit, 'exit') : null;
 }
 
-/** Nearest item or edge of unexplored space, ignoring landmarks and the way on. */
-export function exploreTarget(snap: LevelSnapshot, materials: readonly Material[], skip: ReadonlySet<number>): Point | null {
-  const stop = nextStop(snap, materials, { skip: skip as Set<number>, isExit: () => false });
-  return stop ? { x: stop.x, y: stop.y } : null;
-}
-
 /**
- * Explores the level one step at a time: travels to the nearest item or
- * unexplored edge, then the next, stopping as travel does (a creature, being
- * hurt) or at an item. With the level explored it tours the landmarks one
- * stop at a time and ends at the way on.
+ * Explores the level one step at a time, from one edge of unexplored space
+ * to the next (see `nextStop`), collecting items on the way when the hero
+ * picks things up, and choosing again as soon as its goal has been seen.
+ * It stops as travel does (a creature, being hurt), at each landmark once
+ * the level is explored, and at the way on.
  */
 export class Explore {
   private travel: Travel | null = null;
@@ -156,12 +184,26 @@ export class Explore {
 
   /** `noticed` is shared with travel (see `TravelOptions`). */
   constructor(plan: ExplorePlan, noticed: Set<number> = new Set()) {
-    this.plan = plan;
+    this.plan = { ...plan };
     this.noticed = noticed;
+  }
+
+  /** Where the map is filling out from now (it moves on once its surroundings are explored). */
+  get anchor(): Point | null {
+    return this.plan.anchor ?? null;
   }
 
   private get exitReason(): 'exit' | 'exitUp' {
     return this.plan.heading === 'up' ? 'exitUp' : 'exit';
+  }
+
+  /** The goal still has something to show or collect. */
+  private worthReaching(snap: LevelSnapshot, materials: readonly Material[]): boolean {
+    const stop = this.stop;
+    if (!stop) return false;
+    if (stop.kind === 'frontier') return isFrontier(snap, materials, stop.mark);
+    if (stop.kind === 'item') return hasItem(snap, stop.mark);
+    return true;
   }
 
   step(ctx: TravelContext): TravelStep {
@@ -169,9 +211,14 @@ export class Explore {
     this.lastHp = ctx.hp;
     const { snap } = ctx;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      if (this.travel && !this.worthReaching(snap, ctx.materials)) this.travel = null;
       if (!this.travel) {
         if (this.targets >= MAX_TARGETS) return { kind: 'stop', reason: 'limit' };
-        const stop = nextStop(snap, ctx.materials, this.plan);
+        let stop = nextStop(snap, ctx.materials, this.plan);
+        if (stop?.far && this.plan.anchor) {
+          this.plan.anchor = { x: snap.px, y: snap.py };
+          stop = nextStop(snap, ctx.materials, this.plan);
+        }
         if (!stop) {
           const blocked = nextStop(snap, ctx.materials, this.plan, true);
           return { kind: 'stop', reason: blocked ? 'creatureInWay' : 'explored' };
@@ -187,15 +234,9 @@ export class Explore {
       const stop = this.stop!;
       this.travel = null;
       const arrived = step.reason === 'arrived';
-      if (stop.kind === 'exit') {
-        if (arrived) return { kind: 'stop', reason: this.exitReason };
-        this.plan.skip.add(stop.mark);
-        continue;
-      }
+      if (stop.kind === 'exit' && arrived) return { kind: 'stop', reason: this.exitReason };
       this.plan.skip.add(stop.mark);
-      if (!arrived) continue;
-      if (stop.kind === 'item' && snap.floorObjects > 0) return { kind: 'stop', reason: 'item' };
-      if (stop.kind === 'landmark') return { kind: 'stop', reason: 'landmark', place: stop.mark };
+      if (arrived && stop.kind === 'landmark') return { kind: 'stop', reason: 'landmark', place: stop.mark };
     }
     return { kind: 'stop', reason: 'blocked' };
   }
