@@ -236,10 +236,11 @@ export class Hud {
     const tags: string[] = [];
     if (m.asleep) tags.push('asleep');
     if (m.afraid) tags.push('afraid');
-    if (friendly) tags.push('ally');
-    if (neutral) tags.push('neutral');
-    button.append(this.glyph(m.ch, m.attr, palette), el('span', m.unique ? 'label unique' : 'label', m.name));
-    if (tags.length) button.append(el('span', 'tags', tags.join(', ')));
+    const text = el('span', 'entity-text');
+    text.append(el('span', m.unique ? 'label unique' : 'label', m.name));
+    if (tags.length) text.append(el('span', 'tags', tags.join(' · ')));
+    button.append(this.glyph(m.ch, m.attr, palette), text);
+    button.setAttribute('aria-label', [m.name, friendly ? 'ally' : neutral ? 'neutral' : 'hostile', ...tags].join(', '));
     item.append(button);
     return item;
   }
@@ -248,7 +249,9 @@ export class Hud {
     const item = el('li');
     const button = this.entityButton({ kind: 'object', object: real });
     button.classList.add('item');
-    button.append(this.glyph(o.ch, o.attr, palette), el('span', 'label', o.name));
+    const text = el('span', 'entity-text');
+    text.append(el('span', 'label', o.name));
+    button.append(this.glyph(o.ch, o.attr, palette), text);
     item.append(button);
     return item;
   }

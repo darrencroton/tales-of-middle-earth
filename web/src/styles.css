@@ -561,16 +561,30 @@ html.keyboard-open .sheet-layer {
   touch-action: manipulation;
 }
 
+/* Disposition shows as colour (the edge and the health bar), not words. */
+.entity.foe {
+  border-left: 3px solid #d0604f;
+}
+
 .entity.ally {
   --bar: var(--ally);
+  border-left: 3px solid #5fb36b;
 }
 
 .entity.neutral {
   --bar: #6b6455;
+  border-left: 3px solid #a19a8a;
 }
 
 .entity.item {
   background: rgb(255 255 255 / 0.04);
+}
+
+.entity .entity-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
 }
 
 .glyph {
@@ -600,6 +614,20 @@ html.keyboard-open .sheet-layer {
 .entity .tags {
   color: var(--muted);
   font-size: var(--fs-small);
+  line-height: 1.15;
+}
+
+/* Long toolbar labels (a spell's name, Dungeon) step down a size instead of being cut. */
+.action-label.long {
+  font-size: calc(var(--fs-small) * 0.8);
+  letter-spacing: -0.01em;
+}
+
+.action-label.longer {
+  font-size: calc(var(--fs-small) * 0.74);
+  white-space: normal;
+  text-align: center;
+  line-height: 1.05;
 }
 
 /* Toolbar */
@@ -778,6 +806,33 @@ html.keyboard-open .sheet-layer {
     flex: 0 1 auto;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  /* In the narrow sidebar, names wrap onto a second line rather than being cut. */
+  #hud .entity {
+    white-space: normal;
+  }
+
+  #hud .entity .label {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow-wrap: anywhere;
+  }
+
+  .hud-player .who {
+    flex-wrap: wrap;
+    row-gap: 0;
+    white-space: normal;
+  }
+
+  .hud-player .who::after {
+    order: 1;
+  }
+
+  .hud-player .sub {
+    order: 2;
+    flex-basis: 100%;
   }
 }
 

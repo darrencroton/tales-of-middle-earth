@@ -1046,7 +1046,7 @@ function updateActionBar(force = false): void {
       icon.className = 'action-icon';
       icon.textContent = iconText(action.icon);
       const label = document.createElement('span');
-      label.className = 'action-label';
+      label.className = action.label.length > 9 ? 'action-label longer' : action.label.length > 6 ? 'action-label long' : 'action-label';
       label.textContent = action.label;
       button.append(icon, label);
       return button;
