@@ -18,6 +18,12 @@ export interface HudCallbacks {
   onHistory(): void;
 }
 
+/* Health just lost lingers this long (ms) before it has drained away. */
+const TRAIL_MS = 750;
+const TRAIL_HOLD_MS = 300;
+/* A hostile creature below this fraction of its health is near death. */
+const CRITICAL = 0.25;
+
 const FOOD_WEAK = 1000;
 const FOOD_HUNGRY = 2000;
 const VISIBLE_MESSAGES = 3;
@@ -78,6 +84,8 @@ export class Hud {
   private lastMessagesKey = '';
   private turn = 0;
   private readonly seenAt = new Map<string, number>();
+  private health: { name: string; fill: number } | null = null;
+  private trail: { from: number; at: number } | null = null;
 
   constructor(root: HTMLElement, messagesEl: HTMLElement, palette: () => readonly string[], callbacks: HudCallbacks) {
     this.root = root;
@@ -110,7 +118,7 @@ export class Hud {
     const who = el('div', 'who');
     who.append(el('span', 'name', p.name), el('span', 'sub', `${p.race} ${p.cls} · Lv ${p.lev}`));
     const bars = el('div', 'bars');
-    bars.append(bar('hp', 'Health', p.chp, p.mhp));
+    bars.append(this.healthBar(p));
     if (p.msp > 0) bars.append(bar('sp', 'Mana', p.csp, p.msp));
     if (p.msane > 0) bars.append(bar('sn', 'Sanity', p.csane, p.msane));
     const meta = el('div', 'meta');
@@ -140,6 +148,28 @@ export class Hud {
     this.root.replaceChildren(player, list);
   }
 
+  /** The health bar, with a pale band over health lost in the last moment. */
+  private healthBar(p: PlayerState): HTMLElement {
+    const node = bar('hp', 'Health', p.chp, p.mhp);
+    const fill = fraction(p.chp, p.mhp);
+    const now = performance.now();
+    const before = this.health?.name === p.name ? this.health.fill : null;
+    this.health = { name: p.name, fill };
+    if (this.trail && now - this.trail.at >= TRAIL_MS) this.trail = null;
+    if (before !== null && fill < before) {
+      this.trail = { from: Math.max(before, this.trail?.from ?? 0), at: now };
+    } else if (before !== null && fill > before) {
+      this.trail = null;
+    }
+    if (this.trail && this.trail.from > fill) {
+      const band = el('span', 'bar-trail');
+      band.style.setProperty('--from', `${(this.trail.from * 100).toFixed(1)}%`);
+      band.style.animationDelay = `${Math.round(TRAIL_HOLD_MS - (now - this.trail.at))}ms`;
+      node.prepend(band);
+    }
+    return node;
+  }
+
   private glyph(ch: number, attr: number, palette: readonly string[]): HTMLElement {
     const g = el('span', 'glyph', String.fromCharCode(ch));
     g.style.color = palette[attr] ?? '#fff';
@@ -159,6 +189,7 @@ export class Hud {
     const friendly = isAlly(m);
     const neutral = !friendly && !isHostile(m);
     button.classList.add(friendly ? 'ally' : neutral ? 'neutral' : 'foe');
+    if (!friendly && !neutral && m.maxhp > 0 && m.hp < m.maxhp * CRITICAL) button.classList.add('critical');
     button.style.setProperty('--fill', `${(fraction(m.hp, m.maxhp) * 100).toFixed(1)}%`);
     const tags: string[] = [];
     if (m.asleep) tags.push('asleep');

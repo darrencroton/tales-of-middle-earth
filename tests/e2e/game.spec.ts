@@ -222,6 +222,8 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   const finish = page.locator('#toolbar [data-action="finish"]');
   await expect(finish).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('.termview')).toContainText('Your adventure has ended');
+  await expect(page.locator('.termview')).toContainText('Your tale');
+  await expect(page.locator('.termview .tale-tip')).toContainText('Next time');
   await finish.click();
 
   await expect(page.locator('.termview')).toContainText('Hall of Fame');
@@ -241,6 +243,9 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('.sheet-title')).toHaveText('Hall of Fame');
   await expect(page.locator('.sheet .fame-row')).toHaveCount(2);
   await expect(page.locator('.sheet .fame-row').nth(1)).toContainText("Killed by Grip, Farmer Maggot's Dog in the town");
+  await expect(page.locator('.sheet')).toContainText('Career');
+  await expect(page.locator('.sheet .deed')).toHaveCount(15);
+  await expect(page.locator('.sheet .stat', { hasText: 'Fallen' })).toContainText('1');
 });
 
 test('the name prompt sits at the top of the screen, clear of the keyboard', async ({ page }) => {

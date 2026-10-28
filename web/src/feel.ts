@@ -1,7 +1,7 @@
 import type { AnimationLevel } from './settings.ts';
 import type { PlayerState } from './render/snapshot.ts';
 import { depthLabel } from './hud.ts';
-import { el } from './ui/dom.ts';
+import { el, iconText } from './ui/dom.ts';
 
 /** Health below this fraction of the maximum counts as low. */
 export const LOW_HEALTH = 0.3;
@@ -36,6 +36,11 @@ export function isLowHealth(player: Pick<PlayerState, 'chp' | 'mhp'>): boolean {
 
 const BANNER_MS = 2600;
 const FLOAT_MS = 1400;
+const RING_MS = 700;
+const SHAKE_MS = 420;
+const DEED_MS = 3600;
+/* A hit taking at least this fraction of maximum health shakes the screen. */
+const SHAKE_HURT = 0.2;
 
 function vibrate(pattern: number | number[]): void {
   try {
@@ -56,19 +61,76 @@ export class GameFeel {
   private readonly layer: HTMLElement;
   private readonly vignette: HTMLElement;
   private readonly banner: HTMLElement;
+  private readonly deed: HTMLElement;
+  private readonly stage: HTMLElement;
   private readonly animation: () => AnimationLevel;
   private prev: Tracked | null = null;
   private bannerTimer = 0;
+  private shakeTimer = 0;
+  private deedTimer = 0;
+  private readonly deeds: [string, string][] = [];
 
   constructor(stage: HTMLElement, animation: () => AnimationLevel) {
     this.animation = animation;
+    this.stage = stage;
     this.layer = el('div', 'feel-layer');
     this.layer.setAttribute('aria-hidden', 'true');
     this.vignette = el('div', 'feel-vignette');
     this.banner = el('div', 'feel-banner');
     this.banner.setAttribute('role', 'status');
-    this.layer.append(this.vignette, this.banner);
+    this.deed = el('div', 'feel-deed');
+    this.deed.setAttribute('role', 'status');
+    this.layer.append(this.vignette, this.banner, this.deed);
     stage.append(this.layer);
+  }
+
+  /** A banner for a moment worth marking: a kill streak, a legend slain. */
+  announce(title: string, subtitle: string, kind: string): void {
+    this.showBanner(title, subtitle, kind);
+  }
+
+  /** Shakes the map; `strength` 0..1. */
+  shake(strength: number): void {
+    if (this.animation() !== 'full') return;
+    this.stage.style.setProperty('--shake', `${(2 + 6 * Math.min(1, strength)).toFixed(1)}px`);
+    this.stage.classList.remove('feel-shake');
+    void this.stage.offsetWidth;
+    this.stage.classList.add('feel-shake');
+    window.clearTimeout(this.shakeTimer);
+    this.shakeTimer = window.setTimeout(() => this.stage.classList.remove('feel-shake'), SHAKE_MS);
+  }
+
+  /** An expanding ring where a creature fell, in its colour (viewport coordinates). */
+  ringAt(clientX: number, clientY: number, colour: string): void {
+    if (this.animation() === 'off') return;
+    const rect = this.layer.getBoundingClientRect();
+    const node = el('div', 'feel-ring');
+    node.style.left = `${clientX - rect.left}px`;
+    node.style.top = `${clientY - rect.top}px`;
+    node.style.setProperty('--ring', colour);
+    this.layer.append(node);
+    window.setTimeout(() => node.remove(), RING_MS);
+  }
+
+  /** A deed earned: a gold card at the top of the map, one at a time. */
+  showDeed(title: string, text: string): void {
+    this.deeds.push([title, text]);
+    if (!this.deedTimer) this.nextDeed();
+  }
+
+  private nextDeed(): void {
+    const next = this.deeds.shift();
+    if (!next) {
+      this.deedTimer = 0;
+      this.deed.classList.remove('visible');
+      return;
+    }
+    this.deed.replaceChildren(el('span', 'feel-deed-star', iconText('★')), el('strong', undefined, next[0]), el('span', undefined, next[1]));
+    this.deed.classList.remove('visible');
+    void this.deed.offsetWidth;
+    this.deed.classList.add('visible');
+    vibrate([20, 40, 20]);
+    this.deedTimer = window.setTimeout(() => this.nextDeed(), DEED_MS);
   }
 
   /** Compares with the last state seen and plays any feedback. */
@@ -95,6 +157,7 @@ export class GameFeel {
     switch (event.kind) {
       case 'hurt':
         this.flash('hurt', 0.35 + event.fraction * 1.3);
+        if (event.fraction >= SHAKE_HURT) this.shake(event.fraction * 2);
         vibrate(Math.round(20 + event.fraction * 80));
         break;
       case 'levelup':
