@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { depthLabel, rowSegments, sortByDistance, statusLabels } from '../../web/src/hud.ts';
+import { areaName, depthLabel, rowSegments, sortByDistance, statusLabels } from '../../web/src/hud.ts';
 import { defaultSettings, sanitiseSettings } from '../../web/src/settings.ts';
 import { TerminalBuffer } from '../../web/src/terminal.ts';
 
@@ -10,7 +10,20 @@ describe('HUD helpers', () => {
   it('labels depth, town and wilderness', () => {
     assert.equal(depthLabel({ depth: 0, dungeon: 'Mirkwood', wild: 0 }), 'Town');
     assert.equal(depthLabel({ depth: 3, dungeon: 'Mirkwood', wild: 0 }), 'Mirkwood · 150 ft (L3)');
-    assert.equal(depthLabel({ depth: 0, dungeon: '', wild: 1 }), 'Wilderness');
+    assert.equal(depthLabel({ depth: 0, dungeon: '', wild: 1 }), 'World map');
+    assert.equal(depthLabel({ depth: 0, dungeon: '', wild: 0, area: 'Bree' }), 'Bree');
+    assert.equal(depthLabel({ depth: 2, dungeon: 'Mirkwood', wild: 0, area: 'Forest' }), 'Mirkwood · 100 ft (L2)');
+  });
+
+  it('names surface places from the engine place', () => {
+    const place = { wild: 0, depth: 0, quest: 0, levelName: '', town: 0, terrain: 'grass' };
+    assert.equal(areaName(null), null);
+    assert.equal(areaName(place), 'Grasslands');
+    assert.equal(areaName({ ...place, terrain: 'Bree ', town: 1 }), 'Bree');
+    assert.equal(areaName({ ...place, wild: 1 }), 'World map');
+    assert.equal(areaName({ ...place, depth: 3 }), null);
+    assert.equal(areaName({ ...place, terrain: 'Mirkwood' }), 'Mirkwood');
+    assert.equal(areaName({ ...place, terrain: '' }), 'The wilds');
   });
 
   it('lists active status effects and hunger', () => {

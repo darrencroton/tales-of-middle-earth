@@ -2,16 +2,18 @@ import {
   DEEDS,
   newCareer,
   newChronicle,
-  nextTimeTip,
   type Career,
   type Chronicle,
   type Deed,
 } from '../play/chronicle.ts';
+import type { Memorial } from '../play/memorial.ts';
 import type { EmscriptenFS } from '../saves.ts';
 import { el, iconText, section } from './dom.ts';
 
 const FILE = 'chronicle.json';
 const VERSION = 1;
+/* Fallen heroes remembered in full, most recent kept. */
+const MAX_MEMORIALS = 60;
 
 interface Stored {
   version: number;
@@ -19,6 +21,8 @@ interface Stored {
   /** Deed id → date earned (ISO). */
   deeds: Record<string, string>;
   heroes: Record<string, Chronicle>;
+  /** Fallen heroes as they were at the end, by name and final turn. */
+  memorials: Record<string, Memorial>;
 }
 
 /* Keyed by hero name, so it has no prototype: a hero called "constructor" or "__proto__" is just a name. */
@@ -31,7 +35,7 @@ function dictionary<T>(from: unknown): Record<string, T> {
 }
 
 function sanitise(raw: unknown): Stored {
-  const empty: Stored = { version: VERSION, career: newCareer(), deeds: dictionary(null), heroes: dictionary(null) };
+  const empty: Stored = { version: VERSION, career: newCareer(), deeds: dictionary(null), heroes: dictionary(null), memorials: dictionary(null) };
   if (!raw || typeof raw !== 'object') return empty;
   const data = raw as Partial<Stored>;
   if (data.version !== VERSION) return empty;
@@ -40,6 +44,7 @@ function sanitise(raw: unknown): Stored {
     career: { ...newCareer(), ...(data.career ?? {}) },
     deeds: dictionary(data.deeds),
     heroes: dictionary(data.heroes),
+    memorials: dictionary(data.memorials),
   };
 }
 
@@ -108,6 +113,22 @@ export class ChronicleStore {
     return true;
   }
 
+  /** Keeps a fallen hero as they were at the end; false when already kept. */
+  remember(key: string, memorial: Memorial): boolean {
+    if (this.data.memorials[key]) return false;
+    this.data.memorials[key] = memorial;
+    const keys = Object.keys(this.data.memorials);
+    if (keys.length > MAX_MEMORIALS) {
+      keys.sort((a, b) => this.data.memorials[a].date.localeCompare(this.data.memorials[b].date));
+      for (const old of keys.slice(0, keys.length - MAX_MEMORIALS)) delete this.data.memorials[old];
+    }
+    return true;
+  }
+
+  memorial(key: string): Memorial | null {
+    return this.data.memorials[key] ?? null;
+  }
+
   save(): void {
     if (!this.fs || !this.path) return;
     try {
@@ -122,31 +143,6 @@ function fact(label: string, value: string): HTMLElement {
   const node = el('div', 'stat');
   node.append(el('span', 'stat-label', label), el('span', 'stat-value', value));
   return node;
-}
-
-/** The "Your tale" part of the end-of-game summary. */
-export function taleElements(chronicle: Chronicle, cause: string, depth: number): HTMLElement[] {
-  const grid = el('div', 'stat-grid');
-  grid.append(
-    fact('Creatures slain', chronicle.kills.toLocaleString('en-GB')),
-    fact('Deepest', chronicle.deepestFeet ? `${chronicle.deepestFeet} ft` : 'The surface'),
-  );
-  if (chronicle.mightiest) grid.append(fact('Mightiest foe', chronicle.mightiest.name));
-  if (chronicle.uniques.length) grid.append(fact('Legends slain', String(chronicle.uniques.length)));
-  const parts: HTMLElement[] = [section('Your tale', grid)];
-  if (chronicle.uniques.length) {
-    parts.push(el('p', 'tale-legends', `Slew ${chronicle.uniques.slice(0, 4).join(', ')}${chronicle.uniques.length > 4 ? ' and more' : ''}.`));
-  }
-  const deeds = chronicle.deeds.map((id) => DEEDS.find((d) => d.id === id)).filter((d): d is Deed => !!d);
-  if (deeds.length) {
-    const list = el('div', 'deed-chips');
-    for (const deed of deeds) list.append(el('span', 'deed-chip', `${iconText('★')} ${deed.title}`));
-    parts.push(section('Deeds', list));
-  }
-  const tip = el('p', 'tale-tip');
-  tip.append(el('strong', undefined, 'Next time: '), document.createTextNode(nextTimeTip(chronicle, cause, depth)));
-  parts.push(tip);
-  return parts;
 }
 
 /** The career and every deed, earned or not, for the title screen. */

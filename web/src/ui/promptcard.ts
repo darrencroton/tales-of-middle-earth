@@ -110,18 +110,27 @@ export class PromptCard {
     primary.focus({ preventScroll: true });
   }
 
-  /** The hero has died: what killed them, and Continue (which declines tome2's screen dump). */
-  showDeath(cause: string): void {
+  /**
+   * The hero has died: what killed them, a way to look back on the hero,
+   * and Continue (which declines tome2's screen dump).
+   */
+  showDeath(cause: string, onLookBack: () => void): void {
     const key = `death\u0000${cause}`;
     this.root.hidden = false;
     if (key === this.renderedKey) return;
     this.renderedKey = key;
+    const retired = /^Quitting$/i.test(cause);
     this.root.className = 'prompt-card death';
     const buttons = el('div', 'card-buttons');
     const primary = this.button('Continue', codes('n'), 'card-button primary');
-    buttons.append(primary);
-    const fate = /^Quitting$/i.test(cause) ? 'You have retired from adventuring.' : cause ? `Killed by ${cause}.` : 'Your adventure has ended.';
-    this.root.replaceChildren(this.title('You have died'), el('p', 'card-hint', fate), buttons);
+    buttons.append(this.button('Your hero', onLookBack), primary);
+    const fate = retired ? 'You have retired from adventuring.' : cause ? `Killed by ${cause}.` : 'Your adventure has ended.';
+    this.root.replaceChildren(
+      this.title(retired ? 'Your journey ends' : 'You have died'),
+      el('p', 'card-fate', fate),
+      el('p', 'card-hint', 'Tap your hero, or the creatures still around you, to look back on the last fight.'),
+      buttons,
+    );
     primary.focus({ preventScroll: true });
   }
 

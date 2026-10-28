@@ -80,6 +80,10 @@ export class Director {
   private phase: Phase = 'boot';
   private heroName = '';
   private saves: SaveInfo[] = [];
+  /** Savefiles of fallen heroes, which tome2 can start again with the same race, class and attributes. */
+  private fallen: { name: string; description: string }[] = [];
+  /** The hero being created is a fallen one begun anew. */
+  private anew = false;
   private choice: BirthChoiceScreen | null = null;
   private pendingKey: string | null = null;
   private chooseWhenReady = false;
@@ -126,7 +130,7 @@ export class Director {
     if (snap?.inDungeon) {
       if (this.phase !== 'playing') {
         this.phase = 'playing';
-        if (this.title?.isVisible) this.title.leave();
+        if (this.title?.isVisible && !this.title.showingIntro) this.title.leave();
       }
       return;
     }
@@ -173,6 +177,10 @@ export class Director {
       const entries = parseSavefileScreen(bufferRows(this.deps.buffer, 0, this.deps.buffer.rows - 1), screen);
       if (!entries) return;
       const records = this.readSaveIndex();
+      this.fallen = entries
+        .map((entry) => ({ entry, record: records.find((r) => r.base === entry.name || r.base === `_${entry.name}`) }))
+        .filter(({ record }) => record && !record.alive && record.module === MODULE)
+        .map(({ entry, record }) => ({ name: entry.name, description: record!.description }));
       this.saves = entries
         .map((entry) => {
           const matches = (r: SaveRecord) => r.base === entry.name || r.base === `_${entry.name}`;
@@ -227,6 +235,42 @@ export class Director {
     }
   }
 
+  /** Back to the start, for a fresh engine in the same page. */
+  reset(): void {
+    this.phase = 'boot';
+    this.heroName = '';
+    this.saves = [];
+    this.fallen = [];
+    this.anew = false;
+    this.choice = null;
+    this.pendingKey = null;
+    this.chooseWhenReady = false;
+    this.nameSent = false;
+    this.lastAuto = '';
+    this.picks = [];
+    this.lastChoice = null;
+    this.replay = null;
+    this.replayed = null;
+    this.returnKey = null;
+    this.hide();
+  }
+
+  /** True when a fallen hero's savefile can start them again (same name, race and class, no living hero by that name). */
+  canBeginAnew(hero: { name: string; race: string; cls: string }): boolean {
+    if (this.phase !== 'title') return false;
+    const save = this.fallen.find((f) => f.name === hero.name);
+    if (!save) return false;
+    return !hero.cls || save.description.includes(hero.cls);
+  }
+
+  /** Starts a fallen hero again from their beginning; false when there is no savefile to start from. */
+  beginAnew(name: string): boolean {
+    if (this.phase !== 'title' || !this.fallen.some((f) => f.name === name)) return false;
+    this.heroName = name;
+    this.startCreating(true);
+    return true;
+  }
+
   /** The player chose on the title screen. */
   choose(choice: TitleChoice): void {
     if (this.phase !== 'title') return;
@@ -254,15 +298,21 @@ export class Director {
         return;
       }
       this.heroName = name;
-      this.phase = 'creating';
-      this.nameSent = false;
-      this.picks = [];
-      this.lastChoice = null;
-      this.deps.send(keyCodes('a'));
-      this.title?.showIntro(INTRO_LINES, INTRO_CITE, () => {
-        this.title?.leave();
-        this.deps.requestRefresh();
-      });
+      this.startCreating(false);
+    });
+  }
+
+  private startCreating(anew: boolean): void {
+    this.anew = anew;
+    this.phase = 'creating';
+    this.nameSent = false;
+    this.picks = [];
+    this.lastChoice = null;
+    this.deps.send(keyCodes('a'));
+    this.title?.setBusy('');
+    this.title?.showIntro(INTRO_LINES, INTRO_CITE, () => {
+      this.title?.leave();
+      this.deps.requestRefresh();
     });
   }
 
@@ -300,7 +350,7 @@ export class Director {
       return;
     }
     if (answer(/modify the options\s*\[y\/n\]/, keyCodes('n'))) return;
-    if (answer(/Use same character as last time/, keyCodes('n'))) return;
+    if (answer(/Use same character as last time/, keyCodes(this.anew ? 'y' : 'n'))) return;
     if (answer(/Number of quests\?/, [ENTER])) return;
     if (answer(/Enter minimum attribute for/, [ENTER])) return;
     if (/Enter your player's name above/.test(screen)) {

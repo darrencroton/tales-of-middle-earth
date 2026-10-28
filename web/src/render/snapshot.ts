@@ -151,6 +151,10 @@ export interface PlayerState {
   dead?: number;
   /** What killed the hero. */
   diedFrom?: string;
+  /** Name of the town or land walked on the surface (set by the frontend from the place). */
+  area?: string;
+  /** The surface area is a town (set by the frontend from the place). */
+  inTown?: boolean;
   status: Record<string, number>;
 }
 
@@ -276,6 +280,9 @@ export interface CharacterState {
   shots: number;
   infra: number;
   maxDepth: number;
+  /** Skills with points in them; value in thousandths, as tome2 shows them (12.345). */
+  skills?: { name: string; value: number }[];
+  abilities?: string[];
   turn: number;
 }
 

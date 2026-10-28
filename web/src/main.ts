@@ -1,8 +1,9 @@
 import './styles.css';
 import { GameAudio } from './audio/audio.ts';
+import type { Place } from './audio/places.ts';
 import { doorKinds } from './audio/cues.ts';
 import { Engine } from './engine.ts';
-import { Hud, rowSegments, statusLabels, type HudEntity } from './hud.ts';
+import { areaName, Hud, rowSegments, statusLabels, type HudEntity } from './hud.ts';
 import { attachMapGestures, attachPinch } from './input/gestures.ts';
 import { directionKeys, KEY_BACKSLASH as BACKSLASH, KEY_ENTER, KEY_ESCAPE, translateKey, translateText } from './input/keys.ts';
 import { attachSoftKeyboard } from './input/softkeyboard.ts';
@@ -14,9 +15,9 @@ import { commandGroups, commandKeys, contextActions, pickupCommand, type Action,
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { forgetUnseen, STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
+import { edgeCell, forgetUnseen, STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
 import { Explore, nearestReachable } from './play/explore.ts';
-import { isHostile, type GameState, type LevelSnapshot, type MonsterState, type PlayerState } from './render/snapshot.ts';
+import { isHostile, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -29,10 +30,12 @@ import { ANIMATION_FPS, applyTextSize, loadSettings, saveSettings, type Settings
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
 import { TitleScreen } from './title.ts';
 import { openSoundtrack } from './ui/soundtrack.ts';
-import { titleName, type GameApi } from './ui/api.ts';
+import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
 import { GameFeel } from './feel.ts';
 import { Coach } from './ui/coach.ts';
-import { INVEN_WIELD, itemActions, itemMacro, suggestedGear, type GearSuggestion } from './play/items.ts';
+import { INVEN_WIELD, itemActions, itemMacro, SLOT_NAMES, suggestedGear, type GearSuggestion } from './play/items.ts';
+import { buildMemorial, entryKey, memorialKey, type Memorial } from './play/memorial.ts';
+import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
 import { openCharacter, openKnowledge } from './ui/character.ts';
 import { el, iconText, section } from './ui/dom.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
@@ -47,8 +50,8 @@ import { openStoreItem, parseStore, type StoreScreen } from './ui/store.ts';
 import { abilitiesElements, abilityMoveKeys, parseAbilities, parseSkills, skillMoveKeys, skillsElements } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
 import { hallOfFameElements, heroEntry, isHallOfFame, parseTomb, tombElements } from './ui/gameover.ts';
-import { careerElements, ChronicleStore, taleElements } from './ui/deeds.ts';
-import { extendStreak, newDeeds, newMessages, record, slainMonsters, type Chronicle, type Slain, type Streak } from './play/chronicle.ts';
+import { careerElements, ChronicleStore } from './ui/deeds.ts';
+import { extendStreak, newChronicle, newDeeds, newMessages, nextTimeTip, record, slainMonsters, type Chronicle, type Slain, type Streak } from './play/chronicle.ts';
 import { fullSheetElements, parseFullSheet, sheetPageKeys, SHEET_PAGES, type FullSheet } from './ui/charsheet.ts';
 
 declare global {
@@ -147,9 +150,16 @@ let ctrlLatched = false;
 let lastRenderMs = 0;
 let placeKey = '';
 let placeAt = 0;
+/** Where the player is, refreshed with the level and every couple of seconds. */
+let place: Place | null = null;
+let placePos = { x: -1, y: -1 };
 let inStore = false;
 /** The end-of-game summary has been shown; the lament plays until the title. */
 let ended = false;
+/** The fallen hero as they were at the end, once they have died. */
+let memorial: Memorial | null = null;
+/** A fallen hero to begin again once the title screen is back. */
+let pendingAnew: string | null = null;
 let looking = false;
 let quitting = false;
 /** Sheets covered by a tome2 screen, reopened once it closes. */
@@ -188,7 +198,7 @@ const promptCard = new PromptCard(stage, (keys) => send(keys));
 
 const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
   onEntity: (entity) => openEntity(entity),
-  onPlayer: () => openNative('character'),
+  onPlayer: () => openNative(lastState?.player?.dead ? 'fallen' : 'character'),
   onSkills: () => openNative('skills'),
   onMore: () => send([SPACE]),
   onHistory: () => {
@@ -314,6 +324,9 @@ function openNative(view: NativeView): void {
       break;
     case 'finish':
       finishGame();
+      break;
+    case 'fallen':
+      openFallenHero();
       break;
     case 'history':
       showHistory();
@@ -509,7 +522,7 @@ function updatePromptCard(): void {
   }
   const kind = currentPrompt();
   if (kind === 'yesno' && /Dump the screen\?/.test(rowZeroText()) && !macros.running && engine.pendingKeys === 0) {
-    promptCard.showDeath(engine.gameState(0)?.player?.diedFrom ?? '');
+    promptCard.showDeath(engine.gameState(0)?.player?.diedFrom ?? '', () => openFallenHero());
     return;
   }
   const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
@@ -544,10 +557,13 @@ function renderFullSheet(sheet: FullSheet): void {
 function updatePlace(snap: LevelSnapshot): void {
   const key = `${snap.depth}:${snap.wild}:${snap.width}x${snap.height}`;
   const now = performance.now();
-  if (key === placeKey && now - placeAt < PLACE_POLL_MS) return;
+  const moved = Math.max(Math.abs(snap.px - placePos.x), Math.abs(snap.py - placePos.y)) > 1;
+  placePos = { x: snap.px, y: snap.py };
+  if (key === placeKey && !moved && now - placeAt < PLACE_POLL_MS) return;
   placeKey = key;
   placeAt = now;
-  audio.setPlace(engine.place());
+  place = engine.place();
+  audio.setPlace(place);
 }
 
 function refresh(): void {
@@ -602,20 +618,29 @@ function refresh(): void {
     const tomb = parseTomb(rows);
     const fame = !tomb && ended && isHallOfFame(rows);
     if (tomb) ended = true;
+    app.classList.toggle('ended', !!tomb || fame);
     if (termView.visible && currentBox()) {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
       if (chronicles.fall(tomb.name)) chronicles.save();
       const tale = chronicles.peek(tomb.name);
-      termView.renderCustom({ layout: 'full', title: 'Your adventure has ended' }, JSON.stringify(tomb), () => [
-        ...tombElements(tomb),
-        ...(tale ? taleElements(tale, tomb.cause, tomb.depth) : []),
-      ]);
+      const fallen = memorial?.name === tomb.name ? memorial : null;
+      termView.renderCustom({ layout: 'full', title: 'Your adventure has ended' }, `${JSON.stringify(tomb)}:${!!fallen}`, () =>
+        tombElements(tomb, {
+          memorial: fallen,
+          tale,
+          tip: nextTimeTip(fallen?.tale ?? tale ?? newChronicle(tomb.name), tomb.cause, tomb.depth),
+          onHero: (tab) => openFallenHero(tab),
+          onFoe: (foe) => openFoe(sheets, foe),
+        }),
+      );
     } else if (fame) {
       const player = lastState?.player;
       const scores = engine.scores();
       const hero = player ? heroEntry(scores, { name: player.name, level: player.lev, turns: snap.turn }) : -1;
-      termView.renderCustom({ layout: 'full', title: 'Hall of Fame' }, `fame:${scores.length}:${hero}`, () => hallOfFameElements(scores, hero));
+      termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero to look back on them' }, `fame:${scores.length}:${hero}`, () =>
+        hallOfFameElements(scores, hero, (entry) => openFameHero(entry, true)),
+      );
     } else if (fullSheet) {
       renderFullSheet(fullSheet);
     } else if (abilities) {
@@ -656,6 +681,10 @@ function refresh(): void {
 
   const state = engine.gameState();
   if (state) {
+    if (state.player) {
+      state.player.area = areaName(place) ?? undefined;
+      state.player.inTown = !!place && place.depth === 0 && !place.wild && place.town > 0;
+    }
     const previous = lastState;
     lastState = state;
     forgetUnseen(noticed, state.monsters ?? []);
@@ -665,6 +694,7 @@ function refresh(): void {
     const slain = sameHero ? slainMonsters(previous.monsters ?? [], state.monsters ?? [], newMessages(previous, state)) : [];
     if (sameHero) showHits(previous, state, slain);
     if (state.player) chronicleUpdate(state.player, slain, snap.turn, sameHero && (previous.player?.chp ?? 0) > state.player.chp);
+    if (state.player?.dead) captureMemorial(state.player, state, snap);
     const store = currentStore();
     if (store && !inStore) audio.cue('shop');
     inStore = !!store;
@@ -741,6 +771,73 @@ function chronicleUpdate(player: PlayerState, slain: readonly Slain[], turn: num
     audio.cue('levelup');
   }
   if (deeds.length || JSON.stringify(hero) !== before || JSON.stringify(chronicles.career) !== careerBefore) chronicles.save();
+}
+
+/* Fallen heroes */
+
+/** Keeps the hero as they were when they fell: sheet, gear, skills, the foe and the last messages. */
+function captureMemorial(player: PlayerState, state: GameState, snap: LevelSnapshot): void {
+  const key = memorialKey({ name: player.name, turn: snap.turn });
+  if (memorial && memorialKey(memorial) === key) return;
+  const kept = chronicles.memorial(key);
+  if (kept) {
+    memorial = kept;
+    return;
+  }
+  const palette = buffer.palette;
+  const built = buildMemorial({
+    player,
+    character: engine.character(),
+    inventory: engine.inventory(),
+    messages: engine.gameState(60)?.messages ?? state.messages ?? [],
+    monsters: state.monsters ?? [],
+    px: snap.px,
+    py: snap.py,
+    turn: snap.turn,
+    place: player.depth > 0 ? player.dungeon : (player.area ?? ''),
+    palette,
+    slotName: (part) => SLOT_NAMES[part] ?? 'Slot',
+    describe: (item) => descriptionParagraphs(engine.objectDescription(item)),
+    recall: (m) => (engine.monsterRecall(m.id)?.text ?? []).map(([attr, text]) => ({ text, colour: attr === 1 ? '' : (palette[attr] ?? '') })),
+  });
+  const tale = chronicles.peek(player.name);
+  if (tale) built.tale = structuredClone(tale);
+  memorial = built;
+  chronicles.remember(key, built);
+  chronicles.save();
+}
+
+function openFallenHero(tab: FallenTab = 'hero'): void {
+  if (!memorial) return;
+  if (travel || picker) stopAutomation(null, 'fallen');
+  const scores = engine.scores();
+  openFallen(sheets, { memorial, entry: scores.find((e) => entryKey(e) === memorialKey(memorial!)) ?? null }, tab);
+}
+
+/** A hero in the Hall of Fame; one who fell on this device can be looked back on in full, and some begun anew. */
+function openFameHero(entry: ScoreEntry, inGame: boolean): void {
+  const kept = chronicles.memorial(entryKey(entry));
+  const anew = inGame ? fallenSaveFor(entry) : director.canBeginAnew(entry);
+  openFallen(sheets, {
+    memorial: kept,
+    entry,
+    anew: anew
+      ? () => {
+          sheets.closeAll();
+          if (inGame) {
+            pendingAnew = entry.name;
+            finishGame();
+          } else {
+            director.beginAnew(entry.name);
+          }
+        }
+      : undefined,
+  });
+}
+
+/** In the game the savefile list is not at hand; a fallen hero's own savefile is the one just written. */
+function fallenSaveFor(entry: ScoreEntry): boolean {
+  return !!memorial && memorial.name === entry.name && entryKey(entry) === memorialKey(memorial);
 }
 
 /* Shops */
@@ -823,6 +920,7 @@ function updateActionBar(force = false): void {
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
+      fallen: !!lastState?.player?.dead,
       screen: !termView.visible ? null : termView.options().length ? 'options' : /Skills Screen/.test(rowZeroText()) ? 'skills' : /Abilities Screen/.test(rowZeroText()) ? 'abilities' : /'p' for previous, 'n' for next/.test(buffer.screenText()) ? 'sheet' : /You may now dump a character record/.test(buffer.screenText()) || (ended && /Hall of Fame/.test(rowZeroText())) ? 'gameover' : /Help file '/.test(rowZeroText()) ? 'help' : isFileViewer(rowZeroText()) ? 'file' : null,
       looking,
       overview: map.overview,
@@ -1151,8 +1249,10 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
       hideLookCard();
       return;
     }
+    const outside = map.gridAt(clientX, clientY);
+    const goal = cell ?? (onLand(snap) && outside ? edgeCell(snap.width, snap.height, outside) : null);
     recentreMap();
-    if (cell) tapMapCell(snap, cell, prompt);
+    if (goal) tapMapCell(snap, goal, prompt);
     return;
   }
   if (mode === 'overlay') {
@@ -1160,6 +1260,11 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
     return;
   }
   continueIfWaiting();
+}
+
+/** Walking the land, where stepping off the edge of an area leads into the next. */
+function onLand(snap: LevelSnapshot): boolean {
+  return snap.inDungeon && snap.depth === 0 && !snap.wild && !place?.quest;
 }
 
 function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
@@ -1317,11 +1422,11 @@ const engine = new Engine(buffer, {
   },
   onExit(message) {
     if (quitting) {
-      location.reload();
+      returnToTitle();
       return;
     }
     title.showEnd(message ?? 'The game has ended. Your progress is saved in this browser.', false, [
-      { label: 'Play again', run: () => location.reload() },
+      { label: 'Play again', run: () => returnToTitle() },
     ]);
   },
   onError(message) {
@@ -1418,7 +1523,12 @@ const chronicles = new ChronicleStore();
 const coach = new Coach(byId<HTMLElement>('stage'));
 const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
   onChoose: (choice) => director.choose(choice),
-  onReady: () => adoptUpdate?.(),
+  onReady: () => {
+    const name = pendingAnew;
+    pendingAnew = null;
+    if (name && director.beginAnew(name)) return;
+    adoptUpdate?.();
+  },
   onSettings: () => openSettingsSheet(),
   onSaves: () => openSavesMenu(),
   onMusic: () => openSoundtrack(sheets, audio),
@@ -1667,6 +1777,52 @@ function saveAndQuit(): void {
   runMacro(quitMacro());
 }
 
+/**
+ * Back to the title screen once the engine has exited, with a fresh engine
+ * in the same page: the music carries on, as a reload would need another tap
+ * before the browser lets it play.
+ */
+function returnToTitle(): void {
+  sheets.closeAll();
+  stopAutomation(null, 'title');
+  if (macros.running) macros.cancel();
+  promptCard.hide();
+  termView.hide();
+  hideLookCard();
+  if (looking) setLooking(false);
+  if (map.overview) setOverview(false);
+  base = null;
+  lastSnap = null;
+  lastState = null;
+  returnTo = null;
+  pendingSync = null;
+  lastSavedTurn = -1;
+  inStore = false;
+  ended = false;
+  quitting = false;
+  memorial = null;
+  chronicle = null;
+  streak = { count: 0, lastTurn: 0 };
+  exploreSkip.clear();
+  noticed.clear();
+  exploreDepth = -1;
+  placeKey = '';
+  place = null;
+  placePos = { x: -1, y: -1 };
+  app.classList.remove('fallen', 'ended');
+  buffer.clear();
+  hud.reset();
+  feel.reset();
+  chronicles.loaded = false;
+  director.reset();
+  title.reset();
+  setMode('title');
+  audio.setView('title');
+  updateActionBar(true);
+  engine.reset();
+  startEngine();
+}
+
 /** Moves on from the end-of-game summary to the Hall of Fame, and from there to the title. */
 function finishGame(): void {
   quitting = true;
@@ -1713,7 +1869,7 @@ function startImport(): void {
 /** The Hall of Fame from the title screen. */
 function openHallOfFame(): void {
   const body = el('div', 'fame');
-  body.append(section('Fallen heroes', ...hallOfFameElements(engine.scores())), ...careerElements(chronicles));
+  body.append(section('Fallen heroes', ...hallOfFameElements(engine.scores(), -1, (entry) => openFameHero(entry, false))), ...careerElements(chronicles));
   sheets.open({ title: 'Hall of Fame', subtitle: 'Heroes of Middle-earth, remembered', body, className: 'sheet-fame' });
 }
 
@@ -1731,9 +1887,11 @@ function openSavesMenu(): void {
 
 function openGameMenu(): void {
   const playing = inGame();
+  const fallen = playing && !!lastState?.player?.dead;
   openMenu(sheets, 'Menu', [
-    { label: 'Character', icon: '@', hidden: !playing, run: () => openCharacter(api) },
+    { label: fallen ? 'Your hero' : 'Character', icon: '@', hidden: !playing, run: () => (fallen ? openFallenHero() : openCharacter(api)) },
     { label: 'Messages', icon: '≣', hidden: !playing, run: () => showHistory() },
+    { label: 'Knowledge', icon: '¶', hint: 'Artifacts, creatures, quests', hidden: !playing || fallen, run: () => openKnowledge(api) },
     { label: 'Save game', icon: '⇩', hidden: !playing || !lastSnap?.atCommand, run: () => {
       sheets.closeAll();
       if (!saveGame('toast')) showToast('Finish what you are doing first.');
@@ -1743,7 +1901,7 @@ function openGameMenu(): void {
     { label: 'Export saves', icon: '⤒', run: startExport },
     { label: 'Import saves', icon: '⤓', run: startImport },
     { label: 'About', icon: 'ℹ', run: () => openTemplate(sheets, 'About', 'about-template') },
-    { label: playing ? 'Save and quit' : 'Quit to title', icon: '⏻', hint: 'Back to the title screen', run: () => {
+    { label: playing ? 'Save and quit' : 'Quit to title', icon: '⏻', hint: 'Back to the title screen', hidden: fallen, run: () => {
       if (!playing) {
         saveAndQuit();
       } else if (engine.storageError) {
@@ -1918,7 +2076,11 @@ acquireSessionLock().then((acquired) => {
     ]);
     return;
   }
+  startEngine();
+});
+
+function startEngine(): void {
   engine.start(new URL(`engine/tome.js?v=${__ENGINE_VERSION__}`, document.baseURI).href, engineArgs).catch((err) => {
     console.error(err);
   });
-});
+}

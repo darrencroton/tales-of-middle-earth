@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ChronicleStore } from '../../web/src/ui/deeds.ts';
+import type { Memorial } from '../../web/src/play/memorial.ts';
 import type { EmscriptenFS } from '../../web/src/saves.ts';
 
 function memoryFs(files: Record<string, string> = {}): EmscriptenFS {
@@ -48,5 +49,22 @@ describe('chronicle store', () => {
     assert.equal(again.career.fallen, 1);
     assert.equal(again.hero('Frodo').kills, 0);
     assert.equal(again.career.heroes, 2);
+  });
+
+  it('remembers fallen heroes by name and final turn, keeping the most recent', () => {
+    const fs = memoryFs();
+    const store = new ChronicleStore();
+    store.load(fs, '/save');
+    const hero = (name: string, day: number) => ({ name, date: new Date(Date.UTC(2026, 0, day)).toISOString() }) as Memorial;
+    assert.equal(store.remember('Frodo@90', hero('Frodo', 1)), true);
+    assert.equal(store.remember('Frodo@90', hero('Frodo', 2)), false);
+    store.save();
+    const again = new ChronicleStore();
+    again.load(fs, '/save');
+    assert.equal(again.memorial('Frodo@90')?.date, hero('Frodo', 1).date);
+    assert.equal(again.memorial('__proto__'), null);
+    for (let i = 0; i < 70; i++) again.remember(`Sam@${i}`, hero('Sam', i + 2));
+    assert.equal(again.memorial('Frodo@90'), null);
+    assert.ok(again.memorial('Sam@69'));
   });
 });

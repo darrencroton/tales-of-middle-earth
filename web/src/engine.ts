@@ -290,6 +290,21 @@ export class Engine {
     },
   };
 
+  /** Forgets an engine that has exited, so start() can run a fresh one without reloading the page. */
+  reset(): void {
+    if (this.state === 'running' || this.state === 'loading') throw new Error(`Engine still ${this.state}`);
+    if (this.syncTimer) clearTimeout(this.syncTimer);
+    this.syncTimer = null;
+    this.state = 'idle';
+    this.module = null;
+    this.queue.length = 0;
+    this.waiter = null;
+    this.quitMessage = null;
+    this.cursorDrawn = false;
+    this.bridge.storagePath = undefined;
+    this.bridge.storageError = undefined;
+  }
+
   async start(engineUrl: string, args: string[] = []): Promise<void> {
     if (this.state !== 'idle') throw new Error(`Engine already ${this.state}`);
     this.state = 'loading';
@@ -306,7 +321,7 @@ export class Engine {
     try {
       this.module = await createModule({
         tome: this.bridge,
-        arguments: args,
+        arguments: [...args],
         locateFile: (path) => {
           const url = new URL(path, engineUrl);
           url.search = new URL(engineUrl).search;

@@ -68,16 +68,15 @@ function characterSheet(api: GameApi): SheetContent | null {
   );
   body.append(section('Progress', progress));
 
-  const more = el('div', 'action-grid');
+  const more = el('div', 'action-grid three');
   const screens: [string, string][] = [
     ['Skills', 'G'],
     ['Abilities', 'N'],
-    ['Full character sheet', 'C'],
+    ['Full sheet', 'C'],
   ];
   for (const [label, command] of screens) {
     more.append(navButton(label, { className: 'action-button', onClick: () => api.command(command) }));
   }
-  more.append(navButton('Knowledge', { className: 'action-button', onClick: () => openKnowledge(api) }));
   body.append(section('More', more));
 
   return {

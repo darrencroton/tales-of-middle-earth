@@ -1,6 +1,12 @@
+import type { Chronicle } from '../play/chronicle.ts';
+import { dayOf, type Memorial, type MemorialFoe } from '../play/memorial.ts';
 import type { ScoreEntry } from '../render/snapshot.ts';
+import { titleName } from './api.ts';
+import { el, navButton, section } from './dom.ts';
+import { deedChips, fateLine, fateText, fellWhereWhen, foeChip, gearStrip, lastWordsList, type FallenTab } from './memorial.ts';
 import { rowText, type TermRow } from './termparse.ts';
-import { el, section } from './dom.ts';
+
+export { fateText, fellWhere } from './memorial.ts';
 
 export interface Tomb {
   name: string;
@@ -32,45 +38,94 @@ export function parseTomb(rows: readonly TermRow[]): Tomb | null {
   };
 }
 
-/** Elements for the native end-of-game view. */
-export function tombElements(tomb: Tomb): HTMLElement[] {
+/** "28 October 2026", or the text as given when it is not a date. */
+export function longDate(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+export interface TombExtras {
+  memorial: Memorial | null;
+  tale: Chronicle | null;
+  /** Advice for the next hero. */
+  tip: string;
+  /** Opens the fallen hero's sheet on a tab. */
+  onHero(tab: FallenTab): void;
+  onFoe(foe: MemorialFoe): void;
+}
+
+/** Elements for the native end-of-game view: the epitaph, the last fight, the tale and what was carried. */
+export function tombElements(tomb: Tomb, extras: TombExtras): HTMLElement[] {
+  const m = extras.memorial;
   const hero = el('div', 'gameover-hero');
   hero.append(
     el('p', 'gameover-name', tomb.name),
-    el('p', 'gameover-title', [tomb.title, tomb.cls].filter(Boolean).join(' · ')),
+    el('p', 'gameover-title', [m ? `Level ${m.level} ${m.race} ${m.cls}`.trim() : tomb.cls, tomb.title].filter(Boolean).join(' · ')),
+    el('p', 'gameover-fate', fateLine(m?.cause ?? tomb.cause)),
+    el(
+      'p',
+      'gameover-where',
+      [m ? fellWhereWhen(m) : tomb.depth ? `at ${(tomb.depth * 50).toLocaleString('en-GB')} ft` : 'on the surface', m ? longDate(m.date) : tomb.date]
+        .filter(Boolean)
+        .join(' · '),
+    ),
   );
+  const parts: HTMLElement[] = [hero];
+
+  if (m && (m.foe || m.lastWords.length)) {
+    const fight = el('div', 'gameover-fight');
+    if (m.foe) {
+      const foe = m.foe;
+      fight.append(foeChip(foe, () => extras.onFoe(foe)));
+    }
+    fight.append(lastWordsList(m.lastWords.slice(-8)));
+    parts.push(section(m.foe ? 'The last fight' : 'The last moments', fight));
+  }
+
   const grid = el('div', 'stat-grid');
   const stats: [string, string][] = [
     ['Level', tomb.level],
     ['Experience', tomb.exp],
     ['Gold', tomb.gold],
-    ['Depth', tomb.depth ? `${tomb.depth * 50} ft` : 'Town'],
-    ['Cause', tomb.cause],
   ];
+  const tale = m?.tale ?? extras.tale;
+  if (tale) {
+    stats.push(['Creatures slain', tale.kills.toLocaleString('en-GB')]);
+    if (tale.uniques.length) stats.push(['Legends slain', String(tale.uniques.length)]);
+    stats.push(['Deepest', tale.deepestFeet ? `${tale.deepestFeet.toLocaleString('en-GB')} ft` : 'The surface']);
+    if (tale.mightiest) stats.push(['Mightiest foe', titleName(tale.mightiest.name)]);
+  }
+  if (m) stats.push(['Days survived', String(dayOf(m.turn))]);
   for (const [label, value] of stats) {
     const node = el('div', 'stat');
     node.append(el('span', 'stat-label', label), el('span', 'stat-value', value));
     grid.append(node);
   }
-  return [hero, section('Summary', grid), el('p', 'gameover-date', tomb.date)];
+  parts.push(section('Your tale', grid));
+  if (tale?.uniques.length) {
+    parts.push(el('p', 'tale-legends', `Slew ${tale.uniques.slice(0, 4).join(', ')}${tale.uniques.length > 4 ? ' and more' : ''}.`));
+  }
+  const deeds = tale ? deedChips(tale) : null;
+  if (deeds) parts.push(section('Deeds', deeds));
+
+  if (m) {
+    const look = el('div', 'gameover-look');
+    if (m.equipment.length) look.append(gearStrip(m.equipment, () => extras.onHero('gear')));
+    look.append(
+      navButton('Look back on your hero', { className: 'action-button primary', onClick: () => extras.onHero('hero') }),
+    );
+    parts.push(section('Carried to the end', look));
+  }
+
+  const tip = el('p', 'tale-tip');
+  tip.append(el('strong', undefined, 'Next time: '), document.createTextNode(extras.tip));
+  parts.push(tip);
+  return parts;
 }
 
 /** tome2's Hall of Fame screen, shown after the summary when a hero dies. */
 export function isHallOfFame(rows: readonly TermRow[]): boolean {
   return rows.length > 0 && /Hall of Fame/.test(rowText(rows[0])) && rows.some((r) => /Press ESC to quit/.test(rowText(r)));
-}
-
-/** Where a hero fell, in words: "in the town", "on a quest", "at 250 ft". */
-export function fellWhere(entry: Pick<ScoreEntry, 'depth' | 'quest'>): string {
-  if (entry.quest) return 'on a quest';
-  return entry.depth > 0 ? `at ${entry.depth * 50} ft` : 'in the town';
-}
-
-/** "Killed by a Cave spider at 250 ft", or "Retired" for a hero who chose to stop. */
-export function fateText(entry: Pick<ScoreEntry, 'how' | 'depth' | 'quest'>): string {
-  if (/^Quitting$/i.test(entry.how)) return `Retired ${fellWhere(entry)}`;
-  if (/^Ripe Old Age$/i.test(entry.how)) return 'Lived to a ripe old age';
-  return `Killed by ${entry.how || 'something unknown'} ${fellWhere(entry)}`;
 }
 
 /** Index of the entry recorded for this run (same name, level and final game turn), or -1. */
@@ -79,8 +134,12 @@ export function heroEntry(entries: readonly ScoreEntry[], hero: { name: string; 
   return entries.findIndex((e) => e.name === hero.name && e.level === hero.level && e.turns === hero.turns);
 }
 
-/** Elements for the native Hall of Fame: one tappable row per hero, best first. */
-export function hallOfFameElements(entries: readonly ScoreEntry[], highlight = -1): HTMLElement[] {
+/** Elements for the native Hall of Fame: one tappable row per hero, best first; a tap opens the hero. */
+export function hallOfFameElements(
+  entries: readonly ScoreEntry[],
+  highlight: number,
+  onOpen: (entry: ScoreEntry, index: number) => void,
+): HTMLElement[] {
   if (entries.length === 0) {
     return [el('p', 'fame-empty', 'No heroes have fallen yet. Those who do are remembered here.')];
   }
@@ -90,7 +149,6 @@ export function hallOfFameElements(entries: readonly ScoreEntry[], highlight = -
     const row = el('button', `fame-row${i === highlight ? ' current' : ''}`);
     row.type = 'button';
     row.dataset.nav = '';
-    row.setAttribute('aria-expanded', 'false');
     const main = el('span', 'fame-main');
     const who = [entry.race, entry.cls].filter(Boolean).join(' ');
     main.append(
@@ -98,19 +156,13 @@ export function hallOfFameElements(entries: readonly ScoreEntry[], highlight = -
       el('span', 'fame-who', `${who ? `${who} · ` : ''}Level ${entry.level}`),
       el('span', 'fame-fate', fateText(entry)),
     );
-    const details = el('span', 'fame-details');
-    details.hidden = true;
-    const facts: string[] = [`${entry.gold} gold`, `turn ${entry.turns}`];
-    if (entry.maxDepth > entry.depth) facts.push(`deepest ${entry.maxDepth * 50} ft`);
-    if (entry.maxLevel > entry.level) facts.push(`highest level ${entry.maxLevel}`);
-    if (entry.day) facts.push(entry.day);
-    details.textContent = facts.join(' · ');
-    main.append(details);
-    row.append(el('span', 'fame-rank', String(i + 1)), main, el('span', 'fame-points', entry.points.toLocaleString('en-GB')));
-    row.addEventListener('click', () => {
-      details.hidden = !details.hidden;
-      row.setAttribute('aria-expanded', String(!details.hidden));
-    });
+    row.append(
+      el('span', 'fame-rank', String(i + 1)),
+      main,
+      el('span', 'fame-points', entry.points.toLocaleString('en-GB')),
+      el('span', 'fame-open', '›'),
+    );
+    row.addEventListener('click', () => onOpen(entry, i));
     item.append(row);
     list.append(item);
   });

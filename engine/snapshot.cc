@@ -888,6 +888,37 @@ EMSCRIPTEN_KEEPALIVE char const *web_character_json()
 	json_int(json, "shots", p_ptr->num_fire);
 	json_int(json, "infra", p_ptr->see_infra * 10);
 	json_int(json, "maxDepth", max_dlv[dungeon_type]);
+
+	auto const &s_info = game->s_info;
+	auto const &s_descriptors = game->edit_data.s_descriptors;
+	json_key(json, "skills");
+	json += '[';
+	bool first = true;
+	for (std::size_t i = 0; i < s_info.size() && i < s_descriptors.size(); i++)
+	{
+		if (s_info[i].hidden || s_info[i].value == 0 || s_descriptors[i].name.empty()) continue;
+		if (!first) json += ',';
+		first = false;
+		json += '{';
+		json_str(json, "name", s_descriptors[i].name);
+		json_int(json, "value", s_info[i].value, false);
+		json += '}';
+	}
+	json += "],";
+
+	auto const &ab_info = game->edit_data.ab_info;
+	json_key(json, "abilities");
+	json += '[';
+	first = true;
+	for (auto const ability : p_ptr->abilities)
+	{
+		if (ability >= ab_info.size()) continue;
+		if (!first) json += ',';
+		first = false;
+		json_string(json, ab_info[ability].name);
+	}
+	json += "],";
+
 	json_int(json, "turn", turn, false);
 	json += '}';
 

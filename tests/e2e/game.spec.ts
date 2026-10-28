@@ -49,10 +49,10 @@ test('creates a character, saves and quits to the title, then continues', async 
 
   await page.locator('#toolbar [data-action="menu"]').click();
   await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
-  const reloaded = page.waitForEvent('load');
   await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
-  await reloaded;
+  await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
   await waitForEngine(page);
+  expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1);
 
   const resume = page.locator('#title-screen .title-choice').first();
   await expect(resume).toContainText('Continue');
@@ -150,7 +150,6 @@ test('a new hero can take the name of one who has fallen', async ({ page }) => {
   await waitForScreen(page, /really want to quit/);
   await sendText(page, 'y');
   await waitForScreen(page, /verify QUITTING/);
-  const reloaded = page.waitForEvent('load', { timeout: 120_000 });
   await sendText(page, '@');
   const finish = page.locator('#toolbar [data-action="finish"]');
   for (let i = 0; i < 40 && !(await finish.isVisible()); i++) {
@@ -159,7 +158,7 @@ test('a new hero can take the name of one who has fallen', async ({ page }) => {
     await page.waitForTimeout(500);
   }
   await finish.click();
-  await reloaded;
+  /* The title returns in the same page, with a fresh engine. */
   await waitForEngine(page);
   await expect(page.locator('#title-screen .title-choice').first()).not.toContainText('Continue');
 
@@ -170,9 +169,9 @@ test('a new hero can take the name of one who has fallen', async ({ page }) => {
   await expect(page.locator('.director .birth-summary')).toContainText('Fallen');
 });
 
-/** Writes a scores file with two fallen heroes over the one tome2 keeps in browser storage. */
-async function seedScores(page: Page): Promise<void> {
-  await page.evaluate(() => {
+/** Writes a scores file with two fallen heroes (or the ones given) over the one tome2 keeps in browser storage. */
+async function seedScores(page: Page, extra: Record<string, string>[] = []): Promise<void> {
+  await page.evaluate((extra) => {
     const fs = window.__tome!.engine.fs!;
     const find = (dir: string, depth: number): string | null => {
       if (depth > 4) return null;
@@ -191,6 +190,7 @@ async function seedScores(page: Page): Promise<void> {
     if (!path) throw new Error('No scores file');
     const fields: [string, number][] = [['what', 8], ['pts', 10], ['gold', 10], ['turns', 10], ['day', 10], ['who', 16], ['', 8], ['pr', 3], ['ps', 3], ['pc', 3], ['pcs', 3], ['lev', 4], ['dun', 4], ['maxLev', 4], ['maxDun', 4], ['', 4], ['', 4], ['quest', 4], ['', 4], ['how', 32]];
     const heroes: Record<string, string>[] = [
+      ...extra,
       { what: '2.4.0', pts: '     2210', gold: '      420', turns: '   120400', day: '10/25/26', who: 'Bilbo', pr: ' 0', ps: ' 0', pc: ' 0', pcs: ' 0', lev: '  7', dun: '  3', maxLev: '  8', maxDun: '  3', quest: '  0', how: 'a Cave spider' },
       { what: '2.4.0', pts: '      310', gold: '      100', turns: '    20400', day: '10/27/26', who: 'Grodon', pr: ' 0', ps: ' 0', pc: ' 0', pcs: ' 0', lev: '  2', dun: '  0', maxLev: '  2', maxDun: '  0', quest: '  0', how: 'Grip, Farmer Maggot\'s Dog' },
     ];
@@ -204,7 +204,7 @@ async function seedScores(page: Page): Promise<void> {
       }
     });
     fs.writeFile(path, bytes);
-  });
+  }, extra);
 }
 
 test('the Hall of Fame follows the end of an adventure and stays on the title screen', async ({ page }) => {
@@ -224,6 +224,13 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('.termview')).toContainText('Your adventure has ended');
   await expect(page.locator('.termview')).toContainText('Your tale');
   await expect(page.locator('.termview .tale-tip')).toContainText('Next time');
+  await expect(page.locator('#hud')).toBeHidden();
+  await page.locator('#toolbar [data-action="fallen"]').click();
+  await expect(page.locator('.sheet-title')).toHaveText('Retiree');
+  await page.locator('.sheet .segment', { hasText: 'Gear' }).click();
+  await expect(page.locator('.sheet .sheet-section h3').first()).toHaveText('Equipment');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
   await finish.click();
 
   await expect(page.locator('.termview')).toContainText('Hall of Fame');
@@ -232,12 +239,14 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('.termview .fame-row').nth(1)).toHaveClass(/is-active/);
   await page.keyboard.press('Enter');
-  await expect(page.locator('.termview .fame-row').nth(1).locator('.fame-details')).toBeVisible();
-  await expect(page.locator('.termview')).toContainText('Hall of Fame');
-  const reloaded = page.waitForEvent('load', { timeout: 120_000 });
+  await expect(page.locator('.sheet-title')).toHaveText('Grodon');
+  await expect(page.locator('.sheet .fallen-cause')).toContainText("Killed by Grip, Farmer Maggot's Dog");
   await page.keyboard.press('Escape');
-  await reloaded;
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  await expect(page.locator('.termview')).toContainText('Hall of Fame');
+  await page.keyboard.press('Escape');
   await waitForEngine(page);
+  expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1);
 
   await page.locator('#title-screen [data-link="fame"]').click();
   await expect(page.locator('.sheet-title')).toHaveText('Hall of Fame');
@@ -246,6 +255,53 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('.sheet')).toContainText('Career');
   await expect(page.locator('.sheet .deed')).toHaveCount(15);
   await expect(page.locator('.sheet .stat', { hasText: 'Fallen' })).toContainText('1');
+  await page.locator('.sheet .fame-row').first().click();
+  await expect(page.locator('.sheet-title')).toHaveText('Bilbo');
+  await page.locator('.sheet-back').click();
+  await expect(page.locator('.sheet-title')).toHaveText('Hall of Fame');
+});
+
+test('a fallen hero can be looked back on and begun anew from the Hall of Fame', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Anew');
+  const stats = await page.evaluate(() => window.__tome!.engine.character()!.stats.map((s) => s.use));
+  const turn = await page.evaluate(() => window.__tome!.engine.snapshot()!.turn);
+  await seedScores(page, [
+    { what: '2.4.0', pts: '     9000', gold: '      100', turns: String(turn), day: '10/28/26', who: 'Anew', pr: ' 0', ps: ' 0', pc: ' 0', pcs: ' 0', lev: '  1', dun: '  0', maxLev: '  1', maxDun: '  0', quest: '  0', how: 'Quitting' },
+  ]);
+
+  await sendText(page, '\\Q');
+  await waitForScreen(page, /really want to quit/);
+  await sendText(page, 'y');
+  await waitForScreen(page, /verify QUITTING/);
+  await sendText(page, '@');
+  const finish = page.locator('#toolbar [data-action="finish"]');
+  for (let i = 0; i < 40 && !(await finish.isVisible()); i++) {
+    if (await page.locator('.prompt-card.death').isVisible()) {
+      await page.locator('.prompt-card.death .card-button', { hasText: 'Your hero' }).click();
+      await expect(page.locator('.sheet-title')).toHaveText('Anew');
+      await page.keyboard.press('Escape');
+      await page.locator('.prompt-card.death .card-button.primary').click();
+    }
+    if (/-more-/.test((await screenText(page)).split('\n')[0] ?? '')) await sendText(page, '\u001b');
+    await page.waitForTimeout(500);
+  }
+  await finish.click();
+  await expect(page.locator('.termview .fame-row').first()).toHaveClass(/current/);
+  await page.locator('.termview .fame-row').first().click();
+  await expect(page.locator('.sheet-title')).toHaveText('Anew');
+  await expect(page.locator('.sheet .fallen-cause')).toHaveText('Retired from adventuring');
+  await page.locator('.sheet-action.primary', { hasText: 'Begin anew as Anew' }).click();
+
+  await expect(page.locator('#title-screen .title-intro')).toBeVisible({ timeout: 60_000 });
+  await page.waitForTimeout(400);
+  await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
+  await expect.poll(() => inDungeon(page), { timeout: 30_000 }).toBe(true);
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
+  await expect(page.locator('#hud .hud-player .name')).toHaveText('Anew');
+  expect(await page.evaluate(() => window.__tome!.engine.character()!.stats.map((s) => s.use))).toEqual(stats);
 });
 
 test('the name prompt sits at the top of the screen, clear of the keyboard', async ({ page }) => {

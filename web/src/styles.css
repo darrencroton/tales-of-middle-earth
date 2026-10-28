@@ -303,9 +303,17 @@ html.keyboard-open .sheet-layer {
   letter-spacing: 0.04em;
 }
 
-.prompt-card.death .card-hint {
-  margin-bottom: 0.9rem;
+.prompt-card.death .card-fate {
+  margin: 0 0 0.4rem;
   color: var(--fg);
+}
+
+.prompt-card.death .card-hint {
+  margin: 0 0 0.9rem;
+}
+
+.prompt-card.death .card-buttons {
+  justify-content: center;
 }
 
 .card-hint {
@@ -700,7 +708,8 @@ html.keyboard-open .sheet-layer {
 
 
   #app.mode-title,
-  #app.mode-screen {
+  #app.mode-screen,
+  #app.ended {
     grid-template-columns: 0 minmax(0, 1fr) auto;
   }
 
@@ -758,7 +767,7 @@ html.keyboard-open .sheet-layer {
   left: 0;
   right: 0;
   bottom: 0;
-  max-height: 100%;
+  max-height: calc(100% - 1rem);
   margin: 0 auto;
   width: min(100%, 44rem);
   border: 1px solid rgb(217 164 65 / 0.45);
@@ -787,6 +796,7 @@ html.keyboard-open .sheet-layer {
 .termview.full .tv-header {
   width: min(100%, 48rem);
   margin: 0 auto;
+  padding-top: 1.4rem;
   border-bottom: 0;
 }
 
@@ -1428,6 +1438,10 @@ html.keyboard-open .sheet-layer {
   margin-bottom: 0.9rem;
 }
 
+.action-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .action-button {
   padding: 0.3rem 0.6rem;
 }
@@ -1654,7 +1668,7 @@ html.keyboard-open .sheet-layer {
 }
 
 .sheet-ask .sheet-body {
-  padding: 0 0.9rem 0.9rem;
+  padding: 4px 0.9rem 0.9rem;
 }
 
 .sheet-ask.has-error .sheet-subtitle {
@@ -2090,9 +2104,22 @@ html.keyboard-tight .prompt-card.text .card-title {
   text-wrap: balance;
 }
 
+/* Intro lines rise without blur. */
 .title-intro .title-verse span,
 .title-intro .title-verse cite {
+  animation-name: title-intro-rise;
   animation-duration: 1000ms;
+}
+
+@keyframes title-intro-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .title-intro-hint {
@@ -2445,6 +2472,133 @@ html.keyboard-tight .prompt-card.text .card-title {
   margin: 0.2rem 0 0;
   color: var(--muted);
   text-transform: capitalize;
+}
+
+.gameover-fate {
+  margin: 0.9rem 0 0;
+  color: #f0a08f;
+  font-family: var(--serif);
+  font-size: var(--fs-large);
+  font-weight: 600;
+}
+
+.gameover-where {
+  margin: 0.2rem 0 0;
+  color: var(--faint);
+  font-size: var(--fs-small);
+}
+
+.gameover-fight {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.gameover-look {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fallen-foe {
+  align-self: flex-start;
+  max-width: 100%;
+  border-color: rgb(208 96 79 / 0.6);
+}
+
+.last-words {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 2px solid rgb(208 96 79 / 0.55);
+  background: rgb(255 255 255 / 0.03);
+  border-radius: 0 8px 8px 0;
+  list-style: none;
+  font-family: var(--mono);
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.last-words li {
+  opacity: 0.7;
+  overflow-wrap: anywhere;
+}
+
+.last-words li.final {
+  opacity: 1;
+}
+
+.gear-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--button);
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.gear-strip-label {
+  margin-left: auto;
+  padding-left: 0.4rem;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+/* A fallen hero's sheet */
+
+.fallen .segmented {
+  margin-bottom: 0.9rem;
+}
+
+.fallen-fate {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+}
+
+.fallen-cause {
+  margin: 0;
+  color: #f0a08f;
+  font-family: var(--serif);
+  font-size: var(--fs-large);
+  font-weight: 600;
+}
+
+.fallen-where {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.skill-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+
+.skill-values dt {
+  overflow-wrap: anywhere;
+}
+
+.skill-values dd {
+  margin: 0;
+  color: var(--accent-bright);
+  font-family: var(--mono);
+  text-align: right;
+}
+
+.fame-open {
+  flex: 0 0 auto;
+  color: var(--faint);
+  font-size: var(--fs-large);
 }
 
 .gameover-date {
@@ -2809,14 +2963,19 @@ html.keyboard-tight .prompt-card.text .card-title {
   font-size: var(--fs-small);
 }
 
-/* The hero has died: the world drains of colour behind the death card. */
+/* The hero has died: the world drains of colour behind the death card, still clear enough to see the last fight. */
 #app.fallen #map {
-  filter: grayscale(0.85) brightness(0.45) sepia(0.35) hue-rotate(-20deg) saturate(2.2);
+  filter: grayscale(0.6) brightness(0.7) sepia(0.3) hue-rotate(-20deg) saturate(1.6);
   transition: filter 1600ms ease;
 }
 
+/* The end of the game: the summary and Hall of Fame take the whole screen. */
+#app.ended #hud {
+  display: none;
+}
+
 #app.fallen .feel-vignette {
-  opacity: 0.8;
+  opacity: 0.55;
   background: radial-gradient(ellipse at center, transparent 35%, rgb(90 0 0 / 0.75) 100%);
   animation: none;
 }

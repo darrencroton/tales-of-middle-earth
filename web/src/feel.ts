@@ -6,22 +6,28 @@ import { el, iconText } from './ui/dom.ts';
 /** Health below this fraction of the maximum counts as low. */
 export const LOW_HEALTH = 0.3;
 
+/** Where on the surface a new place is: the world map, a town, or the land around. */
+export type Surface = 'world' | 'town' | 'land';
+
 export type FeelEvent =
   | { kind: 'hurt'; fraction: number }
   | { kind: 'levelup'; level: number; skillPoints: number }
-  | { kind: 'depth'; place: string; feet: number; deeper: boolean }
+  | { kind: 'depth'; place: string; feet: number; deeper: boolean; surface: Surface }
   | { kind: 'gold'; amount: number }
   | { kind: 'exp'; amount: number };
 
-type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints'>;
+type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown'>;
 
 /** What changed for the player between two states, as feedback events. */
 export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
   if (!prev || prev.name !== next.name) return [];
   const events: FeelEvent[] = [];
-  if (next.depth !== prev.depth || next.dungeon !== prev.dungeon || next.wild !== prev.wild) {
+  const level = next.depth !== prev.depth || next.dungeon !== prev.dungeon || next.wild !== prev.wild;
+  const area = next.depth === 0 && !!prev.area && !!next.area && prev.area !== next.area;
+  if (level || area) {
     const place = next.depth > 0 && !next.wild ? next.dungeon : depthLabel(next);
-    events.push({ kind: 'depth', place, feet: next.wild ? 0 : next.depth * 50, deeper: next.depth > prev.depth });
+    const surface: Surface = next.wild ? 'world' : next.inTown ? 'town' : 'land';
+    events.push({ kind: 'depth', place, feet: next.wild ? 0 : next.depth * 50, deeper: next.depth > prev.depth, surface });
   }
   if (next.lev > prev.lev) events.push({ kind: 'levelup', level: next.lev, skillPoints: next.skillPoints ?? 0 });
   else if (next.exp > prev.exp) events.push({ kind: 'exp', amount: next.exp - prev.exp });
@@ -134,6 +140,12 @@ export class GameFeel {
   }
 
   /** Compares with the last state seen and plays any feedback. */
+  /** Forgets the last hero, for a new game in the same page. */
+  reset(): void {
+    this.prev = null;
+    this.layer.classList.remove('low');
+  }
+
   update(player: Tracked): void {
     const events = playerEvents(this.prev, player);
     this.prev = { ...player };
@@ -175,9 +187,11 @@ export class GameFeel {
       case 'depth': {
         const where = event.feet
           ? `${event.feet} ft · ${event.deeper ? 'Descending' : 'Climbing up'}`
-          : event.place === 'Town'
+          : event.surface === 'town'
             ? 'A moment of rest'
-            : 'Out in the open';
+            : event.surface === 'world'
+              ? 'Middle-earth lies before you'
+              : 'Out in the wilds';
         this.showBanner(event.place, where, 'depth');
         break;
       }
