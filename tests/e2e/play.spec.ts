@@ -78,6 +78,16 @@ test('tapping the map travels there along a known path', async ({ page }) => {
     await expect(page.locator('#toast'), context).toContainText(/near|hurt|blocked/);
   }
   expect(after, context).toBeLessThan(before);
+
+  /* A tap on the hero waits a turn where they stand. */
+  await dismissMore(page);
+  await waitAtCommand(page);
+  const here = await playerPos(page);
+  const turn = await page.evaluate(() => window.__tome!.engine.snapshot()!.turn);
+  const self = await page.evaluate(([x, y]) => window.__tome!.mapCellCentre(x, y), [here.x, here.y] as const);
+  await page.mouse.click(self.x, self.y);
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.snapshot()!.turn)).toBeGreaterThan(turn);
+  expect(await playerPos(page)).toEqual(here);
 });
 
 test('items are used, wielded and taken off from the native inventory', async ({ page }) => {

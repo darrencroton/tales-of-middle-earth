@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, situationalActions } from '../../web/src/play/actions.ts';
+import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, pickupCommand, situationalActions, waitCommand } from '../../web/src/play/actions.ts';
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
@@ -20,6 +20,15 @@ describe('prompt classification', () => {
     assert.equal(classifyPrompt('Direction (Escape to cancel)? '), 'direction');
     assert.equal(classifyPrompt('(Inven: b-e, ESC) Wear/Wield which item?'), 'item');
     assert.equal(classifyPrompt('You see a Kobold.'), 'other');
+  });
+});
+
+describe('staying still', () => {
+  it('waits without picking up, whichever way always_pickup is set', () => {
+    assert.equal(waitCommand(false), ',');
+    assert.equal(waitCommand(true), 'g');
+    assert.notEqual(waitCommand(false), pickupCommand(false));
+    assert.notEqual(waitCommand(true), pickupCommand(true));
   });
 });
 

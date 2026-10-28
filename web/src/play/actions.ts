@@ -57,6 +57,11 @@ export function pickupCommand(alwaysPickup: boolean): string {
   return alwaysPickup ? ',' : 'g';
 }
 
+/** Stays still for a turn without picking anything up: the other key of the pair. */
+export function waitCommand(alwaysPickup: boolean): string {
+  return alwaysPickup ? 'g' : ',';
+}
+
 export function commandKeys(def: Pick<CommandDef, 'command' | 'then' | 'pickup'>, alwaysPickup = false): number[] {
   const command = def.pickup ? pickupCommand(alwaysPickup) : def.command;
   return [KEY_BACKSLASH, ...keyCodes(command), ...keyCodes(def.then ?? '')];
