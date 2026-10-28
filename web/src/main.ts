@@ -16,7 +16,7 @@ import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
 import { approachTarget, edgeCell, forgetUnseen, isKnown, STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
-import { Explore, isBesideFeature, isLandmarkFeature, landmarkName, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
+import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
 import { CAVE_MARK, isHostile, LAYER_MASK, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
 import {
@@ -787,20 +787,9 @@ function enterLevel(key: string, next: { dungeon: number; depth: number }): void
   if (heroMemory && keepsVisits(key)) for (const cell of heroMemory.visited[key] ?? []) exploreSkip.add(cell);
 }
 
-function featureName(snap: LevelSnapshot, index: number): string {
-  return features[snap.feat[index]]?.name ?? '';
-}
-
-/** Landmarks the hero has stood on or beside, and items the hero has stood on (or dropped), count as visited. */
+/** Items the hero has stood on (or dropped) count as visited. */
 function noteVisited(snap: LevelSnapshot): void {
   if (snap.floorObjects > 0) exploreSkip.add(snap.py * snap.width + snap.px);
-  for (let y = snap.py - 1; y <= snap.py + 1; y++) {
-    for (let x = snap.px - 1; x <= snap.px + 1; x++) {
-      if (x < 0 || y < 0 || x >= snap.width || y >= snap.height) continue;
-      const i = y * snap.width + x;
-      if (featureRoles.landmark[snap.feat[i]]) exploreSkip.add(i);
-    }
-  }
 }
 
 /** Keeps the grids of an area of the land the hero has seen, and restores those tome2 has forgotten. */
@@ -837,7 +826,7 @@ function updateMapMemory(snap: LevelSnapshot): void {
 }
 
 /* What each terrain feature means to exploring, by feature index (built with the materials). */
-let featureRoles: { down: boolean[]; up: boolean[]; landmark: boolean[]; beside: boolean[] } = { down: [], up: [], landmark: [], beside: [] };
+let featureRoles: { down: boolean[]; up: boolean[] } = { down: [], up: [] };
 
 function explorePlan(): ExplorePlan {
   const heading = (lastSnap?.depth ?? 0) > 0 ? (heroMemory?.heading ?? 'down') : 'down';
@@ -846,8 +835,6 @@ function explorePlan(): ExplorePlan {
     skip: exploreSkip,
     heading,
     isExit: role(featureRoles[heading]),
-    isLandmark: role(featureRoles.landmark),
-    besideLandmark: role(featureRoles.beside),
     anchor: exploreAnchor,
     collectItems: alwaysPickup(),
   };
@@ -893,8 +880,6 @@ function refresh(): void {
     featureRoles = {
       down: features.map((f) => WAY_ON.down.test(f.name.toLowerCase())),
       up: features.map((f) => WAY_ON.up.test(f.name.toLowerCase())),
-      landmark: features.map((f) => isLandmarkFeature(f.name)),
-      beside: features.map((f) => isBesideFeature(f.name)),
     };
     audio.setDoors(doorKinds(features, FB_DOOR, FB_NO_WALK));
     map.setMaterials(materials);
@@ -1403,11 +1388,9 @@ function stepTravel(): void {
       ? 'It is too dark to explore. Tap Light to light your way.'
       : step.creature
         ? `You stop: ${titleName(step.creature)} is near.`
-        : step.reason === 'landmark' && step.place !== undefined
-          ? `You come to ${landmarkName(featureName(ctx.snap, step.place))}.`
-          : step.reason === 'arrived' && travelApproximate
-            ? STOP_MESSAGES.closest
-            : STOP_MESSAGES[step.reason];
+        : step.reason === 'arrived' && travelApproximate
+          ? STOP_MESSAGES.closest
+          : STOP_MESSAGES[step.reason];
     const message = [reason, spotted].filter(Boolean).join(' ');
     stopAutomation(message || null, step.reason);
     return;
@@ -1462,7 +1445,7 @@ function spottedText(): string | null {
 
 /**
  * Walks to unexplored places until something needs attention; on an
- * explored level, tours its landmarks and ends at the way on, which a
+ * explored level, goes to the way on, which a
  * further press takes.
  */
 function startExplore(): void {

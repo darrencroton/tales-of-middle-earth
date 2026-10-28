@@ -19,10 +19,6 @@ export interface ExplorePlan {
   skip: Set<number>;
   /** The way on, where exploring ends once nothing else is left. */
   isExit(index: number): boolean;
-  /** Places worth a visit once the level is explored: shops, fountains, altars, gates. */
-  isLandmark?(index: number): boolean;
-  /** Landmarks visited from a cell beside them (stepping onto a shop door goes inside). */
-  besideLandmark?(index: number): boolean;
   /** Which way the way on leads, for the message at the end. */
   heading?: 'down' | 'up';
   /** Where exploring began: the map fills outwards from here. */
@@ -31,11 +27,11 @@ export interface ExplorePlan {
   collectItems?: boolean;
 }
 
-export type StopKind = 'item' | 'frontier' | 'landmark' | 'exit';
+export type StopKind = 'item' | 'frontier' | 'exit';
 
 export interface ExploreStop extends Point {
   kind: StopKind;
-  /** The cell that counts as done on arrival (the landmark itself when visited from beside it). */
+  /** The cell that counts as done on arrival. */
   mark: number;
   /** Beyond the anchor's reach (an edge of unexplored space or an item). */
   far?: boolean;
@@ -102,9 +98,9 @@ function stopAt(snap: LevelSnapshot, cell: number, kind: StopKind, mark = cell):
  * to collect), filling the map outwards from the anchor: a place scores its
  * steps from the hero plus `ANCHOR_WEIGHT` times its steps from the anchor
  * (counting at most `ANCHOR_REACH`), so the rooms and side passages near
- * where exploring began are seen before the far end of a corridor. Once none are left, the nearest landmark not
- * yet visited; and last the nearest way on (which may be where the hero
- * stands). Null when nothing is left within reach. With `throughCreatures`
+ * where exploring began are seen before the far end of a corridor. Once
+ * none are left, the nearest way on (which may be where the hero stands).
+ * Null when nothing is left within reach. With `throughCreatures`
  * creatures in view do not block the way.
  */
 export function nextStop(snap: LevelSnapshot, materials: readonly Material[], plan: ExplorePlan, throughCreatures = false): ExploreStop | null {
@@ -134,31 +130,6 @@ export function nextStop(snap: LevelSnapshot, materials: readonly Material[], pl
   }
   if (best >= 0) return { ...stopAt(snap, best, bestKind), far: bestAway >= ANCHOR_REACH };
 
-  if (plan.isLandmark) {
-    let landmark: ExploreStop | null = null;
-    let landmarkDepth = Infinity;
-    for (let i = 0; i < depth.length; i++) {
-      if (plan.skip.has(i) || !known(snap, i) || !plan.isLandmark(i)) continue;
-      const beside = plan.besideLandmark?.(i) ?? false;
-      let cell = !beside && depth[i] >= 0 ? i : -1;
-      if (cell < 0) {
-        const x = i % width;
-        const y = (i - x) / width;
-        for (let ny = y - 1; ny <= y + 1; ny++) {
-          for (let nx = x - 1; nx <= x + 1; nx++) {
-            if (nx < 0 || ny < 0 || nx >= width || ny >= snap.height || (nx === x && ny === y)) continue;
-            const n = ny * width + nx;
-            if (depth[n] >= 0 && (cell < 0 || depth[n] < depth[cell])) cell = n;
-          }
-        }
-      }
-      if (cell < 0 || cell === start || depth[cell] >= landmarkDepth) continue;
-      landmark = stopAt(snap, cell, 'landmark', i);
-      landmarkDepth = depth[cell];
-    }
-    if (landmark) return landmark;
-  }
-
   let exit = -1;
   for (let i = 0; i < depth.length; i++) {
     if (depth[i] < 0 || plan.skip.has(i) || !plan.isExit(i)) continue;
@@ -171,8 +142,8 @@ export function nextStop(snap: LevelSnapshot, materials: readonly Material[], pl
  * Explores the level one step at a time, from one edge of unexplored space
  * to the next (see `nextStop`), collecting items on the way when the hero
  * picks things up, and choosing again as soon as its goal has been seen.
- * It stops as travel does (a creature, being hurt), at each landmark once
- * the level is explored, and at the way on.
+ * It stops as travel does (a creature, being hurt), and once the level is
+ * explored it goes to the way on.
  */
 export class Explore {
   private travel: Travel | null = null;
@@ -236,7 +207,6 @@ export class Explore {
       const arrived = step.reason === 'arrived';
       if (stop.kind === 'exit' && arrived) return { kind: 'stop', reason: this.exitReason };
       this.plan.skip.add(stop.mark);
-      if (arrived && stop.kind === 'landmark') return { kind: 'stop', reason: 'landmark', place: stop.mark };
     }
     return { kind: 'stop', reason: 'blocked' };
   }
@@ -247,25 +217,3 @@ export const WAY_ON: Readonly<Record<'down' | 'up', RegExp>> = {
   down: /down staircase|shaft down|quest down|path to the next/,
   up: /up staircase|shaft up|quest up|path to the previous/,
 };
-
-const LANDMARK = /fountain|altar|jumpgate|^building$|quest entrance|straight road startpoint/;
-const BESIDE = /^building$/;
-
-/** Terrain worth a visit once a level is explored. */
-export function isLandmarkFeature(name: string): boolean {
-  return LANDMARK.test(name.toLowerCase());
-}
-
-/** Landmarks visited from beside them: stepping onto a shop door goes inside. */
-export function isBesideFeature(name: string): boolean {
-  return BESIDE.test(name.toLowerCase());
-}
-
-/** How a landmark is named when exploring reaches it. */
-export function landmarkName(name: string): string {
-  const lower = name.toLowerCase();
-  if (BESIDE.test(lower)) return 'a shop door';
-  if (/straight road/.test(lower)) return 'the start of the Straight Road';
-  if (/^altar of/.test(lower)) return `the ${name}`;
-  return `${/^[aeiou]/.test(lower) ? 'an' : 'a'} ${/^[A-Z][a-z]+ [A-Z]/.test(name) ? name : lower}`;
-}

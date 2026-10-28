@@ -74,7 +74,7 @@ test('levels are made anew on each visit when they are not kept', async ({ page 
   expect((await level(page)).terrain).not.toBe(before.terrain);
 });
 
-test('a mapped level leaves exploring nothing but its landmarks and the way on, which turns upward on the way back', async ({ page }) => {
+test('a mapped level leaves exploring nothing but the way on, which turns upward on the way back', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Pathfinder');

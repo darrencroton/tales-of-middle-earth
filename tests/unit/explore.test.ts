@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Explore, landmarkName, nextStop, type ExplorePlan } from '../../web/src/play/explore.ts';
+import { Explore, nextStop, type ExplorePlan } from '../../web/src/play/explore.ts';
 import { decodeRuns, encodeRuns, levelKey, mergeKnown, missingCells } from '../../web/src/play/mapmemory.ts';
 import { approachTarget, inferredFloor } from '../../web/src/play/travel.ts';
 import { fightingStyle, suggestedGear } from '../../web/src/play/items.ts';
@@ -77,7 +77,7 @@ describe('explore target', () => {
 describe('explore', () => {
   const plan = (exit: number, extra: Partial<ExplorePlan> = {}): ExplorePlan => ({ skip: new Set(), isExit: (i) => i === exit, ...extra });
 
-  it('heads for the way down once everything is explored, then stops there', () => {
+  it('heads straight for the way on once everything is explored, then stops there', () => {
     const snap = level(['######', '#@..>#', '######']);
     const exit = 1 * 6 + 4;
     const explore = new Explore(plan(exit));
@@ -111,24 +111,10 @@ describe('explore', () => {
     assert.equal(explore.step(ctx(2, 1)).kind, 'keys');
   });
 
-  it('tours unvisited landmarks nearest first, then ends at the way on', () => {
+  it('goes straight to the way on past fountains and shops once the level is explored', () => {
     const snap = level(['##########', '#F.@...F>#', '##########']);
-    const near = 1 * 10 + 1;
-    const far = 1 * 10 + 7;
     const exit = 1 * 10 + 8;
-    const tour = plan(exit, { isLandmark: (i) => i === near || i === far });
-    assert.deepEqual(nextStop(snap, materials, tour), { x: 1, y: 1, kind: 'landmark', mark: near });
-    tour.skip.add(near);
-    assert.deepEqual(nextStop(snap, materials, tour), { x: 7, y: 1, kind: 'landmark', mark: far });
-    tour.skip.add(far);
-    assert.deepEqual(nextStop(snap, materials, tour), { x: 8, y: 1, kind: 'exit', mark: exit });
-  });
-
-  it('visits a shop door from beside it', () => {
-    const snap = level(['#######', '#@...F#', '#######']);
-    const door = 1 * 7 + 5;
-    const stop = nextStop(snap, materials, plan(-1, { isLandmark: (i) => i === door, besideLandmark: (i) => i === door }));
-    assert.deepEqual(stop, { x: 4, y: 1, kind: 'landmark', mark: door });
+    assert.deepEqual(nextStop(snap, materials, plan(exit)), { x: 8, y: 1, kind: 'exit', mark: exit });
   });
 
   it('says when a creature is all that stands in the way', () => {
@@ -136,16 +122,6 @@ describe('explore', () => {
     snap.layer[1 * 7 + 3] = LAYER_MONSTER;
     const ctx = { snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp: 10 };
     assert.deepEqual(new Explore(plan(-1)).step(ctx), { kind: 'stop', reason: 'creatureInWay' });
-  });
-
-  it('stops at each landmark it reaches', () => {
-    const snap = level(['######', '#@.F>#', '######']);
-    const fountain = 1 * 6 + 3;
-    const explore = new Explore(plan(1 * 6 + 4, { isLandmark: (i) => i === fountain }));
-    const ctx = (px: number) => ({ snap: { ...snap, px, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp: 10 });
-    assert.equal(explore.step(ctx(1)).kind, 'keys');
-    assert.equal(explore.step(ctx(2)).kind, 'keys');
-    assert.deepEqual(explore.step(ctx(3)), { kind: 'stop', reason: 'landmark', place: fountain });
   });
 });
 
@@ -201,13 +177,6 @@ describe('map memory', () => {
     assert.equal(levelKey({ dungeon: 0, depth: 0, wild: 0, wx: 12, wy: 40 }), 'land:12,40');
     assert.equal(levelKey({ dungeon: 0, depth: 0, wild: 1, wx: 12, wy: 40 }), null);
     assert.equal(levelKey({ dungeon: 4, depth: 3, wild: 0, quest: 2 }), null);
-  });
-
-  it('names landmarks', () => {
-    assert.equal(landmarkName('fountain'), 'a fountain');
-    assert.equal(landmarkName('Altar of Being'), 'the Altar of Being');
-    assert.equal(landmarkName('Void Jumpgate'), 'a Void Jumpgate');
-    assert.equal(landmarkName('Building'), 'a shop door');
   });
 });
 

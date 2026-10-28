@@ -28,7 +28,6 @@ export type TravelStopReason =
   | 'explored'
   | 'exit'
   | 'exitUp'
-  | 'landmark'
   | 'closest'
   | 'creatureInWay';
 
@@ -39,8 +38,6 @@ export type TravelStep =
       reason: TravelStopReason;
       /** The creature that stopped travel. */
       creature?: string;
-      /** The landmark reached (cell index). */
-      place?: number;
     };
 
 export interface TravelContext {
@@ -61,7 +58,6 @@ export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
   explored: 'Nothing left to explore within reach.',
   exit: 'Explored. The way down is here.',
   exitUp: 'Explored. The way up is here.',
-  landmark: null,
   closest: 'This is as far as you know the way.',
   creatureInWay: 'A creature stands in the way.',
 };
