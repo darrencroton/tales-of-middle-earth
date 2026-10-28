@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { COMMAND_GROUPS, commandKeys, contextActions, situationalActions } from '../../web/src/play/actions.ts';
+import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, situationalActions } from '../../web/src/play/actions.ts';
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
@@ -323,6 +323,20 @@ describe('actions', () => {
     const sheet = COMMAND_GROUPS.flatMap((g) => g.commands);
     assert.equal(sheet.find((c) => c.label === 'Inventory')?.native, 'inventory');
     assert.equal(sheet.find((c) => c.label === 'Look')?.native, 'look');
+  });
+
+  it('names the way to and from the world map on the surface', () => {
+    const labels = (where: Parameters<typeof commandGroups>[0]) => commandGroups(where).flatMap((g) => g.commands.map((c) => c.label));
+    assert.ok(labels('dungeon').includes('Go up') && labels('dungeon').includes('Go down'));
+    assert.ok(labels('land').includes('World map') && labels('land').includes('Go down') && !labels('land').includes('Go up'));
+    assert.ok(labels('worldMap').includes('Walk here') && !labels('worldMap').includes('Go up') && !labels('worldMap').includes('Go down'));
+
+    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const map = contextActions({ ...base, worldMap: true });
+    assert.equal(map.find((a) => a.id === 'walkhere')?.primary, true);
+    assert.deepEqual(map.find((a) => a.id === 'walkhere')?.effect, { kind: 'keys', keys: [92, ...keys('>')] });
+    assert.ok(!map.some((a) => a.id === 'explore'));
+    assert.ok(contextActions({ ...base, town: true }).some((a) => a.id === 'dungeon'));
   });
 
   it('recognises quantity and typed-text prompts', () => {

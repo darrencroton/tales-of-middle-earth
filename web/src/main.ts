@@ -10,7 +10,7 @@ import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
-import { COMMAND_GROUPS, commandKeys, contextActions, pickupCommand, type Action, type CommandDef, type NativeView } from './play/actions.ts';
+import { commandGroups, commandKeys, contextActions, pickupCommand, type Action, type CommandDef, type NativeView } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
@@ -46,7 +46,7 @@ import { cleanPrompt, describableRange, isEmptyFile, isFileViewer } from './ui/p
 import { openStoreItem, parseStore, type StoreScreen } from './ui/store.ts';
 import { abilitiesElements, abilityMoveKeys, parseAbilities, parseSkills, skillMoveKeys, skillsElements } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
-import { parseTomb, tombElements } from './ui/gameover.ts';
+import { hallOfFameElements, heroEntry, isHallOfFame, parseTomb, tombElements } from './ui/gameover.ts';
 import { fullSheetElements, parseFullSheet, sheetPageKeys, SHEET_PAGES, type FullSheet } from './ui/charsheet.ts';
 
 declare global {
@@ -83,6 +83,8 @@ const CTRL_X = 0x18;
 const SPACE = 0x20;
 /* Visible height lost to an on-screen keyboard before the layout makes room for it. */
 const KEYBOARD_MIN_PX = 120;
+/* Below this visible height above the keyboard, text questions shrink to fit. */
+const KEYBOARD_TIGHT_PX = 320;
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -504,6 +506,10 @@ function updatePromptCard(): void {
     return;
   }
   const kind = currentPrompt();
+  if (kind === 'yesno' && /Dump the screen\?/.test(rowZeroText()) && !macros.running && engine.pendingKeys === 0) {
+    promptCard.showDeath(engine.gameState(0)?.player?.diedFrom ?? '');
+    return;
+  }
   const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
   const show =
     CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !picker && !title.isVisible && engine.pendingKeys === 0;
@@ -592,11 +598,17 @@ function refresh(): void {
     const abilities = skills ? null : parseAbilities(rows);
     const fullSheet = skills || abilities ? null : parseFullSheet(rows);
     const tomb = parseTomb(rows);
+    const fame = !tomb && ended && isHallOfFame(rows);
     if (tomb) ended = true;
     if (termView.visible && currentBox()) {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
       termView.renderCustom({ layout: 'full', title: 'Your adventure has ended' }, JSON.stringify(tomb), () => tombElements(tomb));
+    } else if (fame) {
+      const player = lastState?.player;
+      const scores = engine.scores();
+      const hero = player ? heroEntry(scores, { name: player.name, level: player.lev }) : -1;
+      termView.renderCustom({ layout: 'full', title: 'Hall of Fame' }, `fame:${scores.length}:${hero}`, () => hallOfFameElements(scores, hero));
     } else if (fullSheet) {
       renderFullSheet(fullSheet);
     } else if (abilities) {
@@ -771,7 +783,7 @@ function updateActionBar(force = false): void {
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
-      screen: !termView.visible ? null : termView.options().length ? 'options' : /Skills Screen/.test(rowZeroText()) ? 'skills' : /Abilities Screen/.test(rowZeroText()) ? 'abilities' : /'p' for previous, 'n' for next/.test(buffer.screenText()) ? 'sheet' : /You may now dump a character record/.test(buffer.screenText()) ? 'gameover' : /Help file '/.test(rowZeroText()) ? 'help' : isFileViewer(rowZeroText()) ? 'file' : null,
+      screen: !termView.visible ? null : termView.options().length ? 'options' : /Skills Screen/.test(rowZeroText()) ? 'skills' : /Abilities Screen/.test(rowZeroText()) ? 'abilities' : /'p' for previous, 'n' for next/.test(buffer.screenText()) ? 'sheet' : /You may now dump a character record/.test(buffer.screenText()) || (ended && /Hall of Fame/.test(rowZeroText())) ? 'gameover' : /Help file '/.test(rowZeroText()) ? 'help' : isFileViewer(rowZeroText()) ? 'file' : null,
       looking,
       overview: map.overview,
       atCommand: !!snap?.atCommand,
@@ -781,6 +793,7 @@ function updateActionBar(force = false): void {
       gear: gearSuggestion()?.kind ?? null,
       foe: foe && snap ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
       town: !!snap?.inDungeon && snap.depth === 0 && !snap.wild,
+      worldMap: !!snap?.inDungeon && snap.depth === 0 && snap.wild,
     });
   currentActions = actions;
   const key = actions.map((a) => `${a.id}:${a.label}`).join(',');
@@ -869,7 +882,9 @@ function openCommands(): void {
       api.send(commandKeys(def, alwaysPickup()));
     }
   };
-  for (const group of COMMAND_GROUPS) {
+  const snap = lastSnap;
+  const where = !snap?.inDungeon || snap.depth > 0 ? 'dungeon' : snap.wild ? 'worldMap' : 'land';
+  for (const group of commandGroups(where)) {
     const sectionEl = el('section', 'sheet-section');
     const grid = el('div', 'command-grid');
     for (const def of group.commands) {
@@ -1364,6 +1379,7 @@ const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.
   onSettings: () => openSettingsSheet(),
   onSaves: () => openSavesMenu(),
   onMusic: () => openSoundtrack(sheets, audio),
+  onFame: () => openHallOfFame(),
   onHidden: () => {
     dirty = true;
     requestFrame();
@@ -1406,6 +1422,15 @@ function shortStandaloneView(): boolean {
   return missing > 0 && top > 0 && Math.abs(missing - top) <= 2;
 }
 
+/* Height of the view without the on-screen keyboard, for the current width. */
+let fullHeight = 0;
+let fullWidth = 0;
+
+function editingText(): boolean {
+  const active = document.activeElement;
+  return active instanceof HTMLTextAreaElement || (active instanceof HTMLInputElement && active.type === 'text');
+}
+
 /**
  * The app fills the screen with CSS; only while the on-screen keyboard
  * covers part of it does it shrink to the visible area above the keyboard.
@@ -1414,8 +1439,15 @@ function updateAppHeight(): void {
   const root = document.documentElement;
   const viewport = window.visualViewport;
   const visible = viewport?.height ?? window.innerHeight;
-  const keyboard = visible < window.innerHeight - KEYBOARD_MIN_PX;
+  const layout = Math.max(window.innerHeight, root.clientHeight);
+  if (window.innerWidth !== fullWidth) {
+    fullWidth = window.innerWidth;
+    fullHeight = 0;
+  }
+  fullHeight = editingText() ? Math.max(fullHeight, layout) : Math.max(layout, visible);
+  const keyboard = visible < fullHeight - KEYBOARD_MIN_PX;
   root.classList.toggle('keyboard-open', keyboard);
+  root.classList.toggle('keyboard-tight', keyboard && visible < KEYBOARD_TIGHT_PX);
   if (keyboard) {
     root.style.setProperty('--app-height', `${Math.round(visible)}px`);
     root.style.setProperty('--app-top', `${Math.round(viewport?.offsetTop ?? 0)}px`);
@@ -1429,6 +1461,8 @@ new ResizeObserver(() => layout()).observe(stage);
 window.visualViewport?.addEventListener('resize', updateAppHeight);
 window.visualViewport?.addEventListener('scroll', updateAppHeight);
 window.addEventListener('resize', updateAppHeight);
+document.addEventListener('focusin', updateAppHeight);
+document.addEventListener('focusout', () => window.setTimeout(updateAppHeight, 100));
 window.addEventListener('orientationchange', () => window.setTimeout(updateAppHeight, 250));
 updateAppHeight();
 
@@ -1583,11 +1617,17 @@ function saveAndQuit(): void {
   runMacro(quitMacro());
 }
 
-/** Leaves the end-of-game screens and returns to the title. */
+/** Moves on from the end-of-game summary to the Hall of Fame, and from there to the title. */
 function finishGame(): void {
   quitting = true;
   stopAutomation(null, 'quit');
-  runMacro(finishMacro());
+  runMacro(isHallOfFame(bufferRows(buffer, 0, buffer.rows - 1)) ? finishMacro() : leaveTombMacro());
+}
+
+/* Stops at the Hall of Fame, which has its own Continue; the game ends at once when there are no scores to show. */
+function* leaveTombMacro(): Macro {
+  let s = yield [KEY_ESCAPE];
+  for (let i = 0; i < 8 && /-more-/.test(s.prompt); i++) s = yield [KEY_ESCAPE];
 }
 
 function* finishMacro(): Macro {
@@ -1618,6 +1658,13 @@ function startImport(): void {
   sheets.closeAll();
   importFile.value = '';
   importFile.click();
+}
+
+/** The Hall of Fame from the title screen. */
+function openHallOfFame(): void {
+  const body = el('div', 'fame');
+  body.append(...hallOfFameElements(engine.scores()));
+  sheets.open({ title: 'Hall of Fame', subtitle: 'Heroes of Middle-earth, remembered', body, className: 'sheet-fame' });
 }
 
 function openSavesMenu(): void {
@@ -1814,7 +1861,6 @@ function acquireSessionLock(): Promise<boolean> {
 layout();
 const params = new URLSearchParams(location.search);
 const engineArgs = params.has('wizard') ? ['-w'] : [];
-director.module = params.get('module') === 'theme' ? 'Theme' : 'ToME';
 acquireSessionLock().then((acquired) => {
   if (!acquired) {
     title.showEnd('ToME 2 is already open in another tab or window. Close it, then reload this page.', true, [

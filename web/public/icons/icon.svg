@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#000"/>
-  <rect x="24" y="24" width="464" height="464" rx="64" fill="none" stroke="#d9a441" stroke-width="12"/>
-  <text x="256" y="300" text-anchor="middle" dominant-baseline="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="340" font-weight="bold" fill="#d9a441">@</text>
-</svg>

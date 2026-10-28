@@ -7,6 +7,7 @@ import {
   type InventoryState,
   type LevelSnapshot,
   type MonsterRecall,
+  type ScoreEntry,
 } from './render/snapshot.ts';
 import type { TerminalBuffer } from './terminal.ts';
 import { syncToStorage, type EmscriptenFS } from './saves.ts';
@@ -46,6 +47,7 @@ interface EmscriptenModule {
   _web_character_json(): number;
   _web_set_auto_more(on: number): void;
   _web_place_json(): number;
+  _web_scores_json(): number;
 }
 
 interface ModuleOptions {
@@ -135,6 +137,12 @@ export class Engine {
   character(): CharacterState | null {
     const json = this.callJson<CharacterState>((mod) => mod._web_character_json());
     return json && json.ready ? json : null;
+  }
+
+  /** The Hall of Fame, best first (empty before the engine runs or when there are no scores). */
+  scores(): ScoreEntry[] {
+    const json = this.callJson<ScoreEntry[]>((mod) => mod._web_scores_json());
+    return Array.isArray(json) ? json : [];
   }
 
   /** What the player knows about an item: inventory index, or minus the floor object index. */

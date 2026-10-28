@@ -29,13 +29,11 @@ Every level is generated fresh, every hero is different, and death is permanent.
 - **Nearly 900 creatures** and **almost 200 legendary artifacts** to find, wield and lose.
 - **Quests, towns and shops** across the whole of Middle-earth.
 
-Prefer a world closer to the books? Choose **Theme module** on the title screen for an alternative take on Middle-earth.
-
 <table>
   <tr>
-    <td width="33%"><img src="docs/images/intro.jpg" alt="The opening: a Tolkien quote fades in over the title and rising embers" /></td>
     <td width="33%"><img src="docs/images/creation.jpg" alt="Character creation: choosing a High-Elf from a grid of races, with a description card" /></td>
     <td width="33%"><img src="docs/images/town.jpg" alt="Bree by day: shaded tiles, townsfolk, the HUD with health, mana and sanity bars, and the smart toolbar" /></td>
+    <td width="33%"><img src="docs/images/dungeon.jpg" alt="Mount Doom: rivers of lava glow in the dark while a pack of hounds and a golem close in" /></td>
   </tr>
   <tr>
     <td width="33%"><img src="docs/images/character.jpg" alt="The character sheet: attributes, combat and progress at a glance" /></td>
@@ -62,7 +60,7 @@ This is the full ToME 2 game, with an interface designed from scratch for phones
 
 **Fights you can feel.** Damage numbers float off wounded foes, the screen flashes red when you're hit, and banners celebrate a new level or a deeper descent.
 
-**Music for every place.** The soundtrack is composed live on your device as you play, so it is never quite the same twice. It is built from a handful of leitmotifs that follow you through the story: the hero's horn call opens the game, becomes a walking song on the road and a fanfare in Minas Anor; the Bree jig slows to a fireside lullaby in a safe haven and turns sly and minor for thieves; the Dwarf march rings out in Khazad-dûm and falls to slow drums in the deep of Moria; the Shadow's theme marches in Mordor, whispers in Dol Guldur and blazes at Mount Doom. When you move on, the music finishes its phrase and turns into the new key through a pivot chord rather than stopping dead. It swells when danger is near and muffles to a heartbeat when you are badly hurt, and sound effects bring every swing, creaking door, clinking coin and spell to life. Every theme can be heard from **Soundtrack** on the title screen.
+**Music for every place.** The soundtrack is composed live as you play, so it is never quite the same twice. Its leitmotifs — the hero's horn call, the Bree jig, the Dwarf march, the Shadow's theme — are recast for each place you visit and swell when danger is near, while sound effects bring every swing, door and spell to life. Hear every theme from **Soundtrack** on the title screen.
 
 **Your way.** Portrait or landscape, phone, tablet or desktop. Four text sizes, adjustable animation, separate music and sound volumes, classic ASCII symbols if you prefer them, and full keyboard support with all the original ToME keys.
 

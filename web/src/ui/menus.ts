@@ -168,8 +168,19 @@ export function openMessage(sheets: Sheets, title: string, message: string): voi
   sheets.open({ title, body, actions: [{ label: 'OK', primary: true, run: () => sheets.back() }] });
 }
 
-/** Asks for one line of text; resolves null if cancelled. */
-export function askText(sheets: Sheets, title: string, label: string, initial = '', maxLength = 60): Promise<string | null> {
+/**
+ * A line of text in a compact card at the top of the screen, so the
+ * on-screen keyboard never covers it. `label` is the question; an
+ * `error` from a previous answer replaces it.
+ */
+export function askText(
+  sheets: Sheets,
+  title: string,
+  label: string,
+  initial = '',
+  maxLength = 60,
+  error = '',
+): Promise<string | null> {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (value: string | null) => {
@@ -178,17 +189,19 @@ export function askText(sheets: Sheets, title: string, label: string, initial = 
       resolve(value);
     };
     const form = el('form', 'ask-text');
-    const caption = el('label', undefined, label);
     const input = el('input');
     input.type = 'text';
     input.value = initial;
     input.maxLength = maxLength;
+    input.placeholder = label;
     input.autocomplete = 'off';
     input.spellcheck = false;
+    input.setAttribute('aria-label', label);
     input.setAttribute('autocapitalize', 'words');
     input.enterKeyHint = 'done';
-    caption.append(input);
-    form.append(caption);
+    const ok = el('button', 'sheet-action primary', 'OK');
+    ok.type = 'submit';
+    form.append(input, ok);
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       finish(input.value.trim());
@@ -196,11 +209,9 @@ export function askText(sheets: Sheets, title: string, label: string, initial = 
     });
     sheets.open({
       title,
+      subtitle: error || (initial ? label : undefined),
       body: form,
-      actions: [
-        { label: 'Cancel', run: () => sheets.back() },
-        { label: 'OK', primary: true, run: () => form.requestSubmit() },
-      ],
+      className: error ? 'sheet-ask has-error' : 'sheet-ask',
       onClose: () => finish(null),
     });
     requestAnimationFrame(() => {
