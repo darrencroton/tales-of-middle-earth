@@ -326,9 +326,14 @@ test('spells are cast from the Magic sheet, and recent ones are offered first', 
   await expect(page.locator('#toolbar [data-action="cast"]')).toBeVisible();
   await expect(page.locator('#toolbar [data-action="recast"]')).toContainText('Manathrust');
   await expect(page.locator('#toolbar [data-action="equip"]')).toHaveCount(0);
+  const mana = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.csp ?? 0);
+  const before = await mana();
   await page.locator('#toolbar [data-action="recast"]').click();
-  await waitForScreen(page, /^Direction/);
-  await page.keyboard.press('Escape');
+  /* Aimed at the nearest foe when one is in view, otherwise tome2 asks for a target. */
+  await expect
+    .poll(async () => /^Direction/.test(await screenText(page)) || (await mana()) < before, { timeout: 20_000 })
+    .toBe(true);
+  if (/^Direction/.test(await screenText(page))) await page.keyboard.press('Escape');
   await dismissMore(page);
   await waitAtCommand(page);
 

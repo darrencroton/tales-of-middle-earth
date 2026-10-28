@@ -229,7 +229,7 @@ export function skillTableElements(table: SkillTable, selected: number, onTap: (
 /** The whole abilities list with the selected ability's description and what it needs. */
 export function abilityTableElements(table: AbilityTable, selected: number, onTap: (index: number) => void): HTMLElement[] {
   const current = table.abilities[selected];
-  const needs = current && !current.known && current.needs.length ? `Needs ${current.needs.join(', ')}.` : '';
+  const needs = current && !current.known && current.needs.length && !/prereq/i.test(current.desc) ? `Needs ${current.needs.join(', ')}.` : '';
   const out: HTMLElement[] = [detail(current?.name ?? '', [current?.desc ?? '', needs])];
   table.abilities.forEach((ability, i) => {
     const state = ability.known ? 'max' : ability.learnable ? 'normal' : 'untrained';
