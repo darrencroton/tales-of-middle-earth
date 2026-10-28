@@ -153,7 +153,8 @@ const noticed = new Set<number>();
 /* Map memory: the level exploring is on (`levelKey`, or a stand-in where there is none), the hero's memory and the land area's remembered grids. */
 let exploreLevel: string | null = null;
 let exploreLevelDepth = -1;
-let exploreLevelDungeon = -1;
+/** Exploring's visits on this level are kept between visits: on the land, and on dungeon levels tome2 keeps. */
+let exploreKeepsVisits = false;
 const mapMemory = new MapMemoryStore();
 let heroMemory: HeroMemory | null = null;
 let heroMemoryId = '';
@@ -743,11 +744,6 @@ function memoryHeroId(): string | null {
   return `${player.name}#${(place.heroId >>> 0).toString(36)}`;
 }
 
-/** Exploring's visits are kept between visits on the land, and on dungeon levels while levels are kept. */
-function keepsVisits(key: string | null): key is string {
-  return !!key && (key.startsWith('land:') || (key.startsWith('level:') && settings.persistentLevels));
-}
-
 /** Puts what the hero remembers of the current level into the store, and the store into storage. */
 function persistMapMemory(): void {
   if (heroMemory) {
@@ -755,27 +751,25 @@ function persistMapMemory(): void {
       mapMemory.setArea(heroMemory, landMemory.key, landMemory.width, landMemory.height, landMemory.mask);
       landMemory.changed = false;
     }
-    if (keepsVisits(exploreLevel)) mapMemory.setVisited(heroMemory, exploreLevel, exploreSkip);
+    if (exploreLevel && exploreKeepsVisits) mapMemory.setVisited(heroMemory, exploreLevel, exploreSkip);
   }
   mapMemory.save();
 }
 
-/** Which way the hero is now heading, from the level left and the level entered; null keeps it. */
-function headingInto(next: { dungeon: number; depth: number }): 'down' | 'up' | null {
-  if (next.depth === 0) return 'down';
-  if (exploreLevel === null) return null;
-  if (next.dungeon !== exploreLevelDungeon || exploreLevelDepth <= 0) return 'down';
-  if (next.depth === exploreLevelDepth) return null;
-  return next.depth > exploreLevelDepth ? 'down' : 'up';
+/** Which way the hero is now heading, from the depth left and the depth entered (tome2 depths hold across dungeons); null keeps it. */
+function headingInto(depth: number): 'down' | 'up' | null {
+  if (depth === 0) return 'down';
+  if (exploreLevel === null || depth === exploreLevelDepth) return null;
+  return depth > exploreLevelDepth ? 'down' : 'up';
 }
 
-function enterLevel(key: string, next: { dungeon: number; depth: number }): void {
+function enterLevel(key: string, next: Place): void {
   persistMapMemory();
-  const heading = headingInto(next);
+  const heading = headingInto(next.depth);
   if (heroMemory && heading) mapMemory.setHeading(heroMemory, heading);
   exploreLevel = key;
   exploreLevelDepth = next.depth;
-  exploreLevelDungeon = next.dungeon;
+  exploreKeepsVisits = key.startsWith('land:') || !!next.kept;
   exploreSkip.clear();
   noticed.clear();
   landMemory = null;
@@ -784,7 +778,7 @@ function enterLevel(key: string, next: { dungeon: number; depth: number }): void
   exploreAnchor = null;
   exploreLastStop = null;
   exploreSeenItems.clear();
-  if (heroMemory && keepsVisits(key)) for (const cell of heroMemory.visited[key] ?? []) exploreSkip.add(cell);
+  if (heroMemory && exploreKeepsVisits) for (const cell of heroMemory.visited[key] ?? []) exploreSkip.add(cell);
 }
 
 /** Items the hero has stood on (or dropped) count as visited. */
@@ -2104,7 +2098,10 @@ toolbar.addEventListener('pointerdown', (e) => {
 
 function openSettingsSheet(): void {
   openSettings(sheets, settings, (next) => {
-    if (settings.persistentLevels && !next.persistentLevels && heroMemory) mapMemory.forgetLevels(heroMemory);
+    if (settings.persistentLevels && !next.persistentLevels) {
+      if (heroMemory) mapMemory.forgetLevels(heroMemory);
+      if (exploreLevel?.startsWith('level:')) exploreKeepsVisits = false;
+    }
     settings = next;
     engine.setPersistentLevels(settings.persistentLevels);
     saveSettings(settings);
@@ -2139,6 +2136,7 @@ function saveAndQuit(): void {
   }
   quitting = true;
   stopAutomation(null, 'quit');
+  persistMapMemory();
   showToast('Saving…');
   runMacro(quitMacro());
 }
@@ -2177,7 +2175,7 @@ function returnToTitle(): void {
   exploreLastStop = null;
   exploreSeenItems.clear();
   exploreLevelDepth = -1;
-  exploreLevelDungeon = -1;
+  exploreKeepsVisits = false;
   heroMemory = null;
   heroMemoryId = '';
   landMemory = null;

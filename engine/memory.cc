@@ -19,8 +19,13 @@
 #include "game.hpp"
 #include "hooks.hpp"
 #include "level_data.hpp"
+#include "loadsave.hpp"
+#include "monster_race.hpp"
+#include "monster_race_flag.hpp"
 #include "player_type.hpp"
+#include "quest_type.hpp"
 #include "random_quest.hpp"
+#include "tables.hpp"
 #include "util.hpp"
 #include "variable.hpp"
 
@@ -47,6 +52,19 @@ int persistent_applied = -1;
 bool forget_pending = false;
 bool hooks_added = false;
 
+/* The level the hero is on, noted before a command can move them off it. */
+byte here_dungeon = 0;
+int here_depth = 0;
+
+/* A level key whose save extension is taken away while tome2 saves the level being left under it. */
+struct Suspended
+{
+	std::size_t dungeon;
+	int depth;
+	boost::optional<std::string> ext;
+};
+boost::optional<Suspended> suspended;
+
 /* Grids for web_mark_known, filled by the frontend. */
 std::vector<int32_t> mark_buf;
 
@@ -72,10 +90,18 @@ bool eligible_depth(std::size_t d, int depth)
 	return depth > 0 && !(d == DUNGEON_ANGBAND && depth >= ANGBAND_FINAL_DEPTH);
 }
 
-/* Levels tome2 must make afresh: quests place their monsters each time a level is built. */
+/* Levels tome2 must make afresh: quests place their monsters or vaults each time a level is built. */
 bool quest_level_here()
 {
 	if (p_ptr->inside_quest || is_quest(dun_level)) return true;
+
+	auto const &hobbit = quest[QUEST_HOBBIT];
+	if (dungeon_type == DUNGEON_MAZE && hobbit.status == QUEST_STATUS_TAKEN && dun_level == hobbit.data[0]) return true;
+
+	auto const &thrain = quest[QUEST_THRAIN];
+	if (dungeon_type == DUNGEON_DOL_GULDUR && dun_level == thrain.data[0] && !thrain.data[1] &&
+	    thrain.status >= QUEST_STATUS_TAKEN && thrain.status < QUEST_STATUS_FINISHED) return true;
+
 	if (dun_level < 1 || dun_level >= MAX_RANDOM_QUEST) return false;
 	auto const &q = random_quests[dun_level];
 	return (game->dungeon_flags & DF_PRINCIPAL) && q.type && !q.done;
@@ -114,9 +140,14 @@ void apply_persistence()
 	forget_pending = !on;
 }
 
-/* Deletes the kept levels of the hero being played. */
+/* Deletes the kept levels of the hero being played, and lets the uniques kept on them appear again. */
 void forget_levels()
 {
+	for (auto &r: game->edit_data.r_info)
+	{
+		if (r.flags & RF_UNIQUE) r.on_saved = false;
+	}
+
 	auto const &d_info = game->edit_data.d_info;
 	for (std::size_t d = 0; d < d_info.size(); d++)
 	{
@@ -142,8 +173,52 @@ void remember_seen()
 	}
 }
 
+void note_here()
+{
+	if (!character_dungeon || p_ptr->leaving) return;
+	here_dungeon = dungeon_type;
+	here_depth = dun_level;
+}
+
+/*
+ * Saves the level being left under its own key. tome2 saves it only after
+ * the move, when a branch staircase has already changed the dungeon (and
+ * leaving a dungeon has made it the wilderness), so it would be written
+ * under another dungeon's key, or not at all; that wrong key's extension is
+ * suspended until the next level is built.
+ */
+void save_left_level()
+{
+	if (here_depth <= 0) return;
+	if (dungeon_type != here_dungeon && !suspended)
+	{
+		auto &by_depth = game->edit_data.d_info[dungeon_type].level_data_by_depth;
+		auto it = by_depth.find(here_depth);
+		if (it != by_depth.end() && it->second.save_extension)
+		{
+			suspended = Suspended { dungeon_type, here_depth, it->second.save_extension };
+			it->second.save_extension = boost::none;
+		}
+	}
+	byte const d = dungeon_type;
+	s16b const depth = dun_level;
+	dungeon_type = here_dungeon;
+	dun_level = here_depth;
+	save_dungeon();
+	dungeon_type = d;
+	dun_level = depth;
+	here_depth = 0;
+}
+
 bool level_begin_hook(void *, void *, void *)
 {
+	if (suspended)
+	{
+		game->edit_data.d_info[suspended->dungeon].level_data_by_depth[suspended->depth].save_extension = suspended->ext;
+		suspended = boost::none;
+	}
+	here_dungeon = dungeon_type;
+	here_depth = dun_level;
 	if (persistent_applied != 1) return false;
 	if (!eligible_dungeon(dungeon_type) || !eligible_depth(dungeon_type, dun_level)) return false;
 	keep_level(dungeon_type, dun_level, !quest_level_here());
@@ -153,6 +228,8 @@ bool level_begin_hook(void *, void *, void *)
 bool end_turn_hook(void *, void *, void *)
 {
 	remember_seen();
+	if (p_ptr->leaving) save_left_level();
+	else note_here();
 	return false;
 }
 
@@ -174,6 +251,7 @@ void web_memory_tick()
 		forget_levels();
 		forget_pending = false;
 	}
+	note_here();
 	remember_seen();
 }
 

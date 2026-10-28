@@ -21,6 +21,8 @@ const FILE = 'mapmemory.json';
 /* Most areas and levels kept per hero; the oldest are dropped first. */
 const MAX_AREAS = 400;
 const MAX_LEVELS = 400;
+/* Most heroes remembered; the oldest are dropped first. */
+const MAX_HEROES = 20;
 
 export interface PlaceKeyInput {
   dungeon: number;
@@ -155,6 +157,8 @@ export class MapMemoryStore {
     if (!hero) {
       hero = newHero();
       this.data.heroes[id] = hero;
+      trim(this.data.heroes, MAX_HEROES);
+      this.dirty = true;
     }
     return hero;
   }

@@ -91,3 +91,41 @@ test('a mapped level leaves exploring nothing but the way on, which turns upward
   await jumpToLevel(page, 2);
   expect((await page.evaluate(() => window.__tome!.exploreStop()))?.heading).toBe('down');
 });
+
+test('the first level stays as it was left after a trip up to the land', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Homebody');
+  await jumpToLevel(page, 1);
+  const before = await level(page);
+  const left = await playerPos(page);
+
+  await jumpToLevel(page, 0);
+  const entrance = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const snap = tome.engine.snapshot()!;
+    const features = tome.engine.features();
+    for (let i = 0; i < snap.feat.length; i++) {
+      if (/down staircase/.test(features[snap.feat[i]].name) && snap.info[i] & 0x11) return { x: i % snap.width, y: Math.floor(i / snap.width) };
+    }
+    return null;
+  });
+  expect(entrance, 'no way down known on the land').not.toBeNull();
+  for (let i = 0; i < 12; i++) {
+    const here = await playerPos(page);
+    if (here.x === entrance!.x && here.y === entrance!.y) break;
+    await page.evaluate(() => window.__tome!.sendText('\u0001z'));
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await page.evaluate(([x, y]) => window.__tome!.tapCell(x, y), [entrance!.x, entrance!.y] as const);
+    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+  }
+  expect(await playerPos(page)).toEqual(entrance);
+
+  await page.evaluate(() => window.__tome!.sendText('\\>'));
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.snapshot()!.depth), { timeout: 30_000 }).toBe(1);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  expect((await level(page)).terrain).toBe(before.terrain);
+  expect(await playerPos(page)).toEqual(left);
+});

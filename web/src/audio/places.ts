@@ -14,6 +14,8 @@ export interface Place {
   wy?: number;
   /** Fixed at birth: tells apart heroes who share a name. */
   heroId?: number;
+  /** 1 when tome2 keeps this dungeon level as the hero leaves it. */
+  kept?: number;
   town: number;
   townDestroyed: number;
   quest: number;

@@ -983,6 +983,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_place_json()
 	seed_flavor().to_bytes(seed_bytes);
 	int32_t const hero_id = static_cast<int32_t>(seed_bytes[0] | (seed_bytes[1] << 8) | (seed_bytes[2] << 16) | (static_cast<uint32_t>(seed_bytes[3]) << 24));
 	json_int(json, "heroId", hero_id);
+	json_int(json, "kept", dun_level > 0 && get_dungeon_save_extension() ? 1 : 0);
 
 	/* tome2 keeps town_num from the last surface area, so dungeon towns come from the dungeon's own list. */
 	int town = 0;
