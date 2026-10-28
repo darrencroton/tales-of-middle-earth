@@ -89,6 +89,7 @@ npm run test:e2e       # slow (~30+ min for all projects in CI)
 - `feel.ts`: `playerEvents(prev, next)` (pure) → hurt flash, level-up/depth banners, gold float, low-health pulse; honours the animation setting.
 - `ui/coach.ts`: first-game tips (localStorage `tome2mobile.coach.v1`); e2e `createCharacter` dismisses it.
 - Map toolbar is capped at 7 buttons (`MAX_MAP_ACTIONS`); Look gives way first, Rest hides when a foe is adjacent. In town, Explore is replaced by Dungeon (travel to the nearest known way down); while resting or running the bar shows Stop, and a map tap also interrupts.
+- **Chronicle** (`play/chronicle.ts`, pure; stored by `ui/deeds.ts` `ChronicleStore` as `chronicle.json` next to the savefiles, so it is exported with them): `slainMonsters` (vanished + kill message), `extendStreak` (kills within `STREAK_TURNS` game turns → Double/Triple kill, Rampage), `record` (kills, legends, deepest, mightiest foe, close calls), `DEEDS`/`newDeeds`, `nextTimeTip`. `main.ts` `chronicleUpdate` runs each state; banners, kill rings, shake and deed toasts are in `feel.ts`; the end-of-game summary adds *Your tale*, and the title's Hall of Fame adds the career and deeds.
 - Attack targets the weakest adjacent hostile and the map brackets it in red (`map.setFoe`); creatures that lose health get a flash and a floating damage number (`showHits` in `main.ts`, `feel.floatAt`).
 
 ## Native views of tome2 screens

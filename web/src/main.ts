@@ -16,7 +16,7 @@ import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './p
 import { TargetPicker } from './play/targeting.ts';
 import { forgetUnseen, STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
 import { Explore, nearestReachable } from './play/explore.ts';
-import { isHostile, type GameState, type LevelSnapshot, type MonsterState } from './render/snapshot.ts';
+import { isHostile, type GameState, type LevelSnapshot, type MessageState, type MonsterState, type PlayerState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -34,7 +34,7 @@ import { GameFeel } from './feel.ts';
 import { Coach } from './ui/coach.ts';
 import { INVEN_WIELD, itemActions, itemMacro, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { openCharacter, openKnowledge } from './ui/character.ts';
-import { el, iconText } from './ui/dom.ts';
+import { el, iconText, section } from './ui/dom.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
 import { askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate } from './ui/menus.ts';
@@ -47,6 +47,8 @@ import { openStoreItem, parseStore, type StoreScreen } from './ui/store.ts';
 import { abilitiesElements, abilityMoveKeys, parseAbilities, parseSkills, skillMoveKeys, skillsElements } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
 import { hallOfFameElements, heroEntry, isHallOfFame, parseTomb, tombElements } from './ui/gameover.ts';
+import { careerElements, ChronicleStore, taleElements } from './ui/deeds.ts';
+import { extendStreak, newDeeds, record, slainMonsters, type Chronicle, type Slain, type Streak } from './play/chronicle.ts';
 import { fullSheetElements, parseFullSheet, sheetPageKeys, SHEET_PAGES, type FullSheet } from './ui/charsheet.ts';
 
 declare global {
@@ -603,7 +605,12 @@ function refresh(): void {
     if (termView.visible && currentBox()) {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
-      termView.renderCustom({ layout: 'full', title: 'Your adventure has ended' }, JSON.stringify(tomb), () => tombElements(tomb));
+      if (chronicles.fall(tomb.name)) chronicles.save();
+      const tale = chronicles.peek(tomb.name);
+      termView.renderCustom({ layout: 'full', title: 'Your adventure has ended' }, JSON.stringify(tomb), () => [
+        ...tombElements(tomb),
+        ...(tale ? taleElements(tale, tomb.cause, tomb.depth) : []),
+      ]);
     } else if (fame) {
       const player = lastState?.player;
       const scores = engine.scores();
@@ -654,7 +661,10 @@ function refresh(): void {
     forgetUnseen(noticed, state.monsters ?? []);
     hud.update(state, snap.py, snap.px);
     if (state.player) feel.update(state.player);
-    if (previous && previous.player?.name === state.player?.name) showHits(previous, state);
+    const sameHero = !!previous && previous.player?.name === state.player?.name;
+    const slain = sameHero ? slainMonsters(previous.monsters ?? [], state.monsters ?? [], freshMessages(previous, state)) : [];
+    if (sameHero) showHits(previous, state, slain);
+    if (state.player) chronicleUpdate(state.player, slain, snap.turn, sameHero && (previous.player?.chp ?? 0) > state.player.chp);
     const store = currentStore();
     if (store && !inStore) audio.cue('shop');
     inStore = !!store;
@@ -670,37 +680,72 @@ function refresh(): void {
   updateActionBar();
 }
 
-const KILLED = /\b(slain|destroyed|killed|dies|dissolves|shatters)\b/i;
+/** Messages that arrived between two states, newest first. */
+function freshMessages(previous: GameState, next: GameState): MessageState[] {
+  return (next.messages ?? []).slice(0, Math.max(0, (next.messageTotal ?? 0) - (previous.messageTotal ?? 0)));
+}
 
 /**
  * Marks creatures whose health dropped since the last state and floats the
  * damage over them; a creature that vanished with a kill message gets a
- * farewell instead.
+ * farewell and a ring in its colour instead.
  */
-function showHits(previous: GameState, next: GameState): void {
+function showHits(previous: GameState, next: GameState, slain: readonly Slain[]): void {
   if (mode !== 'map' || (next.player?.status.hallucinating ?? 0) > 0) return;
   const before = new Map((previous.monsters ?? []).map((m) => [m.id, m]));
-  const seen = new Set<number>();
   let marked = false;
   const mark = (point: MapPoint, text: string, kind: string) => {
     map.markHit(point);
     marked = true;
     const at = map.cellCentre(point.x, point.y);
     feel.floatAt(at.x, at.y, text, kind);
+    return at;
   };
   for (const m of next.monsters ?? []) {
-    seen.add(m.id);
     const was = before.get(m.id);
     if (was && m.hp < was.hp) mark(m, `−${was.hp - m.hp}`, isHostile(m) ? 'damage' : 'damage ally');
   }
-  const fresh = (next.messages ?? []).slice(0, Math.max(0, (next.messageTotal ?? 0) - (previous.messageTotal ?? 0)));
-  for (const was of before.values()) {
-    if (seen.has(was.id)) continue;
-    const name = was.name.toLowerCase();
-    if (fresh.some((m) => KILLED.test(m.text) && m.text.toLowerCase().includes(name))) mark(was, 'Slain', 'kill');
+  for (const s of slain) {
+    const at = mark(s, 'Slain', 'kill');
+    feel.ringAt(at.x, at.y, buffer.palette[s.attr] ?? '#ffd56a');
   }
   /* With animation off no frames are scheduled, so the flash is cleared explicitly. */
   if (marked) window.setTimeout(() => requestFrame(), HIT_FLASH_MS + 50);
+}
+
+/* Chronicle: kills, streaks, legends and deeds */
+
+let chronicle: Chronicle | null = null;
+let streak: Streak = { count: 0, lastTurn: 0 };
+
+function chronicleUpdate(player: PlayerState, slain: readonly Slain[], turn: number, hurt: boolean): void {
+  app.classList.toggle('fallen', !!player.dead);
+  if (player.dead) return;
+  if (chronicle?.name !== player.name) {
+    chronicle = chronicles.hero(player.name);
+    streak = { count: 0, lastTurn: 0 };
+  }
+  const hero = chronicle;
+  const before = JSON.stringify(hero);
+  const careerBefore = JSON.stringify(chronicles.career);
+  const next = extendStreak(streak, slain.length, turn);
+  streak = next.streak;
+  record(hero, chronicles.career, player, slain, streak.count, hurt);
+  const legend = slain.find((s) => s.unique);
+  if (legend) {
+    feel.announce(titleName(legend.name), 'A legend falls', 'legend');
+    feel.shake(0.7);
+  } else if (next.name) {
+    feel.announce(next.name, `${streak.count} foes in quick succession`, 'streak');
+  }
+  const deeds = newDeeds(hero, chronicles.career, chronicles.earned);
+  if (deeds.length) {
+    chronicles.award(hero, deeds);
+    if (deeds.length > 2) feel.showDeed(`${deeds.length} deeds earned`, deeds.map((d) => d.title).join(' · '));
+    else for (const deed of deeds) feel.showDeed(deed.title, deed.text);
+    audio.cue('levelup');
+  }
+  if (deeds.length || JSON.stringify(hero) !== before || JSON.stringify(chronicles.career) !== careerBefore) chronicles.save();
 }
 
 /* Shops */
@@ -1292,6 +1337,8 @@ const engine = new Engine(buffer, {
     requestFrame();
   },
   onIdle() {
+    /* Storage has been read from the browser by the time the engine first waits for a key. */
+    if (!chronicles.loaded) chronicles.load(engine.fs, engine.savePath);
     director.idle();
     refresh();
     dirty = false;
@@ -1372,6 +1419,7 @@ const director = new Director({
 });
 
 const feel = new GameFeel(byId<HTMLElement>('stage'), () => settings.animation);
+const chronicles = new ChronicleStore();
 const coach = new Coach(byId<HTMLElement>('stage'));
 const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
   onChoose: (choice) => director.choose(choice),
@@ -1670,7 +1718,7 @@ function startImport(): void {
 /** The Hall of Fame from the title screen. */
 function openHallOfFame(): void {
   const body = el('div', 'fame');
-  body.append(...hallOfFameElements(engine.scores()));
+  body.append(section('Fallen heroes', ...hallOfFameElements(engine.scores())), ...careerElements(chronicles));
   sheets.open({ title: 'Hall of Fame', subtitle: 'Heroes of Middle-earth, remembered', body, className: 'sheet-fame' });
 }
 
