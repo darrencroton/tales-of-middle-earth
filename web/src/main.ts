@@ -17,7 +17,7 @@ import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './p
 import { TargetPicker } from './play/targeting.ts';
 import { edgeCell, forgetUnseen, STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
 import { Explore, nearestReachable } from './play/explore.ts';
-import { isHostile, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry } from './render/snapshot.ts';
+import { isHostile, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -30,13 +30,15 @@ import { ANIMATION_FPS, applyTextSize, loadSettings, saveSettings, type Settings
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
 import { TitleScreen } from './title.ts';
 import { openSoundtrack } from './ui/soundtrack.ts';
+import { openMagic, RecentStore, usableRecents } from './ui/magic.ts';
+import { CastWatcher, fireMacro, recentLabel, recentMagicMacro, type RecentAction } from './play/recent.ts';
 import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
 import { GameFeel } from './feel.ts';
 import { Coach } from './ui/coach.ts';
-import { INVEN_WIELD, itemActions, itemMacro, SLOT_NAMES, suggestedGear, type GearSuggestion } from './play/items.ts';
+import { INVEN_AMMO, INVEN_BOW, INVEN_WIELD, itemActions, itemMacro, SLOT_NAMES, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { buildMemorial, entryKey, memorialKey, type Memorial } from './play/memorial.ts';
 import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
-import { openCharacter, openKnowledge } from './ui/character.ts';
+import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
 import { el, iconText, section } from './ui/dom.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
@@ -45,14 +47,15 @@ import { Sheets, type SheetTrail } from './ui/sheet.ts';
 import { bufferRows, parseRows, type ChoiceBlock, type OptionBlock } from './ui/termparse.ts';
 import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.ts';
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
+import type { PopAction } from './ui/popup.ts';
 import { cleanPrompt, describableRange, isEmptyFile, isFileViewer } from './ui/prompttext.ts';
 import { openStoreItem, parseStore, type StoreScreen } from './ui/store.ts';
-import { abilitiesElements, abilityMoveKeys, parseAbilities, parseSkills, skillMoveKeys, skillsElements } from './ui/skills.ts';
+import { parseAbilities, parseSkills } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
 import { hallOfFameElements, heroEntry, isHallOfFame, parseTomb, tombElements } from './ui/gameover.ts';
 import { careerElements, ChronicleStore } from './ui/deeds.ts';
 import { extendStreak, newChronicle, newDeeds, newMessages, nextTimeTip, record, slainMonsters, type Chronicle, type Slain, type Streak } from './play/chronicle.ts';
-import { fullSheetElements, parseFullSheet, sheetPageKeys, SHEET_PAGES, type FullSheet } from './ui/charsheet.ts';
+import { parseFullSheet } from './ui/charsheet.ts';
 
 declare global {
   interface Window {
@@ -192,6 +195,9 @@ const termView = new TermView(stage, () => buffer.palette, {
   onTapText() {
     continueIfWaiting();
   },
+  onClose() {
+    send([KEY_ESCAPE]);
+  },
 });
 
 const promptCard = new PromptCard(stage, (keys) => send(keys));
@@ -253,7 +259,71 @@ const api: GameApi = {
   },
   highlight: (point) => flash(point),
   askText: (title, label, initial) => askText(sheets, title, label, initial),
+  recent: () => recents.list(lastState?.player?.name ?? ''),
+  remember: (entry) => recents.remember(lastState?.player?.name ?? '', entry),
 };
+
+const recents = new RecentStore();
+const castWatcher = new CastWatcher();
+
+/** Casts a spell or uses a power again (aiming at the nearest foe when `aim`). */
+function runRecent(entry: RecentAction, aim = false): void {
+  const macro = recentMagicMacro(entry, aim);
+  if (!macro) return;
+  if (entry.kind === 'spell' || (entry.kind === 'power' && entry.power)) api.remember(entry);
+  if (entry.kind === 'power') castWatcher.expect(entry.skill);
+  sheets.closeAll();
+  if (!lastSnap?.atCommand) {
+    showToast('Finish what you are doing first.');
+    return;
+  }
+  runMacro(macro);
+}
+
+/* Spells carried, read once per game turn for the toolbar. */
+let spellsCache: { turn: number; spells: SpellState | null } | null = null;
+
+function currentSpells(): SpellState | null {
+  const turn = lastSnap?.turn ?? -1;
+  if (spellsCache?.turn !== turn) spellsCache = { turn, spells: engine.spells() };
+  return spellsCache.spells;
+}
+
+/** The spell or power to offer on the toolbar while a foe is in view. */
+function recastEntry(): RecentAction | null {
+  if (!lastSnap?.atCommand) return null;
+  const list = api.recent();
+  if (!list.some((e) => e.kind !== 'item')) return null;
+  return usableRecents(list, currentSpells())[0] ?? null;
+}
+
+/** A launcher with ammunition in the quiver. */
+function canFire(): boolean {
+  const equip = engine.inventory()?.equip ?? [];
+  const ready = (part: number) => equip.some((slot) => slot.part === part && !slot.empty && !!slot.name);
+  return ready(INVEN_BOW) && ready(INVEN_AMMO);
+}
+
+const character = new CharacterPanel(api, {
+  sendKeys: (keys) => send(keys),
+  source: (letter) => sheetSource(letter),
+  toast: (text) => showToast(text),
+  poke: () => {
+    if (!engine.awaitingInput || engine.pendingKeys > 0 || macros.running) return;
+    const screen = characterScreen();
+    character.step(screen);
+    character.render(screen);
+  },
+});
+
+/** What tome2 shows, for the character sheet's tabs. */
+function characterScreen(): CharacterScreen {
+  const rows = bufferRows(buffer, 0, buffer.rows - 1);
+  const skills = parseSkills(rows);
+  const abilities = skills ? null : parseAbilities(rows);
+  const sheet = skills || abilities ? null : parseFullSheet(rows);
+  return { skills, abilities, sheet, box: lastSnap?.icky ? findMessageBox(rows) : null, atCommand: !!lastSnap?.atCommand };
+}
 
 /** Closes the sheets; with `comeBack` they reopen once the game is back at the map. */
 function coverSheets(comeBack: boolean): void {
@@ -311,10 +381,24 @@ function openNative(view: NativeView): void {
       openInventory(api, 'equip');
       break;
     case 'character':
-      openCharacter(api);
+      character.open('summary');
       break;
     case 'skills':
-      api.command('G');
+      character.open('skills');
+      break;
+    case 'abilities':
+      character.open('abilities');
+      break;
+    case 'magic':
+      openMagic(api, api.recent(), { run: (entry) => runRecent(entry) });
+      break;
+    case 'recast': {
+      const entry = recastEntry();
+      if (entry) runRecent(entry, true);
+      break;
+    }
+    case 'fire':
+      runMacro(fireMacro());
       break;
     case 'knowledge':
       openKnowledge(api);
@@ -515,7 +599,7 @@ function currentBox(): MessageBox | null {
 }
 
 function updatePromptCard(): void {
-  const box = currentBox();
+  const box = character.hosting ? null : currentBox();
   if (box && !macros.running && engine.pendingKeys === 0) {
     promptCard.showBox(box);
     return;
@@ -539,17 +623,6 @@ function sheetSource(letter: string): string {
   const index = INVEN_WIELD + letter.charCodeAt(0) - 'a'.charCodeAt(0);
   const item = engine.inventory()?.equip.find((slot) => slot.i === index && slot.name);
   return item?.name ? titleName(item.name) : 'Equipment';
-}
-
-function renderFullSheet(sheet: FullSheet): void {
-  const tabs: TermViewTab[] = SHEET_PAGES.map((label, page) => ({
-    label,
-    active: page === sheet.page,
-    run: () => page !== sheet.page && send(keyCodes(sheetPageKeys(sheet.page, page))),
-  }));
-  termView.renderCustom({ layout: 'panel', title: 'Character sheet', tabs }, JSON.stringify(sheet), () =>
-    fullSheetElements(sheet, { send: (keys) => send(keyCodes(keys)), source: sheetSource }),
-  );
 }
 
 /** Reads engine state and decides how the screen is presented. */
@@ -612,14 +685,13 @@ function refresh(): void {
     setMode('overlay');
     const region = (base ? buffer.diffBounds(base, 1) : null) ?? { x0: 0, y0: 1, x1: buffer.cols - 1, y1: buffer.rows - 1 };
     const rows = bufferRows(buffer, 0, buffer.rows - 1);
-    const skills = parseSkills(rows);
-    const abilities = skills ? null : parseAbilities(rows);
-    const fullSheet = skills || abilities ? null : parseFullSheet(rows);
+    const screen = characterScreen();
+    const characterView = !!(screen.skills || screen.abilities || screen.sheet);
     const tomb = parseTomb(rows);
     const fame = !tomb && ended && isHallOfFame(rows);
     if (tomb) ended = true;
     app.classList.toggle('ended', !!tomb || fame);
-    if (termView.visible && currentBox()) {
+    if (termView.visible && currentBox() && !character.hosting) {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
       if (chronicles.fall(tomb.name)) chronicles.save();
@@ -641,32 +713,9 @@ function refresh(): void {
       termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero to look back on them' }, `fame:${scores.length}:${hero}`, () =>
         hallOfFameElements(scores, hero, (entry) => openFameHero(entry, true)),
       );
-    } else if (fullSheet) {
-      renderFullSheet(fullSheet);
-    } else if (abilities) {
-      termView.renderCustom(
-        { layout: 'panel', title: 'Abilities', badge: `${abilities.points} point${abilities.points === 1 ? '' : 's'} to spend` },
-        JSON.stringify(abilities),
-        () =>
-          abilitiesElements(abilities, (ability) => {
-            const keys = abilityMoveKeys(abilities, ability);
-            if (keys) send(keyCodes(keys));
-          }),
-      );
-    } else if (skills) {
-      termView.renderCustom(
-        { layout: 'panel', title: 'Skills', badge: `${skills.points} point${skills.points === 1 ? '' : 's'} to spend` },
-        JSON.stringify(skills),
-        () =>
-          skillsElements(skills, (skill) => {
-            if (skill.selected) {
-              if (skill.branch) send([KEY_ENTER]);
-            } else {
-              const keys = skillMoveKeys(skills, skill);
-              if (keys) send(keyCodes(keys));
-            }
-          }),
-      );
+    } else if (character.render(screen) || characterView) {
+      /* The character sheet shows these screens; one typed on the map opens it at the next idle. */
+      termView.hide();
     } else {
       termView.render(buffer, region, panelOptions('panel'));
     }
@@ -921,7 +970,7 @@ function updateActionBar(force = false): void {
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
       fallen: !!lastState?.player?.dead,
-      screen: !termView.visible ? null : termView.options().length ? 'options' : /Skills Screen/.test(rowZeroText()) ? 'skills' : /Abilities Screen/.test(rowZeroText()) ? 'abilities' : /'p' for previous, 'n' for next/.test(buffer.screenText()) ? 'sheet' : /You may now dump a character record/.test(buffer.screenText()) || (ended && /Hall of Fame/.test(rowZeroText())) ? 'gameover' : /Help file '/.test(rowZeroText()) ? 'help' : isFileViewer(rowZeroText()) ? 'file' : null,
+      screen: !termView.visible ? null : termView.options().length ? 'options' : /You may now dump a character record/.test(buffer.screenText()) || (ended && /Hall of Fame/.test(rowZeroText())) ? 'gameover' : /Help file '/.test(rowZeroText()) ? 'help' : isFileViewer(rowZeroText()) ? 'file' : null,
       looking,
       overview: map.overview,
       atCommand: !!snap?.atCommand,
@@ -930,10 +979,17 @@ function updateActionBar(force = false): void {
       alwaysPickup: alwaysPickup(),
       gear: gearSuggestion()?.kind ?? null,
       foe: foe && snap ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
+      foeInView: mode === 'map' && !!snap?.atCommand && (lastState?.monsters ?? []).some((m) => isHostile(m)),
+      recast: mode === 'map' && snap?.atCommand ? (() => {
+        const entry = recastEntry();
+        return entry ? recentLabel(entry) : null;
+      })() : null,
+      canFire: mode === 'map' && !!snap?.atCommand && canFire(),
       town: !!snap?.inDungeon && snap.depth === 0 && !snap.wild,
       worldMap: !!snap?.inDungeon && snap.depth === 0 && snap.wild,
     });
   currentActions = actions;
+  termView.setActions(mode === 'overlay' ? panelActions(actions) : []);
   const key = actions.map((a) => `${a.id}:${a.label}`).join(',');
   if (key === actionsKey && !force) return;
   actionsKey = key;
@@ -954,6 +1010,16 @@ function updateActionBar(force = false): void {
       return button;
     }),
   );
+}
+
+/* Toolbar actions a pop-up's own frame already offers (its close button) or that belong to the map. */
+const FRAME_ACTIONS = new Set(['menu', 'escape', 'keyboard', 'leave']);
+
+/** What a tome2 panel offers at its foot: the toolbar's actions for the screen, less those its frame covers. */
+function panelActions(actions: readonly Action[]): PopAction[] {
+  return actions
+    .filter((a) => !FRAME_ACTIONS.has(a.id))
+    .map((a) => ({ id: a.id, label: a.label, icon: a.icon, primary: a.primary, run: () => runAction(a) }));
 }
 
 function runAction(action: Action): void {
@@ -1003,7 +1069,7 @@ function alwaysPickup(): boolean {
 }
 
 /* Native views that open over the Commands sheet, so Back returns to it. */
-const STACKED_VIEWS = new Set<NativeView>(['inventory', 'equipment', 'character', 'knowledge', 'history']);
+const STACKED_VIEWS = new Set<NativeView>(['inventory', 'equipment', 'character', 'skills', 'abilities', 'magic', 'knowledge', 'history']);
 
 function openCommands(): void {
   const body = el('div', 'commands');
@@ -1474,6 +1540,14 @@ const engine = new Engine(buffer, {
       requestFrame();
       return;
     }
+    if (lastSnap?.inDungeon && !macros.running) {
+      const screen = characterScreen();
+      if (!character.isOpen) character.adopt(screen);
+      if (character.step(screen)) {
+        requestFrame();
+        return;
+      }
+    }
     reopenSheets();
     if (macros.running) {
       stepMacro();
@@ -1498,6 +1572,10 @@ const engine = new Engine(buffer, {
 
 function send(codes: number[] | null): void {
   if (!codes || codes.length === 0) return;
+  if (codes.length === 1 && lastSnap?.inDungeon) {
+    const cast = castWatcher.note(rowZeroText(), buffer.screenText(), codes[0]);
+    if (cast) api.remember(cast);
+  }
   if (travel || picker) stopAutomation(null, 'send');
   if (macros.running) macros.cancel();
   recentreMap();
@@ -1889,7 +1967,7 @@ function openGameMenu(): void {
   const playing = inGame();
   const fallen = playing && !!lastState?.player?.dead;
   openMenu(sheets, 'Menu', [
-    { label: fallen ? 'Your hero' : 'Character', icon: '@', hidden: !playing, run: () => (fallen ? openFallenHero() : openCharacter(api)) },
+    { label: fallen ? 'Your hero' : 'Character', icon: '@', hidden: !playing, run: () => (fallen ? openFallenHero() : character.open('summary')) },
     { label: 'Messages', icon: '≣', hidden: !playing, run: () => showHistory() },
     { label: 'Knowledge', icon: '¶', hint: 'Artifacts, creatures, quests', hidden: !playing || fallen, run: () => openKnowledge(api) },
     { label: 'Save game', icon: '⇩', hidden: !playing || !lastSnap?.atCommand, run: () => {

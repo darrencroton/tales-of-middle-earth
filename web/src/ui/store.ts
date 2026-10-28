@@ -2,7 +2,8 @@ import { KEY_BACKSLASH as BACKSLASH, KEY_ENTER as ENTER } from '../input/keys.ts
 import { keyCodes, type Macro } from '../play/macro.ts';
 import type { GameApi } from './api.ts';
 import { capitalise, descriptionParagraphs } from './api.ts';
-import { el, navButton } from './dom.ts';
+import { el } from './dom.ts';
+import type { SheetAction } from './sheet.ts';
 import type { ChoiceBlock } from './termparse.ts';
 
 export interface StoreCommand {
@@ -80,8 +81,7 @@ export function openStoreItem(api: GameApi, store: StoreScreen, choice: ChoiceBl
 
   const buy = store.commands.find((c) => c.kind === 'buy');
   const examine = store.commands.find((c) => c.kind === 'examine');
-  const actions = el('div', 'action-grid');
-  let buyButton: HTMLButtonElement | null = null;
+  const actions: SheetAction[] = [];
   const buyLabel = () => {
     const verb = store.home ? 'Take' : 'Buy';
     if (store.home) return `${verb} ${quantity}`;
@@ -102,7 +102,8 @@ export function openStoreItem(api: GameApi, store: StoreScreen, choice: ChoiceBl
       const set = (n: number) => {
         quantity = Math.max(1, Math.min(affordable, n));
         value.textContent = String(quantity);
-        if (buyButton) buyButton.querySelector('.row-label')!.textContent = buyLabel();
+        const label = body.closest('.sheet')?.querySelector('[data-action="buy"] .pop-label');
+        if (label) label.textContent = buyLabel();
       };
       minus.addEventListener('click', () => set(quantity - 1));
       plus.addEventListener('click', () => set(quantity + 1));
@@ -110,19 +111,19 @@ export function openStoreItem(api: GameApi, store: StoreScreen, choice: ChoiceBl
       stepper.append(minus, value, plus, all);
       body.append(stepper);
     }
-    buyButton = navButton(buyLabel(), {
-      className: 'action-button primary',
+    actions.push({
+      id: 'buy',
+      label: buyLabel(),
+      primary: true,
       disabled: affordable === 0,
-      onClick: () => api.runMacro(storeMacro(buy.key, choice.key, quantity)),
+      run: () => api.runMacro(storeMacro(buy.key, choice.key, quantity)),
     });
-    actions.append(buyButton);
   }
   const index = (store.page - 1) * ITEMS_PER_PAGE + choice.key.charCodeAt(0) - 'a'.charCodeAt(0);
   const paragraphs = descriptionParagraphs(api.engine.storeObjectDescription(index));
   if (examine && paragraphs.length === 0) {
-    actions.append(navButton('Examine', { className: 'action-button', onClick: () => api.runMacro(storeMacro(examine.key, choice.key, 1)) }));
+    actions.push({ id: 'examine', label: 'Examine', run: () => api.runMacro(storeMacro(examine.key, choice.key, 1)) });
   }
-  body.append(actions);
   if (!store.home && affordable === 0) body.append(el('p', 'muted', 'You cannot afford this.'));
   if (paragraphs.length) {
     const description = el('div', 'description');
@@ -134,7 +135,7 @@ export function openStoreItem(api: GameApi, store: StoreScreen, choice: ChoiceBl
     title: capitalise(name.replace(/^(a|an|\d+) /i, '')),
     subtitle: store.home ? 'In your home' : 'For sale',
     body,
+    actions,
     className: 'sheet-item',
-    initial: buyButton ?? actions.querySelector<HTMLElement>('[data-nav]'),
   });
 }

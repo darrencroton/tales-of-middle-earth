@@ -27,6 +27,8 @@
   /* Band below a status bar that iOS softens; headings keep clear of it (none without a top inset). */
   --top-clear: min(1.75rem, var(--safe-top));
   --touch: max(44px, calc(var(--fs) * 3));
+  /* Height of every pop-up that is not a short question. */
+  --popup-height: 46rem;
   --mono: "DejaVu Sans Mono", Menlo, Consolas, "SF Mono", "Liberation Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --serif: Georgia, "Times New Roman", "Liberation Serif", serif;
@@ -271,7 +273,7 @@ html.keyboard-open .sheet-layer {
   left: 0.6rem;
   right: 0.6rem;
   bottom: 0.6rem;
-  z-index: 7;
+  z-index: 25;
   margin: 0 auto;
   max-width: 30rem;
   padding: 0.9rem 1rem;
@@ -677,7 +679,7 @@ html.keyboard-open .sheet-layer {
   opacity: 0;
   pointer-events: none;
   transition: opacity 200ms ease, transform 200ms ease;
-  z-index: 6;
+  z-index: 26;
 }
 
 #toast.visible {
@@ -756,9 +758,41 @@ html.keyboard-open .sheet-layer {
 
 /* tome2's own screens, shown as native panels (menus, lists, help, shops). */
 
-.termview {
+.tv-layer {
   position: absolute;
+  inset: 0;
   z-index: 5;
+}
+
+/* tome2 screens over the map open like sheets: same frame, size and place. */
+.tv-layer.panel {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-top: calc(var(--safe-top) + var(--top-clear) + 1.5rem);
+}
+
+html.keyboard-open .tv-layer.panel {
+  top: var(--app-top, 0px);
+  bottom: auto;
+  height: var(--app-height);
+}
+
+.tv-backdrop {
+  display: none;
+}
+
+.tv-layer.panel .tv-backdrop {
+  display: block;
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.5);
+  animation: fade-in 160ms ease;
+}
+
+.termview {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -766,12 +800,9 @@ html.keyboard-open .sheet-layer {
 }
 
 .termview.panel {
-  left: 0;
-  right: 0;
-  bottom: 0;
-  max-height: calc(100% - 1rem - var(--top-clear));
-  margin: 0 auto;
-  width: min(100%, 44rem);
+  position: relative;
+  width: min(100%, 40rem);
+  max-height: 100%;
   border: 1px solid rgb(217 164 65 / 0.45);
   border-bottom: 0;
   border-radius: 16px 16px 0 0;
@@ -781,9 +812,14 @@ html.keyboard-open .sheet-layer {
 }
 
 .termview.full {
+  position: absolute;
   inset: 0;
   padding-left: var(--safe-left);
   background: rgb(0 0 0 / 0.6);
+}
+
+.tv-close {
+  margin: -0.4rem -0.4rem -0.4rem 0;
 }
 
 .tv-header {
@@ -849,6 +885,10 @@ html.keyboard-open .sheet-layer {
   padding: 0.6rem 0.9rem calc(0.8rem + var(--safe-bottom));
   font-size: 1rem;
   line-height: 1.45;
+}
+
+.termview:has(.tv-footer:not([hidden])) .tv-body {
+  padding-bottom: 0.8rem;
 }
 
 .termview.full .tv-body {
@@ -1189,12 +1229,123 @@ html.keyboard-open .sheet-layer {
   padding: 0.6rem 0.9rem calc(0.9rem + var(--safe-bottom));
 }
 
-.sheet-actions {
+/* Pop-ups (sheets and tome2 panels) keep one size whatever they show; their content scrolls. */
+.sheet.sheet-tall,
+.termview.panel {
+  height: min(100%, var(--popup-height));
+}
+
+.sheet-actions,
+.tv-footer {
+  flex: 0 0 auto;
   display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-  padding: 0.6rem 0.9rem calc(0.6rem + var(--safe-bottom));
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.55rem 0.7rem calc(0.55rem + var(--safe-bottom));
   border-top: 1px solid var(--panel-border);
+}
+
+.pop-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.pop-main {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+}
+
+.pop-main .sheet-action {
+  min-width: 0;
+  padding: 0 0.5rem;
+}
+
+.sheet-fit .pop-main {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sheet-fit .pop-main .sheet-action {
+  flex: 0 0 auto;
+}
+
+.pop-sub {
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+}
+
+.pop-sub .sheet-action {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: calc(var(--touch) * 0.8);
+  padding: 0 0.3rem;
+  font-size: var(--fs-small);
+}
+
+.pop-sub .pop-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.pop-icon {
+  font-family: var(--mono);
+  color: var(--accent);
+}
+
+.pop-tabs {
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+}
+
+.pop-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: var(--touch);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  padding: 0.2rem 0.2rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--button);
+  color: var(--muted);
+  font-size: var(--fs-small);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pop-tab .pop-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pop-tab .pop-icon {
+  font-size: var(--fs-large);
+  line-height: 1.1;
+  color: var(--faint);
+}
+
+.pop-tab.selected {
+  border-color: var(--accent);
+  background: linear-gradient(to bottom, #3b2a12, #24190c);
+  color: var(--accent-bright);
+}
+
+.pop-tab.selected .pop-icon {
+  color: var(--accent);
 }
 
 .sheet-actions:not([hidden]) ~ .sheet-body,
@@ -1810,31 +1961,20 @@ html.keyboard-tight .prompt-card.text .card-title {
   font-size: var(--fs-small);
 }
 
-.birth-confirm {
-  width: 100%;
-  min-height: var(--touch);
-  margin-top: 0.3rem;
-  border: 1px solid var(--accent);
-  border-radius: 10px;
-  background: linear-gradient(to bottom, #3b2a12, #24190c);
-  color: var(--accent-bright);
-  font-size: var(--fs-large);
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
 .birth-options {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  align-content: start;
   gap: 0.4rem;
 }
 
 .birth-option {
   min-height: var(--touch);
-  padding: 0.3rem 0.6rem;
+  padding: 0.3rem 0.5rem;
   border: 1px solid var(--panel-border);
   border-radius: 10px;
   background: rgb(26 23 18 / 0.92);
+  overflow-wrap: anywhere;
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -1849,6 +1989,135 @@ html.keyboard-tight .prompt-card.text .card-title {
   background: rgb(80 54 16 / 0.92);
   color: var(--accent-bright);
   box-shadow: 0 0 12px rgb(217 164 65 / 0.35);
+}
+
+/* Choosing: the options and the details of the highlighted one each scroll in a fixed part of the screen. */
+.director.birth:not(.hero) {
+  overflow: hidden;
+  padding-bottom: 0.6rem;
+}
+
+.director.birth:not(.hero) .birth-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.director.birth:not(.hero) .birth-options {
+  flex: 0 0 auto;
+  max-height: 38%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+}
+
+.director.birth:not(.hero) .birth-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.birth-card h4 {
+  margin: 0.9rem 0 0.4rem;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.birth-stats {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.3rem;
+  margin: 0.4rem 0 0.6rem;
+}
+
+.birth-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.3rem 0.1rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-raised);
+}
+
+.birth-stat-name {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  letter-spacing: 0.05em;
+}
+
+.birth-stat-value {
+  color: var(--faint);
+  font-weight: 600;
+}
+
+.birth-stat.good .birth-stat-value,
+.birth-facts .good,
+.birth-skills .good,
+.birth-traits .good .trait-text {
+  color: #7fcf7a;
+}
+
+.birth-stat.bad .birth-stat-value,
+.birth-facts .bad,
+.birth-skills .bad,
+.birth-traits .bad .trait-text {
+  color: #e07a6a;
+}
+
+.birth-facts,
+.birth-skills {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.2rem 1rem;
+  margin: 0;
+}
+
+.birth-facts dt,
+.birth-skills dt {
+  color: var(--muted);
+}
+
+.birth-facts dd,
+.birth-skills dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
+.birth-traits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.birth-traits li {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1fr);
+  column-gap: 0.6rem;
+}
+
+.trait-level {
+  color: var(--faint);
+  font-size: var(--fs-small);
+  padding-top: 0.1em;
+}
+
+.trait-detail {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.birth-card .birth-choices {
+  margin: 0;
+  color: var(--muted);
 }
 
 .ratings {
@@ -1890,19 +2159,18 @@ html.keyboard-tight .prompt-card.text .card-title {
   margin-top: 0.4rem;
 }
 
-@media (min-width: 720px) {
+@media (min-width: 720px), (orientation: landscape) {
   .birth-body:not(.single) {
-    flex-direction: row-reverse;
-    align-items: flex-start;
+    flex-direction: row;
+    align-items: stretch;
   }
 
-  .birth-body:not(.single) .birth-card {
+  .director.birth:not(.hero) .birth-options {
     flex: 1 1 45%;
-    position: sticky;
-    top: 0;
+    max-height: none;
   }
 
-  .birth-body:not(.single) .birth-options {
+  .director.birth:not(.hero) .birth-card {
     flex: 1 1 55%;
   }
 
@@ -1941,18 +2209,19 @@ html.keyboard-tight .prompt-card.text .card-title {
     padding-bottom: 0.9rem;
   }
 
-  .termview.panel {
-    top: calc(0.75rem + var(--top-clear));
-    bottom: auto;
-    max-height: calc(100% - 1.5rem - var(--top-clear));
-    border-bottom: 1px solid rgb(217 164 65 / 0.45);
-    border-radius: 14px;
-    width: min(calc(100% - 1.5rem), 48rem);
-    left: 0;
-    right: 0;
+  .tv-layer.panel {
+    align-items: center;
+    padding: calc(var(--safe-top) + var(--top-clear) + 1rem) 1rem calc(var(--safe-bottom) + 1rem);
   }
 
-  .termview.panel .tv-body {
+  .termview.panel {
+    border-bottom: 1px solid rgb(217 164 65 / 0.45);
+    border-radius: 16px;
+    animation: fade-in 160ms ease;
+  }
+
+  .termview.panel .tv-body,
+  .tv-footer {
     padding-bottom: 0.8rem;
   }
 }
@@ -2443,19 +2712,6 @@ html.keyboard-tight .prompt-card.text .card-title {
   font-size: var(--fs-small);
 }
 
-.tv-tabs {
-  flex-wrap: nowrap;
-}
-
-.tv-tabs .segment {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 0 0.3rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* End of game */
 
 .gameover-hero {
@@ -2832,7 +3088,7 @@ html.keyboard-tight .prompt-card.text .card-title {
   font-family: var(--mono);
   color: #ff8a70;
   text-shadow: 0 0 6px #000, 0 1px 3px #000;
-  animation-duration: 900ms;
+  animation: feel-rise-hold 1600ms ease-out forwards;
 }
 
 .feel-float.at.ally {
@@ -2864,6 +3120,21 @@ html.keyboard-tight .prompt-card.text .card-title {
   to {
     opacity: 0;
     transform: translate(-50%, -3rem);
+  }
+}
+
+/* Damage over a creature: stays readable for most of its rise before fading. */
+@keyframes feel-rise-hold {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -2.6rem);
   }
 }
 
@@ -3178,4 +3449,94 @@ html.keyboard-tight .prompt-card.text .card-title {
     gap: 0.2rem;
     margin-bottom: 0.4rem;
   }
+}
+
+/* Magic: recent spells, spell books and other powers */
+
+.recent-grid {
+  margin-bottom: 0;
+}
+
+.recent-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.1rem;
+  text-align: left;
+}
+
+.recent-button .row-label {
+  color: var(--accent-bright);
+}
+
+.recent-button .row-hint {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.spell-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.spell-line {
+  display: flex;
+  gap: 0.35rem;
+  align-items: stretch;
+}
+
+.spell-row {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--touch);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.1rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--button);
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.spell-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.spell-name {
+  color: #8fd88a;
+  font-weight: 600;
+}
+
+.spell-row.short .spell-name {
+  color: #e8a35a;
+}
+
+.spell-row.unavailable .spell-name {
+  color: var(--faint);
+  font-weight: 400;
+}
+
+.spell-school,
+.spell-meta {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.spell-meta {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.8rem;
+}
+
+.spell-info {
+  color: var(--fg);
 }

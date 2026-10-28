@@ -8,8 +8,10 @@
  * are included in all such copies.
  */
 
+#include "ability_type.hpp"
 #include "cave.hpp"
 #include "cave_type.hpp"
+#include "cmd5.hpp"
 #include "defines.hpp"
 #include "dungeon_info_type.hpp"
 #include "feature_flag.hpp"
@@ -19,6 +21,7 @@
 #include "deity_type.hpp"
 #include "inventory.hpp"
 #include "levels.hpp"
+#include "lua_bind.hpp"
 #include "monster1.hpp"
 #include "monster2.hpp"
 #include "monster_race.hpp"
@@ -27,15 +30,27 @@
 #include "object1.hpp"
 #include "object2.hpp"
 #include "object_flag.hpp"
+#include "object_flag_meta.hpp"
 #include "object_kind.hpp"
 #include "object_type.hpp"
 #include "options.hpp"
 #include "player_class.hpp"
 #include "player_race.hpp"
+#include "player_race_flag.hpp"
+#include "player_race_mod.hpp"
 #include "player_spec.hpp"
 #include "player_type.hpp"
 #include "quest_type.hpp"
+#include "school_book.hpp"
+#include "school_type.hpp"
+#include "skill_descriptor.hpp"
+#include "skills.hpp"
+#include "skills_defs.hpp"
 #include "spells1.hpp"
+#include "spell_type.hpp"
+#include "spells4.hpp"
+#include "spells5.hpp"
+#include "spells6.hpp"
 #include "store_info_type.hpp"
 #include "store_type.hpp"
 #include "tables.hpp"
@@ -46,6 +61,8 @@
 #include "wilderness_type_info.hpp"
 #include "xtra1.hpp"
 
+#include <boost/preprocessor/cat.hpp>
+
 #include <emscripten.h>
 
 #include <cstdint>
@@ -53,6 +70,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -201,6 +219,7 @@ void json_object(std::string &out, int index, object_type const *o_ptr)
 	json_int(out, "i", index);
 	json_str(out, "name", name);
 	json_int(out, "tval", o_ptr->tval);
+	json_int(out, "sval", o_ptr->sval);
 	json_int(out, "number", o_ptr->number);
 	json_int(out, "weight", o_ptr->weight);
 	json_int(out, "ch", static_cast<unsigned char>(object_char(o_ptr)));
@@ -323,6 +342,171 @@ void cell_glyph(int y, int x, uint8_t *glyph, uint8_t *attr, uint8_t *layer, uin
 	*glyph = static_cast<uint8_t>(c);
 	*attr = a;
 	*layer = l;
+}
+
+/* Edit-file names of the player race flags, by bit. */
+std::vector<std::pair<player_race_flag_set, char const *>> const &race_flag_names()
+{
+	static std::vector<std::pair<player_race_flag_set, char const *>> names {
+#define PR(tier, index, name) { BOOST_PP_CAT(PR_, name), #name },
+#include "player_race_flag_list.hpp"
+#undef PR
+	};
+	return names;
+}
+
+void json_race_flags(std::string &out, player_race_flag_set const &flags)
+{
+	json_key(out, "flags");
+	out += '[';
+	bool first = true;
+	for (auto const &[flag, name] : race_flag_names())
+	{
+		if (!(flags & flag)) continue;
+		if (!first) out += ',';
+		first = false;
+		json_string(out, name);
+	}
+	out += "],";
+}
+
+char modifier_op(char m)
+{
+	switch (m)
+	{
+	case MEGO_SUB: return '-';
+	case MEGO_FIX: return '=';
+	case MEGO_PRC: return '%';
+	default: return '+';
+	}
+}
+
+void json_skill_mods(std::string &out, skill_modifiers const &mods)
+{
+	auto const &s_descriptors = game->edit_data.s_descriptors;
+	json_key(out, "skills");
+	out += '[';
+	bool first = true;
+	for (std::size_t i = 0; i < mods.modifiers.size() && i < s_descriptors.size(); i++)
+	{
+		auto const &m = mods.modifiers[i];
+		if ((m.base == 0 && m.mod == 0) || s_descriptors[i].name.empty()) continue;
+		if (!first) out += ',';
+		first = false;
+		out += '{';
+		json_str(out, "name", s_descriptors[i].name);
+		json_str(out, "op", std::string(1, modifier_op(m.basem)));
+		json_int(out, "base", static_cast<long>(m.base));
+		json_str(out, "modOp", std::string(1, modifier_op(m.modm)));
+		json_int(out, "mod", m.mod, false);
+		out += '}';
+	}
+	out += "],";
+}
+
+void json_abilities(std::string &out, std::vector<player_race_ability_type> const &abilities)
+{
+	auto const &ab_info = game->edit_data.ab_info;
+	json_key(out, "abilities");
+	out += '[';
+	bool first = true;
+	for (auto const &a : abilities)
+	{
+		if (a.ability < 0 || static_cast<std::size_t>(a.ability) >= ab_info.size()) continue;
+		if (!first) out += ',';
+		first = false;
+		out += '{';
+		json_str(out, "name", ab_info[a.ability].name);
+		json_str(out, "desc", ab_info[a.ability].desc);
+		json_int(out, "level", a.level, false);
+		out += '}';
+	}
+	out += "],";
+}
+
+void json_level_flags(std::string &out, std::array<player_level_flag, PY_MAX_LEVEL + 1> const &lflags)
+{
+	json_key(out, "levelFlags");
+	out += '[';
+	bool first = true;
+	for (int lev = 0; lev <= PY_MAX_LEVEL; lev++)
+	{
+		auto const &lf = lflags[lev];
+		if (!lf.oflags) continue;
+		if (!first) out += ',';
+		first = false;
+		out += '{';
+		json_int(out, "level", lev);
+		json_int(out, "pval", lf.pval);
+		json_key(out, "flags");
+		out += '[';
+		bool firstFlag = true;
+		for (auto const meta : object_flags_meta())
+		{
+			if (!(lf.oflags & meta->flag_set)) continue;
+			if (!firstFlag) out += ',';
+			firstFlag = false;
+			json_string(out, meta->e_name);
+		}
+		out += "]}";
+	}
+	out += "],";
+}
+
+void json_shared(std::string &out, player_shared const &ps)
+{
+	json_key(out, "stats");
+	out += '[';
+	for (int i = 0; i < 6; i++)
+	{
+		if (i) out += ',';
+		out += std::to_string(ps.adj[i]);
+	}
+	out += "],";
+	json_int(out, "hitDie", ps.mhp);
+	json_int(out, "exp", ps.exp);
+	json_key(out, "powers");
+	out += '[';
+	bool first = true;
+	for (auto const p : ps.powers)
+	{
+		auto it = game->powers.find(p);
+		if (it == game->powers.end()) continue;
+		if (!first) out += ',';
+		first = false;
+		out += '{';
+		json_str(out, "name", it->second->name);
+		json_str(out, "desc", it->second->desc_text, false);
+		out += '}';
+	}
+	out += "],";
+}
+
+void json_bit_names(std::string &out, char const *key, std::array<u32b, 2> const &bits, std::function<std::string(std::size_t)> name, std::size_t count)
+{
+	json_key(out, key);
+	out += '[';
+	bool first = true;
+	for (std::size_t i = 0; i < count && i < 64; i++)
+	{
+		if (!(bits[i / 32] & (1u << (i % 32)))) continue;
+		if (!first) out += ',';
+		first = false;
+		json_string(out, name(i));
+	}
+	out += "],";
+}
+
+/* A spell's schools, as tome2 lists them ("Mana/Fire"). */
+std::string spell_schools(spell_type *spell)
+{
+	std::string out;
+	for (s32b school_idx : spell_type_get_schools(spell))
+	{
+		if (!out.empty()) out += '/';
+		out += school_at(school_idx)->name;
+	}
+	return out;
 }
 
 }
@@ -996,6 +1180,210 @@ EMSCRIPTEN_KEEPALIVE char const *web_scores_json()
 	fd_close(fd);
 
 	json += ']';
+	return json.c_str();
+}
+
+/*
+ * Returns what character creation offers: every race, race modifier and
+ * class (with specialisations), with stat adjustments, skills, abilities
+ * and intrinsics, for the native birth screens.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_birth_json()
+{
+	auto const &race_info = game->edit_data.race_info;
+	auto const &race_mod_info = game->edit_data.race_mod_info;
+	auto const &class_info = game->edit_data.class_info;
+
+	json.clear();
+	json += "{\"races\":[";
+	for (std::size_t i = 0; i < race_info.size(); i++)
+	{
+		auto const &r = race_info[i];
+		if (i) json += ',';
+		json += '{';
+		json_str(json, "title", r.title);
+		json_str(json, "desc", r.desc);
+		json_shared(json, r.ps);
+		json_int(json, "luck", r.luck);
+		json_int(json, "infra", r.infra);
+		json_race_flags(json, r.flags);
+		json_level_flags(json, r.lflags);
+		json_skill_mods(json, r.skill_modifiers);
+		json_abilities(json, r.abilities);
+		json_bit_names(json, "classes", r.choice, [&](std::size_t c) { return c < class_info.size() ? class_info[c].title : std::string(); }, class_info.size());
+		json_int(json, "index", i, false);
+		json += '}';
+	}
+	json += "],\"mods\":[";
+	for (std::size_t i = 0; i < race_mod_info.size(); i++)
+	{
+		auto const &m = race_mod_info[i];
+		if (i) json += ',';
+		json += '{';
+		json_str(json, "title", m.title);
+		json_str(json, "desc", m.description);
+		json_shared(json, m.ps);
+		json_int(json, "luck", m.luck);
+		json_int(json, "infra", m.infra);
+		json_int(json, "mana", m.mana);
+		json_race_flags(json, m.flags);
+		json_level_flags(json, m.lflags);
+		json_skill_mods(json, m.skill_modifiers);
+		json_abilities(json, m.abilities);
+		json_int(json, "index", i, false);
+		json += '}';
+	}
+	json += "],\"classes\":[";
+	for (std::size_t i = 0; i < class_info.size(); i++)
+	{
+		auto const &c = class_info[i];
+		if (i) json += ',';
+		json += '{';
+		json_str(json, "title", c.title);
+		json_str(json, "desc", c.desc);
+		json_shared(json, c.ps);
+		json_int(json, "mana", c.mana);
+		json_int(json, "blows", c.blow_num);
+		json_int(json, "extraBlows", c.extra_blows);
+		json_race_flags(json, c.flags);
+		json_level_flags(json, c.lflags);
+		json_skill_mods(json, c.skill_modifiers);
+		json_abilities(json, c.abilities);
+		json_key(json, "specs");
+		json += '[';
+		for (std::size_t j = 0; j < c.spec.size(); j++)
+		{
+			auto const &sp = c.spec[j];
+			if (j) json += ',';
+			json += '{';
+			json_str(json, "title", sp.title ? sp.title : "");
+			json_str(json, "desc", sp.desc ? sp.desc : "");
+			json_race_flags(json, sp.flags);
+			json_skill_mods(json, sp.skill_modifiers);
+			json_abilities(json, sp.abilities);
+			json_bit_names(json, "gods", { sp.gods, 0 }, [](std::size_t g) { return g < MAX_GODS ? std::string(deity_info[g].name) : std::string(); }, MAX_GODS);
+			json_int(json, "index", j, false);
+			json += '}';
+		}
+		json += "],";
+		json_int(json, "index", i, false);
+		json += '}';
+	}
+	json += "]}";
+	return json.c_str();
+}
+
+/*
+ * Returns the spells the player can see in the books and spell-holding
+ * items carried (as tome2's spell lists show them), and the skills and
+ * abilities that can be activated, in the order of tome2's menu.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
+{
+	json.clear();
+	json += '{';
+	if (!level_ready())
+	{
+		json_int(json, "ready", 0, false);
+		json += '}';
+		return json.c_str();
+	}
+	json_int(json, "ready", 1);
+	json_key(json, "books");
+	json += '[';
+	bool firstBook = true;
+	for (int i = 0; i < INVEN_TOTAL; i++)
+	{
+		object_type *o_ptr = &p_ptr->inventory[i];
+		if (!o_ptr->k_ptr) continue;
+		auto const f = object_flags(o_ptr);
+		bool const book = o_ptr->tval == TV_BOOK || o_ptr->tval == TV_DAEMON_BOOK || o_ptr->tval == TV_INSTRUMENT;
+		bool const holds = (f & TR_SPELL_CONTAIN) && o_ptr->pval2 != -1;
+		if (!book && !holds) continue;
+		if ((wield_slot(o_ptr) != -1) && (i < INVEN_WIELD) && (f & TR_WIELD_CAST)) continue;
+		int const sval = book ? o_ptr->sval : BOOK_RANDOM;
+		s32b const pval = book ? o_ptr->pval : o_ptr->pval2;
+		random_book_setup(sval, pval);
+		school_book *sb = school_books_at(sval);
+		if (!sb) continue;
+
+		char name[160];
+		object_desc(name, o_ptr, true, 0);
+		if (!firstBook) json += ',';
+		firstBook = false;
+		json += '{';
+		json_int(json, "i", i);
+		json_str(json, "name", name);
+		json_key(json, "spells");
+		json += '[';
+		bool firstSpell = true;
+		for (auto spell_idx : sb->spell_idxs)
+		{
+			spell_type *spell = spell_at(spell_idx);
+			s32b level;
+			bool na;
+			get_level_school(spell, 50, -50, &level, &na);
+			if (!firstSpell) json += ',';
+			firstSpell = false;
+			json += '{';
+			json_str(json, "name", spell_type_name(spell));
+			json_str(json, "school", spell_schools(spell));
+			json_int(json, "level", na ? -1 : level);
+			json_int(json, "mana", get_mana(spell_idx));
+			json_int(json, "fail", spell_chance_book(spell_idx));
+			json_str(json, "info", spell_type_info(spell));
+			bool const ok = is_ok_spell(spell_idx, o_ptr->pval);
+			json_int(json, "ok", ok ? 1 : 0);
+			json_int(json, "short", ok && get_mana(spell_idx) > get_power(spell_idx) ? 1 : 0);
+			std::string desc;
+			spell_type_description_foreach(spell, [&](std::string const &line) {
+				if (!desc.empty()) desc += ' ';
+				desc += line;
+			});
+			json_str(json, "desc", desc, false);
+			json += '}';
+		}
+		json += "]}";
+	}
+	json += "],";
+
+	auto const &ab_info = game->edit_data.ab_info;
+	auto const &s_descriptors = game->edit_data.s_descriptors;
+	auto const &s_info = game->s_info;
+	std::vector<std::pair<std::string, int>> menu;
+	if (get_melee_skills() > 1) menu.emplace_back("Change melee mode", 0);
+	auto seen = [&](int mkey) {
+		for (auto const &e : menu)
+		{
+			if (e.second == mkey) return true;
+		}
+		return false;
+	};
+	for (std::size_t i = 1; i < s_descriptors.size() && i < s_info.size(); i++)
+	{
+		if (s_descriptors[i].action_mkey && s_info[i].value && ((!s_info[i].hidden) || (i == SKILL_LEARN)) && !seen(s_descriptors[i].action_mkey))
+		{
+			menu.emplace_back(s_descriptors[i].action_desc, s_descriptors[i].action_mkey);
+		}
+	}
+	for (std::size_t i = 0; i < ab_info.size(); i++)
+	{
+		if (ab_info[i].action_mkey && p_ptr->has_ability(i) && !seen(ab_info[i].action_mkey))
+		{
+			menu.emplace_back(ab_info[i].action_desc, ab_info[i].action_mkey);
+		}
+	}
+	json_key(json, "powers");
+	json += '[';
+	for (std::size_t i = 0; i < menu.size(); i++)
+	{
+		if (i) json += ',';
+		json += '{';
+		json_str(json, "label", menu[i].first);
+		json_int(json, "mkey", menu[i].second, false);
+		json += '}';
+	}
+	json += "]}";
 	return json.c_str();
 }
 

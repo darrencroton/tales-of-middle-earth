@@ -1,7 +1,9 @@
-import { SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
+import { SLOT_NAMES, itemActions, itemMacro, useAction, type ItemPlace } from '../play/items.ts';
+import { itemRecent, recentItem, recentKey } from '../play/recent.ts';
 import type { EquipSlot, InventoryState, ItemState } from '../render/snapshot.ts';
 import { descriptionParagraphs, pounds, titleName, type GameApi } from './api.ts';
-import { el, glyph, navButton } from './dom.ts';
+import { el, glyph, section } from './dom.ts';
+import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
 
 
 /* Slot for a carried symbiote, shown only when something is in it. */
@@ -26,24 +28,13 @@ function slotName(slot: EquipSlot): string {
   return SLOT_NAMES[slot.part] ?? 'Slot';
 }
 
-function tabs(api: GameApi, inventory: InventoryState, current: InventoryTab): HTMLElement {
-  const bar = el('div', 'segmented');
-  bar.setAttribute('role', 'tablist');
-  const entries: [InventoryTab, string][] = [
-    ['pack', `Pack · ${inventory.pack.length}`],
-    ['equip', 'Equipment'],
+function tabs(api: GameApi, inventory: InventoryState, current: InventoryTab): SheetTab[] {
+  const entries: [InventoryTab, string, string][] = [
+    ['pack', `Pack · ${inventory.pack.length}`, '≡'],
+    ['equip', 'Equipment', '['],
   ];
-  if (inventory.floor.length) entries.push(['floor', `Floor · ${inventory.floor.length}`]);
-  for (const [tab, label] of entries) {
-    const button = el('button', tab === current ? 'segment selected' : 'segment', label);
-    button.type = 'button';
-    button.dataset.nav = '';
-    button.setAttribute('role', 'tab');
-    button.setAttribute('aria-selected', String(tab === current));
-    button.addEventListener('click', () => openInventory(api, tab, true));
-    bar.append(button);
-  }
-  return bar;
+  if (inventory.floor.length) entries.push(['floor', `Floor · ${inventory.floor.length}`, '⇣']);
+  return entries.map(([tab, label, icon]) => ({ id: tab, label, icon, active: tab === current, run: () => openInventory(api, tab, true) }));
 }
 
 /** Pack, equipment and floor items as a native list; tap an item for its actions. */
@@ -52,7 +43,6 @@ export function openInventory(api: GameApi, tab: InventoryTab = 'pack', replace 
   if (!inventory) return;
   const current = tab === 'floor' && inventory.floor.length === 0 ? 'pack' : tab;
   const body = el('div', 'inventory');
-  body.append(tabs(api, inventory, current));
 
   const capacity = inventory.limit / 2;
   const burden = el('div', 'burden');
@@ -65,6 +55,11 @@ export function openInventory(api: GameApi, tab: InventoryTab = 'pack', replace 
   );
   burden.lastElementChild!.append(fill);
   body.append(burden);
+
+  if (current === 'pack') {
+    const quick = quickUse(api, inventory.pack);
+    if (quick) body.append(quick);
+  }
 
   const list = el('div', 'item-list');
   if (current === 'pack') {
@@ -86,14 +81,42 @@ export function openInventory(api: GameApi, tab: InventoryTab = 'pack', replace 
   }
   body.append(list);
 
-  const content = {
+  const content: SheetContent = {
     title: current === 'equip' ? 'Equipment' : current === 'floor' ? 'On the floor' : 'Inventory',
     body,
+    tabs: tabs(api, inventory, current),
     className: 'sheet-inventory',
     initial: list.querySelector<HTMLElement>('[data-nav]'),
   };
   if (replace) api.sheets.replace(content);
   else api.sheets.open(content);
+}
+
+/* Item actions worth offering again from the pack. */
+const QUICK_USES = new Set(['quaff', 'read', 'eat', 'aim', 'use', 'zap']);
+
+/** Recently used items still in the pack, one tap to use again. */
+function quickUse(api: GameApi, pack: readonly ItemState[]): HTMLElement | null {
+  const grid = el('div', 'action-grid recent-grid');
+  const alwaysPickup = !!api.state()?.player?.alwaysPickup;
+  for (const entry of api.recent()) {
+    if (entry.kind !== 'item') continue;
+    const item = recentItem(entry, pack);
+    const action = item ? useAction(item.tval) : null;
+    if (!item || !action || action.command !== entry.command) continue;
+    const button = el('button', 'action-button recent-button');
+    button.type = 'button';
+    button.dataset.nav = '';
+    button.dataset.key = recentKey(entry);
+    button.append(el('span', 'row-label', `${entry.verb} · ${entry.name}`));
+    if (item.number > 1) button.append(el('span', 'row-hint', `×${item.number}`));
+    button.addEventListener('click', () => {
+      api.remember(itemRecent(action.command, action.label, item));
+      api.runMacro(itemMacro(action, item, 'pack', '', alwaysPickup));
+    });
+    grid.append(button);
+  }
+  return grid.childElementCount ? section('Recently used', grid) : null;
 }
 
 function placeLabel(item: ItemState, place: ItemPlace, slot?: EquipSlot): string {
@@ -109,24 +132,23 @@ export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void 
   const slot = place === 'equip' ? inventory?.equip.find((s) => s.i === item.i) : undefined;
   const body = el('div', 'item-detail');
 
-  const actions = el('div', 'action-grid');
   const alwaysPickup = !!api.state()?.player?.alwaysPickup;
-  for (const action of itemActions(item, place)) {
-    const button = navButton(action.label, {
-      className: `action-button${action.primary ? ' primary' : ''}${action.danger ? ' danger' : ''}`,
-      onClick: () => {
-        if (action.needsText) {
-          api.askText('Inscribe', `Inscription for ${item.name}`, item.ins).then((text) => {
-            if (text !== null) api.runMacro(itemMacro(action, item, place, text, alwaysPickup));
-          });
-          return;
-        }
-        api.runMacro(itemMacro(action, item, place, '', alwaysPickup), action.reading);
-      },
-    });
-    actions.append(button);
-  }
-  body.append(actions);
+  const actions: SheetAction[] = itemActions(item, place).map((action) => ({
+    id: action.id,
+    label: action.label,
+    primary: action.primary,
+    danger: action.danger,
+    run: () => {
+      if (action.needsText) {
+        api.askText('Inscribe', `Inscription for ${item.name}`, item.ins).then((text) => {
+          if (text !== null) api.runMacro(itemMacro(action, item, place, text, alwaysPickup));
+        });
+        return;
+      }
+      if (place === 'pack' && QUICK_USES.has(action.id)) api.remember(itemRecent(action.command, action.label, item));
+      api.runMacro(itemMacro(action, item, place, '', alwaysPickup), action.reading);
+    },
+  }));
 
   const description = el('div', 'description');
   const paragraphs = descriptionParagraphs(api.engine.objectDescription(item.i));
@@ -140,7 +162,7 @@ export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void 
     subtitle: placeLabel(item, place, slot),
     badge: glyph(item.ch, api.palette()[item.attr] ?? '#fff'),
     body,
+    actions,
     className: 'sheet-item',
-    initial: actions.querySelector<HTMLElement>('.primary') ?? actions.querySelector<HTMLElement>('[data-nav]'),
   });
 }

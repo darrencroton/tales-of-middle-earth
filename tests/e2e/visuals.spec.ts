@@ -39,13 +39,24 @@ test('opening screen ignites, the intro rises from the flames, then character cr
     .toBeGreaterThan(5);
 
   const current = page.locator('.director .birth-option.current');
+  /* Races whose highlighted name runs into the next column still read as one option each, with their details. */
+  for (const race of ['Dark-Elf', 'Thunderlord', 'DeathMold']) {
+    await page.locator('.director .birth-option', { hasText: race }).click();
+    await expect(current).toHaveText(race);
+    await expect(page.locator('.director .birth-card h3')).toHaveText(race);
+    await expect(page.locator('.director .birth-stat')).toHaveCount(6);
+  }
+  await expect(page.locator('.director .birth-option')).toHaveCount(22);
+  await expect(page.locator('.director .birth-tag')).toContainText('Experimental');
+  await expect(page.locator('.director .birth-traits li').first()).toBeVisible();
+
   const other = page.locator('.director .birth-option:not(.current)').first();
   const otherName = (await other.textContent())!;
   await other.click();
   await expect(current).toHaveText(otherName);
   await expect(page.locator('.director .birth-card h3')).toHaveText(otherName);
   await testInfo.attach('race', { body: await page.screenshot(), contentType: 'image/png' });
-  await page.locator('.director .birth-confirm').click();
+  await page.locator('#toolbar [data-action="choose"]').click();
   await expect(page.locator('.director .birth-summary')).toContainText(otherName);
 
   /* Back returns to the previous step with the earlier choice highlighted. */
@@ -54,13 +65,13 @@ test('opening screen ignites, the intro rises from the flames, then character cr
   await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race');
   await expect(current).toHaveText(otherName);
   expect(await page.locator('#toolbar [data-action="back"]').count()).toBe(0);
-  await page.locator('.director .birth-confirm').click();
+  await page.locator('#toolbar [data-action="choose"]').click();
   await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
 
   const second = (await page.locator('.director .birth-option:not(.current):not(.unusual)').last().textContent())!;
   await page.locator('.director .birth-option', { hasText: second }).click();
   await expect(current).toHaveText(second);
-  await page.locator('.director .birth-confirm').click();
+  await page.locator('#toolbar [data-action="choose"]').click();
   await expect(page.locator('.director .birth-header h2')).not.toHaveText(step!);
   await page.locator('#toolbar [data-action="back"]').click();
   await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
@@ -87,17 +98,18 @@ test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }
   await expect.poll(() => viewMode(page)).toBe('map');
 
   await page.keyboard.press('C');
-  await expect.poll(() => viewMode(page)).toBe('overlay');
-  await expect(page.locator('.termview')).toBeVisible();
-  await testInfo.attach('character-panel', { body: await page.screenshot(), contentType: 'image/png' });
+  await expect(page.locator('.sheet .pop-tab.selected')).toContainText('Full sheet');
+  await expect(page.locator('.sheet .stat-label', { hasText: 'Fighting' })).toBeVisible();
+  await testInfo.attach('character-sheet', { body: await page.screenshot(), contentType: 'image/png' });
   await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
   await expect.poll(() => viewMode(page)).toBe('map');
 
   await jumpToLevel(page, 5);
   await expect.poll(() => viewMode(page)).toBe('map');
   await page.locator('#toolbar [data-action="inventory"]').click();
   await page.locator('.sheet .item-row', { hasText: 'Torch' }).first().click();
-  await page.locator('.sheet .action-button', { hasText: /^(Wield|Wear)$/ }).click();
+  await page.locator('.sheet .sheet-action', { hasText: /^(Wield|Wear)$/ }).click();
   await expect(page.locator('.sheet-layer')).toBeHidden();
   await dismissMore(page);
   await waitAtCommand(page);

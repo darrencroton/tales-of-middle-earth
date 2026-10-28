@@ -1,15 +1,12 @@
 import { el } from './dom.ts';
 import { ListNav } from './listnav.ts';
+import { renderFooter, type PopAction, type PopTab } from './popup.ts';
 
 /* Downward swipe on a sheet's header (CSS pixels) that dismisses it. */
 const SWIPE_CLOSE = 60;
 
-export interface SheetAction {
-  label: string;
-  primary?: boolean;
-  danger?: boolean;
-  run(): void;
-}
+export type SheetAction = PopAction;
+export type SheetTab = PopTab;
 
 export interface SheetContent {
   title: string;
@@ -17,7 +14,14 @@ export interface SheetContent {
   /** Glyph shown before the title. */
   badge?: HTMLElement;
   body: HTMLElement;
+  /** Buttons at the foot of the sheet (above the tabs, when there are tabs). */
   actions?: SheetAction[];
+  /** The sheet's views, as a fixed row at its foot. */
+  tabs?: SheetTab[];
+  /** Sheets keep one tall size so they do not jump as their content changes; short questions fit their content. */
+  size?: 'fit';
+  /** Keys for the sheet's own content, before list navigation; true when used. */
+  onKey?(e: KeyboardEvent): boolean;
   /** Element to highlight first (defaults to the first navigable item). */
   initial?: HTMLElement | null;
   className?: string;
@@ -185,6 +189,11 @@ export class Sheets {
     }
     const target = e.target as HTMLElement | null;
     if (target?.closest('input, textarea, select')) return;
+    const top = this.stack[this.stack.length - 1];
+    if (top?.onKey?.(e)) {
+      e.preventDefault();
+      return;
+    }
     /* A focused button activates itself on Enter or Space. */
     if ((e.key === 'Enter' || e.key === ' ') && target?.closest('button, a') && target !== this.panel) return;
     if (e.key === 'Backspace' && this.stack.length > 1) {
@@ -198,9 +207,29 @@ export class Sheets {
     }
   }
 
-  private show(): void {
-    const top = this.stack[this.stack.length - 1];
-    this.panel.className = `sheet ${top.className ?? ''}`.trim();
+  /**
+   * Swaps the top sheet's content in place, keeping its scroll position and
+   * highlight (for views that update as the game answers).
+   */
+  update(content: SheetContent, previous?: SheetContent): void {
+    const at = previous ? this.stack.indexOf(previous) : this.stack.length - 1;
+    if (at < 0) return;
+    if (at < this.stack.length - 1) {
+      this.stack[at] = content;
+      return;
+    }
+    const activeKey = this.nav.active?.dataset.key;
+    const scroll = this.body.scrollTop;
+    this.stack[this.stack.length - 1] = content;
+    this.render(content);
+    this.body.scrollTop = scroll;
+    const same = activeKey ? this.nav.items().find((item) => item.dataset.key === activeKey) : undefined;
+    const fallback = this.body.querySelector<HTMLElement>('[data-nav]') ?? this.footer.querySelector<HTMLElement>('.pop-tab.selected, .primary');
+    this.nav.setActive(content.initial ?? same ?? fallback, !!content.initial);
+  }
+
+  private render(top: SheetContent): void {
+    this.panel.className = `sheet ${top.size === 'fit' ? 'sheet-fit' : 'sheet-tall'} ${top.className ?? ''}`.trim();
     this.titleEl.textContent = top.title;
     this.subtitleEl.textContent = top.subtitle ?? '';
     this.subtitleEl.hidden = !top.subtitle;
@@ -208,22 +237,20 @@ export class Sheets {
     this.badgeEl.hidden = !top.badge;
     this.backButton.hidden = this.stack.length < 2;
     this.body.replaceChildren(top.body);
+    renderFooter(this.footer, top.actions ?? [], top.tabs ?? []);
+  }
+
+  private show(): void {
+    const top = this.stack[this.stack.length - 1];
+    this.render(top);
     this.body.scrollTop = 0;
-    this.footer.replaceChildren(
-      ...(top.actions ?? []).map((action) => {
-        const button = el('button', `sheet-action${action.primary ? ' primary' : ''}${action.danger ? ' danger' : ''}`, action.label);
-        button.type = 'button';
-        button.dataset.nav = '';
-        button.addEventListener('click', () => action.run());
-        return button;
-      }),
-    );
-    this.footer.hidden = !top.actions?.length;
     const wasHidden = this.layer.hidden;
     this.layer.hidden = false;
     if (wasHidden) this.panel.focus({ preventScroll: true });
     const fallback =
-      this.body.querySelector<HTMLElement>('[data-nav]') ?? this.footer.querySelector<HTMLElement>('.primary') ?? null;
+      this.body.querySelector<HTMLElement>('[data-nav]') ??
+      this.footer.querySelector<HTMLElement>('.primary, .pop-tab.selected') ??
+      null;
     const place = this.remembered.get(top);
     if (place) this.body.scrollTop = place.scroll;
     const previous = place ? this.nav.items()[place.index] : null;

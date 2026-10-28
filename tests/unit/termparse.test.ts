@@ -49,6 +49,19 @@ describe('terminal parsing', () => {
     ]);
   });
 
+  it('splits a highlighted choice drawn straight after a full column', () => {
+    const blocks = parseRows([row('  k) Half-Ogre   l) Beorning    m) Kobold      n) Petty-Dwarf[o] Dark-Elf')], 18, 0, WIDTH - 1);
+    assert.deepEqual((blocks as ChoiceBlock[]).map((c) => [c.key, c.label.text, c.current]), [
+      ['k', 'Half-Ogre', false],
+      ['l', 'Beorning', false],
+      ['m', 'Kobold', false],
+      ['n', 'Petty-Dwarf', false],
+      ['o', 'Dark-Elf', true],
+    ]);
+    const tail = parseRows([row('  p) Ent         q) RohanKnight[r] Thunderlord s) DeathMold   t) Yeek')], 21, 0, WIDTH - 1);
+    assert.deepEqual((tail as ChoiceBlock[]).map((c) => c.label.text), ['Ent', 'RohanKnight', 'Thunderlord', 'DeathMold', 'Yeek']);
+  });
+
   it('keeps item symbols and trailing columns as metadata', () => {
     const blocks = parseRows([row('a) , 7 Rations of Food                      7.0 lb', 1, [[3, 4, 15]])], 1, 0, WIDTH - 1);
     const [choice] = blocks as ChoiceBlock[];

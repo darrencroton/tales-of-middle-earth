@@ -227,7 +227,7 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('#hud')).toBeHidden();
   await page.locator('#toolbar [data-action="fallen"]').click();
   await expect(page.locator('.sheet-title')).toHaveText('Retiree');
-  await page.locator('.sheet .segment', { hasText: 'Gear' }).click();
+  await page.locator('.sheet [data-tab="gear"]').click();
   await expect(page.locator('.sheet .sheet-section h3').first()).toHaveText('Equipment');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();

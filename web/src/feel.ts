@@ -42,6 +42,8 @@ export function isLowHealth(player: Pick<PlayerState, 'chp' | 'mhp'>): boolean {
 
 const BANNER_MS = 2600;
 const FLOAT_MS = 1400;
+/* Damage and kill floats over creatures (the CSS animation is 1600ms). */
+const FLOAT_AT_MS = 1650;
 const RING_MS = 700;
 const SHAKE_MS = 420;
 const DEED_MS = 3600;
@@ -162,7 +164,7 @@ export class GameFeel {
     node.style.top = `${clientY - rect.top}px`;
     if (this.animation() === 'off') node.classList.add('still');
     this.layer.append(node);
-    window.setTimeout(() => node.remove(), FLOAT_MS);
+    window.setTimeout(() => node.remove(), FLOAT_AT_MS);
   }
 
   private play(event: FeelEvent): void {

@@ -323,7 +323,7 @@ describe('actions', () => {
     assert.deepEqual(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none' }).map((a) => a.id), ['escape', 'up', 'down', 'menu']);
     assert.deepEqual(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none', listShown: true }).map((a) => a.id), ['escape', 'menu']);
     assert.deepEqual(contextActions({ ...base, prompt: 'yesno', cardShown: true }).map((a) => a.id), ['menu']);
-    assert.ok(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none', screen: 'skills' }).some((a) => a.id === 'raise'));
+    assert.ok(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none', screen: 'help' }).some((a) => a.id === 'pagedown'));
   });
 
   it('opens native views for items, looking and the level map', () => {
@@ -339,6 +339,13 @@ describe('actions', () => {
       ['equip', 'Light'],
     ]);
     assert.deepEqual(fight[0].effect, { kind: 'keys', keys: [92, 59, 54] });
+    const ranged = contextActions({ ...base, foeInView: true, recast: 'Manathrust', canFire: true }).map((a) => [a.id, a.label, !!a.primary]);
+    assert.deepEqual(ranged.slice(0, 2), [
+      ['recast', 'Manathrust', true],
+      ['fire', 'Fire', false],
+    ]);
+    assert.ok(!contextActions({ ...base, recast: 'Manathrust', canFire: true }).some((a) => a.id === 'recast' || a.id === 'fire'));
+    assert.deepEqual(contextActions(base).find((a) => a.id === 'cast')?.effect, { kind: 'native', view: 'magic' });
     const crowded = contextActions({ ...base, foe: '6', gear: 'light', floorObjects: 1, underfoot: 'down staircase' });
     assert.ok(crowded.length <= 7);
     assert.deepEqual(crowded.map((a) => a.id), ['attack', 'equip', 'pickup', 'descend', 'inventory', 'commands', 'menu']);

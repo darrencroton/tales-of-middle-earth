@@ -138,19 +138,23 @@ function dropChars(cell: Cell, count: number): Cell {
 }
 
 const INNER_CHOICE = /\s(?=(?:\[[a-zA-Z0-9]\]|[a-zA-Z0-9][)\]]) \S)/g;
+/* tome2's cursor brackets drawn straight after a name that fills its column ("Petty-Dwarf[o] Dark-Elf"). */
+const GLUED_CHOICE = /(?<=[A-Za-z])(?=\[[a-zA-Z0-9]\] [A-Z])/g;
 
 /**
  * Splits a cell of a menu row where another choice starts after a single
- * space, as when tome2 packs long names into fixed columns
- * ("n) Petty-Dwarf o) Dark-Elf").
+ * space, or with no space at all, as when tome2 packs long names into
+ * fixed columns ("n) Petty-Dwarf o) Dark-Elf", "n) Petty-Dwarf[o] Dark-Elf").
  */
 export function splitMenuCell(cell: Cell): Cell[] {
   if (!choiceKey(cell.text)) return [cell];
-  const starts = [0];
-  for (const m of cell.text.matchAll(INNER_CHOICE)) starts.push((m.index ?? 0) + 1);
-  if (starts.length === 1) return [cell];
-  return starts.map((start, i) => {
-    const end = i + 1 < starts.length ? starts[i + 1] - 1 : cell.text.length;
+  const starts = new Set([0]);
+  for (const m of cell.text.matchAll(INNER_CHOICE)) starts.add((m.index ?? 0) + 1);
+  for (const m of cell.text.matchAll(GLUED_CHOICE)) starts.add(m.index ?? 0);
+  if (starts.size === 1) return [cell];
+  const sorted = [...starts].sort((a, b) => a - b);
+  return sorted.map((start, i) => {
+    const end = i + 1 < sorted.length ? sorted[i + 1] : cell.text.length;
     return sliceCell(cell, start, end);
   });
 }
@@ -165,8 +169,10 @@ export function sliceCell(cell: Cell, start: number, end: number): Cell {
     if (to > from) runs.push({ text: run.text.slice(from - pos, to - pos), attr: run.attr });
     pos += run.text.length;
   }
-  const text = runs.map((r) => r.text).join('');
-  return { col: cell.col + start, text: text.trimEnd(), runs };
+  while (runs.length && !runs[runs.length - 1].text.trimEnd()) runs.pop();
+  const last = runs[runs.length - 1];
+  if (last) last.text = last.text.trimEnd();
+  return { col: cell.col + start, text: runs.map((r) => r.text).join(''), runs };
 }
 
 export function choiceKey(text: string): { key: string; current: boolean; length: number } | null {

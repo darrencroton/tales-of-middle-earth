@@ -101,7 +101,7 @@ test('items are used, wielded and taken off from the native inventory', async ({
   await page.locator('#toolbar [data-action="inventory"]').click();
   await expect(page.locator('.sheet .item-row').first()).toBeVisible();
   await page.locator('.sheet .item-row', { hasText: 'Ration' }).click();
-  await page.locator('.sheet .action-button', { hasText: 'Eat' }).click();
+  await page.locator('.sheet .sheet-action', { hasText: 'Eat' }).click();
   await expect(page.locator('.sheet-layer')).toBeHidden();
   await expect.poll(() => packCount(page, /Ration/), { timeout: 10_000 }).toBe(food - 1);
   expect(await viewMode(page)).toBe('map');
@@ -109,15 +109,15 @@ test('items are used, wielded and taken off from the native inventory', async ({
   await dismissMore(page);
   await page.locator('#toolbar [data-action="inventory"]').click();
   await page.locator('.sheet .item-row', { hasText: /Sword|Dagger|Axe|Mace|Spear|Whip/ }).first().click();
-  await page.locator('.sheet .action-button', { hasText: 'Wield' }).click();
+  await page.locator('.sheet .sheet-action', { hasText: 'Wield' }).click();
   const weapon = () => page.evaluate(() => window.__tome!.engine.inventory()!.equip.find((e) => e.i === 24)?.name ?? '');
   await expect.poll(weapon, { timeout: 10_000 }).not.toBe('');
 
   await dismissMore(page);
   await page.locator('#toolbar [data-action="inventory"]').click();
-  await page.locator('.sheet .segment', { hasText: 'Equipment' }).click();
+  await page.locator('.sheet [data-tab="equip"]').click();
   await page.locator('.sheet .item-row:not(.empty-slot)').first().click();
-  await page.locator('.sheet .action-button', { hasText: 'Take off' }).click();
+  await page.locator('.sheet .sheet-action', { hasText: 'Take off' }).click();
   await expect.poll(weapon, { timeout: 10_000 }).toBe('');
 });
 
@@ -139,12 +139,15 @@ test('tome2 menus show as tappable lists with a movable highlight', async ({ pag
   expect(second).not.toBe(first);
 
   await page.locator('.termview .tv-choice', { hasText: 'Torch' }).click();
-  await expect(page.locator('#messages')).toContainText('light source', { timeout: 10_000 });
+  await expect
+    .poll(() => page.evaluate(() => window.__tome!.engine.inventory()!.equip.find((e) => e.i === 36)?.name ?? ''), { timeout: 10_000 })
+    .toMatch(/Torch/);
   await dismissMore(page);
   await waitAtCommand(page);
 
-  await page.keyboard.press('C');
+  await page.keyboard.press('?');
   await expect.poll(() => viewMode(page)).toBe('overlay');
+  await expect(page.locator('.termview .tv-close')).toBeVisible();
   const outside = await page.evaluate(() => {
     const map = document.querySelector('#map')!.getBoundingClientRect();
     const corners = [
@@ -159,44 +162,91 @@ test('tome2 menus show as tappable lists with a movable highlight', async ({ pag
   await expect.poll(() => viewMode(page)).toBe('map');
 });
 
-test('abilities, the full sheet and knowledge are native views', async ({ page }) => {
+test('the character sheet keeps its tabs at the foot and shows skills, abilities and the full sheet', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await createCharacter(page, 'Scholar');
 
   await page.locator('.hud-player').click();
-  await page.locator('.sheet .action-button', { hasText: 'Abilities' }).click();
-  await expect(page.locator('.termview .tv-title')).toHaveText('Abilities');
-  await expect(page.locator('.termview .skill-row').first()).toBeVisible();
-  await page.locator('#toolbar [data-action="learn"]').click();
-  await expect(page.locator('.prompt-card')).toBeVisible();
-  await page.locator('.prompt-card button').first().click();
-  await page.locator('#toolbar [data-action="done"]').click();
-  await waitAtCommand(page);
-
-  /* Closing a tome2 screen returns to the sheet it was opened from. */
   await expect(page.locator('.sheet-title')).toHaveText('Scholar');
-  await expect(page.locator('.sheet .action-button.is-active')).toHaveText('Abilities');
-  await page.locator('.sheet .action-button', { hasText: 'Full sheet' }).click();
-  await expect(page.locator('.termview .tv-title')).toHaveText('Character sheet');
-  await expect(page.locator('.termview .stat-label', { hasText: 'Fighting' })).toBeVisible();
-  await page.locator('.termview .tv-tab', { hasText: 'Resists' }).click();
-  await expect(page.locator('.termview .tv-tab.selected')).toHaveText('Resists');
-  await page.locator('#toolbar [data-action="done"]').click();
-  await waitAtCommand(page);
-  await expect(page.locator('.sheet-title')).toHaveText('Scholar');
+  await expect(page.locator('.sheet .pop-tab.selected')).toContainText('Summary');
+  const size = async () => page.locator('.sheet').evaluate((el) => Math.round(el.getBoundingClientRect().height));
+  const tabsAt = async () => page.locator('.sheet .pop-tabs').evaluate((el) => Math.round(el.getBoundingClientRect().top));
+  await page.waitForTimeout(400);
+  const height = await size();
+  const tabs = await tabsAt();
 
+  await page.locator('.sheet [data-tab="skills"]').click();
+  await expect(page.locator('.sheet .skill-row').first()).toBeVisible();
+  await expect(page.locator('.sheet [data-action="raise"]')).toBeVisible();
+  expect(await size()).toBe(height);
+  expect(await tabsAt()).toBe(tabs);
+
+  await page.locator('.sheet [data-tab="abilities"]').click();
+  await expect(page.locator('.sheet .pop-tab.selected')).toContainText('Abilities');
+  await expect(page.locator('.sheet .skill-row').first()).toBeVisible();
+  await page.locator('.sheet [data-action="learn"]').click();
+  /* tome2's question (or refusal) is asked in a small card over the sheet. */
+  await expect(page.locator('.sheet.sheet-fit')).toBeVisible();
+  await page.locator('.sheet.sheet-fit .sheet-action').first().click();
+  await expect(page.locator('.sheet-title')).toHaveText('Scholar');
+  expect(await size()).toBe(height);
+
+  await page.locator('.sheet [data-tab="sheet"]').click();
+  await expect(page.locator('.sheet .stat-label', { hasText: 'Fighting' })).toBeVisible();
+  await page.locator('.sheet [data-action="page-2"]').click();
+  await expect(page.locator('.sheet-subtitle')).toHaveText('Resists');
+  expect(await tabsAt()).toBe(tabs);
+
+  await page.locator('.sheet [data-tab="summary"]').click();
+  await expect(page.locator('.sheet .stat-grid.six .stat')).toHaveCount(6);
+  await waitAtCommand(page);
   await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  /* Typing a character command opens the same sheet on its tab. */
+  await page.keyboard.press('G');
+  await expect(page.locator('.sheet .pop-tab.selected')).toContainText('Skills');
+  await page.locator('.sheet-close').click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  await waitAtCommand(page);
+
   await page.locator('#toolbar [data-action="menu"]').click();
   await page.locator('.sheet .row-button', { hasText: 'Knowledge' }).click();
   await page.locator('.sheet .row-button', { hasText: 'Quests' }).click();
   await expect(page.locator('.termview .tv-title')).toHaveText(/Quest/);
-  await page.locator('#toolbar [data-action="done"]').click();
+  await page.locator('.termview [data-action="done"]').click();
   await waitAtCommand(page);
   await expect(page.locator('.sheet-title')).toHaveText('Knowledge');
   await expect(page.locator('.sheet .row-button.is-active')).toContainText('Quests');
   await page.locator('.sheet-back').click();
   await expect(page.locator('.sheet-title')).toHaveText('Menu');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+});
+
+test('spells are cast from the Magic sheet, and recent ones are offered first', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Caster', { race: 'High-Elf', cls: 'Mage' });
+
+  const openMagic = async () => {
+    await page.locator('#toolbar [data-action="commands"]').click();
+    await page.locator('.sheet .command', { hasText: 'Cast / power' }).click();
+    await expect(page.locator('.sheet-title')).toHaveText('Magic');
+  };
+  await openMagic();
+  await expect(page.locator('.sheet .recent-button')).toHaveCount(0);
+  await page.locator('.sheet .spell-row', { hasText: 'Manathrust' }).click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  await waitForScreen(page, /^Direction/);
+  await page.keyboard.press('Escape');
+  await dismissMore(page);
+  await waitAtCommand(page);
+
+  await openMagic();
+  await expect(page.locator('.sheet .recent-button')).toHaveText(/Manathrust/);
+  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
 });

@@ -4,7 +4,7 @@ import { readableColour } from '../render/colour.ts';
 import type { ScoreEntry } from '../render/snapshot.ts';
 import { titleName } from './api.ts';
 import { el, glyph, iconText, section } from './dom.ts';
-import type { SheetAction, Sheets } from './sheet.ts';
+import type { SheetAction, SheetContent, Sheets, SheetTab } from './sheet.ts';
 
 /** Where a hero fell, in words: "in the town", "on a quest", "at 250 ft". */
 export function fellWhere(entry: Pick<ScoreEntry, 'depth' | 'quest'>): string {
@@ -105,20 +105,8 @@ export function deedChips(tale: Chronicle): HTMLElement | null {
   return list;
 }
 
-function tabBar(current: FallenTab, open: (tab: FallenTab) => void, tabs: FallenTab[]): HTMLElement {
-  const bar = el('div', 'segmented');
-  bar.setAttribute('role', 'tablist');
-  for (const [tab, label] of TABS) {
-    if (!tabs.includes(tab)) continue;
-    const button = el('button', tab === current ? 'segment selected' : 'segment', label);
-    button.type = 'button';
-    button.dataset.nav = '';
-    button.setAttribute('role', 'tab');
-    button.setAttribute('aria-selected', String(tab === current));
-    button.addEventListener('click', () => tab !== current && open(tab));
-    bar.append(button);
-  }
-  return bar;
+function tabBar(current: FallenTab, open: (tab: FallenTab) => void, tabs: FallenTab[]): SheetTab[] {
+  return TABS.filter(([tab]) => tabs.includes(tab)).map(([tab, label]) => ({ id: tab, label, active: tab === current, run: () => open(tab) }));
 }
 
 function openItem(sheets: Sheets, item: MemorialItem): void {
@@ -254,7 +242,6 @@ export function openFallen(sheets: Sheets, hero: FallenHero, tab: FallenTab = 'h
   const e = hero.entry;
   const tabs: FallenTab[] = m ? ['hero', 'gear', 'skills', 'end'] : ['hero'];
   const body = el('div', 'fallen');
-  if (tabs.length > 1) body.append(tabBar(tab, (next) => openFallen(sheets, hero, next, true), tabs));
   body.append(...build(sheets, hero, tab));
   const name = m?.name ?? e?.name ?? 'A hero';
   const race = m?.race ?? e?.race ?? '';
@@ -262,13 +249,13 @@ export function openFallen(sheets: Sheets, hero: FallenHero, tab: FallenTab = 'h
   const level = m?.level ?? e?.level ?? 0;
   const actions: SheetAction[] = [];
   if (hero.anew) actions.push({ label: `Begin anew as ${name}`, primary: true, run: hero.anew });
-  const content = {
+  const content: SheetContent = {
     title: name,
     subtitle: [`${race} ${cls}`.trim(), m?.title ?? '', level ? `Level ${level}` : ''].filter(Boolean).join(' · '),
     body,
     actions: actions.length ? actions : undefined,
+    tabs: tabs.length > 1 ? tabBar(tab, (next) => openFallen(sheets, hero, next, true), tabs) : undefined,
     className: 'sheet-fallen',
-    initial: body.querySelector<HTMLElement>('.segment.selected'),
   };
   if (replace) sheets.replace(content);
   else sheets.open(content);

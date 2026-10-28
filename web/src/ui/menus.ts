@@ -165,7 +165,7 @@ export function openTemplate(sheets: Sheets, title: string, templateId: string):
 export function openMessage(sheets: Sheets, title: string, message: string): void {
   const body = el('div', 'prose');
   body.append(el('p', undefined, message));
-  sheets.open({ title, body, actions: [{ label: 'OK', primary: true, run: () => sheets.back() }] });
+  sheets.open({ title, body, size: 'fit', actions: [{ label: 'OK', primary: true, run: () => sheets.back() }] });
 }
 
 /**
@@ -212,6 +212,7 @@ export function askText(
       title,
       subtitle: error || (initial ? label : undefined),
       body: form,
+      size: 'fit',
       className: error ? 'sheet-ask has-error' : 'sheet-ask',
       onClose: () => finish(null),
     });
@@ -229,6 +230,7 @@ export function confirmSheet(sheets: Sheets, title: string, message: string, yes
   sheets.open({
     title,
     body,
+    size: 'fit',
     actions: [
       { label: 'Cancel', run: () => sheets.back() },
       { label: yes, primary: !danger, danger, run },
