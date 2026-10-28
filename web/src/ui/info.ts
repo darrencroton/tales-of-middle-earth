@@ -2,8 +2,9 @@ import { readableColour } from '../render/colour.ts';
 import type { MapPoint } from '../render/map.ts';
 import { CAVE_MARK, CAVE_SEEN, isAlly, isHostile, type MonsterState, type ObjectState } from '../render/snapshot.ts';
 import { capitalise, descriptionParagraphs, titleName, type GameApi } from './api.ts';
-import { el, glyph, navButton } from './dom.ts';
+import { el, glyph } from './dom.ts';
 import { openItem } from './inventory.ts';
+import type { SheetAction } from './sheet.ts';
 
 
 export function healthWord(hp: number, maxhp: number): string {
@@ -45,23 +46,21 @@ export function openMonster(api: GameApi, m: MonsterState): void {
   body.append(health);
 
   const fallen = !!api.state()?.player?.dead;
-  const actions = el('div', 'action-grid');
   const friendly = !isHostile(m);
   const near = snap ? distance({ x: snap.px, y: snap.py }, m) : 99;
-  actions.append(
-    navButton(friendly ? 'Go to' : near <= 1 ? 'Attack' : 'Approach', {
-      className: 'action-button primary',
-      onClick: () => api.travelTo({ x: m.x, y: m.y }),
-    }),
-    navButton('Show on map', {
-      className: 'action-button',
-      onClick: () => {
-        api.sheets.closeAll();
-        api.highlight({ x: m.x, y: m.y });
-      },
-    }),
-  );
-  if (!fallen) body.append(actions);
+  const actions: SheetAction[] = fallen
+    ? []
+    : [
+        { id: 'approach', label: friendly ? 'Go to' : near <= 1 ? 'Attack' : 'Approach', primary: true, run: () => api.travelTo({ x: m.x, y: m.y }) },
+        {
+          id: 'show',
+          label: 'Show on map',
+          run: () => {
+            api.sheets.closeAll();
+            api.highlight({ x: m.x, y: m.y });
+          },
+        },
+      ];
 
   const recall = api.engine.monsterRecall(m.id);
   const description = el('div', 'description recall');
@@ -88,6 +87,7 @@ export function openMonster(api: GameApi, m: MonsterState): void {
     subtitle: monsterSummary(m),
     badge: glyph(m.ch, api.palette()[m.attr] ?? '#fff'),
     body,
+    actions,
     className: 'sheet-monster',
   });
 }
@@ -104,18 +104,19 @@ export function openFloorObject(api: GameApi, o: ObjectState): void {
     }
   }
   const body = el('div', 'item-detail');
-  const actions = el('div', 'action-grid');
-  actions.append(
-    navButton('Go there', { className: 'action-button primary', onClick: () => api.travelTo({ x: o.x, y: o.y }) }),
-    navButton('Show on map', {
-      className: 'action-button',
-      onClick: () => {
-        api.sheets.closeAll();
-        api.highlight({ x: o.x, y: o.y });
-      },
-    }),
-  );
-  if (!api.state()?.player?.dead) body.append(actions);
+  const actions: SheetAction[] = api.state()?.player?.dead
+    ? []
+    : [
+        { id: 'goto', label: 'Go there', primary: true, run: () => api.travelTo({ x: o.x, y: o.y }) },
+        {
+          id: 'show',
+          label: 'Show on map',
+          run: () => {
+            api.sheets.closeAll();
+            api.highlight({ x: o.x, y: o.y });
+          },
+        },
+      ];
   const description = el('div', 'description');
   const paragraphs = descriptionParagraphs(api.engine.objectDescription(-o.id));
   for (const p of paragraphs.length ? paragraphs : ['You know nothing more about this item yet.']) description.append(el('p', undefined, p));
@@ -125,6 +126,7 @@ export function openFloorObject(api: GameApi, o: ObjectState): void {
     subtitle: 'On the floor',
     badge: glyph(o.ch, api.palette()[o.attr] ?? '#fff'),
     body,
+    actions,
     className: 'sheet-item',
   });
 }

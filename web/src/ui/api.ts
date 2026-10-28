@@ -1,5 +1,6 @@
 import type { Engine } from '../engine.ts';
 import type { Macro } from '../play/macro.ts';
+import type { RecentAction } from '../play/recent.ts';
 import type { MapPoint } from '../render/map.ts';
 import type { FeatureInfo } from '../render/materials.ts';
 import type { GameState, LevelSnapshot } from '../render/snapshot.ts';
@@ -26,6 +27,9 @@ export interface GameApi {
   highlight(point: MapPoint): void;
   /** Asks the player for a line of text in a native sheet. */
   askText(title: string, label: string, initial?: string): Promise<string | null>;
+  /** The hero's recently used spells, powers and items, newest first. */
+  recent(): readonly RecentAction[];
+  remember(entry: RecentAction): void;
 }
 
 export function capitalise(text: string): string {

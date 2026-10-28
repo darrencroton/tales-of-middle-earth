@@ -46,6 +46,9 @@ const WEAPON_TVALS = new Set([6, 15, 19, 20, 21, 22, 23, 24]);
 
 /** Equipment index of the light source slot. */
 export const INVEN_LITE = 36;
+/** Equipment indexes of the launcher and the quiver. */
+export const INVEN_BOW = 27;
+export const INVEN_AMMO = 50;
 
 /** Equipment slot groups, keyed by their first inventory index. */
 export const SLOT_NAMES: Readonly<Record<number, string>> = {

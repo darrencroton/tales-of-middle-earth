@@ -232,6 +232,8 @@ export interface ItemState {
   i: number;
   name: string;
   tval: number;
+  /** Sub-type within the tval: with it, identifies the kind of item whatever the stack size. */
+  sval?: number;
   number: number;
   /** Weight of one item in tenths of a pound. */
   weight: number;
@@ -284,6 +286,93 @@ export interface CharacterState {
   skills?: { name: string; value: number }[];
   abilities?: string[];
   turn: number;
+}
+
+/** A skill adjustment from a race, race modifier, class or specialisation; values in thousandths. */
+export interface BirthSkill {
+  name: string;
+  /** '+', '-', '=' (set to) or '%' (percent). */
+  op: string;
+  base: number;
+  modOp: string;
+  mod: number;
+}
+
+export interface BirthAbility {
+  name: string;
+  desc: string;
+  level: number;
+}
+
+/** Object flags (tome2 edit-file names) gained at a character level. */
+export interface BirthLevelFlags {
+  level: number;
+  pval: number;
+  flags: string[];
+}
+
+export interface BirthEntry {
+  index: number;
+  title: string;
+  desc: string;
+  /** STR, INT, WIS, DEX, CON, CHR adjustments. */
+  stats?: number[];
+  hitDie?: number;
+  /** Experience penalty, percent. */
+  exp?: number;
+  luck?: number;
+  infra?: number;
+  /** Mana percent (race modifiers and classes). */
+  mana?: number;
+  blows?: number;
+  extraBlows?: number;
+  /** tome2 player race flags (EXPERIMENTAL, NO_GOD...). */
+  flags: string[];
+  levelFlags?: BirthLevelFlags[];
+  skills: BirthSkill[];
+  abilities: BirthAbility[];
+  powers?: { name: string; desc: string }[];
+  /** Classes a race can take. */
+  classes?: string[];
+  /** Gods a specialisation can follow. */
+  gods?: string[];
+  specs?: BirthEntry[];
+}
+
+export interface BirthData {
+  races: BirthEntry[];
+  mods: BirthEntry[];
+  classes: BirthEntry[];
+}
+
+export interface SpellInfo {
+  name: string;
+  school: string;
+  /** Spell level, or -1 when it cannot be cast at all. */
+  level: number;
+  mana: number;
+  fail: number;
+  info: string;
+  ok: number;
+  /** Castable but costs more mana than the player has. */
+  short: number;
+  desc: string;
+}
+
+export interface SpellBook {
+  /** Inventory index. */
+  i: number;
+  name: string;
+  spells: SpellInfo[];
+}
+
+export interface SpellState {
+  ready: number;
+  books: SpellBook[];
+  /** Entries of tome2's "use a skill" menu, in order. */
+  powers: { label: string; mkey: number }[];
+  /** Race, class and corruption powers (tome2's "use a power" menu), in order. */
+  bonus: { name: string; desc: string; level: number; cost: number }[];
 }
 
 export interface MonsterRecall {

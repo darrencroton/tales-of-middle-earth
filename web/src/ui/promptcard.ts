@@ -1,10 +1,10 @@
 import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, keyCodes as codes, typedAnswer } from '../input/keys.ts';
-import type { PromptKind } from '../play/prompts.ts';
+import { bracketChoices, choiceQuestion, type PromptKind } from '../play/prompts.ts';
 import { el, iconText } from './dom.ts';
 import { cleanPrompt } from './prompttext.ts';
 import type { MessageBox } from './msgbox.ts';
 
-export type CardKind = Extract<PromptKind, 'yesno' | 'quantity' | 'text' | 'direction' | 'aim'>;
+export type CardKind = Extract<PromptKind, 'yesno' | 'quantity' | 'text' | 'direction' | 'aim' | 'choice'>;
 
 /* Keypad digits in screen order, with their arrows and names; the centre cancels. */
 const PAD: [string, string, string][] = [
@@ -70,6 +70,9 @@ export class PromptCard {
     switch (kind) {
       case 'yesno':
         this.yesNo(raw);
+        break;
+      case 'choice':
+        this.choice(raw);
         break;
       case 'quantity':
         this.quantity(raw);
@@ -158,6 +161,19 @@ export class PromptCard {
     buttons.append(this.button('No', codes('n')), yes);
     this.root.replaceChildren(this.title(question), buttons);
     yes.focus({ preventScroll: true });
+  }
+
+  /** tome2's "[S]hots, [A]rrows or [B]olts?" questions, one button per choice. */
+  private choice(raw: string): void {
+    const buttons = el('div', 'card-buttons choices');
+    buttons.append(this.button('Cancel', [ESCAPE]));
+    for (const choice of bracketChoices(raw)) {
+      const button = this.button(choice.label, codes(choice.key));
+      button.dataset.choice = choice.key;
+      buttons.append(button);
+    }
+    this.root.replaceChildren(this.title(choiceQuestion(raw)), buttons);
+    (buttons.children[1] as HTMLElement | undefined)?.focus({ preventScroll: true });
   }
 
   private quantity(raw: string): void {

@@ -1,3 +1,4 @@
+import { bracketChoices } from '../play/prompts.ts';
 import { rowText, type TermRow } from './termparse.ts';
 
 export interface BoxChoice {
@@ -40,10 +41,7 @@ function classifyBox(text: string): Pick<MessageBox, 'kind' | 'text' | 'choices'
     const question = text.replace(/\s*\(y\/n\)\s*$/i, '').replace(/\s*\(this is permanent\)/i, '');
     return { kind: 'yesno', text: /[?!.]$/.test(question) ? question : `${question}?`, choices: [] };
   }
-  const choices = [...text.matchAll(/\[([A-Za-z])\]([\w ]*)/g)].map((m) => {
-    const label = `${m[1]}${m[2]}`.trim();
-    return { label: label[0].toUpperCase() + label.slice(1), key: m[1] };
-  });
+  const choices = bracketChoices(text);
   if (choices.length > 1) return { kind: 'choice', text: 'Choose one', choices };
   return { kind: 'notice', text, choices: [] };
 }

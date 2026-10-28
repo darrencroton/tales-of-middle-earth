@@ -187,7 +187,7 @@ export class Hud {
     for (const m of sortByDistance(monsters, px, py)) list.append(this.monsterItem(m, real.get(m.id) ?? m, palette));
     for (const o of sortByDistance(objects, px, py)) list.append(this.objectItem(o, realObjects.get(o.id) ?? o, palette));
 
-    this.root.replaceChildren(player, list);
+    this.root.replaceChildren(player, list, ...(this.messagesEl.parentElement === this.root ? [this.messagesEl] : []));
   }
 
   /** The health bar, with a pale band over health lost in the last moment. */
@@ -236,10 +236,11 @@ export class Hud {
     const tags: string[] = [];
     if (m.asleep) tags.push('asleep');
     if (m.afraid) tags.push('afraid');
-    if (friendly) tags.push('ally');
-    if (neutral) tags.push('neutral');
-    button.append(this.glyph(m.ch, m.attr, palette), el('span', m.unique ? 'label unique' : 'label', m.name));
-    if (tags.length) button.append(el('span', 'tags', tags.join(', ')));
+    const text = el('span', 'entity-text');
+    text.append(el('span', m.unique ? 'label unique' : 'label', m.name));
+    if (tags.length) text.append(el('span', 'tags', tags.join(' · ')));
+    button.append(this.glyph(m.ch, m.attr, palette), text);
+    button.setAttribute('aria-label', [m.name, friendly ? 'ally' : neutral ? 'neutral' : 'hostile', ...tags].join(', '));
     item.append(button);
     return item;
   }
@@ -248,7 +249,9 @@ export class Hud {
     const item = el('li');
     const button = this.entityButton({ kind: 'object', object: real });
     button.classList.add('item');
-    button.append(this.glyph(o.ch, o.attr, palette), el('span', 'label', o.name));
+    const text = el('span', 'entity-text');
+    text.append(el('span', 'label', o.name));
+    button.append(this.glyph(o.ch, o.attr, palette), text);
     item.append(button);
     return item;
   }

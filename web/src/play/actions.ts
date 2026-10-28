@@ -8,6 +8,10 @@ export type NativeView =
   | 'lookDone'
   | 'character'
   | 'skills'
+  | 'abilities'
+  | 'magic'
+  | 'recast'
+  | 'fire'
   | 'knowledge'
   | 'history'
   | 'overview'
@@ -93,7 +97,7 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
     commands: [
       { label: 'Fire', icon: '}', command: 'f' },
       { label: 'Throw', icon: '↗', command: 'v' },
-      { label: 'Cast / power', icon: '✦', command: 'm' },
+      { label: 'Magic & powers', icon: '✦', command: 'm', native: 'magic' },
       { label: 'Pray', icon: '☼', command: 'p' },
       { label: 'Aim wand', icon: '-', command: 'a' },
       { label: 'Use staff', icon: '_', command: 'u' },
@@ -124,8 +128,8 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
     commands: [
       { label: 'Look', icon: '◉', command: 'l', native: 'look' },
       { label: 'Character', icon: '@', command: 'C', native: 'character' },
-      { label: 'Skills', icon: '±', command: 'G', reading: true },
-      { label: 'Abilities', icon: '✪', command: 'N', reading: true },
+      { label: 'Skills', icon: '±', command: 'G', native: 'skills' },
+      { label: 'Abilities', icon: '✪', command: 'N', native: 'abilities' },
       { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
       { label: 'Knowledge', icon: '¶', command: '~', native: 'knowledge' },
       { label: 'Messages', icon: '≣', command: '\u0010', native: 'history' },
@@ -176,7 +180,7 @@ export interface ActionContext {
   /** The hero has died; their sheet can still be looked at. */
   fallen?: boolean;
   /** Which special tome2 screen is open. */
-  screen?: 'skills' | 'abilities' | 'options' | 'help' | 'file' | 'sheet' | 'gameover' | null;
+  screen?: 'options' | 'help' | 'file' | 'gameover' | null;
   atCommand: boolean;
   /** Name of the terrain under the player, lower case. */
   underfoot: string;
@@ -190,6 +194,14 @@ export interface ActionContext {
   gear?: 'weapon' | 'light' | 'heal' | 'eat' | null;
   /** Direction digit of the weakest hostile creature next to the player. */
   foe?: string | null;
+  /** A hostile creature is in view. */
+  foeInView?: boolean;
+  /** Name of the spell or power last used, offered again while a foe is in view. */
+  recast?: string | null;
+  /** A launcher and ammunition are ready. */
+  canFire?: boolean;
+  /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers. */
+  magic?: string | null;
 }
 
 /* More buttons than this crowd a phone's toolbar. */
@@ -278,24 +290,6 @@ export function contextActions(ctx: ActionContext): Action[] {
       break;
   }
 
-  if (ctx.screen === 'skills') {
-    return [
-      { id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] } },
-      UP,
-      DOWN,
-      { id: 'lower', label: 'Lower', icon: '−', effect: { kind: 'keys', keys: text('4') } },
-      { id: 'raise', label: 'Raise', icon: '+', effect: { kind: 'keys', keys: text('6') }, primary: true },
-    ];
-  }
-  if (ctx.screen === 'abilities') {
-    return [
-      { id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] } },
-      UP,
-      DOWN,
-      { id: 'about', label: 'About', icon: '?', effect: { kind: 'keys', keys: text('?') } },
-      { id: 'learn', label: 'Learn', icon: '+', effect: { kind: 'keys', keys: text('6') }, primary: true },
-    ];
-  }
   if (ctx.screen === 'help' || ctx.screen === 'file') {
     return [
       { id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] } },
@@ -310,7 +304,7 @@ export function contextActions(ctx: ActionContext): Action[] {
       { id: 'finish', label: 'Continue', icon: '›', effect: { kind: 'native', view: 'finish' }, primary: true },
     ];
   }
-  if (ctx.screen === 'options' || ctx.screen === 'sheet') {
+  if (ctx.screen === 'options') {
     return [{ id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] }, primary: true }, MENU];
   }
 
@@ -318,6 +312,12 @@ export function contextActions(ctx: ActionContext): Action[] {
     const situational = situationalActions(ctx.underfoot, ctx.floorObjects, ctx.alwaysPickup);
     const actions: Action[] = [
       ...(ctx.foe ? [{ id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true } as Action] : []),
+      ...(ctx.foeInView && ctx.recast
+        ? [{ id: 'recast', label: ctx.recast, icon: '✺', effect: { kind: 'native', view: 'recast' }, primary: !ctx.foe } as Action]
+        : []),
+      ...(ctx.foeInView && ctx.canFire
+        ? [{ id: 'fire', label: 'Fire', icon: '➶', effect: { kind: 'native', view: 'fire' }, primary: !ctx.foe && !ctx.recast } as Action]
+        : []),
       ...(ctx.gear ? [gearAction(ctx.gear)] : []),
       ...situational,
       ...(ctx.worldMap
@@ -329,7 +329,7 @@ export function contextActions(ctx: ActionContext): Action[] {
           : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
       { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
       ...(ctx.foe ? [] : [command('rest', 'Rest', '☾', { command: 'R', then: '&\r' })]),
-      command('cast', 'Cast', '✦', { command: 'm' }),
+      ...(ctx.magic === null ? [] : [{ id: 'cast', label: ctx.magic ?? 'Cast', icon: '✦', effect: { kind: 'native', view: 'magic' } } as Action]),
       { id: 'look', label: 'Look', icon: '◉', effect: { kind: 'native', view: 'look' } },
       { id: 'commands', label: 'More', icon: '⋯', effect: { kind: 'commands' } },
       MENU,

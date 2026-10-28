@@ -2,12 +2,14 @@ import type { Place } from './audio/places.ts';
 import type { FeatureInfo } from './render/materials.ts';
 import {
   readSnapshot,
+  type BirthData,
   type CharacterState,
   type GameState,
   type InventoryState,
   type LevelSnapshot,
   type MonsterRecall,
   type ScoreEntry,
+  type SpellState,
 } from './render/snapshot.ts';
 import type { TerminalBuffer } from './terminal.ts';
 import { syncToStorage, type EmscriptenFS } from './saves.ts';
@@ -48,6 +50,8 @@ interface EmscriptenModule {
   _web_set_auto_more(on: number): void;
   _web_place_json(): number;
   _web_scores_json(): number;
+  _web_birth_json(): number;
+  _web_spells_json(): number;
 }
 
 interface ModuleOptions {
@@ -143,6 +147,18 @@ export class Engine {
   scores(): ScoreEntry[] {
     const json = this.callJson<ScoreEntry[]>((mod) => mod._web_scores_json());
     return Array.isArray(json) ? json : [];
+  }
+
+  /** Races, race modifiers and classes with their details, for character creation. */
+  birthData(): BirthData | null {
+    const json = this.callJson<BirthData>((mod) => mod._web_birth_json());
+    return json && Array.isArray(json.races) ? json : null;
+  }
+
+  /** Spells in the books carried, and the skills that can be used. */
+  spells(): SpellState | null {
+    const json = this.callJson<SpellState>((mod) => mod._web_spells_json());
+    return json && json.ready ? json : null;
   }
 
   /** What the player knows about an item: inventory index, or minus the floor object index. */

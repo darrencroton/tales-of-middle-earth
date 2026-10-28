@@ -1,6 +1,7 @@
 import { readableColour } from '../render/colour.ts';
 import { el } from './dom.ts';
 import { ListNav, type NavDirection } from './listnav.ts';
+import { renderFooter, type PopAction } from './popup.ts';
 import { isInstructionLine } from './prompttext.ts';
 import { bufferRows, parseRows, sliceCell, type Block, type Cell, type ChoiceBlock, type OptionBlock, type Run, type TextBlock } from './termparse.ts';
 
@@ -8,11 +9,13 @@ export interface TermViewCallbacks {
   /** A menu choice was tapped or activated. */
   onChoice(key: string, choice: ChoiceBlock): void;
   /** The information button beside a choice was tapped. */
-  onDescribe(key: string): void;
+  onDescribe(key: string, choice: ChoiceBlock): void;
   /** An option switch was tapped. */
   onOption(option: OptionBlock, index: number, options: OptionBlock[]): void;
   /** Somewhere other than a choice was tapped. */
   onTapText(): void;
+  /** The panel's close button or the dimmed map around it was tapped. */
+  onClose(): void;
 }
 
 export interface TermViewSource {
@@ -89,8 +92,12 @@ const SHORT_CELL = 28;
  */
 export class TermView {
   readonly root: HTMLElement;
+  private readonly layer: HTMLElement;
   private readonly header: HTMLElement;
   private readonly body: HTMLElement;
+  private readonly footer: HTMLElement;
+  private actions: readonly PopAction[] = [];
+  private footerKey = '';
   private readonly nav: ListNav;
   private readonly palette: () => readonly string[];
   private readonly callbacks: TermViewCallbacks;
@@ -102,24 +109,33 @@ export class TermView {
   constructor(parent: HTMLElement, palette: () => readonly string[], callbacks: TermViewCallbacks) {
     this.palette = palette;
     this.callbacks = callbacks;
+    this.layer = el('div', 'tv-layer');
+    this.layer.hidden = true;
+    const backdrop = el('div', 'tv-backdrop');
     this.root = el('div', 'termview');
     this.root.hidden = true;
     this.header = el('div', 'tv-header');
     this.body = el('div', 'tv-body');
-    this.root.append(this.header, this.body);
-    parent.append(this.root);
+    this.footer = el('footer', 'tv-footer');
+    this.footer.hidden = true;
+    this.root.append(this.header, this.body, this.footer);
+    this.layer.append(backdrop, this.root);
+    parent.append(this.layer);
     this.nav = new ListNav(this.root, this.body);
+    backdrop.addEventListener('click', () => this.callbacks.onClose());
 
     this.root.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      const tab = target.closest<HTMLElement>('.tv-tab');
-      if (tab) {
-        this.tabs[Number(tab.dataset.index)]?.run();
+      if (target.closest('.tv-footer')) return;
+      if (target.closest('.tv-close')) {
+        this.callbacks.onClose();
         return;
       }
       const info = target.closest<HTMLElement>('.tv-info');
       if (info?.dataset.key) {
-        this.callbacks.onDescribe(info.dataset.key);
+        const row = info.parentElement?.querySelector<HTMLElement>('.tv-choice');
+        const choice = row ? this.choiceFor(row) : null;
+        if (choice) this.callbacks.onDescribe(info.dataset.key, choice);
         return;
       }
       const option = target.closest<HTMLElement>('.tv-option');
@@ -150,7 +166,30 @@ export class TermView {
   hide(): void {
     if (this.root.hidden) return;
     this.root.hidden = true;
+    this.layer.hidden = true;
     this.renderedKey = '';
+  }
+
+  /** Buttons for the panel's foot (what tome2 lets the player do on this screen). */
+  setActions(actions: readonly PopAction[]): void {
+    this.actions = actions;
+    this.renderFooter();
+  }
+
+  private show(layout: TermViewOptions['layout']): void {
+    this.root.hidden = false;
+    this.layer.hidden = false;
+    this.layer.className = `tv-layer ${layout}`;
+  }
+
+  private renderFooter(): void {
+    const panel = this.root.classList.contains('panel');
+    const actions = panel ? this.actions : [];
+    const tabs = this.tabs.map((t, i) => ({ id: `tab${i}`, label: t.label, active: t.active, run: () => t.run() }));
+    const key = JSON.stringify([actions.map((a) => [a.id, a.label, a.primary]), tabs.map((t) => [t.label, t.active])]);
+    if (key === this.footerKey) return;
+    this.footerKey = key;
+    renderFooter(this.footer, actions, tabs);
   }
 
   /** Choices on screen, in order. */
@@ -180,7 +219,7 @@ export class TermView {
     }
     const cursorRow = blocks.some((b) => b.kind === 'option') ? options.cursorRow : undefined;
     const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, cursorRow, blocks]);
-    this.root.hidden = false;
+    this.show(options.layout);
     this.tabs = options.tabs ?? [];
     if (key === this.renderedKey) return;
     const active = this.nav.active;
@@ -190,6 +229,7 @@ export class TermView {
     this.root.className = `termview ${options.layout}`;
 
     this.renderHeader(options);
+    this.renderFooter();
     this.body.replaceChildren(...this.renderBlocks(blocks, options.describe ?? null, cursorRow));
     if (options.empty && !this.body.textContent?.trim()) this.body.replaceChildren(el('p', 'tv-empty', options.empty));
     this.fitPreformatted();
@@ -205,7 +245,7 @@ export class TermView {
    * rebuilt only when `key` changes.
    */
   renderCustom(options: TermViewOptions, key: string, build: () => HTMLElement[]): void {
-    this.root.hidden = false;
+    this.show(options.layout);
     this.tabs = options.tabs ?? [];
     const fullKey = `custom\u0000${options.layout}\u0000${options.title}\u0000${options.badge}\u0000${key}`;
     if (fullKey === this.renderedKey) return;
@@ -215,13 +255,14 @@ export class TermView {
     this.blocks = [];
     this.root.className = `termview ${options.layout}`;
     this.renderHeader(options);
+    this.renderFooter();
     this.body.replaceChildren(...build());
     if (view !== this.customView) this.body.scrollTop = 0;
     this.customView = view;
     const current = this.body.querySelector<HTMLElement>('.current');
     const previous = activeKey ? this.body.querySelector<HTMLElement>(`[data-key="${CSS.escape(activeKey)}"]`) : null;
-    const tab = this.header.querySelector<HTMLElement>('.tv-tabs .selected');
-    this.nav.setActive(current ?? previous ?? tab ?? this.body.querySelector<HTMLElement>('[data-nav]'), true);
+    const tab = this.footer.querySelector<HTMLElement>('.pop-tab.selected');
+    this.nav.setActive(current ?? previous ?? this.body.querySelector<HTMLElement>('[data-nav]') ?? tab, true);
   }
 
   move(direction: NavDirection): void {
@@ -251,25 +292,21 @@ export class TermView {
 
   private renderHeader(options: TermViewOptions): void {
     const parts: HTMLElement[] = [];
-    if (options.title || options.badge) {
+    const panel = options.layout === 'panel';
+    if (options.title || options.badge || panel) {
       const line = el('div', 'tv-title-line');
       const titles = el('div', 'tv-titles');
       if (options.title) titles.append(el('h2', 'tv-title', options.title));
       if (options.subtitle) titles.append(el('p', 'tv-subtitle', options.subtitle));
       line.append(titles);
       if (options.badge) line.append(el('span', 'tv-badge', options.badge));
+      if (panel) {
+        const close = el('button', 'tv-close sheet-close', '✕');
+        close.type = 'button';
+        close.setAttribute('aria-label', 'Close');
+        line.append(close);
+      }
       parts.push(line);
-    }
-    if (this.tabs.length) {
-      const bar = el('div', 'segmented tv-tabs');
-      this.tabs.forEach((tab, i) => {
-        const button = el('button', `segment tv-tab${tab.active ? ' selected' : ''}`, tab.label);
-        button.type = 'button';
-        button.dataset.index = String(i);
-        button.dataset.nav = '';
-        bar.append(button);
-      });
-      parts.push(bar);
     }
     this.header.replaceChildren(...parts);
     this.header.hidden = parts.length === 0;
