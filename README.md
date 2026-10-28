@@ -58,7 +58,9 @@ This is the full ToME 2 game, with an interface designed from scratch for phones
 
 **A dungeon that glows.** Torchlight flickers and fades into darkness, lava casts a molten glow, water shimmers, and spells light up the walls as they fly. Places you've seen linger in a dim, blue memory.
 
-**Fights you can feel.** Damage numbers float off wounded foes, the screen flashes red when you're hit, and banners celebrate a new level or a deeper descent.
+**Fights you can feel.** Damage numbers float off wounded foes, the fallen leave a ring in their colour, heavy blows shake the screen, and banners mark a new level, a deeper descent, a kill streak or a legend slain.
+
+**A legend of your own.** Earn deeds as you play — *First blood*, *Giant-slayer*, *Into the deep* — and when a hero falls, read their tale: creatures slain, the mightiest foe, the deepest point reached, and a tip for next time. The **Hall of Fame** on the title screen remembers every fallen hero, your career and the deeds still to earn.
 
 **Music for every place.** The soundtrack is composed live as you play, so it is never quite the same twice. Its leitmotifs — the hero's horn call, the Bree jig, the Dwarf march, the Shadow's theme — are recast for each place you visit and swell when danger is near, while sound effects bring every swing, door and spell to life. Hear every theme from **Soundtrack** on the title screen.
 

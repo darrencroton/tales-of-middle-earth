@@ -2716,6 +2716,238 @@ html.keyboard-tight .prompt-card.text .card-title {
   opacity: 0.6;
 }
 
+/* Kills, streaks, legends and deeds */
+
+#stage.feel-shake {
+  animation: feel-shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes feel-shake {
+  10%, 90% { transform: translate(calc(var(--shake, 4px) * -0.25), 0); }
+  20%, 80% { transform: translate(calc(var(--shake, 4px) * 0.5), calc(var(--shake, 4px) * 0.25)); }
+  30%, 50%, 70% { transform: translate(calc(var(--shake, 4px) * -1), calc(var(--shake, 4px) * -0.25)); }
+  40%, 60% { transform: translate(var(--shake, 4px), calc(var(--shake, 4px) * 0.25)); }
+}
+
+.feel-ring {
+  --ring: #ffd56a;
+  position: absolute;
+  width: 2.6rem;
+  height: 2.6rem;
+  margin: -1.3rem 0 0 -1.3rem;
+  border: 2px solid var(--ring);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--ring), inset 0 0 8px var(--ring);
+  pointer-events: none;
+  animation: feel-ring 700ms ease-out forwards;
+}
+
+@keyframes feel-ring {
+  from {
+    opacity: 0.95;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+.feel-banner.streak strong {
+  color: #ff9d5c;
+  font-family: var(--serif);
+  font-style: italic;
+  text-shadow: 0 0 12px rgb(255 120 40 / 0.6);
+}
+
+.feel-banner.legend strong {
+  color: #ffd56a;
+  font-family: var(--serif);
+  text-shadow: 0 0 14px rgb(255 190 80 / 0.8);
+}
+
+.feel-deed {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.6rem;
+  align-items: center;
+  width: max-content;
+  max-width: calc(100% - 1.2rem);
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: linear-gradient(to bottom, rgb(59 42 18 / 0.96), rgb(26 18 8 / 0.96));
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.6), 0 0 18px rgb(255 170 60 / 0.25);
+  opacity: 0;
+  transform: translate(-50%, 0.8rem);
+  transition:
+    opacity 300ms ease,
+    transform 300ms ease;
+}
+
+.feel-deed.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.feel-deed-star {
+  grid-row: span 2;
+  color: #ffd56a;
+  font-size: var(--fs-title);
+  text-shadow: 0 0 10px rgb(255 190 80 / 0.8);
+}
+
+.feel-deed strong {
+  color: var(--accent-bright);
+}
+
+.feel-deed span:last-child {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+/* The hero has died: the world drains of colour behind the death card. */
+#app.fallen #map {
+  filter: grayscale(0.85) brightness(0.45) sepia(0.35) hue-rotate(-20deg) saturate(2.2);
+  transition: filter 1600ms ease;
+}
+
+#app.fallen .feel-vignette {
+  opacity: 0.8;
+  background: radial-gradient(ellipse at center, transparent 35%, rgb(90 0 0 / 0.75) 100%);
+  animation: none;
+}
+
+/* A creature near death: its chip flickers. */
+.entity.foe.critical {
+  animation: entity-critical 1s steps(2, jump-none) infinite;
+}
+
+@keyframes entity-critical {
+  50% {
+    border-color: #e0604f;
+    box-shadow: 0 0 8px rgb(224 96 79 / 0.6);
+  }
+}
+
+/* Health just lost stays as a pale band for a moment, then drains. */
+.bar > span:not(.bar-trail) {
+  position: relative;
+}
+
+.bar-trail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--fill);
+  width: calc(var(--from) - var(--fill));
+  border-radius: 0 4px 4px 0;
+  background: rgb(255 236 210 / 0.55);
+  pointer-events: none;
+  animation: bar-drain 450ms ease-in 300ms forwards;
+}
+
+@keyframes bar-drain {
+  to {
+    width: 0;
+    opacity: 0.2;
+  }
+}
+
+/* Your tale and deeds */
+
+.tale-legends {
+  margin: -0.4rem 0 1rem;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.tale-tip {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  background: rgb(255 255 255 / 0.04);
+}
+
+.tale-tip strong {
+  color: var(--accent-bright);
+}
+
+.deed-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.deed-chip {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid rgb(217 164 65 / 0.6);
+  border-radius: 999px;
+  color: var(--accent-bright);
+  font-size: var(--fs-small);
+}
+
+.deed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.deed {
+  display: grid;
+  grid-template-columns: 1.6em 1fr;
+  column-gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  opacity: 0.6;
+}
+
+.deed.earned {
+  border-color: rgb(217 164 65 / 0.6);
+  opacity: 1;
+}
+
+.deed-star {
+  grid-row: span 2;
+  color: var(--faint);
+  font-size: var(--fs-large);
+  text-align: center;
+}
+
+.deed.earned .deed-star {
+  color: #ffd56a;
+}
+
+.deed-title {
+  font-weight: 600;
+}
+
+.deed.earned .deed-title {
+  color: var(--accent-bright);
+}
+
+.deed-text {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+:root[data-animation="off"] .entity.foe.critical,
+:root[data-animation="off"] .bar-trail {
+  animation: none;
+}
+
+:root[data-animation="off"] .bar-trail {
+  display: none;
+}
+
 /* First-game tips */
 
 .coach {
