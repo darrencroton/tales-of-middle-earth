@@ -78,6 +78,16 @@ test('tapping the map travels there along a known path', async ({ page }) => {
     await expect(page.locator('#toast'), context).toContainText(/near|hurt|blocked/);
   }
   expect(after, context).toBeLessThan(before);
+
+  /* A tap on the hero waits a turn where they stand. */
+  await dismissMore(page);
+  await waitAtCommand(page);
+  const here = await playerPos(page);
+  const turn = await page.evaluate(() => window.__tome!.engine.snapshot()!.turn);
+  const self = await page.evaluate(([x, y]) => window.__tome!.mapCellCentre(x, y), [here.x, here.y] as const);
+  await page.mouse.click(self.x, self.y);
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.snapshot()!.turn)).toBeGreaterThan(turn);
+  expect(await playerPos(page)).toEqual(here);
 });
 
 test('items are used, wielded and taken off from the native inventory', async ({ page }) => {
@@ -167,7 +177,7 @@ test('abilities, the full sheet and knowledge are native views', async ({ page }
   /* Closing a tome2 screen returns to the sheet it was opened from. */
   await expect(page.locator('.sheet-title')).toHaveText('Scholar');
   await expect(page.locator('.sheet .action-button.is-active')).toHaveText('Abilities');
-  await page.locator('.sheet .action-button', { hasText: 'Full character sheet' }).click();
+  await page.locator('.sheet .action-button', { hasText: 'Full sheet' }).click();
   await expect(page.locator('.termview .tv-title')).toHaveText('Character sheet');
   await expect(page.locator('.termview .stat-label', { hasText: 'Fighting' })).toBeVisible();
   await page.locator('.termview .tv-tab', { hasText: 'Resists' }).click();
@@ -176,7 +186,9 @@ test('abilities, the full sheet and knowledge are native views', async ({ page }
   await waitAtCommand(page);
   await expect(page.locator('.sheet-title')).toHaveText('Scholar');
 
-  await page.locator('.sheet .action-button', { hasText: 'Knowledge' }).click();
+  await page.keyboard.press('Escape');
+  await page.locator('#toolbar [data-action="menu"]').click();
+  await page.locator('.sheet .row-button', { hasText: 'Knowledge' }).click();
   await page.locator('.sheet .row-button', { hasText: 'Quests' }).click();
   await expect(page.locator('.termview .tv-title')).toHaveText(/Quest/);
   await page.locator('#toolbar [data-action="done"]').click();
@@ -184,7 +196,7 @@ test('abilities, the full sheet and knowledge are native views', async ({ page }
   await expect(page.locator('.sheet-title')).toHaveText('Knowledge');
   await expect(page.locator('.sheet .row-button.is-active')).toContainText('Quests');
   await page.locator('.sheet-back').click();
-  await expect(page.locator('.sheet-title')).toHaveText('Scholar');
+  await expect(page.locator('.sheet-title')).toHaveText('Menu');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
 });

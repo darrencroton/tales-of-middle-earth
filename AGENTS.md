@@ -20,8 +20,9 @@ ToME 2 (Tales of Middle-earth roguelike) compiled to WebAssembly and played as a
 - Comments describe what code does, not why; keep them sparse and match surrounding style.
 - Prefer native/platform solutions over new dependencies; ask before adding packages.
 - Robust error handling; complete, runnable changes.
-- Commit/push only when asked or when checkpointing a long piece of work; open PRs only on request.
-- After opening a PR, watch it: address CI failures and review comments (reviews usually arrive within 10 minutes) and iterate until it is green and clean.
+- Commit/push only when asked or when checkpointing a long piece of work.
+- Standing order: when a substantial piece of work is finished (a feature, several fixes, anything that touches many files), push it to a branch and open a PR without asking; small one-off tweaks wait to be asked.
+- After opening a PR, watch it: address CI failures and review comments (reviews usually arrive within 10 minutes) and iterate until it is green and clean, without waiting to be asked.
 - (Preferences evolve — update this section when the owner states new ones.)
 
 ## Layout
@@ -50,9 +51,10 @@ tests/e2e/             Playwright (phone portrait, phone landscape, tablet)
 - **Director** (`flow/director.ts`): always picks the ToME module; auto-answers module/news/savefile screens, feeds Continue/New to the title, drives birth screens (cursor moves with `6`/`4`, confirm with Enter), auto-answers routine birth questions. tome2 has no previous step, so Back sends `S` (start over) and replays the earlier picks by option letter; Random only highlights an option so every pick is known. tome2's sliding intro never waits for a key, so `effectFrame()` (called from `onEffectFrame`) sends the key that cuts it short.
 - **Prompts:** `classifyPrompt(row0, cursorOnRow0)`; yes/no, quantity, text, direction and aim become a native `PromptCard`. `cleanPrompt` strips key hints for headings.
 - **Text entry:** text questions (`askText`, the text `PromptCard`) sit at the top of the screen so the on-screen keyboard cannot cover them. `updateAppHeight` compares the visual viewport with the height seen before a text field took focus (on iOS `innerHeight` can shrink with the keyboard too) and sets `html.keyboard-open` / `keyboard-tight`.
-- **Surface:** on the land (`depth 0`, not `wild`) `<` is *World map*; on the world map `>` is *Walk here* (`commandGroups`; the world-map toolbar shows `walkhere` in place of Explore).
-- **Gestures:** tap = travel/act, drag = pan (resets on next move), long-press = look, pinch = zoom.
-- **Saves:** `~/.tome` on IDBFS; Save and quit sends `\^X`, answers the follow-up screens, then reloads to the title. Any save command sets `pendingSync` so storage is synced (and the player told) once the engine has written the file.
+- **Surface:** on the land (`depth 0`, not `wild`) `<` is *World map*; on the world map `>` is *Walk here* (`commandGroups`; the world-map toolbar shows `walkhere` in place of Explore). `hud.ts` `areaName(place)` names where the player is (*World map*, the town, *Grasslands*, *Forest*…); `main.ts` sets it on the player as `area`/`inTown`, so the HUD, character sheet and the place banner (`feel.ts`, also on entering a new area of the land) use it. A tap on or beyond the edge of an area (`edgeCell`) walks to the border; `Travel` stops when the hero lands more than a step from the last one (a new area, or a teleport).
+- **Gestures:** tap = travel/act (a tap on the hero always waits a turn without picking up: `waitCommand`; the toolbar has Pick up), drag = pan (resets on next move), long-press = look, pinch = zoom.
+- **Saves:** `~/.tome` on IDBFS; Save and quit sends `\^X`, answers the follow-up screens, then returns to the title. Any save command sets `pendingSync` so storage is synced (and the player told) once the engine has written the file.
+- **Back to the title** (`main.ts` `returnToTitle`): when the engine exits after Save and quit or the end of a game, the page is not reloaded: `engine.reset()` and a fresh module start in the same page (so the title music plays on without another gesture), and `Director.reset`, `TitleScreen.reset`, `Hud.reset`, `GameFeel.reset` clear the last game. Emscripten mutates the `arguments` array it is given, so `Engine.start` passes a copy.
 - **Level readiness:** `engine/snapshot.cc` reports `inDungeon` from `character_generated`, not `character_dungeon`, so the map stays native while a new level is generated (quest hooks print `-more-` messages mid-generation).
 - **Messages:** Settings → Messages defaults to *Flow past*, which sets tome2's `auto_more` through `web_set_auto_more` (re-applied on every snapshot so a loaded savefile cannot undo it). Messages then only appear in the HUD log and history.
 - **Return to sheets** (`main.ts` `coverSheets`/`reopenSheets`, `Sheets.snapshot`/`restore`): sheets covered by a tome2 screen are saved and reopened at the next idle at the command prompt (or straight away when tome2's knowledge menu is redirected). `SheetContent.rebuild` refreshes a sheet whose data may have changed (character).
@@ -78,6 +80,7 @@ npm run test:e2e       # slow (~30+ min for all projects in CI)
 - New engine exports must be added to `-sEXPORTED_FUNCTIONS` in `CMakeLists.txt`.
 - Test in small batches while working (unit tests, a typecheck, targeted Playwright scripts or `npx playwright test -g "<name>" --project=phone-portrait`). Run the full e2e suite at the end of a piece of work, not after every change.
 - Headless Chromium can't emulate iOS safe areas or emoji fonts; check those with CSS overrides (`--safe-left: 59px` etc.) and owner screenshots.
+- iOS softens a band just below the status bar; headings and panels near the top add `--top-clear` (up to 1.75rem, zero without a top inset) so only the map and messages sit under it.
 - `?wizard` starts in wizard mode (a y/n prompt appears at birth); e2e uses it to jump levels.
 - Debug hook: `window.__tome` (engine, buffer, screenText, sendText, mode, actions, director…).
 
@@ -101,11 +104,12 @@ Parsed from the terminal each refresh (`main.ts` `refresh()` → `renderCustom`)
 | Skills / Abilities | `ui/skills.ts` | taps move the cursor with `2`/`8`; toolbar raises/learns |
 | Full sheet (`C`) | `ui/charsheet.ts` | tabs press `n` to cycle pages; equipment letters map to `INVEN_WIELD + n` |
 | Message boxes | `ui/msgbox.ts` | `msg_box_auto` boxes → `PromptCard.showBox`; panel under a box is frozen |
-| Death | `PromptCard.showDeath` | tome2's "Dump the screen?" becomes *You have died · Killed by …* (`diedFrom` in `web_state_json`); Continue answers `n` |
-| End of game | `ui/gameover.ts` | summary *Continue* runs `leaveTombMacro` (stops at the Hall of Fame); its *Continue* runs `finishMacro` and reloads to the title; a fallen hero's savefile stays, and reusing the name starts a new character from it |
-| Hall of Fame | `ui/gameover.ts` | rows from `web_scores_json` (tome2's `scores.raw`), this run's entry matched by name, level and final turn; arrows move, Enter opens a row, Escape continues; also on the title screen |
+| Death | `PromptCard.showDeath` | tome2's "Dump the screen?" becomes *You have died · Killed by …* (`diedFrom` in `web_state_json`) with *Your hero* and *Continue* (answers `n`); the map stays (desaturated) with the creatures around, whose chips open read-only recalls |
+| Fallen hero | `play/memorial.ts`, `ui/memorial.ts` | when the player is first dead, `captureMemorial` builds a `Memorial` (stats, combat, skills and abilities from `web_character_json`, gear with descriptions, the killer and its recall, the last messages, the chronicle) kept in `chronicle.json` by `name@turn`; `openFallen` shows it in tabs (Hero, Gear, Skills, Last moments) from the death card, HUD, Menu, end-of-game summary and both Halls of Fame |
+| End of game | `ui/gameover.ts` | HUD hidden (`#app.ended`); epitaph, the last fight (foe chip, last messages), tale, deeds, gear and a tip; *Continue* runs `leaveTombMacro` (stops at the Hall of Fame); its *Continue* runs `finishMacro` and returns to the title; a fallen hero's savefile stays, and reusing the name starts a new character from it |
+| Hall of Fame | `ui/gameover.ts` | rows from `web_scores_json` (tome2's `scores.raw`), this run's entry matched by name, level and final turn; a row opens the hero (`openFallen`, the memorial when one was kept); *Begin anew* starts the same race, class and attributes through tome2's quick start (`Director.beginAnew` answers `y` to "Use same character"; from the end of a game it runs once the title is back); arrows move, Enter opens a row, Escape continues; also on the title screen |
 | Shop item | `ui/store.ts` | description via `web_store_object_desc(page*12 + letter)` |
-| Knowledge (`~`) | `ui/character.ts` | native menu sends `\~N`; file viewer gets Done/Page toolbar |
+| Knowledge (`~`) | `ui/character.ts` | in the game Menu; native menu sends `\~N`; file viewer gets Done/Page toolbar |
 
 ## Known gaps / next ideas
 

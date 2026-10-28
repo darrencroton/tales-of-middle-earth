@@ -62,6 +62,15 @@ export function travelGrid(snap: LevelSnapshot, materials: readonly Material[]):
   };
 }
 
+/**
+ * The border cell nearest a point outside the level, for walking off the
+ * edge of an area of the land into the next; null for a point inside.
+ */
+export function edgeCell(width: number, height: number, point: Point): Point | null {
+  if (point.x >= 0 && point.y >= 0 && point.x < width && point.y < height) return null;
+  return { x: Math.max(0, Math.min(width - 1, point.x)), y: Math.max(0, Math.min(height - 1, point.y)) };
+}
+
 /** Forgets noticed creatures that are no longer in sight. */
 export function forgetUnseen(noticed: Set<number>, monsters: readonly MonsterState[]): void {
   if (noticed.size === 0) return;
@@ -115,6 +124,10 @@ export class Travel {
     if (!snap.atCommand || snap.icky) return { kind: 'stop', reason: 'interrupted' };
     if (this.finishing || (pos.x === this.goal.x && pos.y === this.goal.y)) return { kind: 'stop', reason: 'arrived' };
     if (ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };
+    if (this.lastPos && Math.max(Math.abs(this.lastPos.x - pos.x), Math.abs(this.lastPos.y - pos.y)) > 1) {
+      /* A new area of the land, or a teleport: the goal no longer means the same place. */
+      return { kind: 'stop', reason: 'interrupted' };
+    }
     if (this.lastWasMove && this.lastPos && this.lastPos.x === pos.x && this.lastPos.y === pos.y) {
       return { kind: 'stop', reason: 'blocked' };
     }

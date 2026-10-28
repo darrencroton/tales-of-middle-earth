@@ -13,6 +13,7 @@ export type NativeView =
   | 'overview'
   | 'overviewDone'
   | 'finish'
+  | 'fallen'
   | 'explore'
   | 'dungeon'
   | 'equip';
@@ -54,6 +55,11 @@ export interface CommandDef {
 /** tome2 picks up with 'g' normally and with ',' when always_pickup is on. */
 export function pickupCommand(alwaysPickup: boolean): string {
   return alwaysPickup ? ',' : 'g';
+}
+
+/** Stays still for a turn without picking anything up: the other key of the pair. */
+export function waitCommand(alwaysPickup: boolean): string {
+  return alwaysPickup ? 'g' : ',';
 }
 
 export function commandKeys(def: Pick<CommandDef, 'command' | 'then' | 'pickup'>, alwaysPickup = false): number[] {
@@ -167,6 +173,8 @@ export interface ActionContext {
   listShown?: boolean;
   /** A native card is answering the current question. */
   cardShown?: boolean;
+  /** The hero has died; their sheet can still be looked at. */
+  fallen?: boolean;
   /** Which special tome2 screen is open. */
   screen?: 'skills' | 'abilities' | 'options' | 'help' | 'file' | 'sheet' | 'gameover' | null;
   atCommand: boolean;
@@ -189,6 +197,7 @@ const MAX_MAP_ACTIONS = 7;
 /* Buttons that give way, in order, when the toolbar is full; all are also under More. */
 const OVERFLOW_ORDER = ['look', 'cast', 'rest', 'explore', 'dungeon'];
 
+const FALLEN: Action = { id: 'fallen', label: 'Your hero', icon: '@', effect: { kind: 'native', view: 'fallen' } };
 const KEYBOARD: Action = { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } };
 const MENU: Action = { id: 'menu', label: 'Menu', icon: '☰', effect: { kind: 'menu' } };
 const ESCAPE: Action = { id: 'escape', label: 'Back', icon: '‹', effect: { kind: 'keys', keys: [27] } };
@@ -296,7 +305,10 @@ export function contextActions(ctx: ActionContext): Action[] {
     ];
   }
   if (ctx.screen === 'gameover') {
-    return [{ id: 'finish', label: 'Continue', icon: '›', effect: { kind: 'native', view: 'finish' }, primary: true }];
+    return [
+      ...(ctx.fallen ? [FALLEN] : []),
+      { id: 'finish', label: 'Continue', icon: '›', effect: { kind: 'native', view: 'finish' }, primary: true },
+    ];
   }
   if (ctx.screen === 'options' || ctx.screen === 'sheet') {
     return [{ id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] }, primary: true }, MENU];

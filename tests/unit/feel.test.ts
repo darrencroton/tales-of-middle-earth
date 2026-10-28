@@ -20,8 +20,23 @@ describe('game feel events', () => {
     assert.deepEqual(playerEvents(base, { ...base, exp: 4 }), [{ kind: 'exp', amount: 4 }]);
     assert.deepEqual(playerEvents(base, { ...base, au: 112 }), [{ kind: 'gold', amount: 12 }]);
     assert.deepEqual(playerEvents(base, { ...base, au: 90 }), []);
-    assert.deepEqual(playerEvents(base, { ...base, depth: 3 }), [{ kind: 'depth', place: 'Barrow-Downs', feet: 150, deeper: true }]);
-    assert.deepEqual(playerEvents({ ...base, depth: 3 }, base), [{ kind: 'depth', place: 'Town', feet: 0, deeper: false }]);
+    assert.deepEqual(playerEvents(base, { ...base, depth: 3 }), [{ kind: 'depth', place: 'Barrow-Downs', feet: 150, deeper: true, surface: 'land' }]);
+    assert.deepEqual(playerEvents({ ...base, depth: 3 }, { ...base, area: 'Bree', inTown: true }), [
+      { kind: 'depth', place: 'Bree', feet: 0, deeper: false, surface: 'town' },
+    ]);
+  });
+
+  it('names the land on leaving the world map, and new areas of it', () => {
+    const world = { ...base, wild: 1, area: 'World map' };
+    assert.deepEqual(playerEvents(world, { ...base, area: 'Grasslands' }), [
+      { kind: 'depth', place: 'Grasslands', feet: 0, deeper: false, surface: 'land' },
+    ]);
+    assert.deepEqual(playerEvents(base, world), [{ kind: 'depth', place: 'World map', feet: 0, deeper: false, surface: 'world' }]);
+    assert.deepEqual(playerEvents({ ...base, area: 'Grasslands' }, { ...base, area: 'Bree', inTown: true }), [
+      { kind: 'depth', place: 'Bree', feet: 0, deeper: false, surface: 'town' },
+    ]);
+    assert.deepEqual(playerEvents({ ...base, area: 'Grasslands' }, { ...base, area: 'Grasslands' }), []);
+    assert.deepEqual(playerEvents(base, { ...base, area: 'Grasslands' }), []);
   });
 
   it('flags low health', () => {

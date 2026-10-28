@@ -6,6 +6,7 @@ import {
   parseSaveIndex,
   parseSavefileScreen,
   validCharacterName,
+  describesHero,
 } from '../../web/src/flow/birth.ts';
 import { findListedItem, itemActions, itemLetter, itemMacro } from '../../web/src/play/items.ts';
 import { MacroRunner, type MacroScreen } from '../../web/src/play/macro.ts';
@@ -164,6 +165,14 @@ describe('character creation screens', () => {
       { module: 'ToME', alive: true, base: 'Grodon', description: 'Grodon, the Ent Warrior is alive' },
       { module: 'ToME', alive: false, base: 'Bob', description: 'Bob, the Human Mage is dead' },
     ]);
+  });
+
+  it('matches a fallen savefile to its race and class', () => {
+    const description = 'Bob, the High-Elf Mage is dead';
+    assert.ok(describesHero(description, 'High-Elf', 'Mage'));
+    assert.ok(!describesHero(description, 'Human', 'Mage'));
+    assert.ok(!describesHero(description, 'Elf', 'Mage'));
+    assert.ok(!describesHero(description, 'High-Elf', 'Warrior'));
   });
 
   it('validates names', () => {

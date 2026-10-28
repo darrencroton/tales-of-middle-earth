@@ -44,6 +44,7 @@ export function openMonster(api: GameApi, m: MonsterState): void {
   health.append(el('span', undefined, capitalise(healthWord(m.hp, m.maxhp))));
   body.append(health);
 
+  const fallen = !!api.state()?.player?.dead;
   const actions = el('div', 'action-grid');
   const friendly = !isHostile(m);
   const near = snap ? distance({ x: snap.px, y: snap.py }, m) : 99;
@@ -60,7 +61,7 @@ export function openMonster(api: GameApi, m: MonsterState): void {
       },
     }),
   );
-  body.append(actions);
+  if (!fallen) body.append(actions);
 
   const recall = api.engine.monsterRecall(m.id);
   const description = el('div', 'description recall');
@@ -94,7 +95,7 @@ export function openMonster(api: GameApi, m: MonsterState): void {
 /** An item seen on the floor somewhere on the level. */
 export function openFloorObject(api: GameApi, o: ObjectState): void {
   const snap = api.snapshot();
-  const underfoot = snap && snap.px === o.x && snap.py === o.y;
+  const underfoot = snap && snap.px === o.x && snap.py === o.y && !api.state()?.player?.dead;
   if (underfoot) {
     const item = api.engine.inventory()?.floor.find((f) => f.i === -o.id);
     if (item) {
@@ -114,7 +115,7 @@ export function openFloorObject(api: GameApi, o: ObjectState): void {
       },
     }),
   );
-  body.append(actions);
+  if (!api.state()?.player?.dead) body.append(actions);
   const description = el('div', 'description');
   const paragraphs = descriptionParagraphs(api.engine.objectDescription(-o.id));
   for (const p of paragraphs.length ? paragraphs : ['You know nothing more about this item yet.']) description.append(el('p', undefined, p));

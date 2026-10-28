@@ -107,13 +107,21 @@ export class MapRenderer {
 
   /** Dungeon cell under a viewport point (CSS pixels), or null off the level. */
   cellAt(clientX: number, clientY: number): MapPoint | null {
+    const cell = this.gridAt(clientX, clientY);
+    if (!cell || !this.snap) return null;
+    if (cell.x < 0 || cell.y < 0 || cell.x >= this.snap.width || cell.y >= this.snap.height) return null;
+    return cell;
+  }
+
+  /** Grid position under a viewport point, which may lie outside the level. */
+  gridAt(clientX: number, clientY: number): MapPoint | null {
     if (!this.snap) return null;
     const rect = this.canvas.getBoundingClientRect();
     const { originX, originY, cellW, cellH } = this.view;
-    const x = Math.floor(((clientX - rect.left) * this.dpr) / cellW + originX);
-    const y = Math.floor(((clientY - rect.top) * this.dpr) / cellH + originY);
-    if (x < 0 || y < 0 || x >= this.snap.width || y >= this.snap.height) return null;
-    return { x, y };
+    return {
+      x: Math.floor(((clientX - rect.left) * this.dpr) / cellW + originX),
+      y: Math.floor(((clientY - rect.top) * this.dpr) / cellH + originY),
+    };
   }
 
   /** Viewport point (CSS pixels) at the centre of a dungeon cell. */

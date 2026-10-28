@@ -134,6 +134,11 @@ export function parseSaveIndex(text: string): SaveRecord[] {
   return records;
 }
 
+/** True when a savefile index description ("Grodon, the Ent Warrior is dead") is of this race and class. */
+export function describesHero(description: string, race: string, cls: string): boolean {
+  return description.includes(`, the ${`${race} ${cls}`.trim()} is `);
+}
+
 /** Savefile names: up to 15 characters that make a valid file name. */
 export function validCharacterName(name: string): string | null {
   const trimmed = name.trim();

@@ -184,6 +184,11 @@ export class TitleScreen {
     return this.visible;
   }
 
+  /** The intro text is showing and waits for a tap. */
+  get showingIntro(): boolean {
+    return this.introDone !== null;
+  }
+
   /** Restarts the frame loop after the animation setting changed. */
   animationChanged(): void {
     this.schedule();
@@ -262,17 +267,25 @@ export class TitleScreen {
     const quote = document.createElement('blockquote');
     quote.className = 'title-verse';
     const step = 300;
+    const start = 600;
+    const settle = (node: HTMLElement) =>
+      node.addEventListener('animationend', () => {
+        node.style.animation = 'none';
+        node.style.opacity = '1';
+      });
     lines.forEach((line, i) => {
       const span = document.createElement('span');
       span.textContent = line;
-      span.style.animationDelay = `${150 + i * step}ms`;
+      span.style.animationDelay = `${start + i * step}ms`;
+      settle(span);
       quote.append(span);
     });
-    let last = 150 + lines.length * step;
+    let last = start + lines.length * step;
     if (cite) {
       const source = document.createElement('cite');
       source.textContent = cite;
       source.style.animationDelay = `${last}ms`;
+      settle(source);
       quote.append(source);
       last += step;
     }
@@ -317,6 +330,28 @@ export class TitleScreen {
       e.preventDefault();
       this.nav.active?.focus({ preventScroll: true });
     }
+  }
+
+  /** Shows the screen afresh while a new engine starts: the fire rekindles and the choices follow. */
+  reset(): void {
+    window.clearTimeout(this.leaveTimer);
+    this.leaveTimer = 0;
+    this.surgeAt = 0;
+    this.ready = false;
+    this.visible = true;
+    this.introDone = null;
+    this.dimmed = 1;
+    this.root.hidden = false;
+    this.app?.setAttribute('inert', '');
+    this.root.classList.remove('leaving', 'ready', 'intro', 'error');
+    this.intro.hidden = true;
+    this.intro.replaceChildren();
+    this.choices.hidden = true;
+    this.links.hidden = true;
+    this.status.textContent = '';
+    this.progress.style.width = '';
+    this.startedAt = performance.now() - (this.animation() === 'off' ? IGNITION_MS * 2 : IGNITION_MS * 0.6);
+    this.schedule();
   }
 
   /** Shows the screen again with a message (game over or failure). */

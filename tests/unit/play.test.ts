@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, situationalActions } from '../../web/src/play/actions.ts';
+import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, pickupCommand, situationalActions, waitCommand } from '../../web/src/play/actions.ts';
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
-import { forgetUnseen, Travel, travelGrid, type TravelContext } from '../../web/src/play/travel.ts';
+import { edgeCell, forgetUnseen, Travel, travelGrid, type TravelContext } from '../../web/src/play/travel.ts';
 import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials } from '../../web/src/render/materials.ts';
 import { CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, NO_EFFECT, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
 
@@ -20,6 +20,15 @@ describe('prompt classification', () => {
     assert.equal(classifyPrompt('Direction (Escape to cancel)? '), 'direction');
     assert.equal(classifyPrompt('(Inven: b-e, ESC) Wear/Wield which item?'), 'item');
     assert.equal(classifyPrompt('You see a Kobold.'), 'other');
+  });
+});
+
+describe('staying still', () => {
+  it('waits without picking up, whichever way always_pickup is set', () => {
+    assert.equal(waitCommand(false), ',');
+    assert.equal(waitCommand(true), 'g');
+    assert.notEqual(waitCommand(false), pickupCommand(false));
+    assert.notEqual(waitCommand(true), pickupCommand(true));
   });
 });
 
@@ -122,6 +131,21 @@ describe('travel', () => {
     assert.deepEqual(first.kind === 'keys' && first.keys, [92, ...keys(';6')]);
     snap.px = 2;
     assert.deepEqual(travel.step(ctx(snap)), { kind: 'stop', reason: 'arrived' });
+  });
+
+  it('stops when the hero lands far from the last step (a new area of the land)', () => {
+    const snap = level(['..........'], { x: 1, y: 0 });
+    const travel = new Travel({ x: 0, y: 0 }, ctx(snap));
+    assert.equal(travel.step(ctx(snap)).kind, 'keys');
+    snap.px = 8;
+    assert.deepEqual(travel.step(ctx(snap)), { kind: 'stop', reason: 'interrupted' });
+  });
+
+  it('turns a tap beyond the level into the nearest border cell', () => {
+    assert.equal(edgeCell(10, 5, { x: 3, y: 2 }), null);
+    assert.deepEqual(edgeCell(10, 5, { x: -4, y: 2 }), { x: 0, y: 2 });
+    assert.deepEqual(edgeCell(10, 5, { x: 12, y: -1 }), { x: 9, y: 0 });
+    assert.deepEqual(edgeCell(10, 5, { x: 5, y: 7 }), { x: 5, y: 4 });
   });
 
   it('opens closed doors on the way', () => {

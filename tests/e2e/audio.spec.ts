@@ -48,6 +48,25 @@ test('music follows the player from the title to town and dungeon, and actions m
   expect(errors).toEqual([]);
 });
 
+test('the title theme plays again as soon as a game ends, without another tap', async ({ page }) => {
+  await page.goto('/');
+  await waitForEngine(page);
+  await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
+  await expect.poll(async () => (await audioStatus(page)).state).toBe('running');
+  await createCharacter(page, 'Bard');
+  await expect.poll(async () => (await audioStatus(page)).theme, { timeout: 15_000 }).not.toBe('title');
+
+  await page.locator('#toolbar [data-action="menu"]').click();
+  await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
+  await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
+  await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+  await expect.poll(async () => (await audioStatus(page)).theme, { timeout: 15_000 }).toBe('title');
+  expect((await audioStatus(page)).state).toBe('running');
+  expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1);
+  await waitForEngine(page);
+  await expect(page.locator('#title-screen .title-choice').first()).toContainText('Continue');
+});
+
 test('the settings sheet changes music and sound volumes', async ({ page }) => {
   await page.goto('/');
   await waitForEngine(page);

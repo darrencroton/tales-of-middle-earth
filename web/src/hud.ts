@@ -1,3 +1,4 @@
+import type { Place } from './audio/places.ts';
 import { readableColour } from './render/colour.ts';
 import { bar, el, fraction } from './ui/dom.ts';
 import { isAlly, isHostile, type GameState, type MessageState, type MonsterState, type ObjectState, type PlayerState } from './render/snapshot.ts';
@@ -41,10 +42,39 @@ const STATUS_LABELS: [string, string][] = [
   ['slow', 'Slowed'],
 ];
 
-export function depthLabel(player: Pick<PlayerState, 'depth' | 'dungeon' | 'wild'>): string {
-  if (player.wild) return 'Wilderness';
+export function depthLabel(player: Pick<PlayerState, 'depth' | 'dungeon' | 'wild' | 'area'>): string {
+  if (player.depth === 0 && player.area) return player.area;
+  if (player.wild) return 'World map';
   if (player.depth === 0) return 'Town';
   return `${player.dungeon} · ${player.depth * 50} ft (L${player.depth})`;
+}
+
+/* Wilderness terrain (wf_info.txt names) as places. */
+const TERRAIN_NAMES: Readonly<Record<string, string>> = {
+  grass: 'Grasslands',
+  forest: 'Forest',
+  road: 'The road',
+  mountain: 'Mountains',
+  'high mountain': 'High mountains',
+  hill: 'Hills',
+  desert: 'Desert',
+  jungle: 'Jungle',
+  swamp: 'Marshes',
+  glacier: 'Glacier',
+  'shallow water': 'Shallows',
+  'deep water': 'Deep water',
+};
+
+/** What a surface place is called: the world map, a town, a quest, or the land around. Null underground. */
+export function areaName(place: Pick<Place, 'wild' | 'depth' | 'quest' | 'levelName' | 'town' | 'terrain'> | null): string | null {
+  if (!place) return null;
+  if (place.wild) return 'World map';
+  if (place.depth > 0) return null;
+  if (place.quest) return place.levelName.trim() || 'Quest';
+  const terrain = place.terrain.trim();
+  if (place.town > 0) return terrain || 'Town';
+  if (!terrain) return 'The wilds';
+  return TERRAIN_NAMES[terrain.toLowerCase()] ?? terrain.charAt(0).toUpperCase() + terrain.slice(1);
 }
 
 export function statusLabels(player: Pick<PlayerState, 'status' | 'food'>): string[] {
@@ -96,6 +126,18 @@ export class Hud {
       if ((e.target as HTMLElement).closest('.more')) this.callbacks.onMore();
       else this.callbacks.onHistory();
     });
+  }
+
+  /** Forgets the last hero, for a new game in the same page. */
+  reset(): void {
+    this.lastStateKey = '';
+    this.lastMessagesKey = '';
+    this.turn = 0;
+    this.seenAt.clear();
+    this.health = null;
+    this.trail = null;
+    this.root.replaceChildren();
+    this.messagesEl.replaceChildren();
   }
 
   /** Called once per player turn (engine idle) to age messages. */
