@@ -607,7 +607,7 @@ function refresh(): void {
     } else if (fame) {
       const player = lastState?.player;
       const scores = engine.scores();
-      const hero = player ? heroEntry(scores, { name: player.name, level: player.lev }) : -1;
+      const hero = player ? heroEntry(scores, { name: player.name, level: player.lev, turns: snap.turn }) : -1;
       termView.renderCustom({ layout: 'full', title: 'Hall of Fame' }, `fame:${scores.length}:${hero}`, () => hallOfFameElements(scores, hero));
     } else if (fullSheet) {
       renderFullSheet(fullSheet);
@@ -1501,6 +1501,13 @@ window.addEventListener('keydown', (e) => {
   if (e.isComposing || controlOwnsKey(e.target, e.key)) return;
   if (mode === 'screen' && director.handleKey(e)) {
     e.preventDefault();
+    return;
+  }
+  if (currentActions.some((a) => a.id === 'finish')) {
+    /* End of game: arrows move through the Hall of Fame, Enter opens a row, Escape (or Enter with nothing to open) continues. */
+    e.preventDefault();
+    if (e.key !== 'Escape' && termView.navigate(e)) return;
+    if ((e.key === 'Escape' || e.key === 'Enter') && !macros.running) finishGame();
     return;
   }
   if (termView.handleKey(e)) {

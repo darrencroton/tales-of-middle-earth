@@ -227,8 +227,13 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('.termview')).toContainText('Hall of Fame');
   await expect(page.locator('.termview .fame-row')).toHaveCount(2);
   await expect(page.locator('.termview .fame-row').first()).toContainText('Killed by a Cave spider at 150 ft');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.termview .fame-row').nth(1)).toHaveClass(/is-active/);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.termview .fame-row').nth(1).locator('.fame-details')).toBeVisible();
+  await expect(page.locator('.termview')).toContainText('Hall of Fame');
   const reloaded = page.waitForEvent('load', { timeout: 120_000 });
-  await finish.click();
+  await page.keyboard.press('Escape');
   await reloaded;
   await waitForEngine(page);
 

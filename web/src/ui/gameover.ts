@@ -73,13 +73,10 @@ export function fateText(entry: Pick<ScoreEntry, 'how' | 'depth' | 'quest'>): st
   return `Killed by ${entry.how || 'something unknown'} ${fellWhere(entry)}`;
 }
 
-/** Index of the entry for the given hero (the most recent death with that name and level), or -1. */
-export function heroEntry(entries: readonly ScoreEntry[], hero: { name: string; level: number; turns?: number } | null): number {
+/** Index of the entry recorded for this run (same name, level and final game turn), or -1. */
+export function heroEntry(entries: readonly ScoreEntry[], hero: { name: string; level: number; turns: number } | null): number {
   if (!hero) return -1;
-  const matches = entries.map((e, i) => ({ e, i })).filter(({ e }) => e.name === hero.name && e.level === hero.level);
-  if (matches.length === 0) return -1;
-  matches.sort((a, b) => b.e.turns - a.e.turns);
-  return matches[0].i;
+  return entries.findIndex((e) => e.name === hero.name && e.level === hero.level && e.turns === hero.turns);
 }
 
 /** Elements for the native Hall of Fame: one tappable row per hero, best first. */

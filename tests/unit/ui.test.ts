@@ -435,10 +435,11 @@ describe('hall of fame', () => {
     assert.equal(fateText({ how: 'Orcs', depth: 4, quest: 1 }), 'Killed by Orcs on a quest');
   });
 
-  it('finds the hero who has just fallen', () => {
-    const scores = [entry('Bilbo', 10, 500), entry('Frodo', 3, 90), entry('Frodo', 3, 120)];
-    assert.equal(heroEntry(scores, { name: 'Frodo', level: 3 }), 2);
-    assert.equal(heroEntry(scores, { name: 'Sam', level: 3 }), -1);
+  it('finds the entry for this run only', () => {
+    const scores = [entry('Bilbo', 10, 500), entry('Frodo', 3, 120), entry('Frodo', 3, 90)];
+    assert.equal(heroEntry(scores, { name: 'Frodo', level: 3, turns: 90 }), 2);
+    assert.equal(heroEntry(scores, { name: 'Frodo', level: 3, turns: 95 }), -1);
+    assert.equal(heroEntry(scores, { name: 'Sam', level: 3, turns: 90 }), -1);
     assert.equal(heroEntry(scores, null), -1);
   });
 });

@@ -102,7 +102,7 @@ Parsed from the terminal each refresh (`main.ts` `refresh()` → `renderCustom`)
 | Message boxes | `ui/msgbox.ts` | `msg_box_auto` boxes → `PromptCard.showBox`; panel under a box is frozen |
 | Death | `PromptCard.showDeath` | tome2's "Dump the screen?" becomes *You have died · Killed by …* (`diedFrom` in `web_state_json`); Continue answers `n` |
 | End of game | `ui/gameover.ts` | summary *Continue* runs `leaveTombMacro` (stops at the Hall of Fame); its *Continue* runs `finishMacro` and reloads to the title; a fallen hero's savefile stays, and reusing the name starts a new character from it |
-| Hall of Fame | `ui/gameover.ts` | rows from `web_scores_json` (tome2's `scores.raw`); also on the title screen |
+| Hall of Fame | `ui/gameover.ts` | rows from `web_scores_json` (tome2's `scores.raw`), this run's entry matched by name, level and final turn; arrows move, Enter opens a row, Escape continues; also on the title screen |
 | Shop item | `ui/store.ts` | description via `web_store_object_desc(page*12 + letter)` |
 | Knowledge (`~`) | `ui/character.ts` | native menu sends `\~N`; file viewer gets Done/Page toolbar |
 
