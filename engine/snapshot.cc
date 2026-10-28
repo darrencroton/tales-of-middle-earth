@@ -15,6 +15,7 @@
 #include "feature_flag.hpp"
 #include "feature_type.hpp"
 #include "game.hpp"
+#include "hiscore.hpp"
 #include "deity_type.hpp"
 #include "inventory.hpp"
 #include "levels.hpp"
@@ -50,6 +51,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <fcntl.h>
 #include <string>
 #include <vector>
 
@@ -482,6 +485,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	json_int(json, "wild", p_ptr->wild_mode ? 1 : 0);
 	json_int(json, "alwaysPickup", options->always_pickup ? 1 : 0);
 	json_int(json, "skillPoints", p_ptr->skill_points);
+	json_int(json, "dead", death ? 1 : 0);
+	json_str(json, "diedFrom", game->died_from);
 	json_key(json, "status");
 	json += '{';
 	json_int(json, "blind", p_ptr->blind);
@@ -886,6 +891,80 @@ EMSCRIPTEN_KEEPALIVE char const *web_character_json()
 	json_int(json, "turn", turn, false);
 	json += '}';
 
+	return json.c_str();
+}
+
+/*
+ * Returns the Hall of Fame (the scores file) as JSON, best first.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_scores_json()
+{
+	auto const &race_info = game->edit_data.race_info;
+	auto const &race_mod_info = game->edit_data.race_mod_info;
+	auto const &class_info = game->edit_data.class_info;
+
+	json.clear();
+	json += '[';
+
+	char buf[1024];
+	path_build(buf, sizeof(buf), ANGBAND_DIR_USER, "scores.raw");
+	int fd = fd_open(buf, O_RDONLY);
+	if (fd < 0)
+	{
+		json += ']';
+		return json.c_str();
+	}
+
+	auto field = [](char const *text, std::size_t size) {
+		std::string value(text, strnlen(text, size));
+		auto const start = value.find_first_not_of(' ');
+		auto const end = value.find_last_not_of(' ');
+		return start == std::string::npos ? std::string() : value.substr(start, end - start + 1);
+	};
+
+	high_score score;
+	for (int i = 0; i < MAX_HISCORES; i++)
+	{
+		if (highscore_seek(fd, i) || highscore_read(fd, &score)) break;
+
+		int const pr = atoi(score.p_r);
+		int const ps = atoi(score.p_s);
+		int const pc = atoi(score.p_c);
+		int const pcs = atoi(score.p_cs);
+		std::string race;
+		if (pr >= 0 && static_cast<std::size_t>(pr) < race_info.size() &&
+		    ps >= 0 && static_cast<std::size_t>(ps) < race_mod_info.size())
+		{
+			race = get_player_race_name(pr, ps);
+		}
+		std::string cls;
+		if (pc >= 0 && static_cast<std::size_t>(pc) < class_info.size() &&
+		    pcs >= 0 && static_cast<std::size_t>(pcs) < class_info[pc].spec.size() &&
+		    class_info[pc].spec[pcs].title)
+		{
+			cls = class_info[pc].spec[pcs].title;
+		}
+
+		if (i) json += ',';
+		json += '{';
+		json_str(json, "name", field(score.who, sizeof(score.who)));
+		json_str(json, "race", race);
+		json_str(json, "cls", cls);
+		json_int(json, "points", atol(score.pts));
+		json_int(json, "gold", atol(score.gold));
+		json_int(json, "turns", atol(score.turns));
+		json_str(json, "day", field(score.day, sizeof(score.day)));
+		json_int(json, "level", atoi(score.cur_lev));
+		json_int(json, "maxLevel", atoi(score.max_lev));
+		json_int(json, "depth", atoi(score.cur_dun));
+		json_int(json, "maxDepth", atoi(score.max_dun));
+		json_int(json, "quest", atoi(score.inside_quest) ? 1 : 0);
+		json_str(json, "how", field(score.how, sizeof(score.how)), false);
+		json += '}';
+	}
+	fd_close(fd);
+
+	json += ']';
 	return json.c_str();
 }
 

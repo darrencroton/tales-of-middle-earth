@@ -236,6 +236,12 @@ export class TermView {
    * Keys for the highlight: used when tome2 has no cursor of its own on a
    * menu (with a cursor, keys go to tome2, which redraws the highlight).
    */
+  /** Arrow keys and Enter over a custom view's [data-nav] items; true when the key was used. */
+  navigate(e: KeyboardEvent): boolean {
+    if (this.root.hidden) return false;
+    return this.nav.handleKey(e);
+  }
+
   handleKey(e: KeyboardEvent): boolean {
     if (this.root.hidden || this.choices().length === 0 || this.hasCursor) return false;
     if (e.key === 'Enter') return this.nav.activate();

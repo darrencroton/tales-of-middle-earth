@@ -110,6 +110,21 @@ export class PromptCard {
     primary.focus({ preventScroll: true });
   }
 
+  /** The hero has died: what killed them, and Continue (which declines tome2's screen dump). */
+  showDeath(cause: string): void {
+    const key = `death\u0000${cause}`;
+    this.root.hidden = false;
+    if (key === this.renderedKey) return;
+    this.renderedKey = key;
+    this.root.className = 'prompt-card death';
+    const buttons = el('div', 'card-buttons');
+    const primary = this.button('Continue', codes('n'), 'card-button primary');
+    buttons.append(primary);
+    const fate = /^Quitting$/i.test(cause) ? 'You have retired from adventuring.' : cause ? `Killed by ${cause}.` : 'Your adventure has ended.';
+    this.root.replaceChildren(this.title('You have died'), el('p', 'card-hint', fate), buttons);
+    primary.focus({ preventScroll: true });
+  }
+
   private answer(keys: number[]): void {
     this.hide();
     this.send(keys);

@@ -24,6 +24,8 @@ export interface TitleCallbacks {
   onSaves(): void;
   /** Listen to the soundtrack. */
   onMusic(): void;
+  /** Show the Hall of Fame. */
+  onFame(): void;
   /** The screen has finished leaving. */
   onHidden(): void;
 }
@@ -168,6 +170,7 @@ export class TitleScreen {
     find<HTMLButtonElement>('[data-link="settings"]').addEventListener('click', () => this.callbacks.onSettings());
     find<HTMLButtonElement>('[data-link="saves"]').addEventListener('click', () => this.callbacks.onSaves());
     find<HTMLButtonElement>('[data-link="music"]').addEventListener('click', () => this.callbacks.onMusic());
+    find<HTMLButtonElement>('[data-link="fame"]').addEventListener('click', () => this.callbacks.onFame());
     this.root.addEventListener('click', (e) => {
       if (this.introDone && !(e.target as HTMLElement).closest('button, a')) this.finishIntro();
     });
@@ -258,14 +261,14 @@ export class TitleScreen {
     this.root.classList.add('intro');
     const quote = document.createElement('blockquote');
     quote.className = 'title-verse';
-    const step = 650;
+    const step = 300;
     lines.forEach((line, i) => {
       const span = document.createElement('span');
       span.textContent = line;
-      span.style.animationDelay = `${400 + i * step}ms`;
+      span.style.animationDelay = `${150 + i * step}ms`;
       quote.append(span);
     });
-    let last = 400 + lines.length * step;
+    let last = 150 + lines.length * step;
     if (cite) {
       const source = document.createElement('cite');
       source.textContent = cite;
@@ -276,7 +279,7 @@ export class TitleScreen {
     const hint = document.createElement('p');
     hint.className = 'title-intro-hint';
     hint.textContent = 'Tap to begin';
-    hint.style.animationDelay = `${last + 400}ms, ${last + 2400}ms`;
+    hint.style.animationDelay = `${last + 200}ms, ${last + 1200}ms`;
     this.intro.replaceChildren(quote, hint);
     this.intro.hidden = false;
     this.introDone = onContinue;

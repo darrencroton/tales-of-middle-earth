@@ -68,19 +68,6 @@ test('opening screen ignites, the intro rises from the flames, then character cr
   await expect(page.locator('.director .birth-summary')).toContainText(otherName);
 });
 
-test('the Theme module can be chosen from the opening screen', async ({ page }) => {
-  await page.goto('./');
-  await waitForEngine(page);
-  await page.locator('#title-screen a.title-link', { hasText: 'Theme' }).click();
-  await page.waitForURL(/module=theme/);
-  await waitForEngine(page);
-  expect(await page.evaluate(() => window.__tome!.director.module)).toBe('Theme');
-  await beginNewCharacter(page, 'Themer');
-  await expect(page.locator('#title-screen .title-intro')).toContainText('A module for ToME');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('.director .birth-header h2')).toHaveText(/Choose your race/, { timeout: 30_000 });
-});
-
 test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }, testInfo) => {
   await page.goto('./?wizard');
   await waitForEngine(page);

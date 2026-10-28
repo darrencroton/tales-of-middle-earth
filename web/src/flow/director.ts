@@ -42,7 +42,7 @@ const INTRO_LINES = [
 ];
 const INTRO_CITE = 'J.R.R. Tolkien · The Fellowship of the Ring';
 
-const THEME_INTRO_LINES = ['A module for ToME,', 'set in the world of Middle-earth.', 'Your story begins here.'];
+const MODULE: ModuleChoice = 'ToME';
 
 /* tome2's own intro and credits screens, replaced by the title screen's intro. */
 const INTRO_SCREEN = /Art thou an adventurer|DarkGod|furiosity|\[Press any key to continue\]/;
@@ -73,7 +73,6 @@ const HERO_STATS = ['STR', 'INT', 'WIS', 'DEX', 'CON', 'CHR'];
  * title screen, and presents the birth menus as tappable cards.
  */
 export class Director {
-  module: ModuleChoice = 'ToME';
   private readonly deps: DirectorDeps;
   private readonly view: HTMLElement;
   private readonly nav: ListNav;
@@ -166,7 +165,7 @@ export class Director {
 
   private boot(screen: string, rowZero: string): void {
     if (/select a module to play/.test(screen)) {
-      const key = moduleKey(screen, this.module) ?? 'a';
+      const key = moduleKey(screen, MODULE) ?? 'a';
       this.deps.send(keyCodes(key));
     } else if (/\[Press any key to continue\]/.test(screen) || /-more-/.test(rowZero)) {
       this.deps.send([SPACE]);
@@ -177,7 +176,7 @@ export class Director {
       this.saves = entries
         .map((entry) => {
           const matches = (r: SaveRecord) => r.base === entry.name || r.base === `_${entry.name}`;
-          const record = records.find((r) => matches(r) && r.module === this.module) ?? records.find(matches);
+          const record = records.find((r) => matches(r) && r.module === MODULE) ?? records.find(matches);
           return {
             letter: entry.letter,
             name: entry.name,
@@ -243,7 +242,7 @@ export class Director {
   private askName(error = ''): void {
     this.title?.setBusy('');
     const taken = new Set(this.saves.map((s) => s.name.toLowerCase()));
-    askText(this.deps.sheets, 'Name your hero', error || 'What shall you be called?', this.heroName, 15).then((name) => {
+    askText(this.deps.sheets, 'Name your hero', 'What shall you be called?', this.heroName, 15, error).then((name) => {
       if (name === null) {
         this.title?.restoreChoices();
         return;
@@ -260,7 +259,7 @@ export class Director {
       this.picks = [];
       this.lastChoice = null;
       this.deps.send(keyCodes('a'));
-      this.title?.showIntro(this.module === 'Theme' ? THEME_INTRO_LINES : INTRO_LINES, this.module === 'Theme' ? '' : INTRO_CITE, () => {
+      this.title?.showIntro(INTRO_LINES, INTRO_CITE, () => {
         this.title?.leave();
         this.deps.requestRefresh();
       });

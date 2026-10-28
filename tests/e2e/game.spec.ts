@@ -169,3 +169,103 @@ test('a new hero can take the name of one who has fallen', async ({ page }) => {
   await expect(page.locator('.director.birth')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('.director .birth-summary')).toContainText('Fallen');
 });
+
+/** Writes a scores file with two fallen heroes over the one tome2 keeps in browser storage. */
+async function seedScores(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const fs = window.__tome!.engine.fs!;
+    const find = (dir: string, depth: number): string | null => {
+      if (depth > 4) return null;
+      for (const name of fs.readdir(dir)) {
+        if (name === '.' || name === '..') continue;
+        const path = `${dir}/${name}`;
+        if (name === 'scores.raw') return path;
+        if (fs.isDir(fs.stat(path).mode)) {
+          const found = find(path, depth + 1);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const path = find(window.__tome!.engine.savePath!, 0);
+    if (!path) throw new Error('No scores file');
+    const fields: [string, number][] = [['what', 8], ['pts', 10], ['gold', 10], ['turns', 10], ['day', 10], ['who', 16], ['', 8], ['pr', 3], ['ps', 3], ['pc', 3], ['pcs', 3], ['lev', 4], ['dun', 4], ['maxLev', 4], ['maxDun', 4], ['', 4], ['', 4], ['quest', 4], ['', 4], ['how', 32]];
+    const heroes: Record<string, string>[] = [
+      { what: '2.4.0', pts: '     2210', gold: '      420', turns: '   120400', day: '10/25/26', who: 'Bilbo', pr: ' 0', ps: ' 0', pc: ' 0', pcs: ' 0', lev: '  7', dun: '  3', maxLev: '  8', maxDun: '  3', quest: '  0', how: 'a Cave spider' },
+      { what: '2.4.0', pts: '      310', gold: '      100', turns: '    20400', day: '10/27/26', who: 'Grodon', pr: ' 0', ps: ' 0', pc: ' 0', pcs: ' 0', lev: '  2', dun: '  0', maxLev: '  2', maxDun: '  0', quest: '  0', how: 'Grip, Farmer Maggot\'s Dog' },
+    ];
+    const bytes = new Uint8Array(148 * heroes.length);
+    heroes.forEach((hero, i) => {
+      let at = i * 148;
+      for (const [key, size] of fields) {
+        const text = (hero[key] ?? '').slice(0, size - 1);
+        for (let c = 0; c < text.length; c++) bytes[at + c] = text.charCodeAt(c);
+        at += size;
+      }
+    });
+    fs.writeFile(path, bytes);
+  });
+}
+
+test('the Hall of Fame follows the end of an adventure and stays on the title screen', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Retiree');
+  await seedScores(page);
+
+  await sendText(page, '\\Q');
+  await waitForScreen(page, /really want to quit/);
+  await sendText(page, 'y');
+  await waitForScreen(page, /verify QUITTING/);
+  await sendText(page, '@');
+  const finish = page.locator('#toolbar [data-action="finish"]');
+  await expect(finish).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('.termview')).toContainText('Your adventure has ended');
+  await finish.click();
+
+  await expect(page.locator('.termview')).toContainText('Hall of Fame');
+  await expect(page.locator('.termview .fame-row')).toHaveCount(2);
+  await expect(page.locator('.termview .fame-row').first()).toContainText('Killed by a Cave spider at 150 ft');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.termview .fame-row').nth(1)).toHaveClass(/is-active/);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.termview .fame-row').nth(1).locator('.fame-details')).toBeVisible();
+  await expect(page.locator('.termview')).toContainText('Hall of Fame');
+  const reloaded = page.waitForEvent('load', { timeout: 120_000 });
+  await page.keyboard.press('Escape');
+  await reloaded;
+  await waitForEngine(page);
+
+  await page.locator('#title-screen [data-link="fame"]').click();
+  await expect(page.locator('.sheet-title')).toHaveText('Hall of Fame');
+  await expect(page.locator('.sheet .fame-row')).toHaveCount(2);
+  await expect(page.locator('.sheet .fame-row').nth(1)).toContainText("Killed by Grip, Farmer Maggot's Dog in the town");
+});
+
+test('the name prompt sits at the top of the screen, clear of the keyboard', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await page.locator('#title-screen .title-choice', { hasText: /Enter Middle-earth|New character/i }).click();
+  const input = page.locator('.ask-text input');
+  await expect(input).toBeFocused();
+  const box = await page.locator('.sheet.sheet-ask').boundingBox();
+  const height = page.viewportSize()!.height;
+  expect(box!.y + box!.height).toBeLessThan(height * 0.4);
+});
+
+test('the world map is entered from the commands and left from the toolbar', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Rover');
+  const wild = () => page.evaluate(() => window.__tome!.engine.snapshot()!.wild);
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await expect(page.locator('.sheet .command', { hasText: 'Go up' })).toHaveCount(0);
+  await page.locator('.sheet .command', { hasText: 'World map' }).click();
+  await expect.poll(wild).toBe(true);
+  await expect(page.locator('#toolbar [data-action="walkhere"]')).toBeVisible();
+  await expect(page.locator('#toolbar [data-action="explore"]')).toHaveCount(0);
+  await page.locator('#toolbar [data-action="walkhere"]').click();
+  await expect.poll(wild).toBe(false);
+  await expect(page.locator('#toolbar [data-action="dungeon"]')).toBeVisible();
+});

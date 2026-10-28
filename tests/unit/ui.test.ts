@@ -15,6 +15,7 @@ import { descriptionParagraphs } from '../../web/src/ui/api.ts';
 import { parseStore, stackSize, storeMacro } from '../../web/src/ui/store.ts';
 import { abilityMoveKeys, parseAbilities, parseSkills, skillMoveKeys } from '../../web/src/ui/skills.ts';
 import { flagLabel, parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
+import { fateText, heroEntry } from '../../web/src/ui/gameover.ts';
 import { findMessageBox } from '../../web/src/ui/msgbox.ts';
 import { cleanPrompt, isEmptyFile, isFileViewer } from '../../web/src/ui/prompttext.ts';
 import { parseRows, type ChoiceBlock, type TermRow } from '../../web/src/ui/termparse.ts';
@@ -419,5 +420,26 @@ describe('file viewer headings', () => {
     assert.ok(isFileViewer('[ToME 2.4.1 (ah, git), Quest status, Line 0/5]'));
     assert.ok(isEmptyFile('[ToME 2.4.1 (ah, git), Fate status, Line 0/0]'));
     assert.ok(!isEmptyFile('[ToME 2.4.1 (ah, git), Quest status, Line 0/5]'));
+  });
+});
+
+describe('hall of fame', () => {
+  const entry = (name: string, level: number, turns: number, how = 'a Cave spider', depth = 3) => ({
+    name, race: 'Hobbit', cls: 'Rogue', points: 100, gold: 10, turns, day: '10/27/26', level, maxLevel: level, depth, maxDepth: depth, quest: 0, how,
+  });
+
+  it('describes how each hero fell', () => {
+    assert.equal(fateText(entry('A', 1, 1)), 'Killed by a Cave spider at 150 ft');
+    assert.equal(fateText(entry('A', 1, 1, 'Grip', 0)), 'Killed by Grip in the town');
+    assert.equal(fateText({ how: 'Quitting', depth: 0, quest: 0 }), 'Retired in the town');
+    assert.equal(fateText({ how: 'Orcs', depth: 4, quest: 1 }), 'Killed by Orcs on a quest');
+  });
+
+  it('finds the entry for this run only', () => {
+    const scores = [entry('Bilbo', 10, 500), entry('Frodo', 3, 120), entry('Frodo', 3, 90)];
+    assert.equal(heroEntry(scores, { name: 'Frodo', level: 3, turns: 90 }), 2);
+    assert.equal(heroEntry(scores, { name: 'Frodo', level: 3, turns: 95 }), -1);
+    assert.equal(heroEntry(scores, { name: 'Sam', level: 3, turns: 90 }), -1);
+    assert.equal(heroEntry(scores, null), -1);
   });
 });

@@ -147,7 +147,30 @@ export interface PlayerState {
   alwaysPickup: number;
   /** Skill points waiting to be spent. */
   skillPoints?: number;
+  /** 1 once the hero has died. */
+  dead?: number;
+  /** What killed the hero. */
+  diedFrom?: string;
   status: Record<string, number>;
+}
+
+/** One entry of the Hall of Fame (tome2's scores file). */
+export interface ScoreEntry {
+  name: string;
+  race: string;
+  cls: string;
+  points: number;
+  gold: number;
+  turns: number;
+  /** Date as tome2 writes it: mm/dd/yy. */
+  day: string;
+  level: number;
+  maxLevel: number;
+  depth: number;
+  maxDepth: number;
+  /** 1 when the hero died on a quest level. */
+  quest: number;
+  how: string;
 }
 
 export interface MonsterState {

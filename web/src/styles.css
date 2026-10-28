@@ -289,6 +289,25 @@ html.keyboard-open .sheet-layer {
   line-height: 1.3;
 }
 
+/* The hero has died: the card over the map where it happened. */
+.prompt-card.death {
+  border-color: rgb(208 96 79 / 0.75);
+  text-align: center;
+}
+
+.prompt-card.death .card-title {
+  margin-bottom: 0.3rem;
+  color: #f0a08f;
+  font-family: var(--serif);
+  font-size: var(--fs-title);
+  letter-spacing: 0.04em;
+}
+
+.prompt-card.death .card-hint {
+  margin-bottom: 0.9rem;
+  color: var(--fg);
+}
+
 .card-hint {
   margin: -0.4rem 0 0.7rem;
   color: var(--muted);
@@ -320,10 +339,27 @@ html.keyboard-open .sheet-layer {
   color: var(--accent-bright);
 }
 
+/* A line of text: at the top of the map, clear of the on-screen keyboard. */
+.prompt-card.text {
+  top: 0.6rem;
+  bottom: auto;
+  animation-name: sheet-down;
+}
+
+.card-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.card-form .card-buttons {
+  flex: 1 0 auto;
+}
+
 .card-form input {
-  width: 100%;
+  flex: 999 1 12rem;
+  min-width: 0;
   min-height: var(--touch);
-  margin-bottom: 0.7rem;
   padding: 0 0.8rem;
   border: 1px solid var(--accent);
   border-radius: 10px;
@@ -1566,14 +1602,14 @@ html.keyboard-open .sheet-layer {
 
 /* Text entry */
 
-.ask-text label {
+.ask-text {
   display: flex;
-  flex-direction: column;
   gap: 0.5rem;
-  color: var(--muted);
 }
 
 .ask-text input {
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: var(--touch);
   padding: 0 0.8rem;
   border: 1px solid var(--accent);
@@ -1582,6 +1618,71 @@ html.keyboard-open .sheet-layer {
   color: var(--fg);
   font: inherit;
   font-size: max(16px, 1rem);
+}
+
+.ask-text input:focus-visible,
+.card-form input:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 1px;
+}
+
+.ask-text input::placeholder {
+  color: var(--faint);
+}
+
+.ask-text .sheet-action {
+  flex: 0 0 auto;
+}
+
+/* Text questions drop from the top, where the on-screen keyboard cannot cover them. */
+.sheet-layer:has(.sheet-ask) {
+  align-items: flex-start;
+  padding: calc(var(--safe-top) + 0.6rem) calc(0.6rem + var(--safe-right)) 0 calc(0.6rem + var(--safe-left));
+}
+
+.sheet.sheet-ask {
+  border-bottom: 1px solid rgb(217 164 65 / 0.45);
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.6);
+  animation-name: sheet-down;
+}
+
+.sheet-ask .sheet-header {
+  padding-top: 0.5rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 0;
+}
+
+.sheet-ask .sheet-body {
+  padding: 0 0.9rem 0.9rem;
+}
+
+.sheet-ask.has-error .sheet-subtitle {
+  color: #f0a08f;
+}
+
+/* Little room above the keyboard (a phone on its side): keep only the question and the field. */
+html.keyboard-tight .sheet-layer:has(.sheet-ask) {
+  padding-top: 0.3rem;
+}
+
+html.keyboard-tight .sheet-ask .sheet-header {
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+
+html.keyboard-tight .sheet-ask .sheet-body {
+  padding-bottom: 0.5rem;
+}
+
+html.keyboard-tight .prompt-card.text {
+  top: 0.3rem;
+  padding: 0.5rem 0.7rem;
+}
+
+html.keyboard-tight .prompt-card.text .card-title {
+  margin-bottom: 0.4rem;
+  font-size: var(--fs);
 }
 
 /* Character creation */
@@ -1840,6 +1941,17 @@ html.keyboard-open .sheet-layer {
   }
 }
 
+@keyframes sheet-down {
+  from {
+    transform: translateY(-24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
 @keyframes sheet-up {
   from {
     transform: translateY(24px);
@@ -1978,6 +2090,11 @@ html.keyboard-open .sheet-layer {
   text-wrap: balance;
 }
 
+.title-intro .title-verse span,
+.title-intro .title-verse cite {
+  animation-duration: 1000ms;
+}
+
 .title-intro-hint {
   margin: 1.6rem 0 0;
   font-size: var(--fs-small);
@@ -1986,7 +2103,7 @@ html.keyboard-open .sheet-layer {
   text-transform: uppercase;
   color: rgb(246 212 138 / 0.75);
   opacity: 0;
-  animation: title-rise 2000ms ease-out forwards, title-breathe 3.2s ease-in-out 4s infinite;
+  animation: title-rise 1000ms ease-out forwards, title-breathe 3.2s ease-in-out 4s infinite;
 }
 
 .title-footer {
@@ -2334,6 +2451,91 @@ html.keyboard-open .sheet-layer {
   margin: 0 0 1rem;
   color: var(--faint);
   font-size: var(--fs-small);
+  text-align: center;
+}
+
+/* Hall of Fame */
+
+.fame-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fame-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--button);
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.fame-row.current {
+  border-color: var(--accent);
+  background: linear-gradient(to bottom, #3b2a12, #24190c);
+}
+
+.fame-rank {
+  flex: 0 0 1.8em;
+  color: var(--accent);
+  font-family: var(--serif);
+  font-size: var(--fs-large);
+  font-weight: 700;
+  text-align: center;
+}
+
+.fame-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fame-name {
+  color: var(--accent-bright);
+  font-weight: 600;
+}
+
+.fame-who,
+.fame-details {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.fame-fate {
+  color: var(--fg);
+  font-size: var(--fs-small);
+}
+
+.fame-points {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-weight: 600;
+  text-align: right;
+}
+
+.fame-points::after {
+  content: "points";
+  display: block;
+  color: var(--faint);
+  font-family: var(--sans);
+  font-size: var(--fs-small);
+  font-weight: 400;
+}
+
+.fame-empty {
+  margin: 1.5rem 0;
+  color: var(--muted);
   text-align: center;
 }
 

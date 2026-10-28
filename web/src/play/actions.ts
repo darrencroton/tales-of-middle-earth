@@ -135,6 +135,25 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
   },
 ];
 
+/** Where the player is: underground, walking the land (towns and wilderness), or on the world map. */
+export type Surroundings = 'dungeon' | 'land' | 'worldMap';
+
+const WORLD_MAP: CommandDef = { label: 'World map', icon: '⇱', command: '<' };
+const WALK_HERE: CommandDef = { label: 'Walk here', icon: '⇲', command: '>' };
+
+/** The command sheet's groups, with the stairs commands named for where the player is. */
+export function commandGroups(where: Surroundings): { title: string; commands: CommandDef[] }[] {
+  if (where === 'dungeon') return COMMAND_GROUPS;
+  return COMMAND_GROUPS.map((group) => ({
+    title: group.title,
+    commands: group.commands.flatMap((c) => {
+      if (c.command === '<' && !c.native) return where === 'land' ? [WORLD_MAP] : [];
+      if (c.command === '>' && !c.native) return where === 'worldMap' ? [WALK_HERE] : [c];
+      return [c];
+    }),
+  }));
+}
+
 export interface ActionContext {
   mode: 'title' | 'screen' | 'map' | 'overlay';
   prompt: PromptKind;
@@ -157,6 +176,8 @@ export interface ActionContext {
   alwaysPickup: boolean;
   /** In town, where there is nothing to explore. */
   town?: boolean;
+  /** On the world map, travelling between places. */
+  worldMap?: boolean;
   /** Something worth using from the pack. */
   gear?: 'weapon' | 'light' | 'heal' | 'eat' | null;
   /** Direction digit of the weakest hostile creature next to the player. */
@@ -287,11 +308,13 @@ export function contextActions(ctx: ActionContext): Action[] {
       ...(ctx.foe ? [{ id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true } as Action] : []),
       ...(ctx.gear ? [gearAction(ctx.gear)] : []),
       ...situational,
-      ...(ctx.town
-        ? situational.some((a) => a.id === 'descend')
-          ? []
-          : [{ id: 'dungeon', label: 'Dungeon', icon: '⇣', effect: { kind: 'native', view: 'dungeon' } } as Action]
-        : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
+      ...(ctx.worldMap
+        ? [command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true)]
+        : ctx.town
+          ? situational.some((a) => a.id === 'descend')
+            ? []
+            : [{ id: 'dungeon', label: 'Dungeon', icon: '⇣', effect: { kind: 'native', view: 'dungeon' } } as Action]
+          : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
       { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
       ...(ctx.foe ? [] : [command('rest', 'Rest', '☾', { command: 'R', then: '&\r' })]),
       command('cast', 'Cast', '✦', { command: 'm' }),
