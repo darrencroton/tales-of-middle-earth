@@ -11,7 +11,7 @@ import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
-import { commandGroups, commandKeys, contextActions, pickupCommand, waitCommand, type Action, type CommandDef, type NativeView } from './play/actions.ts';
+import { commandGroups, commandKeys, contextActions, waitCommand, type Action, type CommandDef, type NativeView } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
@@ -1287,8 +1287,7 @@ function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<type
     return;
   }
   if (cell.x === player.x && cell.y === player.y) {
-    const command = snap.floorObjects > 0 ? pickupCommand(alwaysPickup()) : waitCommand(alwaysPickup());
-    send([BACKSLASH, command.charCodeAt(0)]);
+    send([BACKSLASH, waitCommand(alwaysPickup()).charCodeAt(0)]);
     return;
   }
   startTravel(cell);
