@@ -15,7 +15,7 @@ import { commandGroups, commandKeys, contextActions, waitCommand, type Action, t
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { edgeCell, forgetUnseen, STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
+import { edgeCell, forgetUnseen, isKnown, STOP_MESSAGES, strideToward, Travel, type TravelContext } from './play/travel.ts';
 import { Explore, nearestReachable } from './play/explore.ts';
 import { isHostile, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
 import {
@@ -1404,7 +1404,22 @@ function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<type
     send([BACKSLASH, waitCommand(alwaysPickup()).charCodeAt(0)]);
     return;
   }
+  if (!isKnown(snap, cell)) {
+    strideInto(snap, cell);
+    return;
+  }
   startTravel(cell);
+}
+
+/** A tap on unseen ground: walks as far as the light reaches that way, or one step into the dark. */
+function strideInto(snap: LevelSnapshot, cell: MapPoint): void {
+  const goal = strideToward(snap, materials, cell, Math.max(1, snap.lightRadius));
+  if (goal) {
+    startTravel(goal);
+    return;
+  }
+  const digit = directionDigit(cell.x - snap.px, cell.y - snap.py);
+  if (digit && digit !== '5') send([BACKSLASH, ...keyCodes(';' + digit)]);
 }
 
 attachMapGestures(stage, {

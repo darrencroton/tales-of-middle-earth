@@ -71,6 +71,62 @@ export function edgeCell(width: number, height: number, point: Point): Point | n
   return { x: Math.max(0, Math.min(width - 1, point.x)), y: Math.max(0, Math.min(height - 1, point.y)) };
 }
 
+/** Whether the player has seen or remembers a cell. */
+export function isKnown(snap: LevelSnapshot, point: Point): boolean {
+  if (point.x < 0 || point.y < 0 || point.x >= snap.width || point.y >= snap.height) return false;
+  return (snap.info[point.y * snap.width + point.x] & (CAVE_MARK | CAVE_SEEN)) !== 0;
+}
+
+/**
+ * Where a stride of `radius` cells towards an unknown point ends: the
+ * reachable known cell within the radius nearest the point `radius` cells
+ * along the line to it, and closer to it than the player is. Null when no
+ * known cell gets the player closer.
+ */
+export function strideToward(snap: LevelSnapshot, materials: readonly Material[], toward: Point, radius: number): Point | null {
+  const { width, height } = snap;
+  const px = snap.px;
+  const py = snap.py;
+  const dx = toward.x - px;
+  const dy = toward.y - py;
+  const span = Math.max(Math.abs(dx), Math.abs(dy));
+  if (span === 0 || radius < 1) return null;
+  const reach = Math.min(radius, span);
+  const aim = { x: px + (dx * reach) / span, y: py + (dy * reach) / span };
+  const far = Math.hypot(dx, dy);
+
+  const grid = travelGrid(snap, materials);
+  const depth = new Map<number, number>([[py * width + px, 0]]);
+  const queue = [py * width + px];
+  let best: Point | null = null;
+  let bestScore = Infinity;
+  for (let head = 0; head < queue.length; head++) {
+    const i = queue[head];
+    const x = i % width;
+    const y = (i - x) / width;
+    const d = depth.get(i)!;
+    if (d > 0 && Math.hypot(toward.x - x, toward.y - y) < far) {
+      const score = Math.hypot(aim.x - x, aim.y - y);
+      if (score < bestScore) {
+        bestScore = score;
+        best = { x, y };
+      }
+    }
+    if (d >= radius * 2) continue;
+    for (let ny = y - 1; ny <= y + 1; ny++) {
+      for (let nx = x - 1; nx <= x + 1; nx++) {
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        if (Math.max(Math.abs(nx - px), Math.abs(ny - py)) > radius) continue;
+        const next = ny * width + nx;
+        if (depth.has(next) || !grid.passable(nx, ny)) continue;
+        depth.set(next, d + 1);
+        queue.push(next);
+      }
+    }
+  }
+  return best;
+}
+
 /** Forgets noticed creatures that are no longer in sight. */
 export function forgetUnseen(noticed: Set<number>, monsters: readonly MonsterState[]): void {
   if (noticed.size === 0) return;

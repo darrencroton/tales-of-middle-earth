@@ -171,3 +171,11 @@ export function melodyBars(text: string, count: number, from = 0): string {
 export function stretchChords(chords: readonly number[], factor: number): number[] {
   return chords.flatMap((c) => Array.from({ length: factor }, () => c));
 }
+
+/** Lengthens each bar of a melody to `beats` with a closing rest. */
+export function padBars(text: string, beats: number): string {
+  return eachBar(text, (notes) => {
+    const missing = beats - melodyBeats(notes);
+    return missing > 0 ? [...notes, { degree: null, accidental: 0, beats: missing }] : notes;
+  });
+}

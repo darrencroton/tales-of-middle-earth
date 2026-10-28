@@ -4,7 +4,7 @@ import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, pickupComma
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
-import { edgeCell, forgetUnseen, Travel, travelGrid, type TravelContext } from '../../web/src/play/travel.ts';
+import { edgeCell, forgetUnseen, isKnown, strideToward, Travel, travelGrid, type TravelContext } from '../../web/src/play/travel.ts';
 import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials } from '../../web/src/render/materials.ts';
 import { CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, NO_EFFECT, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
 
@@ -146,6 +146,26 @@ describe('travel', () => {
     assert.deepEqual(edgeCell(10, 5, { x: -4, y: 2 }), { x: 0, y: 2 });
     assert.deepEqual(edgeCell(10, 5, { x: 12, y: -1 }), { x: 9, y: 0 });
     assert.deepEqual(edgeCell(10, 5, { x: 5, y: 7 }), { x: 5, y: 4 });
+  });
+
+  it('strides the light radius towards an unseen tap', () => {
+    const snap = level(['............'], { x: 0, y: 0 });
+    for (let x = 4; x < 12; x++) snap.info[x] = 0;
+    assert.equal(isKnown(snap, { x: 9, y: 0 }), false);
+    assert.equal(isKnown(snap, { x: 2, y: 0 }), true);
+    assert.deepEqual(strideToward(snap, MATERIALS, { x: 11, y: 0 }, 3), { x: 3, y: 0 });
+    assert.deepEqual(strideToward(snap, MATERIALS, { x: 2, y: 0 }, 3), { x: 2, y: 0 });
+  });
+
+  it('follows a corridor round a corner when striding into the dark', () => {
+    const snap = level(['....#', '###.#', '###..'], { x: 0, y: 0 });
+    assert.deepEqual(strideToward(snap, MATERIALS, { x: 9, y: 9 }, 3), { x: 3, y: 2 });
+  });
+
+  it('finds no stride when nothing known leads closer', () => {
+    const snap = level(['#.#', '#.#', '###'], { x: 1, y: 1 });
+    assert.equal(strideToward(snap, MATERIALS, { x: 1, y: 8 }, 3), null);
+    assert.equal(strideToward(snap, MATERIALS, { x: 1, y: 1 }, 3), null);
   });
 
   it('opens closed doors on the way', () => {

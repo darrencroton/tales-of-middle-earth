@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Composer, fitRange, pickVoicing, pivotChord, planPiece, RANGES, secondsPerBar, transitionKind } from '../../web/src/audio/composer.ts';
+import {
+  barStretch,
+  Composer,
+  fitRange,
+  pickVoicing,
+  pivotChord,
+  planPiece,
+  quarterTempo,
+  RANGES,
+  secondsPerBar,
+  sombreness,
+  transitionKind,
+} from '../../web/src/audio/composer.ts';
 import {
   danger,
   doorCues,
@@ -21,6 +33,7 @@ import {
   invertMelody,
   melodyBars,
   melodyBeats,
+  padBars,
   parseMelody,
   Rng,
   SCALES,
@@ -105,6 +118,7 @@ describe('music theory', () => {
     assert.equal(staccatoMelody('0*2 1*.5'), '0 r 1*0.5');
     assert.equal(melodyBars('0 | 1 | 2 | 3', 2, 1), '1 | 2');
     assert.deepEqual(stretchChords([0, 4], 2), [0, 0, 4, 4]);
+    assert.equal(padBars('0 1*2 | 2*4', 5), '0 1*2 r*2 | 2*4 r');
   });
 
   it('repeats a random sequence for the same seed', () => {
@@ -130,7 +144,9 @@ describe('themes', () => {
         text.split('|').forEach((bar, i) => assert.equal(melodyBeats(parseMelody(bar)), theme.meter, `${theme.id} bar ${i + 1} fills its metre`));
       }
       assert.ok(theme.name.length > 2, `${theme.id} has a name`);
-      assert.ok(theme.bpm >= 30 && theme.bpm <= 200, `${theme.id} tempo`);
+      assert.ok(quarterTempo(theme) >= 40 && quarterTempo(theme) <= 160, `${theme.id} tempo`);
+      assert.ok((theme.rubato ?? 0) >= 0 && (theme.rubato ?? 0) <= 0.3, `${theme.id} rubato`);
+      for (const layer of theme.layers) if (layer.delay !== undefined) assert.equal(layer.role, 'melody', `${theme.id} delays only melodies`);
       assert.ok(theme.layers.some((l) => l.role === 'pad' || l.role === 'drone'), `${theme.id} has a bed`);
       assert.ok(theme.layers.some((l) => l.role === 'melody'), `${theme.id} has a melody`);
       assert.ok(theme.mood.length > 10, `${theme.id} describes its mood`);
@@ -139,6 +155,13 @@ describe('themes', () => {
         else assert.ok(!PERCUSSION.has(layer.inst), `${theme.id} ${layer.role} uses ${layer.inst}`);
       }
     }
+  });
+
+  it('spread their tempi widely', () => {
+    const tempi = THEME_LIST.map(quarterTempo).sort((a, b) => a - b);
+    assert.ok(tempi[0] <= 50 && tempi[tempi.length - 1] >= 140, 'from a crawl to a gallop');
+    const quartile = (q: number) => tempi[Math.floor((tempi.length - 1) * q)];
+    assert.ok(quartile(0.75) - quartile(0.25) >= 30, 'the middle half is not bunched together');
   });
 
   it('cover every place the game maps to', () => {
@@ -242,11 +265,12 @@ describe('composer', () => {
     const mordor = themeById('mordor');
     const ice = themeById('ice');
     const road = themeById('overworld');
-    const toMordor = pivotChord(bree, mordor);
-    assert.equal(transitionKind(mordor), 'dominant');
-    assert.equal(toMordor.kind, 'dominant');
-    const pcs = toMordor.chord.map((m) => (m - mordor.root + 120) % 12).sort((a, b) => a - b);
-    assert.deepEqual(pcs, [2, 5, 7, 11], 'V7 of the new key, with its leading tone');
+    const wolves = themeById('wolves');
+    assert.equal(transitionKind(wolves), 'dominant');
+    const toWolves = pivotChord(bree, wolves);
+    assert.equal(toWolves.kind, 'dominant');
+    const pcs = toWolves.chord.map((m) => (m - wolves.root + 120) % 12).sort((a, b) => a - b);
+    assert.deepEqual(pcs, [5, 7, 11], 'a light V7: root, leading tone and seventh');
     assert.equal(pivotChord(mordor, bree).kind, 'plagal');
     const dreamy = pivotChord(road, ice);
     assert.equal(dreamy.kind, 'common');
@@ -255,7 +279,48 @@ describe('composer', () => {
     for (const theme of THEME_LIST) {
       const pivot = pivotChord(themeById('title'), theme);
       assert.ok(pivot.chord.length >= 3 && pivot.bass >= 36 && pivot.bass <= 52, `${theme.id} pivot`);
+      assert.ok(pivot.weight > 0 && pivot.weight <= 1, `${theme.id} pivot weight`);
     }
+  });
+
+  it('keeps transitions into and out of sombre places subtle', () => {
+    const barrow = themeById('barrow');
+    const bree = themeById('bree');
+    assert.ok(sombreness(barrow) > sombreness(themeById('depths')));
+    assert.ok(sombreness(themeById('depths')) > sombreness(bree));
+    const intoGrave = pivotChord(bree, barrow);
+    assert.equal(intoGrave.kind, 'veiled');
+    const pcs = intoGrave.chord.map((m) => (m - barrow.root + 120) % 12).sort((a, b) => a - b);
+    assert.deepEqual(pcs, [0, 2, 7], 'a suspended fifth without a leading tone');
+    assert.equal(pivotChord(barrow, themeById('wolves')).kind, 'veiled', 'leaving a sombre place is just as quiet');
+    assert.equal(pivotChord(bree, themeById('depths')).kind, 'minorPlagal');
+    const depthsPcs = pivotChord(bree, themeById('depths')).chord.map((m) => (m - themeById('depths').root + 120) % 12).sort((a, b) => a - b);
+    assert.deepEqual(depthsPcs, [0, 5, 8], 'iv into a dark key');
+    assert.ok(intoGrave.weight < pivotChord(bree, themeById('plains')).weight, 'sombre pivots are quieter');
+    assert.ok(pivotChord(barrow, bree).weight < pivotChord(themeById('plains'), bree).weight, 'so is the way out');
+  });
+
+  it('broadens breaths and the end of a piece with rubato', () => {
+    const a = { kind: 'a' as const, bars: 8, variation: 0 };
+    const breath = { kind: 'breath' as const, bars: 4, variation: 0 };
+    assert.equal(barStretch({}, breath, 0, false), 1);
+    assert.equal(barStretch({ rubato: 0.2 }, a, 3, false), 1);
+    assert.ok(Math.abs(barStretch({ rubato: 0.2 }, breath, 0, false) - 1.2) < 1e-9);
+    assert.ok(barStretch({ rubato: 0.2 }, a, 7, true) > barStretch({ rubato: 0.2 }, breath, 0, false));
+    assert.equal(barStretch({ rubato: 0.2 }, a, 6, true), 1);
+  });
+
+  it('plays a delayed melody as a canon', () => {
+    const base = themeById('mandos');
+    const theme = { ...base, layers: [{ role: 'melody' as const, inst: 'choir' as const, octave: 1 }, { role: 'melody' as const, inst: 'ooh' as const, octave: 1, delay: 2 }] };
+    const composer = new Composer(theme, 7);
+    const section = { kind: 'a' as const, bars: 8, variation: 0 };
+    const notes = composer.bar(section, 0, 0, 0);
+    const lead = notes.filter((n) => n.inst === 'choir');
+    const echo = notes.filter((n) => n.inst === 'ooh');
+    assert.ok(lead.length > 0 && echo.length > 0);
+    assert.equal(echo[0].at, 2);
+    assert.equal(echo[0].midi % 12, lead[0].midi % 12);
   });
 
   it('writes playable notes for every theme at every intensity', () => {
