@@ -741,7 +741,8 @@ function chronicleUpdate(player: PlayerState, slain: readonly Slain[], turn: num
   const deeds = newDeeds(hero, chronicles.career, chronicles.earned);
   if (deeds.length) {
     chronicles.award(hero, deeds);
-    for (const deed of deeds) feel.showDeed(deed.title, deed.text);
+    if (deeds.length > 2) feel.showDeed(`${deeds.length} deeds earned`, deeds.map((d) => d.title).join(' · '));
+    else for (const deed of deeds) feel.showDeed(deed.title, deed.text);
     audio.cue('levelup');
   }
   if (deeds.length || JSON.stringify(hero) !== before || JSON.stringify(chronicles.career) !== careerBefore) chronicles.save();
