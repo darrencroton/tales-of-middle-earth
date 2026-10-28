@@ -16,7 +16,7 @@ import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './p
 import { TargetPicker } from './play/targeting.ts';
 import { forgetUnseen, STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
 import { Explore, nearestReachable } from './play/explore.ts';
-import { isHostile, type GameState, type LevelSnapshot, type MessageState, type MonsterState, type PlayerState } from './render/snapshot.ts';
+import { isHostile, type GameState, type LevelSnapshot, type MonsterState, type PlayerState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -48,7 +48,7 @@ import { abilitiesElements, abilityMoveKeys, parseAbilities, parseSkills, skillM
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
 import { hallOfFameElements, heroEntry, isHallOfFame, parseTomb, tombElements } from './ui/gameover.ts';
 import { careerElements, ChronicleStore, taleElements } from './ui/deeds.ts';
-import { extendStreak, newDeeds, record, slainMonsters, type Chronicle, type Slain, type Streak } from './play/chronicle.ts';
+import { extendStreak, newDeeds, newMessages, record, slainMonsters, type Chronicle, type Slain, type Streak } from './play/chronicle.ts';
 import { fullSheetElements, parseFullSheet, sheetPageKeys, SHEET_PAGES, type FullSheet } from './ui/charsheet.ts';
 
 declare global {
@@ -662,7 +662,7 @@ function refresh(): void {
     hud.update(state, snap.py, snap.px);
     if (state.player) feel.update(state.player);
     const sameHero = !!previous && previous.player?.name === state.player?.name;
-    const slain = sameHero ? slainMonsters(previous.monsters ?? [], state.monsters ?? [], freshMessages(previous, state)) : [];
+    const slain = sameHero ? slainMonsters(previous.monsters ?? [], state.monsters ?? [], newMessages(previous, state)) : [];
     if (sameHero) showHits(previous, state, slain);
     if (state.player) chronicleUpdate(state.player, slain, snap.turn, sameHero && (previous.player?.chp ?? 0) > state.player.chp);
     const store = currentStore();
@@ -678,11 +678,6 @@ function refresh(): void {
     );
   }
   updateActionBar();
-}
-
-/** Messages that arrived between two states, newest first. */
-function freshMessages(previous: GameState, next: GameState): MessageState[] {
-  return (next.messages ?? []).slice(0, Math.max(0, (next.messageTotal ?? 0) - (previous.messageTotal ?? 0)));
 }
 
 /**

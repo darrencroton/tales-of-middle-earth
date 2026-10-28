@@ -5,6 +5,7 @@ import {
   newCareer,
   newChronicle,
   newDeeds,
+  newMessages,
   nextTimeTip,
   record,
   slainMonsters,
@@ -26,6 +27,17 @@ describe('chronicle', () => {
     ]);
     assert.deepEqual(slain.map((s) => [s.name, s.unique]), [['Cave spider', false], ["Grip, Farmer Maggot's Dog", true]]);
     assert.deepEqual(slainMonsters(before, [], [{ text: 'You feel something roll beneath your feet.', color: 1 }]), []);
+  });
+
+  it('counts a repeated message merged into the newest one', () => {
+    const slain = { text: 'You have slain the Jackal.', color: 1 };
+    const prev = { messageTotal: 5, messages: [slain] };
+    assert.deepEqual(newMessages(prev, { messageTotal: 5, messages: [{ ...slain, text: 'You have slain the Jackal. <2x>' }] }).length, 1);
+    assert.deepEqual(newMessages(prev, prev), []);
+    assert.deepEqual(newMessages(prev, { messageTotal: 7, messages: [{ text: 'b', color: 1 }, { text: 'a', color: 1 }, slain] }).map((m) => m.text), ['b', 'a']);
+    const before = [monster(1, 'Jackal'), monster(2, 'Jackal')];
+    const merged = newMessages(prev, { messageTotal: 5, messages: [{ ...slain, text: 'You have slain the Jackal. <2x>' }] });
+    assert.equal(slainMonsters(before, [before[1]], merged).length, 1);
   });
 
   it('names kill streaks once each', () => {

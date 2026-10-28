@@ -1,4 +1,4 @@
-import type { MessageState, MonsterState, PlayerState } from '../render/snapshot.ts';
+import type { GameState, MessageState, MonsterState, PlayerState } from '../render/snapshot.ts';
 
 /** A creature the hero has slain. */
 export interface Slain {
@@ -67,6 +67,21 @@ export const DEEDS: readonly Deed[] = [
   { id: 'close-call', title: 'Close call', text: 'Fall below a tenth of your health, and live.', earned: (_, k) => k.closeCalls >= 1 },
   { id: 'wanderer', title: 'Wanderer', text: 'Set out across the world map.', earned: (_, k) => k.worldMap },
 ];
+
+/**
+ * Messages that arrived between two states, newest first. A message that
+ * repeats the newest one is merged into it with a count ("… <2x>") without
+ * raising the total, so a changed newest message counts as one new message.
+ */
+export function newMessages(
+  prev: Pick<GameState, 'messageTotal' | 'messages'>,
+  next: Pick<GameState, 'messageTotal' | 'messages'>,
+): MessageState[] {
+  const messages = next.messages ?? [];
+  let count = Math.min(messages.length, Math.max(0, (next.messageTotal ?? 0) - (prev.messageTotal ?? 0)));
+  if (count === 0 && messages[0] && prev.messages?.[0] && messages[0].text !== prev.messages[0].text) count = 1;
+  return messages.slice(0, count);
+}
 
 const KILL_TEXT = /\b(slain|destroyed|killed|dies|dissolves|shatters)\b/i;
 
