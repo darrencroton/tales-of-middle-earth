@@ -367,7 +367,9 @@ describe('actions', () => {
       ['recast', 'Manathrust', true],
       ['fire', 'Fire', false],
     ]);
-    assert.ok(!contextActions({ ...base, recast: 'Manathrust', canFire: true }).some((a) => a.id === 'recast' || a.id === 'fire'));
+    const quiet = contextActions({ ...base, recast: 'Manathrust', canFire: true });
+    assert.deepEqual(quiet.filter((a) => a.id === 'recast' || a.id === 'fire').map((a) => [a.id, !!a.primary]), [['recast', false]]);
+    assert.ok(quiet.some((a) => a.id === 'cast'));
     assert.deepEqual(contextActions(base).find((a) => a.id === 'cast')?.effect, { kind: 'native', view: 'magic' });
     assert.equal(contextActions({ ...base, magic: 'Powers' }).find((a) => a.id === 'cast')?.label, 'Powers');
     assert.ok(!contextActions({ ...base, magic: null }).some((a) => a.id === 'cast'));

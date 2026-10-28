@@ -322,6 +322,16 @@ test('spells are cast from the Magic sheet, and recent ones are offered first', 
   await dismissMore(page);
   await waitAtCommand(page);
 
+  /* A magic user keeps Cast and gets the last spell beside it, with or without a foe in view. */
+  await expect(page.locator('#toolbar [data-action="cast"]')).toBeVisible();
+  await expect(page.locator('#toolbar [data-action="recast"]')).toContainText('Manathrust');
+  await expect(page.locator('#toolbar [data-action="equip"]')).toHaveCount(0);
+  await page.locator('#toolbar [data-action="recast"]').click();
+  await waitForScreen(page, /^Direction/);
+  await page.keyboard.press('Escape');
+  await dismissMore(page);
+  await waitAtCommand(page);
+
   await openMagic();
   await expect(page.locator('.sheet .recent-button')).toHaveText(/Manathrust/);
   await page.keyboard.press('Escape');

@@ -317,16 +317,24 @@ function currentSpells(): SpellState | null {
  */
 function recastEntry(): RecentAction | null {
   if (!lastSnap?.atCommand) return null;
-  const aimed = api.recent().filter((e) => e.aimed);
-  if (!aimed.length) return null;
   const pack = engine.inventory()?.pack ?? [];
-  return (
-    aimed.find((e) => {
-      if (e.kind !== 'item') return recentUsable(e, currentSpells());
-      const item = recentItem(e, pack);
-      return !!item && !!recentItemAction(e, item);
-    }) ?? null
-  );
+  const usable = (e: RecentAction) => {
+    if (e.kind !== 'item') return recentUsable(e, currentSpells());
+    const item = recentItem(e, pack);
+    return !!item && !!recentItemAction(e, item);
+  };
+  const recent = api.recent();
+  if (magicLabel() !== null) {
+    const magic = recent.find((e) => e.kind !== 'item' && usable(e));
+    if (magic) return magic;
+  }
+  if (!hostileInView()) return null;
+  return recent.find((e) => e.aimed && usable(e)) ?? null;
+}
+
+/** A hostile creature is in view of the hero at the command prompt. */
+function hostileInView(): boolean {
+  return mode === 'map' && !!lastSnap?.atCommand && (lastState?.monsters ?? []).some((m) => isHostile(m));
 }
 
 /** Shows a spell's description from tome2's spell list ("i" beside it), with Cast. */
@@ -464,7 +472,7 @@ function openNative(view: NativeView): void {
       break;
     case 'recast': {
       const entry = recastEntry();
-      if (entry) runRecent(entry, true);
+      if (entry) runRecent(entry, !!entry.aimed && hostileInView());
       break;
     }
     case 'fire':
@@ -1048,7 +1056,7 @@ function updateActionBar(force = false): void {
       alwaysPickup: alwaysPickup(),
       gear: gearSuggestion()?.kind ?? null,
       foe: foe && snap ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
-      foeInView: mode === 'map' && !!snap?.atCommand && (lastState?.monsters ?? []).some((m) => isHostile(m)),
+      foeInView: hostileInView(),
       recast: mode === 'map' && snap?.atCommand ? (() => {
         const entry = recastEntry();
         return entry ? recentLabel(entry) : null;

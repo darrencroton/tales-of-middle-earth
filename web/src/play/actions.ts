@@ -193,7 +193,7 @@ export interface ActionContext {
   foe?: string | null;
   /** A hostile creature is in view. */
   foeInView?: boolean;
-  /** Name of the spell or power last used, offered again while a foe is in view. */
+  /** Name of what to offer again: a magic user's last spell or power, or another hero's last aimed action while a foe is in view. */
   recast?: string | null;
   /** A launcher and ammunition are ready. */
   canFire?: boolean;
@@ -310,8 +310,8 @@ export function contextActions(ctx: ActionContext): Action[] {
     const situational = situationalActions(ctx.underfoot, ctx.floorObjects, ctx.alwaysPickup);
     const actions: Action[] = [
       ...(ctx.foe ? [{ id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true } as Action] : []),
-      ...(ctx.foeInView && ctx.recast
-        ? [{ id: 'recast', label: ctx.recast, icon: '✺', effect: { kind: 'native', view: 'recast' }, primary: !ctx.foe } as Action]
+      ...(ctx.recast
+        ? [{ id: 'recast', label: ctx.recast, icon: '✺', effect: { kind: 'native', view: 'recast' }, primary: !ctx.foe && !!ctx.foeInView } as Action]
         : []),
       ...(ctx.foeInView && ctx.canFire
         ? [{ id: 'fire', label: 'Fire', icon: '➶', effect: { kind: 'native', view: 'fire' }, primary: !ctx.foe && !ctx.recast } as Action]
