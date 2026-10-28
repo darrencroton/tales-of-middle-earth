@@ -152,14 +152,13 @@ export class MapMemoryStore {
     }
   }
 
+  /** The hero's memory, now the most recently played (the least recent are dropped beyond `MAX_HEROES`). */
   hero(id: string): HeroMemory {
-    let hero = this.data.heroes[id];
-    if (!hero) {
-      hero = newHero();
-      this.data.heroes[id] = hero;
-      trim(this.data.heroes, MAX_HEROES);
-      this.dirty = true;
-    }
+    const hero = this.data.heroes[id] ?? newHero();
+    delete this.data.heroes[id];
+    this.data.heroes[id] = hero;
+    trim(this.data.heroes, MAX_HEROES);
+    this.dirty = true;
     return hero;
   }
 

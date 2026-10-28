@@ -52,9 +52,10 @@ int persistent_applied = -1;
 bool forget_pending = false;
 bool hooks_added = false;
 
-/* The level the hero is on, noted before a command can move them off it. */
+/* The level the hero is on: noted when it is built (or first seen after loading a game), as commands change the key before leaving. */
 byte here_dungeon = 0;
 int here_depth = 0;
+bool here_known = false;
 
 /* A level key whose save extension is taken away while tome2 saves the level being left under it. */
 struct Suspended
@@ -175,9 +176,10 @@ void remember_seen()
 
 void note_here()
 {
-	if (!character_dungeon || p_ptr->leaving) return;
+	if (here_known || !character_dungeon || p_ptr->leaving) return;
 	here_dungeon = dungeon_type;
 	here_depth = dun_level;
+	here_known = true;
 }
 
 /*
@@ -208,6 +210,7 @@ void save_left_level()
 	dungeon_type = d;
 	dun_level = depth;
 	here_depth = 0;
+	here_known = false;
 }
 
 bool level_begin_hook(void *, void *, void *)
@@ -219,6 +222,7 @@ bool level_begin_hook(void *, void *, void *)
 	}
 	here_dungeon = dungeon_type;
 	here_depth = dun_level;
+	here_known = true;
 	if (persistent_applied != 1) return false;
 	if (!eligible_dungeon(dungeon_type) || !eligible_depth(dungeon_type, dun_level)) return false;
 	keep_level(dungeon_type, dun_level, !quest_level_here());
@@ -229,7 +233,6 @@ bool end_turn_hook(void *, void *, void *)
 {
 	remember_seen();
 	if (p_ptr->leaving) save_left_level();
-	else note_here();
 	return false;
 }
 
