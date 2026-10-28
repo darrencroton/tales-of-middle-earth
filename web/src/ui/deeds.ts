@@ -21,16 +21,25 @@ interface Stored {
   heroes: Record<string, Chronicle>;
 }
 
+/* Keyed by hero name, so it has no prototype: a hero called "constructor" or "__proto__" is just a name. */
+function dictionary<T>(from: unknown): Record<string, T> {
+  const dict = Object.create(null) as Record<string, T>;
+  if (from && typeof from === 'object') {
+    for (const [key, value] of Object.entries(from)) dict[key] = value as T;
+  }
+  return dict;
+}
+
 function sanitise(raw: unknown): Stored {
-  const empty: Stored = { version: VERSION, career: newCareer(), deeds: {}, heroes: {} };
+  const empty: Stored = { version: VERSION, career: newCareer(), deeds: dictionary(null), heroes: dictionary(null) };
   if (!raw || typeof raw !== 'object') return empty;
   const data = raw as Partial<Stored>;
   if (data.version !== VERSION) return empty;
   return {
     version: VERSION,
     career: { ...newCareer(), ...(data.career ?? {}) },
-    deeds: typeof data.deeds === 'object' && data.deeds ? { ...data.deeds } : {},
-    heroes: typeof data.heroes === 'object' && data.heroes ? { ...data.heroes } : {},
+    deeds: dictionary(data.deeds),
+    heroes: dictionary(data.heroes),
   };
 }
 
