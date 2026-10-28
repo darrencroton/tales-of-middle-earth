@@ -187,7 +187,7 @@ export class Hud {
     for (const m of sortByDistance(monsters, px, py)) list.append(this.monsterItem(m, real.get(m.id) ?? m, palette));
     for (const o of sortByDistance(objects, px, py)) list.append(this.objectItem(o, realObjects.get(o.id) ?? o, palette));
 
-    this.root.replaceChildren(player, list);
+    this.root.replaceChildren(player, list, ...(this.messagesEl.parentElement === this.root ? [this.messagesEl] : []));
   }
 
   /** The health bar, with a pale band over health lost in the last moment. */

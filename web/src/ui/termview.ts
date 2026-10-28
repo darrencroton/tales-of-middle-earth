@@ -9,7 +9,7 @@ export interface TermViewCallbacks {
   /** A menu choice was tapped or activated. */
   onChoice(key: string, choice: ChoiceBlock): void;
   /** The information button beside a choice was tapped. */
-  onDescribe(key: string): void;
+  onDescribe(key: string, choice: ChoiceBlock): void;
   /** An option switch was tapped. */
   onOption(option: OptionBlock, index: number, options: OptionBlock[]): void;
   /** Somewhere other than a choice was tapped. */
@@ -133,7 +133,9 @@ export class TermView {
       }
       const info = target.closest<HTMLElement>('.tv-info');
       if (info?.dataset.key) {
-        this.callbacks.onDescribe(info.dataset.key);
+        const row = info.parentElement?.querySelector<HTMLElement>('.tv-choice');
+        const choice = row ? this.choiceFor(row) : null;
+        if (choice) this.callbacks.onDescribe(info.dataset.key, choice);
         return;
       }
       const option = target.closest<HTMLElement>('.tv-option');

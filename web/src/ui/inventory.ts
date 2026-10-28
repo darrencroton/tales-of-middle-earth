@@ -1,5 +1,5 @@
-import { SLOT_NAMES, itemActions, itemMacro, useAction, type ItemPlace } from '../play/items.ts';
-import { itemRecent, recentItem, recentKey } from '../play/recent.ts';
+import { SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
+import { itemRecent, recentItem, recentItemAction, recentKey } from '../play/recent.ts';
 import type { EquipSlot, InventoryState, ItemState } from '../render/snapshot.ts';
 import { descriptionParagraphs, pounds, titleName, type GameApi } from './api.ts';
 import { el, glyph, section } from './dom.ts';
@@ -93,7 +93,7 @@ export function openInventory(api: GameApi, tab: InventoryTab = 'pack', replace 
 }
 
 /* Item actions worth offering again from the pack. */
-const QUICK_USES = new Set(['quaff', 'read', 'eat', 'aim', 'use', 'zap']);
+const QUICK_USES = new Set(['quaff', 'read', 'eat', 'aim', 'use', 'zap', 'throw']);
 
 /** Recently used items still in the pack, one tap to use again. */
 function quickUse(api: GameApi, pack: readonly ItemState[]): HTMLElement | null {
@@ -102,8 +102,8 @@ function quickUse(api: GameApi, pack: readonly ItemState[]): HTMLElement | null 
   for (const entry of api.recent()) {
     if (entry.kind !== 'item') continue;
     const item = recentItem(entry, pack);
-    const action = item ? useAction(item.tval) : null;
-    if (!item || !action || action.command !== entry.command) continue;
+    const action = item ? recentItemAction(entry, item) : null;
+    if (!item || !action) continue;
     const button = el('button', 'action-button recent-button');
     button.type = 'button';
     button.dataset.nav = '';

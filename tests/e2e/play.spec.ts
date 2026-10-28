@@ -232,7 +232,7 @@ test('spells are cast from the Magic sheet, and recent ones are offered first', 
 
   const openMagic = async () => {
     await page.locator('#toolbar [data-action="commands"]').click();
-    await page.locator('.sheet .command', { hasText: 'Cast / power' }).click();
+    await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
     await expect(page.locator('.sheet-title')).toHaveText('Magic');
   };
   await openMagic();
@@ -249,6 +249,33 @@ test('spells are cast from the Magic sheet, and recent ones are offered first', 
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
+});
+
+test('race powers are in the Magic sheet, their lettered questions are buttons, and they are offered again', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Stormwing', { race: 'Thunderlord', cls: 'Warrior' });
+
+  const openMagic = async () => {
+    await page.locator('#toolbar [data-action="commands"]').click();
+    await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
+    await expect(page.locator('.sheet-title')).toHaveText('Magic');
+  };
+  await openMagic();
+  await page.locator('.sheet .row-button', { hasText: "Thunderlord's Powers" }).click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  const strike = page.locator('.prompt-card [data-choice="T"]');
+  await expect(strike).toHaveText('Thunder strike');
+  await strike.click();
+  await waitForScreen(page, /^Direction/);
+  await page.keyboard.press('Escape');
+  await dismissMore(page);
+  await waitAtCommand(page);
+
+  await openMagic();
+  await expect(page.locator('.sheet .recent-button')).toContainText('Thunder strike');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
 });
 
 test('dragging pans the map without moving, long press describes, sheets open from the HUD', async ({ page }) => {

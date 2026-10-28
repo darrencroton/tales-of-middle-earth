@@ -65,6 +65,7 @@
 
 #include <emscripten.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -1373,6 +1374,27 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 			menu.emplace_back(ab_info[i].action_desc, ab_info[i].action_mkey);
 		}
 	}
+	json_key(json, "bonus");
+	json += '[';
+	{
+		std::vector<int> power_idxs(std::begin(p_ptr->powers), std::end(p_ptr->powers));
+		std::sort(std::begin(power_idxs), std::end(power_idxs));
+		bool firstPower = true;
+		for (auto const idx : power_idxs)
+		{
+			auto it = game->powers.find(idx);
+			if (it == game->powers.end()) continue;
+			if (!firstPower) json += ',';
+			firstPower = false;
+			json += '{';
+			json_str(json, "name", it->second->name);
+			json_str(json, "desc", it->second->desc_text);
+			json_int(json, "level", it->second->activation.level);
+			json_int(json, "cost", it->second->activation.cost, false);
+			json += '}';
+		}
+	}
+	json += "],";
 	json_key(json, "powers");
 	json += '[';
 	for (std::size_t i = 0; i < menu.size(); i++)

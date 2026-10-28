@@ -97,7 +97,7 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
     commands: [
       { label: 'Fire', icon: '}', command: 'f' },
       { label: 'Throw', icon: '↗', command: 'v' },
-      { label: 'Cast / power', icon: '✦', command: 'm', native: 'magic' },
+      { label: 'Magic & powers', icon: '✦', command: 'm', native: 'magic' },
       { label: 'Pray', icon: '☼', command: 'p' },
       { label: 'Aim wand', icon: '-', command: 'a' },
       { label: 'Use staff', icon: '_', command: 'u' },
@@ -200,6 +200,8 @@ export interface ActionContext {
   recast?: string | null;
   /** A launcher and ammunition are ready. */
   canFire?: boolean;
+  /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers. */
+  magic?: string | null;
 }
 
 /* More buttons than this crowd a phone's toolbar. */
@@ -327,7 +329,7 @@ export function contextActions(ctx: ActionContext): Action[] {
           : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
       { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
       ...(ctx.foe ? [] : [command('rest', 'Rest', '☾', { command: 'R', then: '&\r' })]),
-      { id: 'cast', label: 'Cast', icon: '✦', effect: { kind: 'native', view: 'magic' } },
+      ...(ctx.magic === null ? [] : [{ id: 'cast', label: ctx.magic ?? 'Cast', icon: '✦', effect: { kind: 'native', view: 'magic' } } as Action]),
       { id: 'look', label: 'Look', icon: '◉', effect: { kind: 'native', view: 'look' } },
       { id: 'commands', label: 'More', icon: '⋯', effect: { kind: 'commands' } },
       MENU,

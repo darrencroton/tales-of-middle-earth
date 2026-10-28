@@ -346,6 +346,8 @@ describe('actions', () => {
     ]);
     assert.ok(!contextActions({ ...base, recast: 'Manathrust', canFire: true }).some((a) => a.id === 'recast' || a.id === 'fire'));
     assert.deepEqual(contextActions(base).find((a) => a.id === 'cast')?.effect, { kind: 'native', view: 'magic' });
+    assert.equal(contextActions({ ...base, magic: 'Powers' }).find((a) => a.id === 'cast')?.label, 'Powers');
+    assert.ok(!contextActions({ ...base, magic: null }).some((a) => a.id === 'cast'));
     const crowded = contextActions({ ...base, foe: '6', gear: 'light', floorObjects: 1, underfoot: 'down staircase' });
     assert.ok(crowded.length <= 7);
     assert.deepEqual(crowded.map((a) => a.id), ['attack', 'equip', 'pickup', 'descend', 'inventory', 'commands', 'menu']);

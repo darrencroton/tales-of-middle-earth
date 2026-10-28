@@ -704,7 +704,7 @@ html.keyboard-open .sheet-layer {
 
 @media (orientation: landscape) and (min-width: 560px) {
   #app {
-    grid-template-columns: calc(clamp(11rem, 27vw, 19rem) + var(--safe-left)) minmax(0, 1fr) auto;
+    grid-template-columns: calc(clamp(9.5rem, 20vw, 15rem) + var(--safe-left)) minmax(0, 1fr) auto;
     grid-template-rows: minmax(0, 1fr);
     grid-template-areas: "hud stage toolbar";
     padding: var(--safe-top) 0 0 0;
@@ -720,7 +720,7 @@ html.keyboard-open .sheet-layer {
   #hud {
     border-top: 0;
     border-right: 1px solid var(--panel-border);
-    overflow-y: auto;
+    overflow: hidden;
     padding-left: calc(0.6rem + var(--safe-left));
     padding-bottom: calc(0.45rem + var(--safe-bottom));
   }
@@ -741,7 +741,7 @@ html.keyboard-open .sheet-layer {
 
   #toolbar {
     flex-direction: column;
-    width: calc(clamp(4.4rem, 9vw, 6rem) + var(--safe-right));
+    width: calc(clamp(4.4rem, 7.5vw, 5.2rem) + var(--safe-right));
     padding: 0.4rem calc(0.4rem + var(--safe-right)) calc(0.4rem + var(--safe-bottom)) 0.4rem;
     border-top: 0;
     border-left: 1px solid var(--panel-border);
@@ -753,6 +753,31 @@ html.keyboard-open .sheet-layer {
     flex: 1 1 0;
     max-height: calc(var(--touch) * 1.5);
     min-height: calc(var(--touch) * 0.9);
+  }
+
+  /* The message log sits in the sidebar, below the hero and what is around, so the whole map stays clear. */
+  #hud #messages {
+    position: static;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    min-height: 3rem;
+    margin-top: auto;
+    padding: 0.4rem 0.1rem 0;
+    overflow: hidden;
+    border-top: 1px solid var(--panel-border);
+    background: none;
+    font-family: var(--sans);
+    font-size: var(--fs-small);
+    line-height: 1.3;
+  }
+
+  #hud .hud-entities {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
   }
 }
 
@@ -806,7 +831,7 @@ html.keyboard-open .tv-layer.panel {
   border: 1px solid rgb(217 164 65 / 0.45);
   border-bottom: 0;
   border-radius: 16px 16px 0 0;
-  background: rgb(14 12 9 / 0.97);
+  background: rgb(14 12 9);
   box-shadow: 0 -10px 40px rgb(0 0 0 / 0.6);
   animation: sheet-up 180ms ease-out;
 }
@@ -1163,7 +1188,7 @@ html.keyboard-open .tv-layer.panel {
   border: 1px solid rgb(217 164 65 / 0.45);
   border-bottom: 0;
   border-radius: 16px 16px 0 0;
-  background: rgb(14 12 9 / 0.97);
+  background: rgb(14 12 9);
   box-shadow: 0 -10px 40px rgb(0 0 0 / 0.6);
   outline: none;
   animation: sheet-up 200ms ease-out;
@@ -3539,4 +3564,45 @@ html.keyboard-tight .prompt-card.text .card-title {
 
 .spell-info {
   color: var(--fg);
+}
+
+/* Short landscape screens: pop-ups keep the same layout with slimmer header and footer, so more of their content shows. */
+@media (max-height: 500px) {
+  .sheet-header,
+  .termview.panel .tv-header {
+    padding-top: 0.4rem;
+    padding-bottom: 0.35rem;
+  }
+
+  .sheet-title,
+  .tv-title {
+    font-size: var(--fs-large);
+  }
+
+  .sheet-back,
+  .sheet-close {
+    height: calc(var(--touch) * 0.85);
+  }
+
+  .sheet-actions,
+  .tv-footer {
+    gap: 0.3rem;
+    padding-top: 0.35rem;
+    padding-bottom: calc(0.35rem + var(--safe-bottom));
+  }
+
+  .pop-tab {
+    flex-direction: row;
+    gap: 0.4rem;
+    min-height: calc(var(--touch) * 0.85);
+  }
+
+  .pop-tab .pop-icon {
+    font-size: var(--fs);
+  }
+
+  .pop-sub .sheet-action,
+  .pop-main .sheet-action {
+    min-height: calc(var(--touch) * 0.8);
+  }
 }

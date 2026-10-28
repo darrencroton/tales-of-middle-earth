@@ -1,4 +1,4 @@
-import { MKEY_SCHOOL, recentKey, recentLabel, rememberRecent, type RecentAction } from '../play/recent.ts';
+import { MKEY_SCHOOL, recentKey, recentLabel, recentSource, rememberRecent, validRecent, type RecentAction } from '../play/recent.ts';
 import type { SpellInfo, SpellState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { el, iconText, section } from './dom.ts';
@@ -24,7 +24,7 @@ export class RecentStore {
 
   list(hero: string): RecentAction[] {
     const list = this.all[hero];
-    return Array.isArray(list) ? list : [];
+    return Array.isArray(list) ? list.filter(validRecent) : [];
   }
 
   remember(hero: string, entry: RecentAction): void {
@@ -74,7 +74,7 @@ function spellRow(api: GameApi, spell: SpellInfo, handlers: MagicHandlers): HTML
 }
 
 /** What a spell does, with Cast at the foot. */
-function openSpell(api: GameApi, spell: SpellInfo, handlers: MagicHandlers): void {
+export function openSpell(api: GameApi, spell: SpellInfo, handlers: MagicHandlers): void {
   const body = el('div', 'description');
   body.append(el('p', 'muted', spellMeta(spell) + (spell.info ? ` · ${spell.info}` : '')));
   body.append(el('p', undefined, spell.desc || 'No more is known of this spell.'));
@@ -93,14 +93,31 @@ function recentDetail(entry: RecentAction, spells: SpellState | null): string {
     const spell = spells?.books.flatMap((b) => b.spells).find((s) => s.name === entry.name);
     return spell ? `${spell.mana} mana · ${spell.fail}%` : 'Spell';
   }
-  return entry.kind === 'power' ? (entry.power ? entry.skill : 'Power') : '';
+  return recentSource(entry);
+}
+
+/** Whether a recent spell or power can be used now (the spell is in a book carried, the skill or power is known). */
+export function recentUsable(entry: RecentAction, spells: SpellState | null): boolean {
+  if (entry.kind === 'spell') return !!spells?.books.some((b) => b.spells.some((s) => s.ok && s.name === entry.name));
+  if (entry.kind === 'path' && entry.command === 'm') return !!spells?.powers.some((p) => p.label === entry.steps[0]);
+  if (entry.kind === 'path') return !!spells?.bonus.some((p) => p.name === entry.steps[0]);
+  return false;
 }
 
 /** Spells and powers recently used that can be used now. */
 export function usableRecents(recents: readonly RecentAction[], spells: SpellState | null): RecentAction[] {
-  const castable = new Set(spells?.books.flatMap((b) => b.spells.filter((s) => s.ok).map((s) => s.name)) ?? []);
-  const skills = new Set(spells?.powers.map((p) => p.label) ?? []);
-  return recents.filter((e) => (e.kind === 'spell' ? castable.has(e.name) : e.kind === 'power' ? skills.has(e.skill) : false));
+  return recents.filter((e) => recentUsable(e, spells));
+}
+
+function rowButton(label: string, hint: string, icon: string, key: string, run: () => void): HTMLButtonElement {
+  const button = el('button', 'row-button');
+  button.type = 'button';
+  button.dataset.nav = '';
+  button.dataset.key = key;
+  button.append(el('span', 'row-icon', iconText(icon)), el('span', 'row-label', label));
+  if (hint) button.append(el('span', 'row-hint', hint));
+  button.addEventListener('click', run);
+  return button;
 }
 
 /**
@@ -133,23 +150,27 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
     body.append(section(book.name.replace(/^(a|an|the) /i, ''), list));
   }
 
-  const powers = (spells?.powers ?? []).filter((p) => p.mkey !== MKEY_SCHOOL);
-  if (powers.length) {
+  const bonus = spells?.bonus ?? [];
+  if (bonus.length) {
     const list = el('div', 'menu-list');
-    for (const power of powers) {
-      const button = el('button', 'row-button');
-      button.type = 'button';
-      button.dataset.nav = '';
-      button.dataset.key = `power-${power.label}`;
-      button.append(el('span', 'row-icon', iconText('✧')), el('span', 'row-label', power.label));
-      button.addEventListener('click', () => handlers.run({ kind: 'power', skill: power.label, power: '' }));
-      list.append(button);
+    for (const power of bonus) {
+      const hint = [power.level > 1 ? `Level ${power.level}` : '', power.cost ? `${power.cost} mana` : ''].filter(Boolean).join(' · ');
+      list.append(rowButton(power.name, hint, '❂', `bonus-${power.name}`, () => handlers.run({ kind: 'path', command: 'U', steps: [power.name] })));
     }
-    body.append(section('Skills and powers', list));
+    body.append(section('Powers', list));
+  }
+
+  const skills = (spells?.powers ?? []).filter((p) => p.mkey !== MKEY_SCHOOL);
+  if (skills.length) {
+    const list = el('div', 'menu-list');
+    for (const skill of skills) {
+      list.append(rowButton(skill.label, '', '✧', `skill-${skill.label}`, () => handlers.run({ kind: 'path', command: 'm', steps: [skill.label] })));
+    }
+    body.append(section('Skills', list));
   }
 
   if (!body.childElementCount) {
-    body.append(el('p', 'empty', 'You know no magic yet. Spell books and skills such as Mindcraft or Necromancy bring spells and powers to use here.'));
+    body.append(el('p', 'empty', 'You know no magic or powers yet. Spell books, skills such as Mindcraft or Necromancy, and some races bring spells and powers to use here.'));
   }
 
   api.sheets.open({

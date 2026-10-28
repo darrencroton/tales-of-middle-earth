@@ -190,7 +190,8 @@ export class Sheets {
     const target = e.target as HTMLElement | null;
     if (target?.closest('input, textarea, select')) return;
     const top = this.stack[this.stack.length - 1];
-    if (top?.onKey?.(e)) {
+    const onControl = (e.key === 'Enter' || e.key === ' ') && !!target?.closest('button') && target !== this.panel;
+    if (!onControl && top?.onKey?.(e)) {
       e.preventDefault();
       return;
     }

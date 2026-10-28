@@ -371,6 +371,8 @@ export interface SpellState {
   books: SpellBook[];
   /** Entries of tome2's "use a skill" menu, in order. */
   powers: { label: string; mkey: number }[];
+  /** Race, class and corruption powers (tome2's "use a power" menu), in order. */
+  bonus: { name: string; desc: string; level: number; cost: number }[];
 }
 
 export interface MonsterRecall {

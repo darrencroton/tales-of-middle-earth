@@ -30,8 +30,8 @@ import { ANIMATION_FPS, applyTextSize, loadSettings, saveSettings, type Settings
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
 import { TitleScreen } from './title.ts';
 import { openSoundtrack } from './ui/soundtrack.ts';
-import { openMagic, RecentStore, usableRecents } from './ui/magic.ts';
-import { CastWatcher, fireMacro, recentLabel, recentMagicMacro, type RecentAction } from './play/recent.ts';
+import { openMagic, openSpell, RecentStore, recentUsable } from './ui/magic.ts';
+import { CastWatcher, fireMacro, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
 import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
 import { GameFeel } from './feel.ts';
 import { Coach } from './ui/coach.ts';
@@ -186,7 +186,8 @@ const termView = new TermView(stage, () => buffer.palette, {
     }
     send([key.charCodeAt(0)]);
   },
-  onDescribe(key) {
+  onDescribe(key, choice) {
+    if (/which spell\?/i.test(rowZeroText()) && describeSpell(choice.label.text.trim(), choice.key)) return;
     send([key.charCodeAt(0)]);
   },
   onOption(option, _index, options) {
@@ -266,17 +267,25 @@ const api: GameApi = {
 const recents = new RecentStore();
 const castWatcher = new CastWatcher();
 
-/** Casts a spell or uses a power again (aiming at the nearest foe when `aim`). */
+/** Casts a spell or uses a power again (aiming at the nearest foe when `aim`); it is remembered once tome2 has taken it. */
 function runRecent(entry: RecentAction, aim = false): void {
-  const macro = recentMagicMacro(entry, aim);
-  if (!macro) return;
-  if (entry.kind === 'spell' || (entry.kind === 'power' && entry.power)) api.remember(entry);
-  if (entry.kind === 'power') castWatcher.expect(entry.skill);
   sheets.closeAll();
   if (!lastSnap?.atCommand) {
     showToast('Finish what you are doing first.');
     return;
   }
+  if (entry.kind === 'item') {
+    const item = recentItem(entry, engine.inventory()?.pack ?? []);
+    const action = item ? recentItemAction(entry, item) : null;
+    if (!item || !action) return;
+    api.remember(entry);
+    runMacro(thenAim(itemMacro(action, item, 'pack', '', alwaysPickup()), aim));
+    return;
+  }
+  const macro = recentMagicMacro(entry, aim);
+  if (!macro) return;
+  if (entry.kind === 'spell') castWatcher.begin('m', [], entry.name);
+  else castWatcher.begin(entry.command, entry.steps);
   runMacro(macro);
 }
 
@@ -289,12 +298,44 @@ function currentSpells(): SpellState | null {
   return spellsCache.spells;
 }
 
-/** The spell or power to offer on the toolbar while a foe is in view. */
+/**
+ * The one-tap attack offered on the toolbar while a foe is in view: the
+ * last aimed thing the hero did that can be done again (a spell, a power,
+ * a wand or rod, a thrown flask...).
+ */
 function recastEntry(): RecentAction | null {
   if (!lastSnap?.atCommand) return null;
-  const list = api.recent();
-  if (!list.some((e) => e.kind !== 'item')) return null;
-  return usableRecents(list, currentSpells())[0] ?? null;
+  const aimed = api.recent().filter((e) => e.aimed);
+  if (!aimed.length) return null;
+  const pack = engine.inventory()?.pack ?? [];
+  return (
+    aimed.find((e) => {
+      if (e.kind !== 'item') return recentUsable(e, currentSpells());
+      const item = recentItem(e, pack);
+      return !!item && !!recentItemAction(e, item);
+    }) ?? null
+  );
+}
+
+/** Shows a spell's description from tome2's spell list ("i" beside it), with Cast. */
+function describeSpell(name: string, key: string): boolean {
+  const spell = currentSpells()?.books.flatMap((b) => b.spells).find((s) => s.name === name);
+  if (!spell) return false;
+  openSpell(api, spell, {
+    run: () => {
+      sheets.closeAll();
+      send(keyCodes(key));
+    },
+  });
+  return true;
+}
+
+/** The toolbar's magic button: Cast with spell books, Powers with only skills or race powers, none without either. */
+function magicLabel(): string | null {
+  const spells = currentSpells();
+  if (!spells) return 'Cast';
+  if (spells.books.length) return 'Cast';
+  return spells.powers.length || spells.bonus.length ? 'Powers' : null;
 }
 
 /** A launcher with ammunition in the quiver. */
@@ -531,7 +572,7 @@ function currentPrompt(): PromptKind {
   return classifyPrompt(rowZeroText(), buffer.cursorY === 0);
 }
 
-const CARD_KINDS = new Set<PromptKind>(['yesno', 'quantity', 'text', 'direction', 'aim']);
+const CARD_KINDS = new Set<PromptKind>(['yesno', 'quantity', 'text', 'direction', 'aim', 'choice']);
 
 /** Pack / Equipment / Floor tabs for tome2's item prompts. */
 function itemTabs(prompt: string): TermViewTab[] {
@@ -985,6 +1026,7 @@ function updateActionBar(force = false): void {
         return entry ? recentLabel(entry) : null;
       })() : null,
       canFire: mode === 'map' && !!snap?.atCommand && canFire(),
+      magic: mode === 'map' && snap?.atCommand ? magicLabel() : undefined,
       town: !!snap?.inDungeon && snap.depth === 0 && !snap.wild,
       worldMap: !!snap?.inDungeon && snap.depth === 0 && snap.wild,
     });
@@ -1264,7 +1306,13 @@ function runMacro(macro: Macro): void {
 
 function stepMacro(): void {
   const keys = macros.step({ prompt: rowZeroText(), screen: buffer.screenText(), atCommand: !!lastSnap?.atCommand });
-  if (keys.length) engine.sendKeys(keys);
+  if (keys.length) {
+    engine.sendKeys(keys);
+    return;
+  }
+  /* The macro ended at a question for the player: show its card now. */
+  updatePromptCard();
+  updateActionBar();
 }
 
 /* Taps and gestures on the stage */
@@ -1283,7 +1331,7 @@ function continueIfWaiting(): void {
 }
 
 function insideControls(target: EventTarget | null): boolean {
-  return target instanceof Element && !!target.closest('#messages, .termview, #look-card, #recentre, #look-banner, .director, .prompt-card, .coach');
+  return target instanceof Element && !!target.closest('#messages, .tv-layer, #look-card, #recentre, #look-banner, .director, .prompt-card, .coach');
 }
 
 function onStageTap(clientX: number, clientY: number, target: EventTarget | null): void {
@@ -1536,6 +1584,8 @@ const engine = new Engine(buffer, {
       requestFrame();
       return;
     }
+    const used = lastSnap?.inDungeon ? castWatcher.idle(rowZeroText(), !!lastSnap.atCommand) : null;
+    if (used) api.remember(used);
     if (redirectNativeScreen()) {
       requestFrame();
       return;
@@ -1572,10 +1622,8 @@ const engine = new Engine(buffer, {
 
 function send(codes: number[] | null): void {
   if (!codes || codes.length === 0) return;
-  if (codes.length === 1 && lastSnap?.inDungeon) {
-    const cast = castWatcher.note(rowZeroText(), buffer.screenText(), codes[0]);
-    if (cast) api.remember(cast);
-  }
+  const key = codes.length === 1 ? codes[0] : codes.length === 2 && codes[0] === BACKSLASH ? codes[1] : null;
+  if (key !== null && lastSnap?.inDungeon) castWatcher.note(rowZeroText(), buffer.screenText(), key, !!lastSnap.atCommand);
   if (travel || picker) stopAutomation(null, 'send');
   if (macros.running) macros.cancel();
   recentreMap();
@@ -1620,7 +1668,12 @@ director.attachTitle(title);
 
 /* Layout */
 
+/* Matches the CSS for landscape, where the HUD is a sidebar and the message log moves into it. */
+const sidebarLayout = window.matchMedia('(orientation: landscape) and (min-width: 560px)');
+
 function layout(): void {
+  if (sidebarLayout.matches && messagesEl.parentElement !== hudEl) hudEl.append(messagesEl);
+  else if (!sidebarLayout.matches && messagesEl.parentElement !== stage) stage.insertBefore(messagesEl, lookBanner);
   const rect = stage.getBoundingClientRect();
   const width = Math.floor(rect.width);
   const height = Math.floor(rect.height);
