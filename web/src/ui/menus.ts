@@ -204,6 +204,7 @@ export function askText(
     form.append(input, ok);
     form.addEventListener('submit', (e) => {
       e.preventDefault();
+      input.blur();
       finish(input.value.trim());
       sheets.back();
     });

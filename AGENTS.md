@@ -79,6 +79,7 @@ npm run test:e2e       # slow (~30+ min for all projects in CI)
 - New engine exports must be added to `-sEXPORTED_FUNCTIONS` in `CMakeLists.txt`.
 - Test in small batches while working (unit tests, a typecheck, targeted Playwright scripts or `npx playwright test -g "<name>" --project=phone-portrait`). Run the full e2e suite at the end of a piece of work, not after every change.
 - Headless Chromium can't emulate iOS safe areas or emoji fonts; check those with CSS overrides (`--safe-left: 59px` etc.) and owner screenshots.
+- iOS softens a band just below the status bar; headings and panels near the top add `--top-clear` (up to 1.75rem, zero without a top inset) so only the map and messages sit under it.
 - `?wizard` starts in wizard mode (a y/n prompt appears at birth); e2e uses it to jump levels.
 - Debug hook: `window.__tome` (engine, buffer, screenText, sendText, mode, actions, director…).
 

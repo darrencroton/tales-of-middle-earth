@@ -268,10 +268,16 @@ export class TitleScreen {
     quote.className = 'title-verse';
     const step = 300;
     const start = 600;
+    const settle = (node: HTMLElement) =>
+      node.addEventListener('animationend', () => {
+        node.style.animation = 'none';
+        node.style.opacity = '1';
+      });
     lines.forEach((line, i) => {
       const span = document.createElement('span');
       span.textContent = line;
       span.style.animationDelay = `${start + i * step}ms`;
+      settle(span);
       quote.append(span);
     });
     let last = start + lines.length * step;
@@ -279,6 +285,7 @@ export class TitleScreen {
       const source = document.createElement('cite');
       source.textContent = cite;
       source.style.animationDelay = `${last}ms`;
+      settle(source);
       quote.append(source);
       last += step;
     }
