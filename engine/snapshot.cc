@@ -60,6 +60,7 @@
 #include "wilderness_map.hpp"
 #include "wilderness_type_info.hpp"
 #include "xtra1.hpp"
+#include "z-term.hpp"
 
 #include <boost/preprocessor/cat.hpp>
 
@@ -1086,7 +1087,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_character_json()
 		first = false;
 		json += '{';
 		json_str(json, "name", s_descriptors[i].name);
-		json_int(json, "value", s_info[i].value, false);
+		json_int(json, "value", s_info[i].value);
+		json_int(json, "mod", s_info[i].mod, false);
 		json += '}';
 	}
 	json += "],";
@@ -1407,6 +1409,198 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 	}
 	json += "]}";
 	return json.c_str();
+}
+
+/*
+ * Returns the skills screen's whole list (tome2 shows only a window of it),
+ * in its order: [{name, depth, branch, value, mod, state, desc}], with the
+ * points left. branch: 0 none, 1 closed, 2 open. Values are the ones the
+ * screen shows while points are being moved.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_skills_json()
+{
+	json.clear();
+	json += '{';
+	if (!level_ready())
+	{
+		json_int(json, "ready", 0, false);
+		json += '}';
+		return json.c_str();
+	}
+
+	auto const &s_descriptors = game->edit_data.s_descriptors;
+	auto const &s_info = game->s_info;
+	std::size_t const n = std::min(s_descriptors.size(), s_info.size());
+
+	std::function<bool(std::size_t)> known = [&](std::size_t s_idx) -> bool {
+		if (wizard) return true;
+		if (s_info[s_idx].value || s_info[s_idx].mod) return true;
+		for (std::size_t i = 0; i < n; i++)
+		{
+			if (s_descriptors[i].father == static_cast<int>(s_idx) && known(i)) return true;
+		}
+		return false;
+	};
+	auto has_child = [&](std::size_t s_idx) {
+		for (std::size_t i = 1; i < n; i++)
+		{
+			if (s_descriptors[i].father == static_cast<int>(s_idx) && known(i)) return true;
+		}
+		return false;
+	};
+	auto by_order = [&](std::size_t order) -> std::size_t {
+		for (std::size_t j = 1; j < n; j++)
+		{
+			if (s_descriptors[j].order == static_cast<int>(order)) return j;
+		}
+		return 0;
+	};
+
+	json_int(json, "ready", 1);
+	json_int(json, "points", p_ptr->skill_points);
+	json_key(json, "skills");
+	json += '[';
+	bool first = true;
+	std::function<void(int, int)> add = [&](int father, int depth) {
+		for (std::size_t j = 1; j < n; j++)
+		{
+			std::size_t const i = by_order(j);
+			if (s_descriptors[i].father != father) continue;
+			if (s_info[i].hidden) continue;
+			if (!known(i)) continue;
+			auto const &skill = s_info[i];
+			char const *state = "normal";
+			if (skill.value == 0 && i != SKILL_MISC) state = skill.mod == 0 ? "untrained" : "learnable";
+			else if (skill.value == SKILL_MAX) state = "max";
+			if (!first) json += ',';
+			first = false;
+			json += '{';
+			json_str(json, "name", s_descriptors[i].name);
+			json_int(json, "depth", depth);
+			json_int(json, "branch", has_child(i) ? (skill.dev ? 2 : 1) : 0);
+			json_int(json, "value", skill.value);
+			json_int(json, "mod", skill.mod);
+			json_str(json, "state", state);
+			json_int(json, "misc", i == SKILL_MISC ? 1 : 0);
+			json_str(json, "desc", s_descriptors[i].desc, false);
+			json += '}';
+			if (skill.dev) add(static_cast<int>(i), depth + 1);
+		}
+	};
+	add(-1, 0);
+	json += "]}";
+	return json.c_str();
+}
+
+/*
+ * Returns the abilities screen's whole list, sorted by name as tome2 does:
+ * [{name, cost, known, learnable, desc, needs: [text]}], with the points left.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_abilities_json()
+{
+	json.clear();
+	json += '{';
+	if (!level_ready())
+	{
+		json_int(json, "ready", 0, false);
+		json += '}';
+		return json.c_str();
+	}
+
+	auto const &ab_info = game->edit_data.ab_info;
+	auto const &s_descriptors = game->edit_data.s_descriptors;
+	static char const *const stat_names[6] = { "STR", "INT", "WIS", "DEX", "CON", "CHR" };
+
+	std::vector<std::size_t> table;
+	for (std::size_t i = 0; i < ab_info.size(); i++)
+	{
+		if (!ab_info[i].name.empty()) table.push_back(i);
+	}
+	std::sort(table.begin(), table.end(), [&](std::size_t a, std::size_t b) { return ab_info[a].name < ab_info[b].name; });
+
+	json_int(json, "ready", 1);
+	json_int(json, "points", p_ptr->skill_points);
+	json_key(json, "abilities");
+	json += '[';
+	bool first = true;
+	for (auto const i : table)
+	{
+		auto const &ab = ab_info[i];
+		bool const known = p_ptr->has_ability(i);
+		bool met = true;
+		std::vector<std::string> needs;
+		for (auto const &need : ab.need_skills)
+		{
+			if (need.skill_idx < 0 || static_cast<std::size_t>(need.skill_idx) >= s_descriptors.size()) continue;
+			needs.push_back(s_descriptors[need.skill_idx].name + " " + std::to_string(need.level));
+			if (get_skill(need.skill_idx) < need.level) met = false;
+		}
+		for (auto const need : ab.need_abilities)
+		{
+			if (need < 0 || static_cast<std::size_t>(need) >= ab_info.size()) continue;
+			needs.push_back(ab_info[need].name);
+			if (!p_ptr->has_ability(need)) met = false;
+		}
+		for (int s = 0; s < 6; s++)
+		{
+			if (ab.stat[s] <= -1) continue;
+			int const level = ab.stat[s];
+			needs.push_back(std::string(stat_names[s]) + " " + (level <= 18 ? std::to_string(level) : "18/" + std::to_string((level - 18) * 10)));
+			if (p_ptr->stat_ind[s] < level - 3) met = false;
+		}
+		if (!first) json += ',';
+		first = false;
+		json += '{';
+		json_str(json, "name", ab.name);
+		json_int(json, "cost", ab.cost);
+		json_int(json, "known", known ? 1 : 0);
+		json_int(json, "met", met ? 1 : 0);
+		json_int(json, "learnable", !known && met && p_ptr->skill_points >= ab.cost ? 1 : 0);
+		json_str(json, "desc", ab.desc);
+		json_key(json, "needs");
+		json += '[';
+		for (std::size_t k = 0; k < needs.size(); k++)
+		{
+			if (k) json += ',';
+			json_string(json, needs[k]);
+		}
+		json += "]}";
+	}
+	json += "]}";
+	return json.c_str();
+}
+
+/*
+ * While a tome2 screen covers the map: the screen as it was before the
+ * first screen_save() (what the overlay is drawn over), as [width, height,
+ * (attr << 8 | char)...]; null when nothing is saved.
+ */
+EMSCRIPTEN_KEEPALIVE int32_t const *web_saved_screen()
+{
+	static std::vector<int32_t> saved;
+	if (!character_icky || !angband_term[0]) return nullptr;
+	Term_with_active(angband_term[0], []() {
+		int w = 0;
+		int h = 0;
+		Term_get_size(&w, &h);
+		saved.assign(2 + static_cast<std::size_t>(w) * h, 0);
+		saved[0] = w;
+		saved[1] = h;
+		term_win *current = Term_save_to();
+		Term_load();
+		for (int y = 0; y < h; y++)
+		{
+			for (int x = 0; x < w; x++)
+			{
+				byte a = 0;
+				char c = 0;
+				Term_what(x, y, &a, &c);
+				saved[2 + y * w + x] = (static_cast<int32_t>(a) << 8) | static_cast<unsigned char>(c);
+			}
+		}
+		Term_load_from(current);
+	});
+	return saved.data();
 }
 
 }

@@ -4,6 +4,7 @@ import type { RecentAction } from '../play/recent.ts';
 import type { MapPoint } from '../render/map.ts';
 import type { FeatureInfo } from '../render/materials.ts';
 import type { GameState, LevelSnapshot } from '../render/snapshot.ts';
+import type { QuantityQuestion } from './menus.ts';
 import type { Sheets } from './sheet.ts';
 
 /** What the native views need from the game. */
@@ -27,6 +28,8 @@ export interface GameApi {
   highlight(point: MapPoint): void;
   /** Asks the player for a line of text in a native sheet. */
   askText(title: string, label: string, initial?: string): Promise<string | null>;
+  /** Asks how many of a stack to use, starting at all of them. */
+  askQuantity(question: QuantityQuestion): Promise<number | null>;
   /** The hero's recently used spells, powers and items, newest first. */
   recent(): readonly RecentAction[];
   remember(entry: RecentAction): void;

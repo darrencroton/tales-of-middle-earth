@@ -124,6 +124,11 @@ export class Sheets {
     return this.stack.length;
   }
 
+  /** The sheet on top is this one. */
+  isTop(content: SheetContent): boolean {
+    return this.stack[this.stack.length - 1] === content;
+  }
+
   /** Opens a sheet on top of any already open. */
   open(content: SheetContent): void {
     if (this.stack.length === 0) this.restoreFocus = document.activeElement;

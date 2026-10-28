@@ -16,7 +16,7 @@ import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
 import { edgeCell, forgetUnseen, isKnown, STOP_MESSAGES, strideToward, Travel, type TravelContext } from './play/travel.ts';
-import { Explore, nearestReachable } from './play/explore.ts';
+import { Explore } from './play/explore.ts';
 import { isHostile, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
 import {
   collectFiles,
@@ -35,14 +35,25 @@ import { CastWatcher, fireMacro, recentItem, recentItemAction, recentLabel, rece
 import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
 import { GameFeel } from './feel.ts';
 import { Coach } from './ui/coach.ts';
-import { INVEN_AMMO, INVEN_BOW, INVEN_WIELD, itemActions, itemMacro, SLOT_NAMES, suggestedGear, type GearSuggestion } from './play/items.ts';
+import {
+  fightingStyle,
+  INVEN_AMMO,
+  INVEN_BOW,
+  INVEN_WIELD,
+  itemActions,
+  itemMacro,
+  SLOT_NAMES,
+  suggestedGear,
+  type FightingStyle,
+  type GearSuggestion,
+} from './play/items.ts';
 import { buildMemorial, entryKey, memorialKey, type Memorial } from './play/memorial.ts';
 import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
 import { el, iconText, section } from './ui/dom.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
-import { askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate } from './ui/menus.ts';
+import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate } from './ui/menus.ts';
 import { Sheets, type SheetTrail } from './ui/sheet.ts';
 import { bufferRows, parseRows, type ChoiceBlock, type OptionBlock } from './ui/termparse.ts';
 import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.ts';
@@ -260,6 +271,7 @@ const api: GameApi = {
   },
   highlight: (point) => flash(point),
   askText: (title, label, initial) => askText(sheets, title, label, initial),
+  askQuantity: (question) => askQuantity(sheets, question),
   recent: () => recents.list(lastState?.player?.name ?? ''),
   remember: (entry) => recents.remember(lastState?.player?.name ?? '', entry),
 };
@@ -330,8 +342,25 @@ function describeSpell(name: string, key: string): boolean {
   return true;
 }
 
-/** The toolbar's magic button: Cast with spell books, Powers with only skills or race powers, none without either. */
+let styleKey = '';
+let style: FightingStyle = { weapons: true, magic: true };
+
+/** How the hero fights, read again when their level or skill points change. */
+function heroStyle(): FightingStyle {
+  const player = lastState?.player;
+  if (!player) return style;
+  const key = `${player.name}:${player.lev}:${player.skillPoints}`;
+  if (key === styleKey) return style;
+  const sheet = engine.character();
+  if (!sheet) return style;
+  styleKey = key;
+  style = fightingStyle(sheet.skills);
+  return style;
+}
+
+/** The toolbar's magic button: Cast with spell books, Powers with only skills or race powers, none without either or for heroes who fight without magic. */
 function magicLabel(): string | null {
+  if (!heroStyle().magic) return null;
   const spells = currentSpells();
   if (!spells) return 'Cast';
   if (spells.books.length) return 'Cast';
@@ -443,9 +472,6 @@ function openNative(view: NativeView): void {
       break;
     case 'knowledge':
       openKnowledge(api);
-      break;
-    case 'dungeon':
-      travelToExit();
       break;
     case 'finish':
       finishGame();
@@ -647,7 +673,7 @@ function updatePromptCard(): void {
   }
   const kind = currentPrompt();
   if (kind === 'yesno' && /Dump the screen\?/.test(rowZeroText()) && !macros.running && engine.pendingKeys === 0) {
-    promptCard.showDeath(engine.gameState(0)?.player?.diedFrom ?? '', () => openFallenHero());
+    promptCard.showDeath(engine.gameState(0)?.player?.diedFrom ?? '');
     return;
   }
   const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
@@ -724,7 +750,8 @@ function refresh(): void {
 
   if (snap.icky) {
     setMode('overlay');
-    const region = (base ? buffer.diffBounds(base, 1) : null) ?? { x0: 0, y0: 1, x1: buffer.cols - 1, y1: buffer.rows - 1 };
+    const under = engine.savedScreen() ?? base;
+    const region = (under ? buffer.diffBounds(under, 1) : null) ?? { x0: 0, y0: 1, x1: buffer.cols - 1, y1: buffer.rows - 1 };
     const rows = bufferRows(buffer, 0, buffer.rows - 1);
     const screen = characterScreen();
     const characterView = !!(screen.skills || screen.abilities || screen.sheet);
@@ -974,6 +1001,7 @@ function gearSuggestion(): GearSuggestion | null {
     inDungeon: snap.depth > 0,
     hurt: player.mhp > 0 && player.chp < player.mhp / 2,
     hungry: statusLabels(player).some((l) => l === 'Hungry' || l === 'Weak'),
+    wieldsWeapons: heroStyle().weapons,
   });
 }
 
@@ -1027,7 +1055,6 @@ function updateActionBar(force = false): void {
       })() : null,
       canFire: mode === 'map' && !!snap?.atCommand && canFire(),
       magic: mode === 'map' && snap?.atCommand ? magicLabel() : undefined,
-      town: !!snap?.inDungeon && snap.depth === 0 && !snap.wild,
       worldMap: !!snap?.inDungeon && snap.depth === 0 && snap.wild,
     });
   currentActions = actions;
@@ -1235,23 +1262,6 @@ function startExplore(): void {
   const snap = ctx.snap;
   travel = new Explore(exploreSkip, (i) => isDownExit(snap, i), noticed);
   stepTravel();
-}
-
-/** Walks to the nearest known way down (the dungeon entrance, in town). */
-function travelToExit(): void {
-  const ctx = travelContext();
-  if (!ctx) return;
-  const snap = ctx.snap;
-  if (isDownExit(snap, snap.py * snap.width + snap.px)) {
-    send([BACKSLASH, ...keyCodes('>')]);
-    return;
-  }
-  const exit = nearestReachable(snap, materials, (i) => isDownExit(snap, i));
-  if (!exit) {
-    showToast('No way down in sight. Explore to find one.');
-    return;
-  }
-  startTravel(exit);
 }
 
 function startTargeting(goal: MapPoint): void {
@@ -1953,6 +1963,7 @@ function returnToTitle(): void {
   noticed.clear();
   exploreDepth = -1;
   placeKey = '';
+  styleKey = '';
   place = null;
   placePos = { x: -1, y: -1 };
   app.classList.remove('fallen', 'ended');

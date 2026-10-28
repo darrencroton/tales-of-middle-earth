@@ -19,7 +19,6 @@ export type NativeView =
   | 'finish'
   | 'fallen'
   | 'explore'
-  | 'dungeon'
   | 'equip';
 
 export type ActionEffect =
@@ -186,8 +185,6 @@ export interface ActionContext {
   underfoot: string;
   floorObjects: number;
   alwaysPickup: boolean;
-  /** In town, where there is nothing to explore. */
-  town?: boolean;
   /** On the world map, travelling between places. */
   worldMap?: boolean;
   /** Something worth using from the pack. */
@@ -200,14 +197,14 @@ export interface ActionContext {
   recast?: string | null;
   /** A launcher and ammunition are ready. */
   canFire?: boolean;
-  /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers. */
+  /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers or does not use them. */
   magic?: string | null;
 }
 
 /* More buttons than this crowd a phone's toolbar. */
 const MAX_MAP_ACTIONS = 7;
 /* Buttons that give way, in order, when the toolbar is full; all are also under More. */
-const OVERFLOW_ORDER = ['look', 'cast', 'rest', 'explore', 'dungeon'];
+const OVERFLOW_ORDER = ['look', 'rest', 'explore', 'fire', 'recast', 'cast'];
 
 const FALLEN: Action = { id: 'fallen', label: 'Your hero', icon: '@', effect: { kind: 'native', view: 'fallen' } };
 const KEYBOARD: Action = { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } };
@@ -242,6 +239,7 @@ export function situationalActions(underfoot: string, floorObjects: number, alwa
   if (/down staircase|shaft down|quest down|quest entrance|town exit|path to the next/.test(underfoot)) {
     actions.push(command('descend', 'Descend', '>', { command: '>' }, true));
   }
+  if (/void jumpgate/.test(underfoot)) actions.push(command('rift', 'Enter rift', '◌', { command: '>' }, true));
   if (/up staircase|shaft up|quest up|quest exit|path to the previous/.test(underfoot)) {
     actions.push(command('ascend', 'Ascend', '<', { command: '<' }, true));
   }
@@ -322,11 +320,7 @@ export function contextActions(ctx: ActionContext): Action[] {
       ...situational,
       ...(ctx.worldMap
         ? [command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true)]
-        : ctx.town
-          ? situational.some((a) => a.id === 'descend')
-            ? []
-            : [{ id: 'dungeon', label: 'Dungeon', icon: '⇣', effect: { kind: 'native', view: 'dungeon' } } as Action]
-          : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
+        : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
       { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
       ...(ctx.foe ? [] : [command('rest', 'Rest', '☾', { command: 'R', then: '&\r' })]),
       ...(ctx.magic === null ? [] : [{ id: 'cast', label: ctx.magic ?? 'Cast', icon: '✦', effect: { kind: 'native', view: 'magic' } } as Action]),

@@ -121,6 +121,38 @@ test('items are used, wielded and taken off from the native inventory', async ({
   await expect.poll(weapon, { timeout: 10_000 }).toBe('');
 });
 
+test('a stack is dropped by the number chosen, and the floor list shows alone', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Dropper');
+
+  const food = await packCount(page, /Ration/);
+  expect(food).toBeGreaterThan(2);
+  await page.locator('#toolbar [data-action="inventory"]').click();
+  await page.locator('.sheet .item-row', { hasText: 'Ration' }).click();
+  await expect(page.locator('.sheet [data-action="dropall"]')).toHaveCount(0);
+  await page.locator('.sheet [data-action="drop"]').click();
+  await expect(page.locator('.sheet.sheet-quantity .stepper-value')).toHaveText(String(food));
+  await page.locator('.sheet.sheet-quantity .stepper-button', { hasText: '−' }).click();
+  await page.locator('.sheet.sheet-quantity .stepper-button', { hasText: '−' }).click();
+  await expect(page.locator('.sheet.sheet-quantity [data-action="confirm"]')).toHaveText(`Drop ${food - 2}`);
+  await page.locator('.sheet.sheet-quantity [data-action="confirm"]').click();
+  await expect.poll(() => packCount(page, /Ration/), { timeout: 10_000 }).toBe(2);
+  await dismissMore(page);
+  await waitAtCommand(page);
+
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await page.locator('.sheet .command', { hasText: 'Destroy' }).click();
+  await waitForScreen(page, /Destroy which item/);
+  if (!/Floor:/.test((await screenText(page)).split('\n')[0])) await page.locator('.termview .pop-tab', { hasText: 'Floor' }).click();
+  await waitForScreen(page, /\(Floor:/);
+  await expect(page.locator('.termview .tv-choice')).toHaveCount(1);
+  await expect(page.locator('.termview .tv-choice')).toContainText('Ration');
+  expect(await page.locator('.termview').innerText()).not.toMatch(/###/);
+  await page.keyboard.press('Escape');
+  await waitAtCommand(page);
+});
+
 test('tome2 menus show as tappable lists with a movable highlight', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
@@ -223,6 +255,52 @@ test('the character sheet keeps its tabs at the foot and shows skills, abilities
   await expect(page.locator('.sheet-title')).toHaveText('Menu');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
+});
+
+test('skill rows stay put while the cursor moves, and closing after spending saves and returns to the map', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Steady');
+  await jumpToLevel(page, 1);
+  const points = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.skillPoints ?? 0);
+  for (let i = 0; i < 8 && (await points()) < 2; i++) {
+    await page.evaluate(() => window.__tome!.sendText('\u0001'));
+    await waitForScreen(page, /Debug Command|\[y\/n\]/);
+    if (/\[y\/n\]/.test((await screenText(page)).split('\n')[0])) await page.evaluate(() => window.__tome!.sendText('y'));
+    await waitForScreen(page, /Debug Command/);
+    await page.evaluate(() => window.__tome!.sendText('x'));
+    await dismissMore(page);
+    await waitAtCommand(page);
+  }
+  expect(await points()).toBeGreaterThan(1);
+
+  await page.keyboard.press('G');
+  const rows = page.locator('.sheet .skill-row');
+  await expect(rows.first()).toBeVisible();
+  const count = await rows.count();
+  expect(count).toBeGreaterThan(17);
+  for (const n of [4, 12, count - 1, 2]) {
+    await rows.nth(n).scrollIntoViewIfNeeded();
+    const before = (await rows.nth(n).boundingBox())!.y;
+    await rows.nth(n).click();
+    await expect(rows.nth(n)).toHaveClass(/current/);
+    await expect(rows).toHaveCount(count);
+    expect((await rows.nth(n).boundingBox())!.y).toBeCloseTo(before, 0);
+  }
+  const name = (await rows.nth(2).locator('.skill-name').textContent()) ?? '';
+  await expect(page.locator('.sheet .skill-detail-title')).toHaveText(name);
+
+  const learnable = page.locator('.sheet .skill-row.learnable, .sheet .skill-row.normal').filter({ hasText: '/pt' }).first();
+  await learnable.click();
+  const before = (await page.locator('.sheet-subtitle').textContent()) ?? '';
+  await page.locator('.sheet [data-action="raise"]').click();
+  await expect(page.locator('.sheet-subtitle')).not.toHaveText(before);
+  await page.locator('.sheet-close').click();
+  await expect(page.locator('.prompt-card')).toContainText('Save and use these skill values?');
+  await page.locator('.prompt-card .card-button.primary').click();
+  await waitAtCommand(page);
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  expect(await viewMode(page)).toBe('map');
 });
 
 test('spells are cast from the Magic sheet, and recent ones are offered first', async ({ page }) => {
@@ -464,15 +542,16 @@ test('a tap on unseen ground strides towards it as far as the light reaches', as
   if (!/monster|hurt/.test(cause)) expect(distance(end), context).toBeLessThan(distance(start));
 });
 
-test('Dungeon walks to the way down and the quest level below Bree stays native', async ({ page }) => {
+test('Explore in town finds the way down and the quest level below Bree stays native', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Delver');
 
   await equipSuggested(page);
-  const dungeon = page.locator('#toolbar [data-action="dungeon"]');
-  await expect(dungeon).toBeVisible();
-  for (let i = 0; i < 12 && !(await page.locator('#toolbar [data-action="descend"]').count()); i++) {
+  const explore = page.locator('#toolbar [data-action="explore"]');
+  await expect(explore).toBeVisible();
+  await expect(page.locator('#toolbar [data-action="dungeon"]')).toHaveCount(0);
+  for (let i = 0; i < 30 && !(await page.locator('#toolbar [data-action="descend"]').count()); i++) {
     await dismissMore(page);
     await waitAtCommand(page);
     const attack = page.locator('#toolbar [data-action="attack"]');
@@ -481,11 +560,11 @@ test('Dungeon walks to the way down and the quest level below Bree stays native'
       await page.waitForTimeout(300);
       continue;
     }
-    await dungeon.click();
+    if (!(await explore.count())) break;
+    await explore.click();
     await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
   }
   await expect(page.locator('#toolbar [data-action="descend"]')).toBeVisible();
-  await expect(dungeon).toHaveCount(0);
 
   const depthBefore = await page.evaluate(() => window.__tome!.engine.snapshot()!.depth);
   await page.locator('#toolbar [data-action="descend"]').click();

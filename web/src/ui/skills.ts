@@ -1,4 +1,5 @@
 import { rowText, type TermRow } from './termparse.ts';
+import type { AbilityTable, SkillTable } from '../render/snapshot.ts';
 import { el } from './dom.ts';
 
 /* tome2 colours on the skills screen. */
@@ -173,5 +174,75 @@ export function abilitiesElements(screen: AbilitiesScreen, onTap: (ability: Abil
     button.addEventListener('click', () => onTap(ability));
     out.push(button);
   }
+  return out;
+}
+
+/** Keys that move tome2's list cursor from one row to another (the lists keep tome2's order). */
+export function cursorKeys(from: number, to: number): string {
+  if (from < 0 || to < 0 || from === to) return '';
+  return (to > from ? '2' : '8').repeat(Math.abs(to - from));
+}
+
+/** Row of the whole skill list that tome2's cursor is on: the selected row it shows, matched by name and depth. */
+export function selectedSkill(table: SkillTable, screen: SkillsScreen): number {
+  const shown = screen.skills.find((s) => s.selected);
+  if (!shown) return -1;
+  return table.skills.findIndex((s) => s.name === shown.name && s.depth === shown.depth);
+}
+
+/** Row of the whole abilities list that tome2's cursor is on. */
+export function selectedAbility(table: AbilityTable, screen: AbilitiesScreen): number {
+  const shown = screen.abilities.find((a) => a.selected);
+  return shown ? table.abilities.findIndex((a) => a.name === shown.name) : -1;
+}
+
+/** Fixed-height details of the selected row, above the list, so the rows never move as the cursor does. */
+function detail(title: string, lines: string[]): HTMLElement {
+  const box = el('div', 'skill-detail');
+  box.append(el('p', 'skill-detail-title', title));
+  for (const line of lines.filter(Boolean)) box.append(el('p', undefined, line));
+  return box;
+}
+
+/** The whole skill list with the selected skill's description; `onTap` receives a row index. */
+export function skillTableElements(table: SkillTable, selected: number, onTap: (index: number) => void): HTMLElement[] {
+  const current = table.skills[selected];
+  const out: HTMLElement[] = [detail(current?.name ?? '', [current?.desc ?? ''])];
+  table.skills.forEach((skill, i) => {
+    const button = el('button', `skill-row ${skill.state}${i === selected ? ' current' : ''}`);
+    button.type = 'button';
+    button.dataset.nav = '';
+    button.dataset.key = `skill-${skill.depth}-${skill.name}`;
+    button.style.paddingLeft = `calc(0.7rem + ${skill.depth * 1.1}rem)`;
+    button.append(el('span', 'skill-branch', skill.branch === 2 ? '▾' : skill.branch === 1 ? '▸' : ''));
+    button.append(el('span', 'skill-name', skill.name));
+    const value = el('span', 'skill-value');
+    value.append(el('span', 'skill-level', formatValue(skill.value / 1000)));
+    if (skill.mod > 0 && !skill.misc) value.append(el('span', 'skill-mod', `+${formatValue(skill.mod / 1000)}/pt`));
+    button.append(value);
+    button.addEventListener('click', () => onTap(i));
+    out.push(button);
+  });
+  return out;
+}
+
+/** The whole abilities list with the selected ability's description and what it needs. */
+export function abilityTableElements(table: AbilityTable, selected: number, onTap: (index: number) => void): HTMLElement[] {
+  const current = table.abilities[selected];
+  const needs = current && !current.known && current.needs.length ? `Needs ${current.needs.join(', ')}.` : '';
+  const out: HTMLElement[] = [detail(current?.name ?? '', [current?.desc ?? '', needs])];
+  table.abilities.forEach((ability, i) => {
+    const state = ability.known ? 'max' : ability.learnable ? 'normal' : 'untrained';
+    const button = el('button', `skill-row ${state}${i === selected ? ' current' : ''}`);
+    button.type = 'button';
+    button.dataset.nav = '';
+    button.dataset.key = `ability-${ability.name}`;
+    button.append(el('span', 'skill-name', ability.name));
+    const value = el('span', 'skill-value');
+    value.append(el('span', 'skill-level', ability.known ? 'Known' : `${ability.cost} pt${ability.cost === 1 ? '' : 's'}`));
+    button.append(value);
+    button.addEventListener('click', () => onTap(i));
+    out.push(button);
+  });
   return out;
 }

@@ -282,10 +282,49 @@ export interface CharacterState {
   shots: number;
   infra: number;
   maxDepth: number;
-  /** Skills with points in them; value in thousandths, as tome2 shows them (12.345). */
-  skills?: { name: string; value: number }[];
+  /** Skills with points in them; value and gain per point in thousandths, as tome2 shows them (12.345). */
+  skills?: { name: string; value: number; mod?: number }[];
   abilities?: string[];
   turn: number;
+}
+
+/** One row of the skills screen's whole list; values in thousandths. */
+export interface SkillEntry {
+  name: string;
+  depth: number;
+  /** 0 without sub-skills, 1 closed, 2 open. */
+  branch: number;
+  value: number;
+  mod: number;
+  state: 'normal' | 'untrained' | 'learnable' | 'max';
+  /** The Miscellaneous group, which cannot be raised itself. */
+  misc: number;
+  desc: string;
+}
+
+export interface SkillTable {
+  ready: number;
+  points: number;
+  skills: SkillEntry[];
+}
+
+/** One row of the abilities screen's whole list. */
+export interface AbilityEntry {
+  name: string;
+  cost: number;
+  known: number;
+  /** Every prerequisite is met (points aside). */
+  met: number;
+  learnable: number;
+  desc: string;
+  /** Prerequisites: skills with levels, abilities, stats. */
+  needs: string[];
+}
+
+export interface AbilityTable {
+  ready: number;
+  points: number;
+  abilities: AbilityEntry[];
 }
 
 /** A skill adjustment from a race, race modifier, class or specialisation; values in thousandths. */

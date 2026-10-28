@@ -11,8 +11,8 @@ export interface ItemAction {
   /** Original-keyset command, sent after '\' so keymaps cannot interfere. */
   command: string;
   primary?: boolean;
-  /** Answer to a quantity prompt: one item or the whole stack. */
-  quantity?: 'one' | 'all';
+  /** Answer to a quantity prompt: one item, the whole stack, a number, or (for a stack) a number the player picks first. */
+  quantity?: 'one' | 'all' | 'ask' | number;
   /** Needs text (an inscription) from the player first. */
   needsText?: boolean;
   danger?: boolean;
@@ -115,7 +115,7 @@ export function itemActions(item: ItemState, place: ItemPlace): ItemAction[] {
     if (item.activate) actions.push({ id: 'activate', label: 'Activate', command: 'A', primary: true });
     if (use?.id === 'fire') actions.push({ ...use, primary: actions.length === 0 });
     actions.push({ id: 'takeoff', label: 'Take off', command: 't', primary: actions.length === 0 });
-    actions.push({ id: 'drop', label: 'Drop', command: 'd', quantity: 'all' });
+    actions.push({ id: 'drop', label: 'Drop', command: 'd', quantity: item.number > 1 ? 'ask' : 'all' });
     actions.push({ id: 'inscribe', label: 'Inscribe', command: '{', needsText: true });
     return actions;
   }
@@ -127,12 +127,17 @@ export function itemActions(item: ItemState, place: ItemPlace): ItemAction[] {
     actions.push({ id: 'wear', label: weapon ? 'Wield' : 'Wear', command: 'w', primary: actions.length === 0 });
   }
   if (item.tval === TV.FLASK || (use?.id === 'fire')) actions.push({ id: 'throw', label: 'Throw', command: 'v', quantity: 'one' });
-  actions.push({ id: 'drop', label: item.number > 1 ? 'Drop one' : 'Drop', command: 'd', quantity: 'one' });
-  if (item.number > 1) actions.push({ id: 'dropall', label: `Drop all ${item.number}`, command: 'd', quantity: 'all' });
+  actions.push({ id: 'drop', label: 'Drop', command: 'd', quantity: item.number > 1 ? 'ask' : 'all' });
   if (item.tval !== TV.FLASK && use?.id !== 'fire') actions.push({ id: 'throw', label: 'Throw', command: 'v', quantity: 'one' });
   actions.push({ id: 'inscribe', label: 'Inscribe', command: '{', needsText: true });
-  actions.push({ id: 'destroy', label: 'Destroy', command: 'k', quantity: 'all', danger: true });
+  actions.push({ id: 'destroy', label: 'Destroy', command: 'k', quantity: item.number > 1 ? 'ask' : 'all', danger: true });
   return actions;
+}
+
+/** The number to answer a quantity prompt with; a choice not yet made counts as the whole stack. */
+export function quantityAnswer(quantity: ItemAction['quantity'], stack: number): number {
+  if (typeof quantity === 'number') return Math.max(1, Math.min(stack, Math.round(quantity)));
+  return quantity === 'one' ? 1 : Math.max(1, stack);
 }
 
 /** Menu letter tome2 uses for an inventory or equipment index. */
@@ -192,7 +197,7 @@ export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace
 
   for (let follow = 0; follow < 3; follow++) {
     if (/Quantity/i.test(s.prompt)) {
-      s = yield [...keyCodes(action.quantity === 'all' ? String(item.number) : '1'), ENTER];
+      s = yield [...keyCodes(String(quantityAnswer(action.quantity, item.number))), ENTER];
     } else if (action.needsText && /Inscri/i.test(s.prompt)) {
       s = yield typedAnswer(text, item.ins);
     } else {
@@ -212,6 +217,8 @@ export interface Situation {
   /** Health under half. */
   hurt: boolean;
   hungry: boolean;
+  /** The hero fights with weapons, so an empty weapon hand is worth filling. */
+  wieldsWeapons?: boolean;
 }
 
 const HEALING = /Cure (Light|Serious|Critical) Wounds|\bHealing\b|\bof Life\b/i;
@@ -219,7 +226,7 @@ const HEALING = /Cure (Light|Serious|Critical) Wounds|\bHealing\b|\bof Life\b/i;
 /**
  * The most useful thing to do with the pack right now: drink a known
  * healing potion when hurt, eat when hungry, wield a weapon when none is
- * wielded, or (below the town) light a light source.
+ * wielded (for heroes who fight with weapons), or (below the town) light a light source.
  */
 export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>, situation: Situation): GearSuggestion | null {
   const equipped = (index: number) => inventory.equip.some((slot) => slot.i === index && slot.name);
@@ -230,7 +237,54 @@ export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>,
   return (
     (situation.hurt ? find('heal', (i) => (i.tval === TV.POTION || i.tval === TV.POTION2) && HEALING.test(i.name)) : null) ??
     (situation.hungry ? find('eat', (i) => i.tval === TV.FOOD) : null) ??
-    (!equipped(INVEN_WIELD) ? find('weapon', (i) => WEAPON_TVALS.has(i.tval)) : null) ??
+    (situation.wieldsWeapons !== false && !equipped(INVEN_WIELD) ? find('weapon', (i) => WEAPON_TVALS.has(i.tval)) : null) ??
     (situation.inDungeon && !equipped(INVEN_LITE) ? find('light', (i) => i.tval === TV.LITE) : null)
   );
+}
+
+/** How the hero fights: with weapons, with magic and powers, or both. */
+export interface FightingStyle {
+  weapons: boolean;
+  magic: boolean;
+}
+
+const WEAPON_SKILLS = new Set(['Combat', 'Weaponmastery', 'Sword-mastery', 'Axe-mastery', 'Polearm-mastery', 'Hafted-mastery', 'Backstab']);
+const UNARMED_SKILLS = new Set(['Barehand-combat', 'Bearform-combat']);
+const MAGIC_SKILLS = new Set([
+  'Magic',
+  'Sorcery',
+  'Spell-power',
+  'Necromancy',
+  'Thaumaturgy',
+  'Geomancy',
+  'Udun',
+  'Demonology',
+  'Prayer',
+  'Druidistic',
+  'Mindcraft',
+  'Music',
+  'Summoning',
+  'Possession',
+  'Symbiosis',
+  'Mimicry',
+]);
+/* Points a hero is expected to put into a skill they favour, to weigh growth against what is already learnt. */
+const GROWTH_POINTS = 10;
+/* Weapons count when they are at least this share of the hero's magic, and magic when it is this share of their fighting. */
+const WEAPON_SHARE = 0.75;
+const MAGIC_SHARE = 0.5;
+
+/** Weighs the hero's weapon, unarmed and magic skills (value plus expected growth); a hero with no skills read yet does both. */
+export function fightingStyle(skills: readonly { name: string; value: number; mod?: number }[] | null | undefined): FightingStyle {
+  if (!skills?.length) return { weapons: true, magic: true };
+  const best = (names: ReadonlySet<string>) =>
+    Math.max(0, ...skills.filter((s) => names.has(s.name)).map((s) => s.value + (s.mod ?? 0) * GROWTH_POINTS));
+  const weapons = best(WEAPON_SKILLS);
+  const unarmed = best(UNARMED_SKILLS);
+  const magic = best(MAGIC_SKILLS);
+  const fighting = Math.max(weapons, unarmed);
+  return {
+    weapons: weapons > 0 && weapons >= unarmed && weapons >= magic * WEAPON_SHARE,
+    magic: magic > 0 && magic >= fighting * MAGIC_SHARE,
+  };
 }

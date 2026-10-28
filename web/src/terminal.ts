@@ -146,7 +146,7 @@ export class TerminalBuffer {
     return { chars: this.chars.slice(), attrs: this.attrs.slice() };
   }
 
-  /** Bounding box of cells (from row `fromRow` down) that differ from `base`, or null. */
+  /** Bounding box of cells (from row `fromRow` down) that differ from `base`, or null; blank cells are equal whatever their colour. */
   diffBounds(base: ScreenCopy, fromRow = 0): CellRect | null {
     let x0 = this.cols;
     let y0 = this.rows;
@@ -155,7 +155,9 @@ export class TerminalBuffer {
     for (let y = fromRow; y < this.rows; y++) {
       for (let x = 0; x < this.cols; x++) {
         const i = y * this.cols + x;
-        if (this.chars[i] === base.chars[i] && this.attrs[i] === base.attrs[i]) continue;
+        const ch = this.chars[i];
+        if (ch === base.chars[i] && (this.attrs[i] === base.attrs[i] || ch === BLANK || ch === 0)) continue;
+        if ((ch === BLANK || ch === 0) && (base.chars[i] === BLANK || base.chars[i] === 0)) continue;
         x0 = Math.min(x0, x);
         y0 = Math.min(y0, y);
         x1 = Math.max(x1, x);
