@@ -111,7 +111,7 @@ function level(rows: string[], player: { x: number; y: number }): LevelSnapshot 
 }
 
 const monster = (id: number, x: number, y: number, extra: Partial<MonsterState> = {}): MonsterState => ({
-  id, name: 'kobold', ch: 107, attr: 1, x, y, hp: 5, maxhp: 5, asleep: 0, afraid: 0, unique: 0, status: -2, target: 1, ...extra,
+  id, name: 'kobold', ch: 107, attr: 1, x, y, hp: 5, maxhp: 5, asleep: 0, afraid: 0, unique: 0, status: -2, view: 1, target: 1, ...extra,
 });
 
 describe('travel', () => {
@@ -256,7 +256,14 @@ describe('travel', () => {
   it('does not stop for a creature only sensed, out of line of sight', () => {
     const snap = level(['......'], { x: 0, y: 0 });
     const travel = new Travel({ x: 5, y: 0 }, ctx(snap));
-    assert.equal(travel.step(ctx(snap, [monster(1, 4, 0, { target: 0 })])).kind, 'keys');
+    assert.equal(travel.step(ctx(snap, [monster(1, 4, 0, { view: 0, target: 0 })])).kind, 'keys');
+  });
+
+  it('stops when a thief takes gold, though health is untouched', () => {
+    const snap = level(['......'], { x: 0, y: 0 });
+    const travel = new Travel({ x: 5, y: 0 }, { ...ctx(snap), gold: 100 });
+    assert.equal(travel.step({ ...ctx(snap), gold: 100 }).kind, 'keys');
+    assert.deepEqual(travel.step({ ...ctx({ ...snap, px: 1 }), gold: 60 }), { kind: 'stop', reason: 'robbed' });
   });
 
   it('stops again for a creature that leaves sight and comes back mid-journey', () => {
@@ -410,6 +417,7 @@ describe('actions', () => {
     assert.equal(first({ arrived: true, exploreNext: 'none' }), 'Ascend');
     assert.equal(first({ arrived: true, exploreNext: 'none', gear: 'light' }), 'Light');
     assert.equal(first({ arrived: true, exploreNext: 'explore', danger: true }), 'Ascend');
+    assert.equal(first({ arrived: true, exploreNext: 'explore', danger: true, foe: '6' }), 'Attack');
     assert.equal(first({ arrived: false, exploreNext: 'explore' }), 'Ascend');
     assert.equal(first({ underfoot: 'path to the next area', arrived: true, exploreNext: 'here' }), 'Descend');
     assert.equal(first({ underfoot: 'down staircase', arrived: true, exploreNext: 'worldMap' }), 'World map');

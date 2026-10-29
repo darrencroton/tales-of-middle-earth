@@ -687,6 +687,10 @@ html.keyboard-open .sheet-layer {
   color: var(--fg);
 }
 
+#toolbar .action.settling {
+  pointer-events: none;
+}
+
 #toolbar .action.unavailable .action-icon,
 #toolbar .action.unavailable .action-label {
   opacity: 0.45;

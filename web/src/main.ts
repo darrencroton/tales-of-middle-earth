@@ -15,7 +15,7 @@ import { commandGroups, commandKeys, contextActions, transitionUnderfoot, waitCo
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { approachTarget, isKnown, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
+import { approachTarget, hostilesInSight, isKnown, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
 import { CAVE_MARK, isHostile, LAYER_MASK, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
@@ -183,9 +183,11 @@ let lastSavedTurn = -1;
 let pendingSync: 'silent' | 'toast' | null = null;
 let currentActions: Action[] = [];
 let actionsKey = '';
-/* Taps on the toolbar are ignored this long after exploring ends and its buttons change places. */
+/* A map toolbar button that has just changed ignores taps this long (Stop and the pace never do). */
 const TOOLBAR_SETTLE_MS = 400;
-let toolbarSettlesAt = 0;
+const NEVER_SETTLE = new Set(['stop', 'pace']);
+/** Per toolbar position: the button there (id and label) and until when it ignores taps. */
+let toolbarSlots: { key: string; until: number }[] = [];
 let dirty = true;
 let effectsAt = 0;
 let hasEffects = false;
@@ -461,7 +463,7 @@ const NO_TARGET = 'No target in sight.';
 
 /** An awake hostile creature in line of sight (not one only sensed by telepathy). */
 function dangerInView(): boolean {
-  return (lastState?.monsters ?? []).some((m) => isHostile(m) && !m.asleep && !!m.target);
+  return hostilesInSight(lastState?.monsters ?? []).some((m) => !m.asleep);
 }
 
 /** A hostile creature a spell or missile can be aimed at, as tome2's "nearest target" needs. */
@@ -1543,14 +1545,26 @@ function updateActionBar(force = false): void {
   termView.setActions(mode === 'overlay' ? panelActions(actions) : []);
   const key = actions.map((a) => `${a.id}:${a.label}:${!!a.unavailable}`).join(',');
   if (key === actionsKey && !force) return;
-  if (actionsKey.includes('pace:') && !key.includes('pace:')) toolbarSettlesAt = performance.now() + TOOLBAR_SETTLE_MS;
   actionsKey = key;
+  const now = performance.now();
+  const settle = mode === 'map' && toolbarSlots.length > 0;
+  toolbarSlots = actions.map((action, i) => {
+    const slot = `${action.id}:${action.label}`;
+    const old = toolbarSlots[i];
+    if (old?.key === slot) return old;
+    return { key: slot, until: settle && !NEVER_SETTLE.has(action.id) ? now + TOOLBAR_SETTLE_MS : 0 };
+  });
   toolbar.replaceChildren(
-    ...actions.map((action) => {
+    ...actions.map((action, i) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.dataset.action = action.id;
       button.className = ['action', action.primary ? 'primary' : '', action.unavailable ? 'unavailable' : ''].filter(Boolean).join(' ');
+      const wait = toolbarSlots[i].until - now;
+      if (wait > 0) {
+        button.classList.add('settling');
+        window.setTimeout(() => button.classList.remove('settling'), wait);
+      }
       button.setAttribute('aria-label', action.label);
       if (action.unavailable) button.setAttribute('aria-description', action.unavailable);
       const icon = document.createElement('span');
@@ -1691,7 +1705,7 @@ function openCommands(): void {
 
 function travelContext(): TravelContext | null {
   if (!lastSnap || !lastState?.player) return null;
-  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp };
+  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au };
 }
 
 function stopAutomation(message: string | null, cause: string): void {
@@ -2471,7 +2485,6 @@ stage.addEventListener(
 /* Toolbar */
 
 toolbar.addEventListener('click', (e) => {
-  if (performance.now() < toolbarSettlesAt) return;
   const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
   const action = currentActions.find((a) => a.id === button?.dataset.action);
   if (action) runAction(action);

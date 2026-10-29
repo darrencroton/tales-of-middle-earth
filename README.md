@@ -48,11 +48,11 @@ This is the full ToME 2 game, with an interface designed from scratch for phones
 
 | | |
 |---|---|
-| **Tap** | Walk to any place you can see — doors open on the way. Tap a creature beside you to fight it. |
+| **Tap** | Walk to any place you have seen — doors open on the way. A tap into the dark takes one step towards it. Tap a creature beside you to fight it. |
 | **Press and hold** | Look at anything on the map: *"a Village idiot (awake, unhurt) on grass"*. |
 | **Drag** · **Pinch** | Look around the level without moving · zoom in and out. |
 | **Explore** | One button walks you to the next unexplored room or item, stops when danger appears, and heads for the stairs once the level is done. |
-| **Smart toolbar** | Shows what makes sense right now — *Attack*, *Pick up*, *Descend*, *Heal* when you're badly hurt, *Eat* when hungry, *Light* in the dark. |
+| **Toolbar** | One button changes with the moment — *Attack*, *Pick up*, *Descend*, *Eat* when hungry, *Light* in the dark, else *Explore* — and your own buttons (your quick spell, Cast, Fire, Items, Rest) stay where they are. |
 
 **Everything is a tap away.** Your pack, equipment, character sheet, skills, abilities and knowledge are proper mobile screens, not text menus. Tap any item to read about it and use it; tap your name for your character; tap a creature for what you know about it. Questions — *how many?*, *which direction?*, *which target?* — appear as simple cards.
 

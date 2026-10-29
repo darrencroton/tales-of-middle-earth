@@ -142,7 +142,7 @@ describe('explore', () => {
     const explore = new Explore(plan(-1));
     const ctx = (snap: LevelSnapshot, monsters: MonsterState[]) => ({ snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters, hp: 10 });
     assert.equal(explore.step(ctx(before, [])).kind, 'keys');
-    const orc = { id: 7, name: 'Cave orc', x: 6, y: 1, status: -1, asleep: 0, target: 1 } as MonsterState;
+    const orc = { id: 7, name: 'Cave orc', x: 6, y: 1, status: -1, asleep: 0, view: 1, target: 1 } as MonsterState;
     assert.deepEqual(explore.step(ctx(after, [orc])), { kind: 'stop', reason: 'monster', creature: 'Cave orc', asleep: false });
   });
 

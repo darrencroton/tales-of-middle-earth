@@ -1,7 +1,7 @@
 import type { Material } from '../render/materials.ts';
 import { CAVE_MARK, CAVE_SEEN, LAYER_MASK, LAYER_OBJECT, type LevelSnapshot } from '../render/snapshot.ts';
 import type { Point } from './pathfinding.ts';
-import { hostilesInSight, lightWentOut, Travel, travelGrid, type TravelContext, type TravelStep } from './travel.ts';
+import { hostilesInSight, lightWentOut, robbed, Travel, travelGrid, type TravelContext, type TravelStep } from './travel.ts';
 
 const MAX_TARGETS = 500;
 const MAX_RETRIES = 6;
@@ -166,6 +166,7 @@ export class Explore {
   private targets = 0;
   private lastHp: number | null = null;
   private lastLight: number | null = null;
+  private lastGold: number | undefined;
   private readonly plan: ExplorePlan;
   private readonly avoid = new Set<number>();
   /** Hostiles in view at the last step, shared by all its journeys (see `TravelOptions`). */
@@ -204,8 +205,10 @@ export class Explore {
   step(ctx: TravelContext): TravelStep {
     const { snap } = ctx;
     if (this.lastHp !== null && ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };
+    if (robbed(ctx.gold, this.lastGold)) return { kind: 'stop', reason: 'robbed' };
     if (lightWentOut(snap, this.lastLight)) return { kind: 'stop', reason: 'dark' };
     this.lastHp = ctx.hp;
+    this.lastGold = ctx.gold;
     this.lastLight = snap.lightRadius;
     this.inSight ??= new Set(hostilesInSight(ctx.monsters).map((m) => m.id));
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {

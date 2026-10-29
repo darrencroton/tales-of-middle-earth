@@ -296,8 +296,8 @@ const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {
 
 /**
  * The toolbar's one changing button, the first of these that applies: the
- * world map's Walk here; the way on underfoot (or the one the hero arrived
- * by, to get away from a foe in view); Attack a foe alongside; what lies
+ * world map's Walk here; the way on underfoot; Attack a foe alongside; the
+ * way the hero arrived by, to get away from a foe in view; what lies
  * underfoot to pick up or use; gear the hero needs to go on; the way the
  * hero arrived by once Explore has nothing else to do; and Explore, named
  * for what it will do.
@@ -307,8 +307,9 @@ export function contextualAction(ctx: ActionContext): Action {
   const next = ctx.exploreNext ?? 'explore';
   const transition = transitionUnderfoot(ctx.underfoot);
   const take = transition ? command(transition.id, transition.label, transition.icon, { command: transition.command }, true) : null;
-  if (take && (!ctx.arrived || ctx.danger)) return take;
+  if (take && !ctx.arrived) return take;
   if (ctx.foe) return { id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true };
+  if (take && ctx.danger) return take;
   if (ctx.floorObjects > 0) return command('pickup', 'Pick up', '⇡', { command: pickupCommand(ctx.alwaysPickup) }, true);
   if (/fountain/.test(ctx.underfoot)) return command('drink', 'Drink', '⌂', { command: 'H' }, true);
   if (/altar/.test(ctx.underfoot)) return command('sacrifice', 'Sacrifice', '0', { command: 'O' }, true);

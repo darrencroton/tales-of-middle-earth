@@ -721,8 +721,9 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 		json_int(json, "afraid", m_ptr->monfear ? 1 : 0);
 		json_int(json, "unique", (r_ptr->flags & RF_UNIQUE) ? 1 : 0);
 		json_int(json, "status", m_ptr->status);
-		bool const targetable = !p_ptr->image && !(r_ptr->flags & RF_NO_TARGET) && projectable(p_ptr->py, p_ptr->px, m_ptr->fy, m_ptr->fx);
-		json_int(json, "target", targetable ? 1 : 0);
+		bool const inView = projectable(p_ptr->py, p_ptr->px, m_ptr->fy, m_ptr->fx);
+		json_int(json, "view", inView ? 1 : 0);
+		json_int(json, "target", inView && !p_ptr->image && !(r_ptr->flags & RF_NO_TARGET) ? 1 : 0);
 		json_int(json, "ridx", m_ptr->r_idx);
 		json_int(json, "ego", m_ptr->ego);
 		json_int(json, "level", r_ptr->level, false);

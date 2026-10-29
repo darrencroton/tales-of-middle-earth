@@ -25,6 +25,7 @@ export type TravelStopReason =
   | 'blocked'
   | 'shut'
   | 'dark'
+  | 'robbed'
   | 'unreachable'
   | 'interrupted'
   | 'limit'
@@ -50,6 +51,8 @@ export interface TravelContext {
   materials: readonly Material[];
   monsters: readonly MonsterState[];
   hp: number;
+  /** Gold carried, to stop when a thief takes some. */
+  gold?: number;
 }
 
 export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
@@ -59,6 +62,7 @@ export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
   blocked: 'You stop: the way is blocked.',
   shut: 'You stop: the door will not open.',
   dark: 'You stop: your light has gone out.',
+  robbed: 'You stop: your purse is lighter.',
   unreachable: 'You know no way there yet.',
   interrupted: null,
   limit: 'You stop to get your bearings.',
@@ -203,7 +207,12 @@ export function isKnown(snap: LevelSnapshot, point: Point): boolean {
 
 /** Hostile creatures in the hero's line of sight (not those only sensed, by telepathy or detection). */
 export function hostilesInSight(monsters: readonly MonsterState[]): MonsterState[] {
-  return monsters.filter((m) => isHostile(m) && !!m.target);
+  return monsters.filter((m) => isHostile(m) && !!m.view);
+}
+
+/** Whether gold carried has dropped since the last step (a thief's touch does no harm to health). */
+export function robbed(gold: number | undefined, lastGold: number | undefined): boolean {
+  return gold !== undefined && lastGold !== undefined && gold < lastGold;
 }
 
 export interface TravelOptions {
@@ -224,7 +233,7 @@ export function lightWentOut(snap: Pick<LevelSnapshot, 'depth' | 'lightRadius'>,
 
 /**
  * Walks the player towards a goal one step per engine idle, stopping on
- * arrival, when hurt, when the light goes out, or when a hostile creature
+ * arrival, when hurt or robbed, when the light goes out, or when a hostile creature
  * comes into sight, asleep or awake (creatures already in sight do not
  * stop it). It also stops when the way keeps changing under it and the
  * hero comes back to where they have already been twice. A one-step
@@ -236,6 +245,7 @@ export class Travel {
   private readonly single: boolean;
   private lastHp: number;
   private lastLight: number;
+  private lastGold: number | undefined;
   private lastPos: Point | null = null;
   private lastWasMove = false;
   private lastDoor: Point | null = null;
@@ -258,6 +268,7 @@ export class Travel {
     this.inSight = options.inSight ?? new Set(hostilesInSight(start.monsters).map((m) => m.id));
     this.single = !!options.oneStep;
     this.lastHp = start.hp;
+    this.lastGold = start.gold;
     this.lastLight = start.snap.lightRadius;
   }
 
@@ -269,6 +280,7 @@ export class Travel {
     if (this.finishing || (pos.x === this.goal.x && pos.y === this.goal.y)) return { kind: 'stop', reason: 'arrived' };
     if (this.single && this.steps > 0) return { kind: 'stop', reason: 'interrupted' };
     if (ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };
+    if (robbed(ctx.gold, this.lastGold)) return { kind: 'stop', reason: 'robbed' };
     if (lightWentOut(snap, this.lastLight)) return { kind: 'stop', reason: 'dark' };
     if (this.lastPos && Math.max(Math.abs(this.lastPos.x - pos.x), Math.abs(this.lastPos.y - pos.y)) > 1) {
       /* A new area of the land, or a teleport: the goal no longer means the same place. */
@@ -309,6 +321,7 @@ export class Travel {
 
     this.steps++;
     this.lastHp = ctx.hp;
+    this.lastGold = ctx.gold;
     this.lastLight = snap.lightRadius;
     this.lastPos = pos;
 
