@@ -15,6 +15,8 @@ export interface Settings {
   messages: MessageFlow;
   music: VolumeLevel;
   sound: VolumeLevel;
+  /** Dungeon levels stay as the hero left them (otherwise each visit makes a new one, as in classic ToME). */
+  persistentLevels: boolean;
 }
 
 const STORAGE_KEY = 'tome2mobile.settings';
@@ -51,6 +53,7 @@ export function defaultSettings(prefersReducedMotion: boolean): Settings {
     messages: 'flow',
     music: 'medium',
     sound: 'medium',
+    persistentLevels: true,
   };
 }
 
@@ -67,7 +70,17 @@ export function sanitiseSettings(raw: unknown, defaults: Settings): Settings {
   const textSize = typeof value.textSize === 'string' && Object.hasOwn(TEXT_SIZE_PX, value.textSize) ? (value.textSize as TextSize) : defaults.textSize;
   const messages = value.messages === 'flow' || value.messages === 'pause' ? value.messages : defaults.messages;
   const volume = (v: unknown, fallback: VolumeLevel): VolumeLevel => (VOLUME_LEVELS.includes(v as VolumeLevel) ? (v as VolumeLevel) : fallback);
-  return { animation, glyphs, zoom, textSize, messages, music: volume(value.music, defaults.music), sound: volume(value.sound, defaults.sound) };
+  const persistentLevels = typeof value.persistentLevels === 'boolean' ? value.persistentLevels : defaults.persistentLevels;
+  return {
+    animation,
+    glyphs,
+    zoom,
+    textSize,
+    messages,
+    music: volume(value.music, defaults.music),
+    sound: volume(value.sound, defaults.sound),
+    persistentLevels,
+  };
 }
 
 export function loadSettings(prefersReducedMotion: boolean): Settings {

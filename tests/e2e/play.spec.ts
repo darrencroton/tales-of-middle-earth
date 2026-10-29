@@ -354,12 +354,21 @@ test('race powers are in the Magic sheet, their lettered questions are buttons, 
     await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
     await expect(page.locator('.sheet-title')).toHaveText('Magic');
   };
-  await openMagic();
-  await page.locator('.sheet .row-button', { hasText: "Thunderlord's Powers" }).click();
-  await expect(page.locator('.sheet-layer')).toBeHidden();
-  const strike = page.locator('.prompt-card [data-choice="T"]');
-  await expect(strike).toHaveText('Thunder strike');
-  await strike.click();
+  /* A power can fail to concentrate; a hero tries again. */
+  const aimed = async () => (await screenText(page)).split('\n')[0].startsWith('Direction');
+  for (let attempt = 0; attempt < 4 && !(await aimed()); attempt++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await openMagic();
+    await page.locator('.sheet .row-button', { hasText: "Thunderlord's Powers" }).click();
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+    const strike = page.locator('.prompt-card [data-choice="T"]');
+    await expect(strike).toHaveText('Thunder strike');
+    await strike.click();
+    await expect
+      .poll(async () => (await aimed()) || (await page.evaluate(() => window.__tome!.engine.snapshot()?.atCommand ?? false)), { timeout: 10_000 })
+      .toBe(true);
+  }
   await waitForScreen(page, /^Direction/);
   await page.keyboard.press('Escape');
   await dismissMore(page);
@@ -497,7 +506,7 @@ test('explore reveals the level after the suggested weapon and light are equippe
   expect(await known()).toBeGreaterThan(before);
 });
 
-test('a tap on unseen ground strides towards it as far as the light reaches', async ({ page }) => {
+test('a tap on unseen ground walks as near to it as the known way leads', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Torchbearer');
@@ -552,7 +561,7 @@ test('a tap on unseen ground strides towards it as far as the light reaches', as
   const end = await playerPos(page);
   const cause = await page.evaluate(() => window.__tome!.lastStopCause());
   const context = `stopped (${cause || 'never started'}) at ${JSON.stringify(end)} from ${JSON.stringify(start)} towards ${JSON.stringify(target)}\n${await screenText(page)}`;
-  await expect(page.locator('#toast'), context).not.toContainText('no known way');
+  await expect(page.locator('#toast'), context).not.toContainText('no way there');
   const distance = (p: { x: number; y: number }) => Math.hypot(p.x - target!.x, p.y - target!.y);
   if (!/monster|hurt/.test(cause)) expect(distance(end), context).toBeLessThan(distance(start));
 });

@@ -17,11 +17,28 @@ const DANGER_RADIUS = 2;
 const WALK = ';'.charCodeAt(0);
 const OPEN = 'o'.charCodeAt(0);
 
-export type TravelStopReason = 'arrived' | 'monster' | 'hurt' | 'blocked' | 'unreachable' | 'interrupted' | 'limit' | 'explored' | 'item' | 'exit';
+export type TravelStopReason =
+  | 'arrived'
+  | 'monster'
+  | 'hurt'
+  | 'blocked'
+  | 'unreachable'
+  | 'interrupted'
+  | 'limit'
+  | 'explored'
+  | 'exit'
+  | 'exitUp'
+  | 'closest'
+  | 'creatureInWay';
 
 export type TravelStep =
   | { kind: 'keys'; keys: number[]; path: Point[] }
-  | { kind: 'stop'; reason: TravelStopReason; /** The creature that stopped travel. */ creature?: string };
+  | {
+      kind: 'stop';
+      reason: TravelStopReason;
+      /** The creature that stopped travel. */
+      creature?: string;
+    };
 
 export interface TravelContext {
   snap: LevelSnapshot;
@@ -35,31 +52,118 @@ export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
   monster: 'You stop: a creature is near.',
   hurt: 'You stop: you are hurt.',
   blocked: 'You stop: the way is blocked.',
-  unreachable: 'There is no known way there.',
+  unreachable: 'You know no way there yet.',
   interrupted: null,
   limit: 'You stop to get your bearings.',
   explored: 'Nothing left to explore within reach.',
-  item: 'You found something.',
   exit: 'Explored. The way down is here.',
+  exitUp: 'Explored. The way up is here.',
+  closest: 'This is as far as you know the way.',
+  creatureInWay: 'A creature stands in the way.',
 };
 
-/** Walkable, known cells; visible monsters block except at the goal. */
-export function travelGrid(snap: LevelSnapshot, materials: readonly Material[]): TravelGrid {
+function isKnownIndex(snap: LevelSnapshot, i: number): boolean {
+  return (snap.info[i] & (CAVE_MARK | CAVE_SEEN)) !== 0;
+}
+
+/** A known cell the player cannot walk through (a wall, a tree, a mountain). */
+function knownBarrier(snap: LevelSnapshot, materials: readonly Material[], x: number, y: number): boolean {
+  if (x < 0 || y < 0 || x >= snap.width || y >= snap.height) return true;
+  const i = y * snap.width + x;
+  if (!isKnownIndex(snap, i)) return false;
+  const m = materials[snap.feat[i]];
+  return !m || (!m.walkable && !m.door);
+}
+
+/**
+ * An unseen floor between two known walls, as magic mapping leaves a
+ * corridor: the walls are drawn, the floor between them is not.
+ */
+export function inferredFloor(snap: LevelSnapshot, materials: readonly Material[], x: number, y: number): boolean {
+  const m = materials[snap.feat[y * snap.width + x]];
+  if (!m || !m.walkable || m.door || m.blocksLight) return false;
+  const barrier = (dx: number, dy: number) => knownBarrier(snap, materials, x + dx, y + dy);
+  return (barrier(0, -1) && barrier(0, 1)) || (barrier(-1, 0) && barrier(1, 0));
+}
+
+/** Walkable cells the player knows of; visible monsters block (except at the goal) unless `throughCreatures`. */
+export function travelGrid(snap: LevelSnapshot, materials: readonly Material[], throughCreatures = false): TravelGrid {
   return {
     width: snap.width,
     height: snap.height,
     passable(x, y) {
       const i = y * snap.width + x;
-      if (!(snap.info[i] & (CAVE_MARK | CAVE_SEEN))) return false;
-      if ((snap.layer[i] & LAYER_MASK) === LAYER_MONSTER) return false;
+      if (!throughCreatures && (snap.layer[i] & LAYER_MASK) === LAYER_MONSTER) return false;
+      if (!isKnownIndex(snap, i)) return inferredFloor(snap, materials, x, y);
       const m = materials[snap.feat[i]];
       return !!m && (m.walkable || m.door);
     },
     penalty(x, y) {
-      const m = materials[snap.feat[y * snap.width + x]];
+      const i = y * snap.width + x;
+      if (!isKnownIndex(snap, i)) return 0.5;
+      const m = materials[snap.feat[i]];
       return m && m.door && !m.walkable ? 2 : 0;
     },
   };
+}
+
+export interface Approach {
+  point: Point;
+  /** The goal itself; false when it is only the nearest place a known way reaches. */
+  exact: boolean;
+}
+
+/**
+ * Where to walk for a tap on `goal`: the goal itself when a known way leads
+ * there (a creature or a closed door there included), otherwise the reachable
+ * cell nearest to it, as far as the known way goes. Null when nowhere
+ * reachable is closer to the goal than the player already is.
+ */
+export function approachTarget(snap: LevelSnapshot, materials: readonly Material[], goal: Point): Approach | null {
+  const { width, height } = snap;
+  const grid = travelGrid(snap, materials);
+  const start = snap.py * width + snap.px;
+  const goalIndex = goal.y * width + goal.x;
+  const inside = goal.x >= 0 && goal.y >= 0 && goal.x < width && goal.y < height;
+  const goalMat = inside ? materials[snap.feat[goalIndex]] : undefined;
+  const enterable = inside && isKnownIndex(snap, goalIndex) && !!goalMat && (goalMat.walkable || goalMat.door);
+
+  const depth = new Int32Array(width * height).fill(-1);
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+  depth[start] = 0;
+  queue[tail++] = start;
+  const distance = (i: number) => {
+    const x = i % width;
+    const y = (i - x) / width;
+    return Math.max(Math.abs(goal.x - x), Math.abs(goal.y - y)) + 0.001 * Math.hypot(goal.x - x, goal.y - y);
+  };
+  let best = start;
+  let bestDistance = distance(start);
+
+  while (head < tail) {
+    const i = queue[head++];
+    const x = i % width;
+    const y = (i - x) / width;
+    if (enterable && Math.max(Math.abs(goal.x - x), Math.abs(goal.y - y)) <= 1) return { point: goal, exact: true };
+    const d = distance(i);
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = i;
+    }
+    for (let ny = y - 1; ny <= y + 1; ny++) {
+      for (let nx = x - 1; nx <= x + 1; nx++) {
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const next = ny * width + nx;
+        if (depth[next] >= 0 || !grid.passable(nx, ny)) continue;
+        depth[next] = depth[i] + 1;
+        queue[tail++] = next;
+      }
+    }
+  }
+  if (best === start) return null;
+  return { point: { x: best % width, y: Math.floor(best / width) }, exact: best === goalIndex };
 }
 
 /**
@@ -77,56 +181,6 @@ export function isKnown(snap: LevelSnapshot, point: Point): boolean {
   return (snap.info[point.y * snap.width + point.x] & (CAVE_MARK | CAVE_SEEN)) !== 0;
 }
 
-/**
- * Where a stride of `radius` cells towards an unknown point ends: the
- * reachable known cell within the radius nearest the point `radius` cells
- * along the line to it, and closer to it than the player is. Null when no
- * known cell gets the player closer.
- */
-export function strideToward(snap: LevelSnapshot, materials: readonly Material[], toward: Point, radius: number): Point | null {
-  const { width, height } = snap;
-  const px = snap.px;
-  const py = snap.py;
-  const dx = toward.x - px;
-  const dy = toward.y - py;
-  const span = Math.max(Math.abs(dx), Math.abs(dy));
-  if (span === 0 || radius < 1) return null;
-  const reach = Math.min(radius, span);
-  const aim = { x: px + (dx * reach) / span, y: py + (dy * reach) / span };
-  const far = Math.hypot(dx, dy);
-
-  const grid = travelGrid(snap, materials);
-  const depth = new Map<number, number>([[py * width + px, 0]]);
-  const queue = [py * width + px];
-  let best: Point | null = null;
-  let bestScore = Infinity;
-  for (let head = 0; head < queue.length; head++) {
-    const i = queue[head];
-    const x = i % width;
-    const y = (i - x) / width;
-    const d = depth.get(i)!;
-    if (d > 0 && Math.hypot(toward.x - x, toward.y - y) < far) {
-      const score = Math.hypot(aim.x - x, aim.y - y);
-      if (score < bestScore) {
-        bestScore = score;
-        best = { x, y };
-      }
-    }
-    if (d >= radius * 2) continue;
-    for (let ny = y - 1; ny <= y + 1; ny++) {
-      for (let nx = x - 1; nx <= x + 1; nx++) {
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-        if (Math.max(Math.abs(nx - px), Math.abs(ny - py)) > radius) continue;
-        const next = ny * width + nx;
-        if (depth.has(next) || !grid.passable(nx, ny)) continue;
-        depth.set(next, d + 1);
-        queue.push(next);
-      }
-    }
-  }
-  return best;
-}
-
 /** Forgets noticed creatures that are no longer in sight. */
 export function forgetUnseen(noticed: Set<number>, monsters: readonly MonsterState[]): void {
   if (noticed.size === 0) return;
@@ -142,6 +196,11 @@ export interface TravelOptions {
    * journeys; one that drops out of sight is forgotten.
    */
   noticed?: Set<number>;
+  /**
+   * Hostile creatures already in view when travel began (others stop it on
+   * sight); shared between journeys, so one first seen between them still does.
+   */
+  known?: Set<number>;
 }
 
 /**
@@ -168,7 +227,7 @@ export class Travel {
     this.dangerRadius = options.dangerRadius ?? DANGER_RADIUS;
     this.noticed = options.noticed ?? new Set();
     forgetUnseen(this.noticed, start.monsters);
-    this.known = new Set(start.monsters.filter(isHostile).map((m) => m.id));
+    this.known = options.known ?? new Set(start.monsters.filter(isHostile).map((m) => m.id));
     this.lastHp = start.hp;
   }
 

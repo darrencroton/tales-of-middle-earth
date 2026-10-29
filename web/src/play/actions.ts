@@ -197,6 +197,8 @@ export interface ActionContext {
   recast?: string | null;
   /** A launcher and ammunition are ready. */
   canFire?: boolean;
+  /** 'Way down' or 'Way up' when exploring has nothing left but the way on. */
+  wayOn?: string | null;
   /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers or does not use them. */
   magic?: string | null;
 }
@@ -320,7 +322,7 @@ export function contextActions(ctx: ActionContext): Action[] {
       ...situational,
       ...(ctx.worldMap
         ? [command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true)]
-        : [{ id: 'explore', label: 'Explore', icon: '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
+        : [{ id: 'explore', label: ctx.wayOn ?? 'Explore', icon: ctx.wayOn === 'Way up' ? '↑' : ctx.wayOn ? '↓' : '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
       { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
       ...(ctx.foe ? [] : [command('rest', 'Rest', '☾', { command: 'R', then: '&\r' })]),
       ...(ctx.magic === null ? [] : [{ id: 'cast', label: ctx.magic ?? 'Cast', icon: '✦', effect: { kind: 'native', view: 'magic' } } as Action]),
