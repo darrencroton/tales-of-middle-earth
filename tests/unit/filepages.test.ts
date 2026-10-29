@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FilePages, fileLines, helpName, parseHelpFile, viewerHeading } from '../../web/src/ui/filepages.ts';
+import { FilePages, fileLines, parseHelpFile, viewerHeading, viewerSource } from '../../web/src/ui/filepages.ts';
 import type { TermRow } from '../../web/src/ui/termparse.ts';
 
 const WIDTH = 40;
@@ -91,8 +91,9 @@ describe('file viewer pages', () => {
     assert.equal(help.tags.get(1), 2);
     assert.equal(help.selected, 11);
     assert.deepEqual(help.lines.get(3)?.map((l) => l.index), [0, 1]);
-    assert.equal(helpName("Help file 'index.txt'"), 'index.txt');
-    assert.equal(helpName('Known Uniques'), null);
+    assert.deepEqual(viewerSource("Help file 'index.txt'"), { dir: 'help', name: 'index.txt' });
+    assert.deepEqual(viewerSource("File 'book-20.txt'"), { dir: 'file', name: 'book-20.txt' });
+    assert.equal(viewerSource('Known Uniques'), null);
   });
 
   it('reads lines with tome2\'s endings and tab stops', () => {

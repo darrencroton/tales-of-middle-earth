@@ -4,8 +4,8 @@
  */
 export function cleanPrompt(text: string): string {
   let t = text.replace(/\s+/g, ' ').trim();
-  const help = /Help file '[^']+'/.exec(t);
-  if (help) return 'Help';
+  if (/Help file '[^']+'/.test(t)) return 'Help';
+  if (/, (Info file|File) '[^']+', Line \d+\/\d+\]$/.test(t)) return 'Reading';
   const viewer = /^\[[^\]]*?\),\s*(.+?),\s*Line \d+\/\d+\]$/.exec(t);
   if (viewer) return viewer[1];
   t = t.replace(/\[[^\]]*\]/g, ' ');

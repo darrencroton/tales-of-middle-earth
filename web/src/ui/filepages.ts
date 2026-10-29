@@ -16,9 +16,13 @@ export function viewerHeading(prompt: string): ViewerHeading | null {
   return m ? { caption: m[1], line: Number(m[2]), size: Number(m[3]) } : null;
 }
 
-/** The help file a viewer heading names ("Help file 'index.txt'"), or null. */
-export function helpName(caption: string): string | null {
-  return /^Help file '([^']+)'$/.exec(caption)?.[1] ?? null;
+/* tome2's directories for the files its viewer names by kind. */
+const SOURCE_DIRS: Readonly<Record<string, string>> = { 'Help file': 'help', 'Info file': 'info', File: 'file' };
+
+/** The game file a viewer caption names ("Help file 'index.txt'" → help/index.txt), or null for files tome2 wrote itself. */
+export function viewerSource(caption: string): { dir: string; name: string } | null {
+  const m = /^(Help file|Info file|File) '([^']+)'$/.exec(caption);
+  return m ? { dir: SOURCE_DIRS[m[1]], name: m[2] } : null;
 }
 
 const SPACE = 0x20;

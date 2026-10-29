@@ -61,7 +61,7 @@ import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
 import type { PopAction } from './ui/popup.ts';
 import { cleanPrompt, describableRange } from './ui/prompttext.ts';
-import { FilePages, helpName, parseHelpFile, viewerHeading, type HelpFile, type HelpLink, type ViewerHeading } from './ui/filepages.ts';
+import { FilePages, parseHelpFile, viewerSource, viewerHeading, type HelpFile, type HelpLink, type ViewerHeading } from './ui/filepages.ts';
 import { openStoreItem, parseStore, type StoreScreen } from './ui/store.ts';
 import { parseAbilities, parseSkills } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
@@ -697,7 +697,7 @@ function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
 
 /** Files gathered while the viewer is open, by caption and length. */
 const viewerFiles = new Map<string, FilePages>();
-/** Help files read while the viewer is open, by name. */
+/** Game files read while the viewer is open, by path. */
 const helpFiles = new Map<string, HelpFile>();
 /** Files open in tome2's viewer, outermost first: the line each opened at, and where it was scrolled when another covered it. */
 let viewerLevels: { key: string; line: number; scrollTop: number | null }[] = [];
@@ -707,7 +707,7 @@ let viewerMove: 'open' | 'back' | null = null;
 let linkWanted: { key: string; link: HelpLink; tries: number } | null = null;
 /** Escapes still to send to leave the viewer, one per idle. */
 let viewerClosing = 0;
-/* More files than this are never open in the viewer at once. */
+/* Escapes allowed for leaving the viewer, or one more than the files known to be open. */
 const VIEWER_DEPTH = 12;
 
 function viewerKey(heading: ViewerHeading): string {
@@ -723,20 +723,21 @@ function viewerFile(): { key: string; file: FilePages; help: HelpFile | null } |
   return file?.complete ? { key, file, help: helpFile(heading.caption) } : null;
 }
 
-/** Links and tags of the help file a caption names, read from the game's files as tome2 reads them. */
+/** Links and tags of the game file (help, a parchment) a caption names, read as tome2 reads them. */
 function helpFile(caption: string): HelpFile | null {
-  const name = helpName(caption);
-  if (!name) return null;
-  let help = helpFiles.get(name);
+  const source = viewerSource(caption);
+  if (!source) return null;
+  const path = `/lib/${source.dir}/${source.name}`;
+  let help = helpFiles.get(path);
   if (!help) {
     let bytes: Uint8Array = new Uint8Array();
     try {
-      bytes = engine.fs?.readFile(`/lib/help/${name}`) ?? bytes;
+      bytes = engine.fs?.readFile(path) ?? bytes;
     } catch (err) {
-      console.warn(`Help file ${name} could not be read`, err);
+      console.warn(`${path} could not be read`, err);
     }
     help = parseHelpFile(bytes);
-    helpFiles.set(name, help);
+    helpFiles.set(path, help);
   }
   return help;
 }
@@ -823,7 +824,7 @@ function followLink(index: number): void {
   const shown = viewerFile();
   const link = shown?.help?.links[index];
   if (!shown?.help || !link) return;
-  if (link.file === helpName(shown.file.caption)) {
+  if (link.file === viewerSource(shown.file.caption)?.name) {
     termView.scrollToRow(shown.file.rowOf(shown.help.tags.get(link.anchor) ?? 0));
     return;
   }
@@ -833,7 +834,7 @@ function followLink(index: number): void {
 
 /** Leaves the viewer, however many files are open in it. */
 function closeViewer(): void {
-  viewerClosing = VIEWER_DEPTH - 1;
+  viewerClosing = Math.max(VIEWER_DEPTH, viewerLevels.length + 1) - 1;
   send([KEY_ESCAPE]);
 }
 
@@ -2014,6 +2015,11 @@ const engine = new Engine(buffer, {
     reopenSheets();
     if (macros.running) {
       stepMacro();
+      /* A macro that ends in tome2's file viewer (reading a parchment) leaves it to the reader. */
+      if (!macros.running && readViewer()) {
+        requestFrame();
+        return;
+      }
     } else if (travel && !travelTimer) {
       travelTimer = window.setTimeout(stepTravel, animating() ? TRAVEL_STEP_MS : 0);
     } else if (picker) {
@@ -2212,6 +2218,12 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' || /^[=/#%]$/.test(e.key)) {
       e.preventDefault();
       if (e.key === 'Escape') closeViewer();
+      return;
+    }
+    const link = viewerFile()?.help?.links.find((l) => l.key === e.key);
+    if (link && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      followLink(link.index);
       return;
     }
   }

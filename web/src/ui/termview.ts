@@ -257,7 +257,7 @@ export class TermView {
     const activeKey = active?.dataset.key ?? active?.dataset.option;
     this.renderedKey = key;
     this.blocks = blocks;
-    this.root.className = `termview ${options.layout}${options.links ? ' help' : ''}`;
+    this.root.className = `termview ${options.layout}`;
     this.linksAt = options.links;
 
     this.renderHeader(options);
@@ -558,7 +558,14 @@ export class TermView {
     const main = el('span', 'tv-main');
     if (block.symbol) main.append(this.span(block.symbol, 'tv-symbol'));
     const label = el('span', 'tv-label');
-    for (const run of block.label.runs) label.append(this.span(run));
+    const linked = (this.linksAt?.(block.row) ?? []).some((l) => block.label.col >= l.col && block.label.col < l.col + l.length);
+    if (linked) {
+      /* A help link reads alike wherever tome2's cursor was when its page was gathered. */
+      button.classList.add('link');
+      label.textContent = block.label.text;
+    } else {
+      for (const run of block.label.runs) label.append(this.span(run));
+    }
     main.append(label);
     button.append(main);
 

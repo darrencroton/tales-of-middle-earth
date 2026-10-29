@@ -445,6 +445,7 @@ describe('file viewer headings', () => {
     assert.equal(cleanPrompt('[ToME 2.4.1 (ah, git), Artifacts Seen, Line 0/0]'), 'Artifacts Seen');
     assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), Help file 'help.hlp', Line 1/33]"), 'Help');
     assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), Help file 'ability.txt', Line 68/113]"), 'Help');
+    assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), File 'book-20.txt', Line 0/139]"), 'Reading');
   });
 });
 
