@@ -19,7 +19,8 @@ export type NativeView =
   | 'finish'
   | 'fallen'
   | 'explore'
-  | 'equip';
+  | 'equip'
+  | 'closeFile';
 
 export type ActionEffect =
   | { kind: 'keys'; keys: number[] }
@@ -179,7 +180,7 @@ export interface ActionContext {
   /** The hero has died; their sheet can still be looked at. */
   fallen?: boolean;
   /** Which special tome2 screen is open. */
-  screen?: 'options' | 'help' | 'file' | 'gameover' | null;
+  screen?: 'options' | 'file' | 'gameover' | null;
   atCommand: boolean;
   /** Name of the terrain under the player, lower case. */
   underfoot: string;
@@ -290,14 +291,8 @@ export function contextActions(ctx: ActionContext): Action[] {
       break;
   }
 
-  if (ctx.screen === 'help' || ctx.screen === 'file') {
-    return [
-      { id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] } },
-      ...(ctx.screen === 'help' ? [{ id: 'helpback', label: 'Back', icon: '‹', effect: { kind: 'keys', keys: [8] } } as Action] : []),
-      { id: 'pageup', label: 'Page up', icon: '▲', effect: { kind: 'keys', keys: text('-') } },
-      { id: 'pagedown', label: 'Page down', icon: '▼', effect: { kind: 'keys', keys: text(' ') }, primary: true },
-    ];
-  }
+  /* Files are read by scrolling; the panel's close button leaves them, as Done does on a full screen. */
+  if (ctx.screen === 'file') return [{ id: 'escape', label: 'Done', icon: '✓', effect: { kind: 'native', view: 'closeFile' } }, MENU];
   if (ctx.screen === 'gameover') {
     return [
       ...(ctx.fallen ? [FALLEN] : []),

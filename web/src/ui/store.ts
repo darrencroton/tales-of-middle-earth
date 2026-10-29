@@ -136,6 +136,7 @@ export function openStoreItem(api: GameApi, store: StoreScreen, choice: ChoiceBl
     subtitle: store.home ? 'In your home' : 'For sale',
     body,
     actions,
+    kind: 'card',
     className: 'sheet-item',
   });
 }

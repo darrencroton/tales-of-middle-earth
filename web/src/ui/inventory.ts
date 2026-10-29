@@ -171,6 +171,7 @@ export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void 
     badge: glyph(item.ch, api.palette()[item.attr] ?? '#fff'),
     body,
     actions,
+    kind: 'card',
     className: 'sheet-item',
   });
 }

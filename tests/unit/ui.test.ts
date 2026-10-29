@@ -18,7 +18,7 @@ import { abilityMoveKeys, cursorKeys, parseAbilities, parseSkills, selectedSkill
 import { flagLabel, parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
 import { fateText, heroEntry } from '../../web/src/ui/gameover.ts';
 import { findMessageBox } from '../../web/src/ui/msgbox.ts';
-import { cleanPrompt, isEmptyFile, isFileViewer } from '../../web/src/ui/prompttext.ts';
+import { cleanPrompt } from '../../web/src/ui/prompttext.ts';
 import { parseRows, type ChoiceBlock, type TermRow } from '../../web/src/ui/termparse.ts';
 
 const codes = (s: string) => [...s].map((c) => c.charCodeAt(0));
@@ -445,9 +445,7 @@ describe('file viewer headings', () => {
     assert.equal(cleanPrompt('[ToME 2.4.1 (ah, git), Artifacts Seen, Line 0/0]'), 'Artifacts Seen');
     assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), Help file 'help.hlp', Line 1/33]"), 'Help');
     assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), Help file 'ability.txt', Line 68/113]"), 'Help');
-    assert.ok(isFileViewer('[ToME 2.4.1 (ah, git), Quest status, Line 0/5]'));
-    assert.ok(isEmptyFile('[ToME 2.4.1 (ah, git), Fate status, Line 0/0]'));
-    assert.ok(!isEmptyFile('[ToME 2.4.1 (ah, git), Quest status, Line 0/5]'));
+    assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), File 'book-20.txt', Line 0/139]"), 'Reading');
   });
 });
 

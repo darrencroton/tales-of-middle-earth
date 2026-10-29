@@ -902,6 +902,32 @@ html.keyboard-open .tv-layer.panel {
   margin: -0.4rem -0.4rem -0.4rem 0;
 }
 
+.tv-back {
+  align-self: center;
+  margin: -0.4rem 0 -0.4rem -0.5rem;
+}
+
+.tv-choice.link .tv-label {
+  color: #f0a64a;
+}
+
+/* A link in a help file, inside its prose. */
+.tv-link {
+  display: inline;
+  padding: 0.1rem 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: #f0a64a;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: rgb(240 166 74 / 0.45);
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
 .tv-header {
   flex: 0 0 auto;
   display: flex;
@@ -1257,12 +1283,17 @@ html.keyboard-open .tv-layer.panel {
   font-size: var(--fs-small);
 }
 
-/* Sheets: native panels over the game. */
+/* Sheets: native pop-ups over the game, one frame per layer (docs/ui-system.md). */
 
 .sheet-layer {
   position: fixed;
   inset: 0;
   z-index: 40;
+}
+
+.sheet-frame {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -1274,6 +1305,41 @@ html.keyboard-open .tv-layer.panel {
   inset: 0;
   background: rgb(0 0 0 / 0.5);
   animation: fade-in 160ms ease;
+}
+
+/* A frame over another dims it less, so what opened it stays readable. */
+.sheet-frame.layered .sheet-backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+/* Cards float clear of the screen's edges, as tall as their content. */
+.sheet-frame.frame-card {
+  padding: calc(var(--safe-top) + var(--top-clear) + 1.5rem) calc(0.6rem + var(--safe-right)) calc(0.6rem + var(--safe-bottom)) calc(0.6rem + var(--safe-left));
+}
+
+.sheet.sheet-card {
+  width: min(100%, 36rem);
+  max-height: min(100%, var(--popup-height));
+  border-bottom: 1px solid rgb(217 164 65 / 0.45);
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.7);
+}
+
+/* Over a panel, a card stays shorter than it so the panel's heading shows above. */
+.sheet-frame.frame-card.layered .sheet-card {
+  max-height: min(calc(100% - 4rem), calc(var(--popup-height) - 4.5rem));
+}
+
+.sheet-card .sheet-body {
+  padding-bottom: 0.9rem;
+}
+
+.sheet-card .sheet-actions {
+  padding-bottom: 0.55rem;
+}
+
+.sheet.sheet-menu {
+  max-height: min(100%, var(--popup-height));
 }
 
 .sheet {
@@ -1351,8 +1417,8 @@ html.keyboard-open .tv-layer.panel {
   padding: 0.6rem 0.9rem calc(0.9rem + var(--safe-bottom));
 }
 
-/* Pop-ups (sheets and tome2 panels) keep one size whatever they show; their content scrolls. */
-.sheet.sheet-tall,
+/* Panels (sheets and tome2 panels) keep one size whatever they show; their content scrolls. */
+.sheet.sheet-panel,
 .termview.panel {
   height: min(100%, var(--popup-height));
 }
@@ -1381,15 +1447,6 @@ html.keyboard-open .tv-layer.panel {
 .pop-main .sheet-action {
   min-width: 0;
   padding: 0 0.5rem;
-}
-
-.sheet-fit .pop-main {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.sheet-fit .pop-main .sheet-action {
-  flex: 0 0 auto;
 }
 
 .pop-sub {
@@ -1924,7 +1981,7 @@ html.keyboard-open .tv-layer.panel {
 }
 
 /* Text questions drop from the top, where the on-screen keyboard cannot cover them. */
-.sheet-layer:has(.sheet-ask) {
+.sheet-frame.frame-card:has(.sheet-ask) {
   align-items: flex-start;
   padding: calc(var(--safe-top) + var(--top-clear) + 0.6rem) calc(0.6rem + var(--safe-right)) 0 calc(0.6rem + var(--safe-left));
 }
@@ -1951,7 +2008,7 @@ html.keyboard-open .tv-layer.panel {
 }
 
 /* Little room above the keyboard (a phone on its side): keep only the question and the field. */
-html.keyboard-tight .sheet-layer:has(.sheet-ask) {
+html.keyboard-tight .sheet-frame.frame-card:has(.sheet-ask) {
   padding-top: 0.3rem;
 }
 
@@ -2314,7 +2371,8 @@ html.keyboard-tight .prompt-card.text .card-title {
 /* Wide screens: sheets and panels float as centred cards. */
 
 @media (min-width: 700px), (orientation: landscape) {
-  .sheet-layer {
+  .sheet-frame,
+  .sheet-frame.frame-card {
     align-items: center;
     padding: calc(var(--safe-top) + var(--top-clear) + 1rem) 1rem calc(var(--safe-bottom) + 1rem);
   }

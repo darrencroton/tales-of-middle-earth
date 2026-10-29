@@ -16,6 +16,8 @@ export interface TermViewCallbacks {
   onTapText(): void;
   /** The panel's close button or the dimmed map around it was tapped. */
   onClose(): void;
+  /** A link in a help file was tapped (its index among the file's links). */
+  onLink(index: number): void;
 }
 
 export interface TermViewSource {
@@ -55,6 +57,16 @@ export interface TermViewOptions {
   describe?: [string, string] | null;
   /** Terminal row of tome2's cursor, which marks the current option switch. */
   cursorRow?: number;
+  /** Shows a back button in the heading. */
+  back?: () => void;
+  /** Links printed on a terminal row (help files): where each starts, its length, and its index. */
+  links?: (row: number) => readonly { col: number; length: number; index: number }[];
+  /**
+   * A document read by scrolling: when `key` changes the body scrolls to
+   * `top` (where it was left) or else to the block showing `row`,
+   * and nothing is scrolled into view for the highlight.
+   */
+  scroll?: { key: string; top: number | null; row: number };
 }
 
 const WHITE = 1;
@@ -97,6 +109,7 @@ export class TermView {
   private readonly body: HTMLElement;
   private readonly footer: HTMLElement;
   private actions: readonly PopAction[] = [];
+  private backAction: (() => void) | undefined;
   private footerKey = '';
   private readonly nav: ListNav;
   private readonly palette: () => readonly string[];
@@ -105,6 +118,8 @@ export class TermView {
   private blocks: Block[] = [];
   private tabs: TermViewTab[] = [];
   private customView = '';
+  private scrollKey = '';
+  private linksAt: TermViewOptions['links'] = undefined;
 
   constructor(parent: HTMLElement, palette: () => readonly string[], callbacks: TermViewCallbacks) {
     this.palette = palette;
@@ -129,6 +144,16 @@ export class TermView {
       if (target.closest('.tv-footer')) return;
       if (target.closest('.tv-close')) {
         this.callbacks.onClose();
+        return;
+      }
+      if (target.closest('.tv-back')) {
+        this.backAction?.();
+        return;
+      }
+      const link = target.closest<HTMLElement>('.tv-link');
+      if (link?.dataset.link) {
+        this.nav.setActive(link, false);
+        this.callbacks.onLink(Number(link.dataset.link));
         return;
       }
       const info = target.closest<HTMLElement>('.tv-info');
@@ -163,11 +188,17 @@ export class TermView {
     return !this.root.hidden;
   }
 
+  /** How far the body is scrolled. */
+  get scrollTop(): number {
+    return this.body.scrollTop;
+  }
+
   hide(): void {
     if (this.root.hidden) return;
     this.root.hidden = true;
     this.layer.hidden = true;
     this.renderedKey = '';
+    this.scrollKey = '';
   }
 
   /** Buttons for the panel's foot (what tome2 lets the player do on this screen). */
@@ -218,7 +249,7 @@ export class TermView {
       }
     }
     const cursorRow = blocks.some((b) => b.kind === 'option') ? options.cursorRow : undefined;
-    const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, cursorRow, blocks]);
+    const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, cursorRow, !!options.back, options.scroll?.key, blocks]);
     this.show(options.layout);
     this.tabs = options.tabs ?? [];
     if (key === this.renderedKey) return;
@@ -227,6 +258,7 @@ export class TermView {
     this.renderedKey = key;
     this.blocks = blocks;
     this.root.className = `termview ${options.layout}`;
+    this.linksAt = options.links;
 
     this.renderHeader(options);
     this.renderFooter();
@@ -234,10 +266,35 @@ export class TermView {
     if (options.empty && !this.body.textContent?.trim()) this.body.replaceChildren(el('p', 'tv-empty', options.empty));
     this.fitPreformatted();
 
-    const items = [...this.body.querySelectorAll<HTMLElement>('.tv-choice, .tv-option')];
+    const items = [...this.body.querySelectorAll<HTMLElement>('.tv-choice, .tv-option, .tv-link')];
+    const scroll = options.scroll;
+    if (scroll) {
+      if (scroll.key !== this.scrollKey) {
+        this.scrollKey = scroll.key;
+        this.body.scrollTop = scroll.top ?? this.rowOffset(scroll.row);
+      }
+      const top = this.body.getBoundingClientRect().top;
+      const shown = items.find((item) => item.getBoundingClientRect().bottom > top);
+      this.nav.setActive(shown ?? null, false);
+      return;
+    }
+    this.scrollKey = '';
     const current = items.find((c) => c.classList.contains('current'));
     const previous = activeKey ? items.find((c) => c.dataset.key === activeKey || c.dataset.option === activeKey) : undefined;
     this.nav.setActive(current ?? previous ?? items[0] ?? null, true);
+  }
+
+  /** Scrolls the body to the block showing a terminal row. */
+  scrollToRow(row: number): void {
+    this.body.scrollTop = this.rowOffset(row);
+  }
+
+  /** Scroll offset that brings the block showing a terminal row (the last one starting at or above it) to the top of the body. */
+  private rowOffset(row: number): number {
+    if (row <= 0) return 0;
+    const target = [...this.body.querySelectorAll<HTMLElement>('[data-row]')].filter((node) => Number(node.dataset.row) <= row).at(-1);
+    if (!target) return 0;
+    return target.getBoundingClientRect().top - this.body.getBoundingClientRect().top + this.body.scrollTop - parseFloat(getComputedStyle(this.body).paddingTop);
   }
 
   /**
@@ -252,6 +309,7 @@ export class TermView {
     const activeKey = this.nav.active?.dataset.key;
     const view = `${options.title}\u0000${this.tabs.find((t) => t.active)?.label ?? ''}`;
     this.renderedKey = fullKey;
+    this.scrollKey = '';
     this.blocks = [];
     this.root.className = `termview ${options.layout}`;
     this.renderHeader(options);
@@ -283,6 +341,25 @@ export class TermView {
     return this.nav.handleKey(e);
   }
 
+  /**
+   * Keys for a document read by scrolling: page keys and Space scroll,
+   * arrows move the highlight through its links (or scroll when it has none),
+   * Enter follows the highlighted link.
+   */
+  readKey(e: KeyboardEvent): boolean {
+    if (this.root.hidden) return false;
+    const page = this.body.clientHeight * 0.9;
+    const line = parseFloat(getComputedStyle(this.body).fontSize) * 2;
+    const steps: Record<string, number> = { PageDown: page, ' ': page, PageUp: -page };
+    if (!this.nav.items().length) Object.assign(steps, { ArrowDown: line, ArrowUp: -line, End: this.body.scrollHeight, Home: -this.body.scrollHeight });
+    const step = steps[e.key];
+    if (step !== undefined) {
+      this.body.scrollBy({ top: step });
+      return true;
+    }
+    return this.nav.handleKey(e);
+  }
+
   handleKey(e: KeyboardEvent): boolean {
     if (this.root.hidden || this.choices().length === 0 || this.hasCursor) return false;
     if (e.key === 'Enter') return this.nav.activate();
@@ -293,8 +370,15 @@ export class TermView {
   private renderHeader(options: TermViewOptions): void {
     const parts: HTMLElement[] = [];
     const panel = options.layout === 'panel';
+    this.backAction = options.back;
     if (options.title || options.badge || panel) {
       const line = el('div', 'tv-title-line');
+      if (options.back) {
+        const back = el('button', 'tv-back sheet-back', '‹');
+        back.type = 'button';
+        back.setAttribute('aria-label', 'Back');
+        line.append(back);
+      }
       const titles = el('div', 'tv-titles');
       if (options.title) titles.append(el('h2', 'tv-title', options.title));
       if (options.subtitle) titles.append(el('p', 'tv-subtitle', options.subtitle));
@@ -320,6 +404,28 @@ export class TermView {
 
   private colour(attr: number): string {
     return attr === WHITE || attr === 0 ? '' : readableColour(this.palette()[attr] ?? '');
+  }
+
+  /** A run of prose, with the parts that are help links as tappable links. */
+  private textRun(run: Run): Node[] {
+    const { row, col } = run;
+    const links = this.linksAt && row !== undefined && col !== undefined ? this.linksAt(row) : [];
+    const nodes: Node[] = [];
+    let at = 0;
+    for (const link of links) {
+      const start = Math.max(at, link.col - col!);
+      const end = Math.min(run.text.length, link.col + link.length - col!);
+      if (end <= start) continue;
+      if (start > at) nodes.push(this.span({ ...run, text: run.text.slice(at, start) }));
+      const button = el('button', 'tv-link', run.text.slice(start, end));
+      button.type = 'button';
+      button.dataset.nav = '';
+      button.dataset.link = String(link.index);
+      nodes.push(button);
+      at = end;
+    }
+    if (at < run.text.length) nodes.push(at === 0 ? this.span(run) : this.span({ ...run, text: run.text.slice(at) }));
+    return nodes;
   }
 
   private span(run: Run, className?: string): HTMLElement {
@@ -407,9 +513,10 @@ export class TermView {
           }
           const pair = block.cells.length === 2 && block.cells[1].col >= PAIR_COLUMN;
           const line = el('p', pair ? 'tv-text cells pair' : block.cells.length > 1 ? 'tv-text cells' : 'tv-text');
+          line.dataset.row = String(block.row);
           block.cells.forEach((cell) => {
             const part = el('span', cell.text.length <= SHORT_CELL ? 'tv-cell short' : 'tv-cell');
-            for (const run of cell.runs) part.append(this.span(run));
+            for (const run of cell.runs) part.append(...this.textRun(run));
             line.append(part);
           });
           out.push(line);
@@ -446,11 +553,19 @@ export class TermView {
     button.dataset.nav = '';
     button.dataset.key = block.key;
     button.dataset.index = String(index);
+    button.dataset.row = String(block.row);
 
     const main = el('span', 'tv-main');
     if (block.symbol) main.append(this.span(block.symbol, 'tv-symbol'));
     const label = el('span', 'tv-label');
-    for (const run of block.label.runs) label.append(this.span(run));
+    const linked = (this.linksAt?.(block.row) ?? []).some((l) => block.label.col >= l.col && block.label.col < l.col + l.length);
+    if (linked) {
+      /* A help link reads alike wherever tome2's cursor was when its page was gathered. */
+      button.classList.add('link');
+      label.textContent = block.label.text;
+    } else {
+      for (const run of block.label.runs) label.append(this.span(run));
+    }
     main.append(label);
     button.append(main);
 

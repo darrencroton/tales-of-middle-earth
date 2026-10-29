@@ -88,6 +88,7 @@ export function openMonster(api: GameApi, m: MonsterState): void {
     badge: glyph(m.ch, api.palette()[m.attr] ?? '#fff'),
     body,
     actions,
+    kind: 'card',
     className: 'sheet-monster',
   });
 }
@@ -127,6 +128,7 @@ export function openFloorObject(api: GameApi, o: ObjectState): void {
     badge: glyph(o.ch, api.palette()[o.attr] ?? '#fff'),
     body,
     actions,
+    kind: 'card',
     className: 'sheet-item',
   });
 }

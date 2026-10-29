@@ -7,6 +7,9 @@
 export interface Run {
   text: string;
   attr: number;
+  /** Terminal row and column of the first character, where known. */
+  row?: number;
+  col?: number;
 }
 
 export interface Cell {
@@ -114,7 +117,7 @@ function makeCell(row: TermRow, start: number, end: number): Cell {
     const attr = isBlank(row.chars[x]) && runs.length ? runs[runs.length - 1].attr : row.attrs[x];
     const last = runs[runs.length - 1];
     if (last && last.attr === attr) last.text += ch;
-    else runs.push({ text: ch, attr });
+    else runs.push({ text: ch, attr, col: x });
   }
   return { col: start, text: runs.map((r) => r.text).join(''), runs };
 }
@@ -128,7 +131,7 @@ function dropChars(cell: Cell, count: number): Cell {
       skip -= run.text.length;
       continue;
     }
-    runs.push({ text: run.text.slice(skip), attr: run.attr });
+    runs.push({ ...run, text: run.text.slice(skip), ...(run.col === undefined ? {} : { col: run.col + skip }) });
     skip = 0;
   }
   const text = runs.map((r) => r.text).join('');
@@ -166,7 +169,7 @@ export function sliceCell(cell: Cell, start: number, end: number): Cell {
   for (const run of cell.runs) {
     const from = Math.max(start, pos);
     const to = Math.min(end, pos + run.text.length);
-    if (to > from) runs.push({ text: run.text.slice(from - pos, to - pos), attr: run.attr });
+    if (to > from) runs.push({ ...run, text: run.text.slice(from - pos, to - pos), ...(run.col === undefined ? {} : { col: run.col + from - pos }) });
     pos += run.text.length;
   }
   while (runs.length && !runs[runs.length - 1].text.trimEnd()) runs.pop();
@@ -239,6 +242,7 @@ export function parseRows(rows: readonly TermRow[], top: number, x0: number, x1:
   rows.forEach((row, i) => {
     const r = top + i;
     const cells = splitCells(row, x0, x1);
+    for (const cell of cells) for (const run of cell.runs) run.row = r;
     const option = OPTION_ROW.exec(cells.map((c) => c.text).join('  '));
     if (option) {
       blocks.push({ kind: 'option', row: r, label: option[1], value: option[2] === 'yes', name: option[3] });

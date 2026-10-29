@@ -5,7 +5,7 @@ import { doorKinds } from './audio/cues.ts';
 import { Engine } from './engine.ts';
 import { areaName, Hud, rowSegments, statusLabels, type HudEntity } from './hud.ts';
 import { attachMapGestures, attachPinch } from './input/gestures.ts';
-import { directionKeys, KEY_BACKSLASH as BACKSLASH, KEY_ENTER, KEY_ESCAPE, translateKey, translateText } from './input/keys.ts';
+import { directionKeys, KEY_BACKSLASH as BACKSLASH, KEY_BACKSPACE, KEY_ENTER, KEY_ESCAPE, keyCodes as codesOf, translateKey, translateText } from './input/keys.ts';
 import { attachSoftKeyboard } from './input/softkeyboard.ts';
 import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
@@ -60,7 +60,8 @@ import { bufferRows, parseRows, type ChoiceBlock, type OptionBlock } from './ui/
 import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.ts';
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
 import type { PopAction } from './ui/popup.ts';
-import { cleanPrompt, describableRange, isEmptyFile, isFileViewer } from './ui/prompttext.ts';
+import { cleanPrompt, describableRange } from './ui/prompttext.ts';
+import { FilePages, parseHelpFile, viewerSource, viewerHeading, type HelpFile, type HelpLink, type ViewerHeading } from './ui/filepages.ts';
 import { openStoreItem, parseStore, type StoreScreen } from './ui/store.ts';
 import { parseAbilities, parseSkills } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
@@ -217,6 +218,11 @@ const termView = new TermView(stage, () => buffer.palette, {
       openStoreItem(api, store, choice);
       return;
     }
+    const link = viewerFile()?.help?.links.find((l) => l.key === key);
+    if (link) {
+      followLink(link.index);
+      return;
+    }
     send([key.charCodeAt(0)]);
   },
   onDescribe(key, choice) {
@@ -230,7 +236,11 @@ const termView = new TermView(stage, () => buffer.palette, {
     continueIfWaiting();
   },
   onClose() {
-    send([KEY_ESCAPE]);
+    if (viewerHeading(rowZeroText())) closeViewer();
+    else send([KEY_ESCAPE]);
+  },
+  onLink(index) {
+    followLink(index);
   },
 });
 
@@ -530,6 +540,9 @@ function openNative(view: NativeView): void {
     case 'overviewDone':
       setOverview(false);
       break;
+    case 'closeFile':
+      closeViewer();
+      break;
   }
 }
 
@@ -674,10 +687,183 @@ function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
   }
   if (prompt && kind !== 'more' && !CARD_KINDS.has(kind)) options.title = cleanPrompt(prompt) || undefined;
   if (kind === 'item') options.tabs = itemTabs(prompt);
-  if (isEmptyFile(prompt)) options.empty = 'Nothing here yet.';
+  if (viewerHeading(prompt)?.size === 0) options.empty = 'Nothing here yet.';
   const box = currentBox();
   if (box) options.hideRow = (row) => row >= box.top && row <= box.bottom;
   return options;
+}
+
+/* tome2's file viewer (knowledge lists, help, notes), read as whole files by scrolling (docs/ui-system.md). */
+
+/** Files gathered while the viewer is open, by caption and length. */
+const viewerFiles = new Map<string, FilePages>();
+/** Game files read while the viewer is open, by path. */
+const helpFiles = new Map<string, HelpFile>();
+/** Files open in tome2's viewer, outermost first: the line each opened at, and where it was scrolled when another covered it. */
+let viewerLevels: { key: string; line: number; scrollTop: number | null }[] = [];
+/** What the keys just sent to the viewer do: open a file over this one, or go back to the one below. */
+let viewerMove: 'open' | 'back' | null = null;
+/** A tapped help link: tome2 is asked to show its line, then its link cursor is stepped onto it. */
+let linkWanted: { key: string; link: HelpLink; tries: number } | null = null;
+/** Escapes still to send to leave the viewer, one per idle. */
+let viewerClosing = 0;
+/* Escapes allowed for leaving the viewer, or one more than the files known to be open. */
+const VIEWER_DEPTH = 12;
+
+function viewerKey(heading: ViewerHeading): string {
+  return `${heading.caption}\u0000${heading.size}`;
+}
+
+/** The file on screen, once all of it has been gathered, with its links when it is a help file. */
+function viewerFile(): { key: string; file: FilePages; help: HelpFile | null } | null {
+  const heading = viewerHeading(rowZeroText());
+  if (!heading) return null;
+  const key = viewerKey(heading);
+  const file = viewerFiles.get(key);
+  return file?.complete ? { key, file, help: helpFile(heading.caption) } : null;
+}
+
+/** Links and tags of the game file (help, a parchment) a caption names, read as tome2 reads them. */
+function helpFile(caption: string): HelpFile | null {
+  const source = viewerSource(caption);
+  if (!source) return null;
+  const path = `/lib/${source.dir}/${source.name}`;
+  let help = helpFiles.get(path);
+  if (!help) {
+    let bytes: Uint8Array = new Uint8Array();
+    try {
+      bytes = engine.fs?.readFile(path) ?? bytes;
+    } catch (err) {
+      console.warn(`${path} could not be read`, err);
+    }
+    help = parseHelpFile(bytes);
+    helpFiles.set(path, help);
+  }
+  return help;
+}
+
+/** Notes the file on screen as opened over the last one, or as the one below it come back to. */
+function noteViewerLevel(key: string, line: number): void {
+  const move = viewerMove;
+  viewerMove = null;
+  const top = viewerLevels.at(-1);
+  if (top?.key === key) return;
+  if (move === 'back' || (move === null && viewerLevels.at(-2)?.key === key)) {
+    viewerLevels.pop();
+    return;
+  }
+  if (top && termView.visible) top.scrollTop = termView.scrollTop;
+  viewerLevels.push({ key, line, scrollTop: null });
+}
+
+/**
+ * Runs the viewer at each idle: gathers the file tome2 is showing a page at
+ * a time (each Space is read at once, so only the whole file is ever
+ * shown), steps tome2's link cursor onto a tapped help link, and sends the
+ * Escapes that leave it. True when keys were sent.
+ */
+function readViewer(): boolean {
+  const heading = viewerHeading(rowZeroText());
+  if (!heading) {
+    viewerFiles.clear();
+    helpFiles.clear();
+    viewerLevels = [];
+    viewerMove = null;
+    linkWanted = null;
+    viewerClosing = 0;
+    return false;
+  }
+  if (engine.pendingKeys > 0) return false;
+  if (viewerClosing > 0) {
+    viewerClosing--;
+    engine.sendKeys([KEY_ESCAPE]);
+    return true;
+  }
+  const key = viewerKey(heading);
+  noteViewerLevel(key, heading.line);
+  let file = viewerFiles.get(key);
+  if (!file) {
+    file = new FilePages(heading, buffer.rows - 4);
+    viewerFiles.set(key, file);
+  }
+  const page = bufferRows(buffer, 2, buffer.rows - 3);
+  if (!file.complete) {
+    if (!file.add(heading.line, page)) return false;
+    engine.sendKeys([SPACE]);
+    return true;
+  }
+  const wanted = linkWanted;
+  linkWanted = null;
+  const help = helpFile(heading.caption);
+  if (!wanted || wanted.key !== key || !help) return false;
+  let current: number | null = null;
+  page.forEach((row, i) => {
+    for (const link of help.lines.get(heading.line + i) ?? []) {
+      if (current === null && row.attrs[link.col] === help.selected) current = link.index;
+    }
+  });
+  if (current === null) {
+    /* Paging past the last link leaves tome2's cursor beyond it, on no link: one step back puts it on a link, in view. */
+    if (wanted.tries <= 0) return false;
+    linkWanted = { ...wanted, tries: wanted.tries - 1 };
+    engine.sendKeys(codesOf('4'));
+    return true;
+  }
+  const delta = wanted.link.index - current;
+  viewerMove = 'open';
+  engine.sendKeys([...codesOf((delta > 0 ? '6' : '4').repeat(Math.abs(delta))), KEY_ENTER]);
+  return true;
+}
+
+/**
+ * Follows a help link: one to another place in the same file only scrolls;
+ * otherwise tome2 goes to the link's line, and `readViewer` then selects
+ * and opens it.
+ */
+function followLink(index: number): void {
+  const shown = viewerFile();
+  const link = shown?.help?.links[index];
+  if (!shown?.help || !link) return;
+  if (link.file === viewerSource(shown.file.caption)?.name) {
+    termView.scrollToRow(shown.file.rowOf(shown.help.tags.get(link.anchor) ?? 0));
+    return;
+  }
+  linkWanted = { key: shown.key, link, tries: 1 };
+  send([...codesOf(`#${link.line}`), KEY_ENTER]);
+}
+
+/** Leaves the viewer, however many files are open in it. */
+function closeViewer(): void {
+  viewerClosing = Math.max(VIEWER_DEPTH, viewerLevels.length + 1) - 1;
+  send([KEY_ESCAPE]);
+}
+
+/**
+ * Shows the whole file on screen in the panel; true whenever tome2's
+ * viewer is open (while a file is still being gathered the panel stays as
+ * it was).
+ */
+function renderViewer(layout: 'panel' | 'full'): boolean {
+  if (!viewerHeading(rowZeroText())) return false;
+  const shown = viewerFile();
+  if (!shown) return true;
+  const { key, file, help } = shown;
+  const level = viewerLevels.at(-1);
+  termView.render(file.source(buffer.cols), { x0: 0, y0: 0, x1: buffer.cols - 1, y1: Math.max(0, file.rows.length - 1) }, {
+    ...panelOptions(layout),
+    describe: null,
+    cursorRow: undefined,
+    back:
+      viewerLevels.length > 1
+        ? () => {
+            viewerMove = 'back';
+            send([KEY_BACKSPACE]);
+          }
+        : undefined,
+    links: help ? (row) => help.lines.get(file.lineAt(row)) ?? [] : undefined,
+    scroll: { key: `${viewerLevels.length}\u0000${key}`, top: level?.scrollTop ?? null, row: file.rowOf(level?.line ?? 0) },
+  });
+  return true;
 }
 
 /** Flips a tome2 option: moves its cursor to the row, then answers y or n. */
@@ -857,7 +1043,7 @@ function refresh(): void {
     setMode(title.isVisible ? 'title' : 'screen');
     if (!director.render()) {
       const options = panelOptions('full');
-      termView.render(buffer, { x0: 0, y0: options.title ? 1 : 0, x1: buffer.cols - 1, y1: buffer.rows - 1 }, options);
+      if (!renderViewer('full')) termView.render(buffer, { x0: 0, y0: options.title ? 1 : 0, x1: buffer.cols - 1, y1: buffer.rows - 1 }, options);
     } else {
       termView.hide();
     }
@@ -931,7 +1117,7 @@ function refresh(): void {
     } else if (character.render(screen) || characterView) {
       /* The character sheet shows these screens; one typed on the map opens it at the next idle. */
       termView.hide();
-    } else {
+    } else if (!renderViewer('panel')) {
       termView.render(buffer, region, panelOptions('panel'));
     }
     map.setReticle(null);
@@ -1186,7 +1372,7 @@ function updateActionBar(force = false): void {
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
       fallen: !!lastState?.player?.dead,
-      screen: !termView.visible ? null : termView.options().length ? 'options' : /You may now dump a character record/.test(buffer.screenText()) || (ended && /Hall of Fame/.test(rowZeroText())) ? 'gameover' : /Help file '/.test(rowZeroText()) ? 'help' : isFileViewer(rowZeroText()) ? 'file' : null,
+      screen: !termView.visible ? null : termView.options().length ? 'options' : /You may now dump a character record/.test(buffer.screenText()) || (ended && /Hall of Fame/.test(rowZeroText())) ? 'gameover' : viewerHeading(rowZeroText()) ? 'file' : null,
       looking,
       overview: map.overview,
       atCommand: !!snap?.atCommand,
@@ -1779,6 +1965,7 @@ const engine = new Engine(buffer, {
     /* Storage has been read from the browser by the time the engine first waits for a key. */
     if (!chronicles.loaded) chronicles.load(engine.fs, engine.savePath);
     if (!mapMemory.loaded) mapMemory.load(engine.fs, engine.savePath);
+    if (!macros.running && readViewer()) return;
     director.idle();
     refresh();
     dirty = false;
@@ -1828,6 +2015,11 @@ const engine = new Engine(buffer, {
     reopenSheets();
     if (macros.running) {
       stepMacro();
+      /* A macro that ends in tome2's file viewer (reading a parchment) leaves it to the reader. */
+      if (!macros.running && readViewer()) {
+        requestFrame();
+        return;
+      }
     } else if (travel && !travelTimer) {
       travelTimer = window.setTimeout(stepTravel, animating() ? TRAVEL_STEP_MS : 0);
     } else if (picker) {
@@ -2021,7 +2213,21 @@ window.addEventListener('keydown', (e) => {
     if ((e.key === 'Escape' || e.key === 'Enter') && !macros.running) finishGame();
     return;
   }
-  if (termView.handleKey(e)) {
+  if (viewerHeading(rowZeroText())) {
+    /* Escape leaves the whole viewer; tome2's search and go-to keys would open questions the reader does not show. */
+    if (e.key === 'Escape' || /^[=/#%]$/.test(e.key)) {
+      e.preventDefault();
+      if (e.key === 'Escape') closeViewer();
+      return;
+    }
+    const link = viewerFile()?.help?.links.find((l) => l.key === e.key);
+    if (link && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      followLink(link.index);
+      return;
+    }
+  }
+  if ((viewerFile() && termView.readKey(e)) || termView.handleKey(e)) {
     e.preventDefault();
     return;
   }
@@ -2275,8 +2481,7 @@ function openGameMenu(): void {
     } },
     { label: 'Settings', icon: '⚙', hint: 'Text size, animation, map', run: () => openSettingsSheet() },
     { label: 'How to play', icon: '?', run: () => openTemplate(sheets, 'How to play', 'help-template') },
-    { label: 'Export saves', icon: '⤒', run: startExport },
-    { label: 'Import saves', icon: '⤓', run: startImport },
+    { label: 'Saved games', icon: '⇅', hint: 'Export or import', run: openSavesMenu },
     { label: 'About', icon: 'ℹ', run: () => openTemplate(sheets, 'About', 'about-template') },
     { label: playing ? 'Save and quit' : 'Quit to title', icon: '⏻', hint: 'Back to the title screen', hidden: fallen, run: () => {
       if (!playing) {

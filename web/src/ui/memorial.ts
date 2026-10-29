@@ -117,6 +117,7 @@ function openItem(sheets: Sheets, item: MemorialItem): void {
     subtitle: item.slot ? `Worn · ${item.slot}` : 'Carried',
     badge: glyph(item.ch, item.colour),
     body,
+    kind: 'card',
     className: 'sheet-item',
   });
 }
@@ -143,6 +144,7 @@ export function openFoe(sheets: Sheets, foe: MemorialFoe): void {
     subtitle: [foe.level ? `Level ${foe.level}` : '', foe.unique ? 'a creature of legend' : ''].filter(Boolean).join(' · ') || undefined,
     badge: glyph(foe.ch, foe.colour),
     body,
+    kind: 'card',
     className: 'sheet-monster',
   });
 }

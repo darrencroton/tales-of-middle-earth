@@ -229,7 +229,7 @@ export class CharacterPanel {
     const content: SheetContent = {
       title: 'Character',
       body,
-      size: 'fit',
+      kind: 'card',
       actions,
       onClose: () => {
         if (this.dismissAsk === close) this.dismissAsk = null;

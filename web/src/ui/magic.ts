@@ -83,6 +83,7 @@ export function openSpell(api: GameApi, spell: SpellInfo, handlers: MagicHandler
     title: spell.name,
     subtitle: spell.school,
     body,
+    kind: 'card',
     className: 'sheet-item',
     actions: spell.ok ? [{ id: 'cast', label: `Cast ${spell.name}`, primary: true, run: () => handlers.run({ kind: 'spell', name: spell.name }) }] : [],
   });
