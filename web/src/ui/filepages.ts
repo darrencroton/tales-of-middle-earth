@@ -16,76 +16,132 @@ export function viewerHeading(prompt: string): ViewerHeading | null {
   return m ? { caption: m[1], line: Number(m[2]), size: Number(m[3]) } : null;
 }
 
-/** True for help files, whose orange and yellow text are links. */
-export function isHelpCaption(caption: string): boolean {
-  return /^Help file '/.test(caption);
+/** The help file a viewer heading names ("Help file 'index.txt'"), or null. */
+export function helpName(caption: string): string | null {
+  return /^Help file '([^']+)'$/.exec(caption)?.[1] ?? null;
 }
 
-/* tome2's link colours (TERM_ORANGE, and TERM_YELLOW for the selected link). */
-const LINK = 3;
-const LINK_SELECTED = 11;
 const SPACE = 0x20;
+/* tome2's colour letters, in attribute order. */
+const COLOURS = 'dwsorgbuDWvyRGBU';
+/* tome2's colour for the link its cursor is on, unless a file sets another. */
+const LINK_SELECTED = 11;
 
-/** A link drawn in a help file: its place in the whole file and its order among the file's links. */
-export interface FileLink {
+/** A link in a help file, where tome2 prints it. */
+export interface HelpLink {
+  /** Order among the file's links: tome2's link cursor steps through them in this order. */
   index: number;
-  /** Row in the whole file (see `FilePages.rows`) and the column it starts at. */
-  row: number;
+  /** File line it is on, and the column its text starts at. */
+  line: number;
   col: number;
-  text: string;
+  length: number;
+  /** Help file it opens, and the tag there it opens at (0: the top). */
+  file: string;
+  anchor: number;
+  /** Key that opens it straight away, or ''. */
+  key: string;
+}
+
+/** What tome2 reads from a help file before showing it. */
+export interface HelpFile {
+  links: HelpLink[];
+  /** Links on each file line. */
+  lines: Map<number, HelpLink[]>;
+  /** File line each tag ("~~~~~12") opens a link at. */
+  tags: Map<number, number>;
+  /** Colour of the link tome2's cursor is on. */
+  selected: number;
 }
 
 function blank(ch: number): boolean {
   return ch === SPACE || ch === 0;
 }
 
-function isLinkColour(attr: number): boolean {
-  return attr === LINK || attr === LINK_SELECTED;
+/** A file's lines as tome2's `my_fgets` reads them: any line ending, tabs to the next multiple of 8, unprintable bytes dropped. */
+export function fileLines(bytes: Uint8Array): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (let i = 0; i < bytes.length; i++) {
+    const c = bytes[i];
+    if (c === 13 || c === 10) {
+      if (bytes[i + 1] === (c === 13 ? 10 : 13)) i++;
+      lines.push(line);
+      line = '';
+    } else if (c === 9) {
+      do line += ' ';
+      while (line.length % 8);
+    } else if (c >= 32 && c < 127) {
+      line += String.fromCharCode(c);
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
 /**
- * Link-coloured stretches of each row, in reading order. A single space
- * inside a link belongs to it (link names have spaces); two end it.
+ * Finds a help file's links, tags and link colour as tome2's file viewer
+ * does (`show_file_aux`): links are `*****[/key]file*tag[text]`, colour
+ * spans `[[[[[c text]` and hidden spans `{{{{{…}` print only their text,
+ * and a line may start with a colour (`#####c`).
  */
-export function linkRuns(rows: readonly TermRow[]): FileLink[] {
-  const links: FileLink[] = [];
-  rows.forEach((row, r) => {
+export function parseHelpFile(bytes: Uint8Array): HelpFile {
+  const links: HelpLink[] = [];
+  const lines = new Map<number, HelpLink[]>();
+  const tags = new Map<number, number>();
+  let selected = LINK_SELECTED;
+  fileLines(bytes).forEach((raw, line) => {
+    const buf = raw.startsWith('#####') ? raw.slice(6) : raw;
+    if (buf.startsWith('|||||')) {
+      const colour = COLOURS.indexOf(buf[6] ?? '');
+      if (colour >= 0) selected = colour;
+    }
+    if (buf.startsWith('~~~~~')) {
+      const tag = Number(/^\d*/.exec(buf.slice(5))?.[0] || NaN);
+      if (Number.isInteger(tag) && !tags.has(tag)) tags.set(tag, line + 1);
+    }
     let x = 0;
-    const width = row.chars.length;
-    while (x < width) {
-      if (blank(row.chars[x]) || !isLinkColour(row.attrs[x])) {
+    let col = 0;
+    while (x < buf.length) {
+      if (buf.startsWith('*****', x)) {
+        let at = x + 5;
+        let key = '';
+        if (buf[at] === '/') {
+          key = buf[at + 1] ?? '';
+          at += 2;
+        }
+        const star = buf.indexOf('*', at);
+        const open = star < 0 ? -1 : buf.indexOf('[', star + 1);
+        if (open < 0) break;
+        let length = 0;
+        at = open + 1;
+        while (at < buf.length && buf[at] !== ']') {
+          if (buf[at] === '\\') at++;
+          length++;
+          at++;
+        }
+        const link: HelpLink = { index: links.length, line, col, length, file: buf.slice(x + 5 + (key ? 2 : 0), star), anchor: Number(buf.slice(star + 1, open)) || 0, key };
+        links.push(link);
+        lines.set(line, [...(lines.get(line) ?? []), link]);
+        col += length;
+        x = at + 1;
+      } else if (buf.startsWith('[[[[[', x)) {
+        let at = x + 6;
+        while (at < buf.length && buf[at] !== ']') {
+          if (buf[at] === '\\') at++;
+          col++;
+          at++;
+        }
+        x = at + 1;
+      } else if (buf.startsWith('{{{{{', x)) {
+        const end = buf.indexOf('}', x + 6);
+        x = end < 0 ? buf.length : end + 1;
+      } else {
+        col++;
         x++;
-        continue;
       }
-      const start = x;
-      let end = x;
-      while (x < width) {
-        if (!blank(row.chars[x])) {
-          if (!isLinkColour(row.attrs[x])) break;
-          end = x;
-          x++;
-          continue;
-        }
-        if (x + 1 < width && !blank(row.chars[x + 1]) && isLinkColour(row.attrs[x + 1])) {
-          x++;
-          continue;
-        }
-        break;
-      }
-      let text = '';
-      for (let i = start; i <= end; i++) text += String.fromCharCode(row.chars[i]);
-      links.push({ index: links.length, row: r, col: start, text });
-      x = end + 1;
     }
   });
-  return links;
-}
-
-/** Columns where the selected (yellow) link starts on a row. */
-export function selectedLinkCols(row: TermRow): number[] {
-  return linkRuns([row])
-    .filter((link) => row.attrs[link.col] === LINK_SELECTED)
-    .map((link) => link.col);
+  return { links, lines, tags, selected };
 }
 
 /** A copy of a terminal row, so later screens do not change it. */
@@ -102,21 +158,17 @@ function copyRow(row: TermRow): TermRow {
 export class FilePages {
   readonly caption: string;
   readonly size: number;
-  /** The line tome2 first showed (a help link can open a file part-way down). */
-  readonly start: number;
   /** Where the reader was left, to come back to it from another file. */
   scrollTop: number | null = null;
   private readonly pageHeight: number;
   private readonly pages = new Map<number, TermRow[]>();
   private done = false;
   private cached: { rows: TermRow[]; lines: number[] } | null = null;
-  private linkCache: { list: FileLink[]; at: Map<string, number> } | null = null;
   private sourceCache: { cols: number; chars: Uint8Array; attrs: Uint8Array } | null = null;
 
   constructor(heading: ViewerHeading, pageHeight: number) {
     this.caption = heading.caption;
     this.size = heading.size;
-    this.start = heading.line;
     this.pageHeight = Math.max(1, pageHeight);
   }
 
@@ -141,7 +193,6 @@ export class FilePages {
     }
     this.pages.set(line, rows.slice(0, this.pageHeight).map(copyRow));
     this.cached = null;
-    this.linkCache = null;
     this.sourceCache = null;
     const next = line + this.pageHeight >= this.size ? 0 : line + this.pageHeight;
     this.done = this.size <= this.pageHeight || this.covered(next, Math.min(this.size, next + this.pageHeight));
@@ -155,7 +206,7 @@ export class FilePages {
     return true;
   }
 
-  /** Every row of the file in order, and the file line each row shows. */
+  /** Every row of the file in order. */
   get rows(): TermRow[] {
     return this.stitch().rows;
   }
@@ -168,24 +219,6 @@ export class FilePages {
       if (l <= line) best = i;
     });
     return best;
-  }
-
-  /** The links in a help file, in the order tome2 steps through them. */
-  get links(): FileLink[] {
-    return this.linkIndex().list;
-  }
-
-  /** Index of the link starting at a row and column of the whole file. */
-  linkAt(row: number, col: number): number | null {
-    return this.linkIndex().at.get(`${row}:${col}`) ?? null;
-  }
-
-  private linkIndex(): { list: FileLink[]; at: Map<string, number> } {
-    if (!this.linkCache) {
-      const list = linkRuns(this.rows);
-      this.linkCache = { list, at: new Map(list.map((l) => [`${l.row}:${l.col}`, l.index])) };
-    }
-    return this.linkCache;
   }
 
   /** The whole file as one tall terminal buffer (at least one row). */

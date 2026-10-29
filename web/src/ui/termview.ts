@@ -59,19 +59,15 @@ export interface TermViewOptions {
   cursorRow?: number;
   /** Shows a back button in the heading. */
   back?: () => void;
-  /** Index of the link whose text starts at a row and column, or null (help files). */
-  link?: (row: number, col: number) => number | null;
+  /** Links printed on a terminal row (help files): where each starts, its length, and its index. */
+  links?: (row: number) => readonly { col: number; length: number; index: number }[];
   /**
    * A document read by scrolling: when `key` changes the body scrolls to
-   * `top` (where it was left) or else to the first block at or below `row`,
+   * `top` (where it was left) or else to the block showing `row`,
    * and nothing is scrolled into view for the highlight.
    */
   scroll?: { key: string; top: number | null; row: number };
 }
-
-/* tome2's link colours: orange, and yellow for the link its cursor is on. */
-const LINK = 3;
-const LINK_SELECTED = 11;
 
 const WHITE = 1;
 /* Columns shown with a unit instead of a heading. */
@@ -123,7 +119,7 @@ export class TermView {
   private tabs: TermViewTab[] = [];
   private customView = '';
   private scrollKey = '';
-  private linkAt: TermViewOptions['link'] = undefined;
+  private linksAt: TermViewOptions['links'] = undefined;
 
   constructor(parent: HTMLElement, palette: () => readonly string[], callbacks: TermViewCallbacks) {
     this.palette = palette;
@@ -261,8 +257,8 @@ export class TermView {
     const activeKey = active?.dataset.key ?? active?.dataset.option;
     this.renderedKey = key;
     this.blocks = blocks;
-    this.root.className = `termview ${options.layout}`;
-    this.linkAt = options.link;
+    this.root.className = `termview ${options.layout}${options.links ? ' help' : ''}`;
+    this.linksAt = options.links;
 
     this.renderHeader(options);
     this.renderFooter();
@@ -288,10 +284,15 @@ export class TermView {
     this.nav.setActive(current ?? previous ?? items[0] ?? null, true);
   }
 
-  /** Scroll offset that brings the first block at or below a terminal row to the top of the body. */
+  /** Scrolls the body to the block showing a terminal row. */
+  scrollToRow(row: number): void {
+    this.body.scrollTop = this.rowOffset(row);
+  }
+
+  /** Scroll offset that brings the block showing a terminal row (the last one starting at or above it) to the top of the body. */
   private rowOffset(row: number): number {
     if (row <= 0) return 0;
-    const target = [...this.body.querySelectorAll<HTMLElement>('[data-row]')].find((node) => Number(node.dataset.row) >= row);
+    const target = [...this.body.querySelectorAll<HTMLElement>('[data-row]')].filter((node) => Number(node.dataset.row) <= row).at(-1);
     if (!target) return 0;
     return target.getBoundingClientRect().top - this.body.getBoundingClientRect().top + this.body.scrollTop - parseFloat(getComputedStyle(this.body).paddingTop);
   }
@@ -402,19 +403,29 @@ export class TermView {
   }
 
   private colour(attr: number): string {
-    if (this.linkAt && attr === LINK_SELECTED) attr = LINK;
     return attr === WHITE || attr === 0 ? '' : readableColour(this.palette()[attr] ?? '');
   }
 
-  /** A run of prose, or a tappable link when it is the text of a help link. */
-  private textRun(run: Run): HTMLElement {
-    const index = this.linkAt && run.row !== undefined && run.col !== undefined ? this.linkAt(run.row, run.col) : null;
-    if (index === null || index === undefined) return this.span(run);
-    const link = el('button', 'tv-link', run.text.trim());
-    link.type = 'button';
-    link.dataset.nav = '';
-    link.dataset.link = String(index);
-    return link;
+  /** A run of prose, with the parts that are help links as tappable links. */
+  private textRun(run: Run): Node[] {
+    const { row, col } = run;
+    const links = this.linksAt && row !== undefined && col !== undefined ? this.linksAt(row) : [];
+    const nodes: Node[] = [];
+    let at = 0;
+    for (const link of links) {
+      const start = Math.max(at, link.col - col!);
+      const end = Math.min(run.text.length, link.col + link.length - col!);
+      if (end <= start) continue;
+      if (start > at) nodes.push(this.span({ ...run, text: run.text.slice(at, start) }));
+      const button = el('button', 'tv-link', run.text.slice(start, end));
+      button.type = 'button';
+      button.dataset.nav = '';
+      button.dataset.link = String(link.index);
+      nodes.push(button);
+      at = end;
+    }
+    if (at < run.text.length) nodes.push(at === 0 ? this.span(run) : this.span({ ...run, text: run.text.slice(at) }));
+    return nodes;
   }
 
   private span(run: Run, className?: string): HTMLElement {
@@ -505,13 +516,7 @@ export class TermView {
           line.dataset.row = String(block.row);
           block.cells.forEach((cell) => {
             const part = el('span', cell.text.length <= SHORT_CELL ? 'tv-cell short' : 'tv-cell');
-            for (const run of cell.runs) {
-              const node = this.textRun(run);
-              const link = node.classList.contains('tv-link');
-              if (link && /^\s/.test(run.text)) part.append(' ');
-              part.append(node);
-              if (link && /\S\s+$/.test(run.text)) part.append(' ');
-            }
+            for (const run of cell.runs) part.append(...this.textRun(run));
             line.append(part);
           });
           out.push(line);

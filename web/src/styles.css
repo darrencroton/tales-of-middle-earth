@@ -907,6 +907,11 @@ html.keyboard-open .tv-layer.panel {
   margin: -0.4rem 0 -0.4rem -0.5rem;
 }
 
+/* Help links read alike, wherever tome2's cursor was when each page was gathered. */
+.termview.help .tv-label span {
+  color: #f0a64a !important;
+}
+
 /* A link in a help file, inside its prose. */
 .tv-link {
   display: inline;
@@ -1977,7 +1982,7 @@ html.keyboard-open .tv-layer.panel {
 }
 
 /* Text questions drop from the top, where the on-screen keyboard cannot cover them. */
-.sheet-frame:has(.sheet-ask) {
+.sheet-frame.frame-card:has(.sheet-ask) {
   align-items: flex-start;
   padding: calc(var(--safe-top) + var(--top-clear) + 0.6rem) calc(0.6rem + var(--safe-right)) 0 calc(0.6rem + var(--safe-left));
 }
@@ -2004,7 +2009,7 @@ html.keyboard-open .tv-layer.panel {
 }
 
 /* Little room above the keyboard (a phone on its side): keep only the question and the field. */
-html.keyboard-tight .sheet-frame:has(.sheet-ask) {
+html.keyboard-tight .sheet-frame.frame-card:has(.sheet-ask) {
   padding-top: 0.3rem;
 }
 

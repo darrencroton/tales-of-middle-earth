@@ -37,7 +37,7 @@ export function openMenu(sheets: Sheets, title: string, items: MenuItem[], subti
       }),
     );
   }
-  sheets.open({ title, subtitle, body: list, kind: 'menu', className: 'sheet-menu' });
+  sheets.open({ title, subtitle, body: list, kind: 'menu' });
 }
 
 function segmented<T extends string>(

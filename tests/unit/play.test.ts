@@ -342,6 +342,7 @@ describe('actions', () => {
       ['escape', 'Done'],
       ['menu', 'Menu'],
     ]);
+    assert.deepEqual(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none', screen: 'file' })[0].effect, { kind: 'native', view: 'closeFile' });
   });
 
   it('opens native views for items, looking and the level map', () => {

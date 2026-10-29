@@ -219,8 +219,8 @@ test('the character sheet keeps its tabs at the foot and shows skills, abilities
   await expect(page.locator('.sheet .skill-row').first()).toBeVisible();
   await page.locator('.sheet [data-action="learn"]').click();
   /* tome2's question (or refusal) is asked in a small card over the sheet. */
-  await expect(page.locator('.sheet.sheet-fit')).toBeVisible();
-  await page.locator('.sheet.sheet-fit .sheet-action').first().click();
+  await expect(page.locator('.sheet.sheet-card')).toBeVisible();
+  await page.locator('.sheet.sheet-card .sheet-action').first().click();
   await expect(page.locator('.sheet-title')).toHaveText('Scholar');
   expect(await size()).toBe(height);
 

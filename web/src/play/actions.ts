@@ -19,7 +19,8 @@ export type NativeView =
   | 'finish'
   | 'fallen'
   | 'explore'
-  | 'equip';
+  | 'equip'
+  | 'closeFile';
 
 export type ActionEffect =
   | { kind: 'keys'; keys: number[] }
@@ -290,8 +291,8 @@ export function contextActions(ctx: ActionContext): Action[] {
       break;
   }
 
-  /* Files are read by scrolling; the panel's close button leaves them. */
-  if (ctx.screen === 'file') return [{ ...ESCAPE, label: 'Done', icon: '✓' }, MENU];
+  /* Files are read by scrolling; the panel's close button leaves them, as Done does on a full screen. */
+  if (ctx.screen === 'file') return [{ id: 'escape', label: 'Done', icon: '✓', effect: { kind: 'native', view: 'closeFile' } }, MENU];
   if (ctx.screen === 'gameover') {
     return [
       ...(ctx.fallen ? [FALLEN] : []),

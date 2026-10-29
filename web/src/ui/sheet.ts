@@ -211,16 +211,18 @@ export class Sheets {
 
   /** Reopens saved sheets over whatever is open, rebuilding those that can be. */
   restore(trail: SheetTrail): void {
-    let restored = false;
+    const frames = new Set<Frame>();
     trail.stack.forEach((saved, i) => {
       const content = saved.rebuild ? saved.rebuild() : saved;
       if (!content) return;
       const place = trail.places[i];
       if (place) this.remembered.set(content, place);
-      this.push(content);
-      restored = true;
+      frames.add(this.attach(content));
     });
-    if (restored) this.onChange();
+    if (frames.size === 0) return;
+    for (const frame of frames) this.show(frame, this.remembered.get(frame.top!) ?? null);
+    this.topFrame?.panel.focus({ preventScroll: true });
+    this.onChange();
   }
 
   /** Replaces the top sheet (or opens one). */
@@ -304,15 +306,22 @@ export class Sheets {
     frame.nav.setActive(content.initial ?? same ?? fallback, !!content.initial);
   }
 
-  /** Puts a sheet in the top frame, or in a new frame above it for cards and for anything opened from a card. */
+  /** Opens a sheet and shows it, remembering where the one it covers was left. */
   private push(content: SheetContent): void {
     const frame = this.topFrame;
+    if (frame?.top) this.remembered.set(frame.top, frame.place());
+    const target = this.attach(content);
+    this.show(target, this.remembered.get(content) ?? null);
+    if (target !== frame) target.panel.focus({ preventScroll: true });
+  }
+
+  /** Puts a sheet in the top frame, or in a new frame above it for cards and for anything opened from a card; returns its frame. */
+  private attach(content: SheetContent): Frame {
+    const frame = this.topFrame;
     if (!frame) this.restoreFocus = document.activeElement;
-    else this.remembered.set(frame.top!, frame.place());
     if (frame && content.kind !== 'card' && frame.top?.kind !== 'card') {
       frame.entries.push(content);
-      this.show(frame, this.remembered.get(content) ?? null);
-      return;
+      return frame;
     }
     const next: Frame = new Frame(
       `sheet-title-${++this.framesMade}`,
@@ -324,8 +333,7 @@ export class Sheets {
     this.frames.push(next);
     this.layer.append(next.root);
     this.layer.hidden = false;
-    this.show(next, this.remembered.get(content) ?? null);
-    next.panel.focus({ preventScroll: true });
+    return next;
   }
 
   /** Closes a frame and every frame above it, top first. */

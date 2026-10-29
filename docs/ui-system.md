@@ -134,12 +134,16 @@ No key hints anywhere.
   `main.ts`).
 - A file opened part-way down (a help link to an anchor) opens scrolled there.
 - Help links are tappable wherever they are: lettered links as rows, links
-  inside the text as inline links (orange/yellow runs, `linkRuns`). Tapping
-  one asks tome2 to show its line (`#` *line*), then steps tome2's link cursor
-  onto it and opens it.
+  inside the text as inline links. The help file itself is read from the
+  game's files and parsed as tome2 parses it (`parseHelpFile`), so every link
+  has its exact place and its place in tome2's order (link names with two
+  spaces, links side by side, and orange text that is not a link are all
+  handled). A link to another place in the same file (the index's letters,
+  the command list) just scrolls there; any other asks tome2 to show the
+  link's line (`#` *line*), steps tome2's link cursor onto it and opens it.
 - ‹ in the header returns to the help file that linked here, scrolled where it
-  was left; ✕ leaves help altogether (one Escape per file open, since tome2
-  only goes back one file from a lettered link).
+  was left; ✕ (or Escape, or Done) leaves help altogether, however many files
+  are open.
 - No footer: nothing to page.
 
 ## 5. Navigation rules
@@ -178,12 +182,17 @@ No key hints anywhere.
 
 ## 7. Validation
 
-Checked in the real game (headless Chromium, `?wizard`, phone portrait,
-phone landscape, tablet) with targeted Playwright scripts and the e2e suite:
-Knowledge lists (119 rows, scroll, ✕ back to Knowledge with highlight), help
-(lettered link, inline link in the 572-line index, ‹ back with scroll kept, ✕
-out of two levels), Inventory → item card → How many? stacking and unwinding,
-Magic → spell card, card ✕ and backdrop closing only the card, tabs fixed.
+Checked in the real game (headless Chromium, `?wizard`) with targeted
+Playwright scripts in phone portrait and phone landscape, and the e2e suite
+on all three projects (phone portrait, phone landscape, tablet): Knowledge
+lists (119 rows, scroll, ✕ back to Knowledge with its highlight), help
+(lettered link, inline link in the 572-line index, letter jumps within the
+index, two-space command names in the 1223-line command list, a link back to
+the main menu, ‹ back with scroll kept, ✕ and Escape out of three levels),
+Inventory → item card → How many? stacking and unwinding, Magic → spell card,
+card ✕ and backdrop closing only the card, tabs fixed, the name question at
+the top in landscape. A new e2e test covers the reader, help links and cards
+(`play.spec.ts`).
 
 ## 8. Exceptions and next refinements
 

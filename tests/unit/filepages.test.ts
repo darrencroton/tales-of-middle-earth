@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { FilePages, isHelpCaption, linkRuns, selectedLinkCols, viewerHeading } from '../../web/src/ui/filepages.ts';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { FilePages, fileLines, helpName, parseHelpFile, viewerHeading } from '../../web/src/ui/filepages.ts';
 import type { TermRow } from '../../web/src/ui/termparse.ts';
 
 const WIDTH = 40;
-const ORANGE = 3;
-const YELLOW = 11;
 
-function row(text: string, colours: [number, number, number][] = []): TermRow {
+function row(text: string): TermRow {
   const chars = new Uint8Array(WIDTH).fill(0x20);
   const attrs = new Uint8Array(WIDTH).fill(1);
   for (let i = 0; i < text.length && i < WIDTH; i++) chars[i] = text.charCodeAt(i);
-  for (const [from, to, a] of colours) attrs.fill(a, from, to);
   return { chars, attrs };
 }
 
@@ -27,8 +27,6 @@ describe('file viewer pages', () => {
     assert.deepEqual(viewerHeading('[ToME 2.4.1 (ah, git), Known Uniques, Line 20/45]'), { caption: 'Known Uniques', line: 20, size: 45 });
     assert.deepEqual(viewerHeading("[ToME 2.4.0, Help file 'help.hlp', Line 1/33]"), { caption: "Help file 'help.hlp'", line: 1, size: 33 });
     assert.equal(viewerHeading('Inventory: carrying 20.7 lb'), null);
-    assert.ok(isHelpCaption("Help file 'general.txt'"));
-    assert.ok(!isHelpCaption('Known Uniques'));
   });
 
   it('gathers every page from the top into the whole file', () => {
@@ -50,7 +48,7 @@ describe('file viewer pages', () => {
     assert.equal(file.add(20, page(20, 20, 70)), false);
     assert.equal(file.rows.length, 70);
     assert.deepEqual(file.rows.map(text), Array.from({ length: 70 }, (_, i) => `line ${i}`));
-    assert.equal(file.rowOf(file.start), 37);
+    assert.equal(file.rowOf(37), 37);
   });
 
   it('stops when a page comes round again (help files hide their colour line)', () => {
@@ -73,21 +71,43 @@ describe('file viewer pages', () => {
     assert.equal(source.chars.length, WIDTH * 5);
   });
 
-  it('finds help links and the selected one', () => {
-    const rows = [
-      row('(a) About this help     (b) New players', [[0, 19, ORANGE], [24, 39, YELLOW]]),
-      row('See the skills help file for details.', [[8, 14, ORANGE]]),
-    ];
-    const links = linkRuns(rows);
-    assert.deepEqual(links.map((l) => [l.index, l.row, l.col, l.text]), [
-      [0, 0, 0, '(a) About this help'],
-      [1, 0, 24, '(b) New players'],
-      [2, 1, 8, 'skills'],
-    ]);
-    assert.deepEqual(selectedLinkCols(rows[0]), [24]);
-    const file = new FilePages({ caption: "Help file 'help.hlp'", line: 0, size: 2 }, 20);
-    file.add(0, rows);
-    assert.equal(file.linkAt(1, 8), 2);
-    assert.equal(file.linkAt(1, 9), null);
+  it('reads help links, tags and colours as tome2 does', () => {
+    const source = [
+      '|||||oy',
+      '~~~~~01|Help',
+      '#####RWelcome to the help.',
+      '    *****/ageneral.txt*0[(a) About this help]  and *****skills.txt*12[skills]',
+      '\tSee [[[[[gthe \\] map]{{{{{hidden}*****birth.txt*0[AC]',
+    ].join('\r\n');
+    const help = parseHelpFile(new TextEncoder().encode(source));
+    assert.deepEqual(
+      help.links.map((l) => [l.index, l.line, l.col, l.length, l.file, l.anchor, l.key]),
+      [
+        [0, 3, 4, 19, 'general.txt', 0, 'a'],
+        [1, 3, 29, 6, 'skills.txt', 12, ''],
+        [2, 4, 21, 2, 'birth.txt', 0, ''],
+      ],
+    );
+    assert.equal(help.tags.get(1), 2);
+    assert.equal(help.selected, 11);
+    assert.deepEqual(help.lines.get(3)?.map((l) => l.index), [0, 1]);
+    assert.equal(helpName("Help file 'index.txt'"), 'index.txt');
+    assert.equal(helpName('Known Uniques'), null);
+  });
+
+  it('reads lines with tome2\'s endings and tab stops', () => {
+    const bytes = new TextEncoder().encode('a\tb\r\nc\n\rd\re\x01f');
+    assert.deepEqual(fileLines(bytes), ['a       b', 'c', 'd', 'ef']);
+  });
+
+  it('finds every link of the game\'s help files', () => {
+    const dir = join(dirname(fileURLToPath(import.meta.url)), '../../external/tome2/lib/help');
+    for (const name of ['index.txt', 'command.txt', 'dungeon.txt']) {
+      const bytes = readFileSync(join(dir, name));
+      const help = parseHelpFile(bytes);
+      assert.equal(help.links.length, bytes.toString('latin1').split('*****').length - 1, name);
+    }
+    const commands = parseHelpFile(readFileSync(join(dir, 'command.txt')));
+    assert.ok(commands.links.some((l) => l.length === 'a  Aim a wand'.length && l.file === 'command.txt'));
   });
 });
