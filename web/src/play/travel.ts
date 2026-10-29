@@ -13,6 +13,8 @@ import { findPath, type Point, type TravelGrid } from './pathfinding.ts';
 import { directionDigit } from './prompts.ts';
 
 const MAX_STEPS = 400;
+/* Visits to one cell that end a journey as going round in circles. */
+const MAX_VISITS = 3;
 const DANGER_RADIUS = 2;
 const WALK = ';'.charCodeAt(0);
 const OPEN = 'o'.charCodeAt(0);
@@ -22,6 +24,7 @@ export type TravelStopReason =
   | 'monster'
   | 'hurt'
   | 'blocked'
+  | 'shut'
   | 'unreachable'
   | 'interrupted'
   | 'limit'
@@ -52,6 +55,7 @@ export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
   monster: 'You stop: a creature is near.',
   hurt: 'You stop: you are hurt.',
   blocked: 'You stop: the way is blocked.',
+  shut: 'You stop: the door will not open.',
   unreachable: 'You know no way there yet.',
   interrupted: null,
   limit: 'You stop to get your bearings.',
@@ -207,7 +211,9 @@ export interface TravelOptions {
  * Walks the player towards a goal one step per engine idle, stopping in the
  * way Brogue's travel does: on arrival, when hurt, or when danger appears
  * (a new awake hostile creature, or a known one awake and close). Each
- * creature stops travel only once while it stays in sight.
+ * creature stops travel only once while it stays in sight. It also stops
+ * when the way keeps changing under it and the hero comes back to where
+ * they have already been twice.
  */
 export class Travel {
   readonly goal: Point;
@@ -218,6 +224,7 @@ export class Travel {
   private lastDoor: Point | null = null;
   private steps = 0;
   private finishing = false;
+  private readonly visits = new Map<number, number>();
 
   private readonly dangerRadius: number;
   private readonly noticed: Set<number>;
@@ -246,6 +253,12 @@ export class Travel {
     if (this.lastWasMove && this.lastPos && this.lastPos.x === pos.x && this.lastPos.y === pos.y) {
       return { kind: 'stop', reason: 'blocked' };
     }
+    if (!this.lastPos || this.lastPos.x !== pos.x || this.lastPos.y !== pos.y) {
+      const here = pos.y * snap.width + pos.x;
+      const visits = (this.visits.get(here) ?? 0) + 1;
+      if (visits >= MAX_VISITS) return { kind: 'stop', reason: 'blocked' };
+      this.visits.set(here, visits);
+    }
     if (this.steps >= MAX_STEPS) return { kind: 'stop', reason: 'limit' };
 
     const goalIsMonster = ctx.monsters.some((m) => m.x === this.goal.x && m.y === this.goal.y);
@@ -272,7 +285,7 @@ export class Travel {
       this.lastDoor.y === next.y &&
       this.lastPos?.x === pos.x &&
       this.lastPos.y === pos.y;
-    if (retryingDoor) return { kind: 'stop', reason: 'blocked' };
+    if (retryingDoor) return { kind: 'stop', reason: 'shut' };
 
     this.steps++;
     this.lastHp = ctx.hp;

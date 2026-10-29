@@ -11,16 +11,18 @@ taps from the map. **Type** refers to the taxonomy in section 2.
 
 ```
 Map (toolbar, HUD, gestures)
-├── Toolbar (≤ 7 buttons, chosen for the moment: Attack, recast, Fire, Wield/Heal/Eat/Light,
-│   Pick up, Descend/Ascend, Explore/Way on/Walk here, Items, Rest, Cast, Look, More, Menu)
+├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Descend/Ascend/Enter rift,
+│   Attack, Pick up, Drink, Wield/Light/Eat, Explore/Way down/Way up/World map — then the hero's
+│   own buttons in fixed places: quick spell or aimed item, Cast/Powers, Fire, Items, Rest, More,
+│   Menu; while exploring: Stop, pace, Menu)
 │   ├── Items ─────────────── Inventory            panel, tabs Pack · Equipment · Floor     depth 1
 │   │                         └── Item              card over Inventory (actions)            depth 2
 │   │                             ├── How many?     card over Item (Drop, Destroy)           depth 3
 │   │                             └── Inscribe      card at the top (text field)             depth 3
 │   ├── Cast / Powers ─────── Magic                panel: Recent, books, Powers, Skills     depth 1
 │   │                         └── Spell             card over Magic (Cast)                   depth 2
-│   ├── Look ──────────────── look mode: banner + look card on the map (About → card)
 │   ├── More ──────────────── Commands             panel: command grid by group             depth 1
+│   │   ├── Look ──────────── look mode: banner + look card on the map (About → card)
 │   │   ├── native commands → the native panel, in the same frame (Back returns to Commands)
 │   │   ├── item commands (Quaff, Read…) → tome2 item prompt (TermView panel, tabs)
 │   │   └── reading commands (Inspect, Help, Options) → tome2 screen; Commands reopens after

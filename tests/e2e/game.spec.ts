@@ -326,6 +326,6 @@ test('the world map is entered from the commands and left from the toolbar', asy
   await expect(page.locator('#toolbar [data-action="explore"]')).toHaveCount(0);
   await page.locator('#toolbar [data-action="walkhere"]').click();
   await expect.poll(wild).toBe(false);
-  await expect(page.locator('#toolbar [data-action="explore"]')).toBeVisible();
-  await expect(page.locator('#toolbar [data-action="dungeon"]')).toHaveCount(0);
+  await expect(page.locator('#toolbar [data-action="walkhere"]')).toHaveCount(0);
+  await expect(page.locator('#toolbar [data-action="inventory"]')).toBeVisible();
 });

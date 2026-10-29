@@ -194,3 +194,20 @@ export async function equipSuggested(page: Page): Promise<void> {
   }
   await expect(page.locator('#toolbar [data-action="equip"]')).toHaveCount(0);
 }
+
+/** Explores once: the toolbar's Explore when it is the changing button, otherwise Explore under More. Waits until exploring stops. */
+export async function pressExplore(page: Page): Promise<void> {
+  const button = page.locator('#toolbar [data-action="explore"]');
+  if (await button.count()) {
+    await button.click();
+  } else {
+    await page.locator('#toolbar [data-action="commands"]').click();
+    await page.locator('.sheet .command', { hasText: 'Explore' }).click();
+  }
+  await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+}
+
+/** An awake hostile creature is in line of sight. */
+export async function foeInSight(page: Page): Promise<boolean> {
+  return page.evaluate(() => (window.__tome!.engine.gameState()?.monsters ?? []).some((m) => m.status < 0 && !m.asleep && !!m.target));
+}

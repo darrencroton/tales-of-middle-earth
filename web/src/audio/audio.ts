@@ -9,6 +9,7 @@ import {
   intentCue,
   messageCues,
   newThreats,
+  outcomeCue,
   playerCues,
   type Cue,
   type CueId,
@@ -274,15 +275,17 @@ export class GameAudio {
     if (prev && prev.player?.name === player.name) {
       const heard = new Set<CueId>();
       let intentPlayed = false;
-      if (this.intent && snap.turn !== this.intent.turn) {
-        const cue = intentCue(this.intent.key);
+      const fresh = freshMessages(prev, state);
+      if (this.intent) {
+        const tookTime = snap.turn !== this.intent.turn;
+        const cue = tookTime || snap.atCommand ? outcomeCue(this.intent.key, tookTime, fresh) : null;
         if (cue) {
           cues.push(cue);
-          intentPlayed = true;
+          intentPlayed = cue.id !== 'deny';
         }
-        this.intent = null;
+        if (cue || tookTime || !intentCue(this.intent.key)) this.intent = null;
       }
-      for (const text of freshMessages(prev, state)) {
+      for (const text of fresh) {
         for (const cue of messageCues(text)) {
           if (cue.id === 'pickup' && intentPlayed) continue;
           heard.add(cue.id);

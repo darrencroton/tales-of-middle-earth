@@ -1,6 +1,7 @@
 import { readableColour } from '../render/colour.ts';
 import type { MessageState } from '../render/snapshot.ts';
 import type { VolumeLevel } from '../audio/audio.ts';
+import type { ExplorePace } from '../play/actions.ts';
 import {
   TEXT_SIZE_LABELS,
   TEXT_SIZE_PX,
@@ -116,6 +117,13 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
         update({ messages }),
       ),
       el('p', 'muted', 'Messages are always kept in the log: tap them to read back.'),
+    ),
+  );
+  body.append(
+    section(
+      'Exploring',
+      segmented<ExplorePace>('Exploring', [['normal', 'Normal'], ['relaxed', 'Relaxed']], current.explorePace, (explorePace) => update({ explorePace })),
+      el('p', 'muted', 'How fast Explore and travel walk. Relaxed takes its time, to watch the way unfold; the pace button on the toolbar switches it while exploring.'),
     ),
   );
   body.append(

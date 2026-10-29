@@ -45,6 +45,7 @@ describe('recent actions', () => {
 
   it('names items without their count and finds them again by kind', () => {
     assert.equal(itemBaseName('3 Potions of Cure Light Wounds'), 'Potions of Cure Light Wounds');
+    assert.equal(itemBaseName('a Wand of Magic Missile (5 charges)'), 'Wand of Magic Missile');
     const entry = itemRecent('q', 'Quaff', { tval: 71, sval: 4, name: 'a Potion of Cure Light Wounds' });
     assert.ok(entry.kind === 'item');
     const pack = [

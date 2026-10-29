@@ -66,7 +66,7 @@ describe('settings', () => {
     const defaults = defaultSettings(false);
     assert.deepEqual(
       sanitiseSettings(
-        { animation: 'reduced', glyphs: 'classic', zoom: 30, textSize: 'large', messages: 'pause', music: 'low', sound: 'off', persistentLevels: false },
+        { animation: 'reduced', glyphs: 'classic', zoom: 30, textSize: 'large', messages: 'pause', music: 'low', sound: 'off', persistentLevels: false, explorePace: 'relaxed' },
         defaults,
       ),
       {
@@ -78,9 +78,10 @@ describe('settings', () => {
         music: 'low',
         sound: 'off',
         persistentLevels: false,
+        explorePace: 'relaxed',
       },
     );
-    assert.deepEqual(sanitiseSettings({ animation: 'wild', glyphs: 7, zoom: 999, textSize: 'huge', messages: 'loud', music: 11, sound: 'max', persistentLevels: 'yes' }, defaults), {
+    assert.deepEqual(sanitiseSettings({ animation: 'wild', glyphs: 7, zoom: 999, textSize: 'huge', messages: 'loud', music: 11, sound: 'max', persistentLevels: 'yes', explorePace: 'fast' }, defaults), {
       animation: 'full',
       glyphs: 'brogue',
       zoom: 48,
@@ -89,6 +90,7 @@ describe('settings', () => {
       music: 'medium',
       sound: 'medium',
       persistentLevels: true,
+      explorePace: 'normal',
     });
     assert.deepEqual(sanitiseSettings(null, defaults), defaults);
   });

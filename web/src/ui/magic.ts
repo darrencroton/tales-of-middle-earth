@@ -39,8 +39,8 @@ export class RecentStore {
 }
 
 export interface MagicHandlers {
-  /** Casts a spell or uses a power (and remembers it). */
-  run(entry: RecentAction): void;
+  /** Casts a spell or uses a power (and remembers it); `anyway` tries a spell the hero lacks the mana for. */
+  run(entry: RecentAction, anyway?: boolean): void;
 }
 
 function spellMeta(spell: SpellInfo): string {
@@ -79,13 +79,19 @@ export function openSpell(api: GameApi, spell: SpellInfo, handlers: MagicHandler
   body.append(el('p', 'muted', spellMeta(spell) + (spell.info ? ` · ${spell.info}` : '')));
   body.append(el('p', undefined, spell.desc || 'No more is known of this spell.'));
   if (!spell.ok) body.append(el('p', 'muted', spell.level < 0 ? 'Your skills are not yet high enough to cast it.' : 'You cannot cast it from this book.'));
+  else if (spell.short) body.append(el('p', 'muted', 'You do not have the mana for it. You may try anyway, at a much greater risk of failure.'));
+  const entry: RecentAction = { kind: 'spell', name: spell.name };
   api.sheets.open({
     title: spell.name,
     subtitle: spell.school,
     body,
     kind: 'card',
     className: 'sheet-item',
-    actions: spell.ok ? [{ id: 'cast', label: `Cast ${spell.name}`, primary: true, run: () => handlers.run({ kind: 'spell', name: spell.name }) }] : [],
+    actions: !spell.ok
+      ? []
+      : spell.short
+        ? [{ id: 'cast', label: 'Try anyway', run: () => handlers.run(entry, true) }]
+        : [{ id: 'cast', label: `Cast ${spell.name}`, primary: true, run: () => handlers.run(entry) }],
   });
 }
 

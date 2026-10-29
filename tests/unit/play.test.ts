@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, pickupCommand, situationalActions, waitCommand } from '../../web/src/play/actions.ts';
+import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, contextualAction, paceAction, pickupCommand, transitionUnderfoot, waitCommand } from '../../web/src/play/actions.ts';
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
@@ -124,6 +124,14 @@ describe('travel', () => {
     assert.equal(grid.passable(0, 0), true);
   });
 
+  it('stops when the way keeps changing and the hero goes round in circles', () => {
+    const snap = level(['......'], { x: 2, y: 0 });
+    const travel = new Travel({ x: 5, y: 0 }, ctx(snap));
+    const at = (x: number) => travel.step(ctx({ ...snap, px: x }));
+    for (const x of [2, 3, 2, 3]) assert.equal(at(x).kind, 'keys');
+    assert.deepEqual(at(2), { kind: 'stop', reason: 'blocked' });
+  });
+
   it('steps towards the goal and stops on arrival', () => {
     const snap = level(['.....'], { x: 0, y: 0 });
     const travel = new Travel({ x: 2, y: 0 }, ctx(snap));
@@ -170,7 +178,7 @@ describe('travel', () => {
     const snap = level(['.+..'], { x: 0, y: 0 });
     const travel = new Travel({ x: 3, y: 0 }, ctx(snap));
     assert.equal(travel.step(ctx(snap)).kind, 'keys');
-    assert.deepEqual(travel.step(ctx(snap)), { kind: 'stop', reason: 'blocked' });
+    assert.deepEqual(travel.step(ctx(snap)), { kind: 'stop', reason: 'shut' });
   });
 
   it('stops when hurt, blocked, or a new creature appears', () => {
@@ -306,17 +314,18 @@ describe('actions', () => {
     for (const group of COMMAND_GROUPS) for (const c of group.commands) assert.ok(c.command.length >= 1 || c.native);
   });
 
-  it('offers situational actions for what is underfoot', () => {
-    assert.deepEqual(situationalActions('down staircase', 0).map((a) => a.id), ['descend']);
-    assert.deepEqual(situationalActions('up staircase', 2).map((a) => a.id), ['pickup', 'ascend']);
-    assert.deepEqual(situationalActions('open floor', 0), []);
-    const rift = situationalActions('void jumpgate', 0);
-    assert.deepEqual(rift.map((a) => [a.id, a.label, !!a.primary]), [['rift', 'Enter rift', true]]);
-    assert.deepEqual(rift[0].effect, { kind: 'keys', keys: [92, ...keys('>')] });
+  it('names the transition underfoot and the command that takes it', () => {
+    assert.deepEqual(transitionUnderfoot('down staircase'), { id: 'descend', label: 'Descend', icon: '>', command: '>' });
+    assert.equal(transitionUnderfoot('path to the previous area')?.id, 'ascend');
+    assert.equal(transitionUnderfoot('path to the next area')?.command, '>');
+    assert.equal(transitionUnderfoot('void jumpgate')?.label, 'Enter rift');
+    assert.equal(transitionUnderfoot('quest entrance')?.id, 'enter');
+    assert.equal(transitionUnderfoot('quest exit')?.command, '<');
+    assert.equal(transitionUnderfoot('open floor'), null);
   });
 
   it('picks up with the key that matches the always_pickup option', () => {
-    const pickup = (always: boolean) => situationalActions('open floor', 1, always)[0].effect;
+    const pickup = (always: boolean) => contextualAction({ mode: 'map', prompt: 'none', atCommand: true, underfoot: 'open floor', floorObjects: 1, alwaysPickup: always }).effect;
     assert.deepEqual(pickup(false), { kind: 'keys', keys: [92, ...keys('g')] });
     assert.deepEqual(pickup(true), { kind: 'keys', keys: [92, ...keys(',')] });
     const sheet = COMMAND_GROUPS.flatMap((g) => g.commands).find((c) => c.pickup)!;
@@ -347,40 +356,76 @@ describe('actions', () => {
 
   it('opens native views for items, looking and the level map', () => {
     const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
-    const inventory = contextActions(base).find((a) => a.id === 'inventory');
-    assert.deepEqual(inventory?.effect, { kind: 'native', view: 'inventory' });
+    assert.deepEqual(contextActions(base).find((a) => a.id === 'inventory')?.effect, { kind: 'native', view: 'inventory' });
     assert.deepEqual(contextActions({ ...base, looking: true }).map((a) => a.id), ['lookdone']);
     assert.deepEqual(contextActions({ ...base, overview: true }).map((a) => a.id), ['overviewdone']);
     assert.deepEqual(contextActions(base).find((a) => a.id === 'explore')?.effect, { kind: 'native', view: 'explore' });
-    const fight = contextActions({ ...base, foe: '6', gear: 'light' });
-    assert.deepEqual(fight.slice(0, 2).map((a) => [a.id, a.label]), [
-      ['attack', 'Attack'],
-      ['equip', 'Light'],
-    ]);
-    assert.deepEqual(fight[0].effect, { kind: 'keys', keys: [92, 59, 54] });
-    const ranged = contextActions({ ...base, foeInView: true, recast: 'Manathrust', canFire: true }).map((a) => [a.id, a.label, !!a.primary]);
-    assert.deepEqual(ranged.slice(0, 2), [
-      ['recast', 'Manathrust', true],
-      ['fire', 'Fire', false],
-    ]);
-    const quiet = contextActions({ ...base, recast: 'Manathrust', canFire: true });
-    assert.deepEqual(quiet.filter((a) => a.id === 'recast' || a.id === 'fire').map((a) => [a.id, !!a.primary]), [['recast', false]]);
-    assert.ok(quiet.some((a) => a.id === 'cast'));
-    assert.deepEqual(contextActions(base).find((a) => a.id === 'cast')?.effect, { kind: 'native', view: 'magic' });
-    assert.equal(contextActions({ ...base, magic: 'Powers' }).find((a) => a.id === 'cast')?.label, 'Powers');
-    assert.ok(!contextActions({ ...base, magic: null }).some((a) => a.id === 'cast'));
-    const crowded = contextActions({ ...base, foe: '6', gear: 'light', floorObjects: 1, underfoot: 'down staircase' });
-    assert.ok(crowded.length <= 7);
-    assert.deepEqual(crowded.map((a) => a.id), ['attack', 'equip', 'pickup', 'descend', 'inventory', 'commands', 'menu']);
-    const busy = contextActions({ ...base, gear: 'light', underfoot: 'down staircase' }).map((a) => a.id);
-    assert.deepEqual(busy, ['equip', 'descend', 'explore', 'inventory', 'cast', 'commands', 'menu']);
-    const caster = contextActions({ ...base, foe: '6', foeInView: true, recast: 'Manathrust' }).map((a) => a.id);
-    assert.ok(caster.length <= 7 && caster.includes('recast') && caster.includes('cast'), caster.join());
-    const calm = contextActions({ ...base, foeInView: true, recast: 'Manathrust', canFire: true }).map((a) => a.id);
-    assert.ok(calm.length <= 7 && calm.includes('cast') && calm.includes('recast'), calm.join());
     const sheet = COMMAND_GROUPS.flatMap((g) => g.commands);
     assert.equal(sheet.find((c) => c.label === 'Inventory')?.native, 'inventory');
     assert.equal(sheet.find((c) => c.label === 'Look')?.native, 'look');
+  });
+
+  it('keeps one changing button first and the hero\'s own buttons in their places', () => {
+    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const ids = (ctx: Partial<Parameters<typeof contextActions>[0]>) => contextActions({ ...base, ...ctx }).map((a) => a.id);
+    const mage = { quick: { label: 'Manathrust' }, magic: 'Cast' };
+    const layout = ids(mage).slice(1);
+    assert.deepEqual(layout, ['recast', 'cast', 'inventory', 'rest', 'commands', 'menu']);
+    for (const changing of [{ foe: '6' }, { floorObjects: 2 }, { underfoot: 'down staircase' }, { gear: 'light' as const }, { danger: true }, { exploreNext: 'down' as const }]) {
+      assert.deepEqual(ids({ ...mage, ...changing }).slice(1), layout);
+    }
+    const unavailable = contextActions({ ...base, ...mage, quick: { label: 'Manathrust', unavailable: 'No target in sight.' } }).find((a) => a.id === 'recast');
+    assert.deepEqual([unavailable?.label, unavailable?.unavailable], ['Manathrust', 'No target in sight.']);
+    assert.deepEqual(ids({}), ['explore', 'inventory', 'rest', 'commands', 'menu']);
+    assert.deepEqual(ids({ fire: {} }), ['explore', 'fire', 'inventory', 'rest', 'commands', 'menu']);
+    const ranger = ids({ ...mage, fire: { unavailable: 'Your quiver is empty.' } });
+    assert.deepEqual(ranger, ['explore', 'recast', 'cast', 'fire', 'inventory', 'commands', 'menu']);
+    assert.equal(contextActions({ ...base, magic: 'Powers' }).find((a) => a.id === 'cast')?.label, 'Powers');
+  });
+
+  it('puts the most pressing thing first, else Explore named for what it will do', () => {
+    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const first = (ctx: Partial<Parameters<typeof contextualAction>[0]>) => {
+      const a = contextualAction({ ...base, ...ctx });
+      return [a.id, a.label];
+    };
+    assert.deepEqual(first({}), ['explore', 'Explore']);
+    assert.deepEqual(first({ exploreNext: 'down' }), ['explore', 'Way down']);
+    assert.deepEqual(first({ exploreNext: 'up' }), ['explore', 'Way up']);
+    assert.deepEqual(first({ exploreNext: 'worldMap' }), ['explore', 'World map']);
+    assert.deepEqual(first({ gear: 'light' }), ['equip', 'Light']);
+    assert.deepEqual(first({ gear: 'light', underfoot: 'fountain' }), ['drink', 'Drink']);
+    assert.deepEqual(first({ gear: 'light', floorObjects: 1 }), ['pickup', 'Pick up']);
+    assert.deepEqual(first({ floorObjects: 1, foe: '6' }), ['attack', 'Attack']);
+    assert.deepEqual(contextualAction({ ...base, foe: '6' }).effect, { kind: 'keys', keys: [92, 59, 54] });
+    assert.deepEqual(first({ foe: '6', underfoot: 'down staircase' }), ['descend', 'Descend']);
+    assert.deepEqual(contextualAction({ ...base, underfoot: 'up staircase' }).effect, { kind: 'keys', keys: [92, ...keys('<')] });
+    assert.deepEqual(first({ underfoot: 'void jumpgate' }), ['rift', 'Enter rift']);
+  });
+
+  it('leaves the way the hero arrived by until there is nothing else to do, or a foe appears', () => {
+    const base = { mode: 'map' as const, atCommand: true, underfoot: 'up staircase', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const first = (ctx: Partial<Parameters<typeof contextualAction>[0]>) => contextualAction({ ...base, ...ctx }).label;
+    assert.equal(first({ arrived: true, exploreNext: 'explore' }), 'Explore');
+    assert.equal(first({ arrived: true, exploreNext: 'down' }), 'Way down');
+    assert.equal(first({ arrived: true, exploreNext: 'none' }), 'Ascend');
+    assert.equal(first({ arrived: true, exploreNext: 'none', gear: 'light' }), 'Light');
+    assert.equal(first({ arrived: true, exploreNext: 'explore', danger: true }), 'Ascend');
+    assert.equal(first({ arrived: false, exploreNext: 'explore' }), 'Ascend');
+    assert.equal(first({ underfoot: 'path to the next area', arrived: true, exploreNext: 'here' }), 'Descend');
+    assert.equal(first({ underfoot: 'down staircase', arrived: true, exploreNext: 'worldMap' }), 'World map');
+  });
+
+  it('shows Stop and the pace while exploring; the pace leaves it running', () => {
+    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const exploring = contextActions({ ...base, exploring: 'normal' });
+    assert.deepEqual(exploring.map((a) => [a.id, a.label]), [
+      ['stop', 'Stop'],
+      ['pace', 'Normal'],
+      ['menu', 'Menu'],
+    ]);
+    assert.equal(exploring[1].continues, true);
+    assert.equal(paceAction('relaxed').label, 'Relaxed');
   });
 
   it('names the way to and from the world map on the surface', () => {

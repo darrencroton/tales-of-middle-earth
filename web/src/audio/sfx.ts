@@ -58,6 +58,7 @@ const TRIM_DB: Partial<Record<CueId, number>> = {
   read: 11,
   eat: 14,
   cast: 7,
+  fizzle: 9,
   fire: 11,
   throw: 10,
   zap: 13,
@@ -191,6 +192,8 @@ export class SoundEffects {
         return this.eat(t);
       case 'cast':
         return this.cast(t);
+      case 'fizzle':
+        return this.fizzle(t);
       case 'fire':
         return this.bow(t);
       case 'throw':
@@ -582,6 +585,13 @@ export class SoundEffects {
     this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 400, to: 3000, glide: 0.35, q: 2, level: 0.08, attack: 0.3, decay: 0.08 });
     this.tone(this.out(0, 1), t, { type: 'triangle', freq: 300, to: 900, glide: 0.35, level: 0.05, attack: 0.3, decay: 0.08 });
     this.arpeggio(t + 0.33, [7, 11], 0.06, 0.08, 'celesta', 1);
+  }
+
+  /** A cast that gathers and collapses: the swell of `cast` cut short by a falling puff. */
+  private fizzle(t: number): void {
+    this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 400, to: 1300, glide: 0.2, q: 2, level: 0.07, attack: 0.18, decay: 0.04 });
+    this.tone(this.out(0, 1), t + 0.2, { type: 'triangle', freq: 520, to: 170, glide: 0.22, level: 0.06, decay: 0.07, detune: 30 });
+    this.noise(this.out(0, 1), t + 0.2, { type: 'lowpass', freq: 1400, to: 200, glide: 0.25, level: 0.08, decay: 0.08, brown: true });
   }
 
   private bow(t: number): void {

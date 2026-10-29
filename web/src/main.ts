@@ -1,7 +1,7 @@
 import './styles.css';
 import { GameAudio } from './audio/audio.ts';
 import type { Place } from './audio/places.ts';
-import { doorKinds } from './audio/cues.ts';
+import { attemptOutcome, doorKinds, freshMessages } from './audio/cues.ts';
 import { Engine } from './engine.ts';
 import { areaName, Hud, rowSegments, statusLabels, type HudEntity } from './hud.ts';
 import { attachMapGestures, attachPinch } from './input/gestures.ts';
@@ -11,7 +11,7 @@ import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
-import { commandGroups, commandKeys, contextActions, waitCommand, type Action, type CommandDef, type NativeView } from './play/actions.ts';
+import { commandGroups, commandKeys, contextActions, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
@@ -154,6 +154,7 @@ const noticed = new Set<number>();
 /* Map memory: the level exploring is on (`levelKey`, or a stand-in where there is none), the hero's memory and the land area's remembered grids. */
 let exploreLevel: string | null = null;
 let exploreLevelDepth = -1;
+let exploreLevelWild = false;
 /** Exploring's visits on this level are kept between visits: on the land, and on dungeon levels tome2 keeps. */
 let exploreKeepsVisits = false;
 const mapMemory = new MapMemoryStore();
@@ -162,8 +163,12 @@ let heroMemoryId = '';
 let landMemory: { key: string; width: number; height: number; mask: Uint8Array; changed: boolean } | null = null;
 let memoryTurn = -1;
 let memoryPos = -1;
-/* Whether exploring may head for the way on (the toolbar's label), by turn and place. */
-let wayOnLabel: { key: string; label: string | null } = { key: '', label: null };
+/* What Explore would do (the toolbar's label), by turn and place. */
+let exploreNextCache: { key: string; next: ExploreNext } = { key: '', next: 'explore' };
+/** The cell where the hero arrived on this level (or landed through a Void Jumpgate), until they step off it; -1 once they have. */
+let arrival = -1;
+/** A spell, power, item or shot started from a button: once tome2 is back at the command prompt, a refusal or failure is told. */
+let attempt: { turn: number; messages: string[] } | null = null;
 /** Where exploring this level began (the map fills outwards from it), and where the hero stood when it last stopped. */
 let exploreAnchor: MapPoint | null = null;
 let exploreLastStop: MapPoint | null = null;
@@ -180,6 +185,9 @@ let lastSavedTurn = -1;
 let pendingSync: 'silent' | 'toast' | null = null;
 let currentActions: Action[] = [];
 let actionsKey = '';
+/* Taps on the toolbar are ignored this long after exploring ends and its buttons change places. */
+const TOOLBAR_SETTLE_MS = 400;
+let toolbarSettlesAt = 0;
 let dirty = true;
 let effectsAt = 0;
 let hasEffects = false;
@@ -262,12 +270,29 @@ function setCtrlLatched(value: boolean): void {
   for (const node of document.querySelectorAll('[data-ctrl-toggle]')) node.setAttribute('aria-pressed', String(value));
 }
 
+const TOAST_MS = 4400;
 let toastTimer = 0;
 function showToast(text: string): void {
+  const area = stage.getBoundingClientRect();
+  toast.style.setProperty('--toast-x', `${area.left + area.width / 2}px`);
+  toast.style.setProperty('--toast-bottom', `calc(${window.innerHeight - area.bottom}px + 1rem)`);
+  toast.style.setProperty('--toast-width', `calc(${area.width}px - 2rem)`);
   toast.textContent = text;
   toast.classList.add('visible');
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove('visible'), 2200);
+  toastTimer = window.setTimeout(() => toast.classList.remove('visible'), TOAST_MS);
+}
+
+/** Clears a toast the player has moved on from. */
+function hideToast(): void {
+  window.clearTimeout(toastTimer);
+  toast.classList.remove('visible');
+}
+
+/** Says why something cannot be done, with the refusal sound. */
+function refuse(text: string): void {
+  showToast(text);
+  audio.cue('deny');
 }
 
 /* Native views */
@@ -312,7 +337,12 @@ const recents = new RecentStore();
 const castWatcher = new CastWatcher();
 
 /** Casts a spell or uses a power again (aiming at the nearest foe when `aim`); it is remembered once tome2 has taken it. */
-function runRecent(entry: RecentAction, aim = false): void {
+function runRecent(entry: RecentAction, aim = false, anyway = false): void {
+  const why = anyway ? null : recentUnavailable(entry, false);
+  if (why) {
+    refuse(why);
+    return;
+  }
   sheets.closeAll();
   if (!lastSnap?.atCommand) {
     showToast('Finish what you are doing first.');
@@ -323,6 +353,7 @@ function runRecent(entry: RecentAction, aim = false): void {
     const action = item ? recentItemAction(entry, item) : null;
     if (!item || !action) return;
     api.remember(entry);
+    watchAttempt();
     runMacro(thenAim(itemMacro(action, item, 'pack', '', alwaysPickup()), aim));
     return;
   }
@@ -330,7 +361,27 @@ function runRecent(entry: RecentAction, aim = false): void {
   if (!macro) return;
   if (entry.kind === 'spell') castWatcher.begin('m', [], entry.name);
   else castWatcher.begin(entry.command, entry.steps);
+  watchAttempt();
   runMacro(macro);
+}
+
+/** Starts watching an action begun from a button, so a refusal or failure is told once tome2 is back at the command prompt. */
+function watchAttempt(): void {
+  attempt = lastSnap ? { turn: lastSnap.turn, messages: [] } : null;
+}
+
+/** Gathers the messages of a watched action. */
+function followAttempt(previous: GameState | null, state: GameState): void {
+  if (attempt && previous) attempt.messages.push(...freshMessages(previous, state));
+}
+
+/** Once a watched action has ended (its macro done, tome2 back at the command prompt), tells the player when tome2 refused it or it failed. */
+function settleAttempt(): void {
+  const snap = lastSnap;
+  if (!attempt || !snap?.atCommand || snap.icky || macros.running) return;
+  const outcome = attemptOutcome(snap.turn !== attempt.turn, attempt.messages);
+  attempt = null;
+  if (outcome) showToast(outcome.message);
 }
 
 /* Spells carried, read once per game turn for the toolbar. */
@@ -343,30 +394,61 @@ function currentSpells(): SpellState | null {
 }
 
 /**
- * The one-tap attack offered on the toolbar while a foe is in view: the
- * last aimed thing the hero did that can be done again (a spell, a power,
- * a wand or rod, a thrown flask...).
+ * The toolbar's quick repeat. For a hero who uses magic, the last spell or
+ * power that can be used again, or before any, the first spell in their
+ * books (or their first race or class power); for others, the last aimed
+ * thing they did that can be done again (a wand or rod, a thrown flask, a power).
  */
-function recastEntry(): RecentAction | null {
+function quickEntry(): RecentAction | null {
   if (!lastSnap?.atCommand) return null;
+  const spells = currentSpells();
   const pack = engine.inventory()?.pack ?? [];
   const usable = (e: RecentAction) => {
-    if (e.kind !== 'item') return recentUsable(e, currentSpells());
+    if (e.kind !== 'item') return recentUsable(e, spells);
     const item = recentItem(e, pack);
     return !!item && !!recentItemAction(e, item);
   };
   const recent = api.recent();
-  if (magicLabel() !== null) {
+  if (heroStyle().magic) {
     const magic = recent.find((e) => e.kind !== 'item' && usable(e));
     if (magic) return magic;
+    const first = spells?.books.flatMap((b) => b.spells).find((spell) => spell.ok);
+    if (first) return { kind: 'spell', name: first.name };
+    const power = spells?.bonus.find((p) => p.level <= (lastState?.player?.lev ?? 0));
+    if (power) return { kind: 'path', command: 'U', steps: [power.name] };
+    return null;
   }
-  if (!hostileInView()) return null;
   return recent.find((e) => e.aimed && usable(e)) ?? null;
 }
 
-/** A hostile creature is in view of the hero at the command prompt. */
-function hostileInView(): boolean {
-  return mode === 'map' && !!lastSnap?.atCommand && (lastState?.monsters ?? []).some((m) => isHostile(m));
+/**
+ * Why a recent spell, power or item cannot be done now: too little mana for
+ * the spell (tome2 would only let it be tried at great risk), a wand or
+ * staff out of charges, or, for the toolbar's one tap (`needTarget`),
+ * nothing in sight to aim it at.
+ */
+function recentUnavailable(entry: RecentAction, needTarget: boolean): string | null {
+  if (entry.kind === 'spell') {
+    const spell = currentSpells()?.books.flatMap((b) => b.spells).find((s) => s.name === entry.name);
+    if (spell?.short) return `Not enough mana for ${entry.name}.`;
+  }
+  if (entry.kind === 'item' && /\(0 charges\)/.test(recentItem(entry, engine.inventory()?.pack ?? [])?.name ?? '')) {
+    return `The ${entry.name} is out of charges.`;
+  }
+  if (needTarget && entry.aimed && !targetInSight()) return NO_TARGET;
+  return null;
+}
+
+const NO_TARGET = 'No target in sight.';
+
+/** An awake hostile creature in line of sight (not one only sensed by telepathy). */
+function dangerInView(): boolean {
+  return (lastState?.monsters ?? []).some((m) => isHostile(m) && !m.asleep && !!m.target);
+}
+
+/** A hostile creature a spell or missile can be aimed at, as tome2's "nearest target" needs. */
+function targetInSight(): boolean {
+  return (lastState?.monsters ?? []).some((m) => isHostile(m) && !!m.target);
 }
 
 /** Shows a spell's description from tome2's spell list ("i" beside it), with Cast. */
@@ -398,20 +480,24 @@ function heroStyle(): FightingStyle {
   return style;
 }
 
-/** The toolbar's magic button: Cast with spell books, Powers with only skills or race powers, none without either or for heroes who fight without magic. */
+/**
+ * The toolbar's magic button: for a hero who uses magic, Cast with spell
+ * books and Powers with only skills or race powers; for others, Powers when
+ * their race or class gives them some. None without any.
+ */
 function magicLabel(): string | null {
-  if (!heroStyle().magic) return null;
   const spells = currentSpells();
-  if (!spells) return 'Cast';
-  if (spells.books.length) return 'Cast';
+  if (!heroStyle().magic) return spells?.bonus.length ? 'Powers' : null;
+  if (!spells || spells.books.length) return 'Cast';
   return spells.powers.length || spells.bonus.length ? 'Powers' : null;
 }
 
-/** A launcher with ammunition in the quiver. */
-function canFire(): boolean {
+/** The Fire button, for a hero with a launcher wielded; it says why it cannot shoot now. */
+function fireSlot(): Slot | null {
   const equip = engine.inventory()?.equip ?? [];
   const ready = (part: number) => equip.some((slot) => slot.part === part && !slot.empty && !!slot.name);
-  return ready(INVEN_BOW) && ready(INVEN_AMMO);
+  if (!ready(INVEN_BOW)) return null;
+  return { unavailable: !ready(INVEN_AMMO) ? 'Your quiver is empty.' : !targetInSight() ? NO_TARGET : null };
 }
 
 const character = new CharacterPanel(api, {
@@ -482,7 +568,7 @@ function openEntity(entity: HudEntity): void {
 }
 
 function openNative(view: NativeView): void {
-  if (travel || picker) stopAutomation(null, 'native');
+  if ((travel || picker) && view !== 'pace') stopAutomation(null, 'native');
   switch (view) {
     case 'inventory':
       openInventory(api, 'pack');
@@ -500,15 +586,24 @@ function openNative(view: NativeView): void {
       character.open('abilities');
       break;
     case 'magic':
-      openMagic(api, api.recent(), { run: (entry) => runRecent(entry) });
+      openMagic(api, api.recent(), { run: (entry, anyway) => runRecent(entry, false, anyway) });
       break;
     case 'recast': {
-      const entry = recastEntry();
-      if (entry) runRecent(entry, !!entry.aimed && hostileInView());
+      const entry = quickEntry();
+      if (entry) runRecent(entry, targetInSight());
       break;
     }
     case 'fire':
+      watchAttempt();
       runMacro(fireMacro());
+      break;
+    case 'halt':
+      break;
+    case 'pace':
+      settings = { ...settings, explorePace: settings.explorePace === 'relaxed' ? 'normal' : 'relaxed' };
+      saveSettings(settings);
+      showToast(settings.explorePace === 'relaxed' ? 'Exploring at a relaxed pace.' : 'Exploring at the normal pace.');
+      updateActionBar(true);
       break;
     case 'knowledge':
       openKnowledge(api);
@@ -942,25 +1037,31 @@ function persistMapMemory(): void {
   mapMemory.save();
 }
 
-/** Which way the hero is now heading, from the depth left and the depth entered (tome2 depths hold across dungeons); null keeps it. */
-function headingInto(depth: number): 'down' | 'up' | null {
-  if (depth === 0) return 'down';
-  if (exploreLevel === null || depth === exploreLevelDepth) return null;
-  return depth > exploreLevelDepth ? 'down' : 'up';
+/**
+ * Which way the hero is now heading, from the place left and the place
+ * entered (tome2 depths hold across dungeons): on the land, up after leaving
+ * a dungeon and down after coming from the world map; null keeps it.
+ */
+function headingInto(next: Place): 'down' | 'up' | null {
+  if (exploreLevel === null) return null;
+  if (next.depth === 0) return next.wild ? null : exploreLevelDepth > 0 ? 'up' : exploreLevelWild ? 'down' : null;
+  if (next.depth === exploreLevelDepth) return null;
+  return next.depth > exploreLevelDepth ? 'down' : 'up';
 }
 
 function enterLevel(key: string, next: Place): void {
   persistMapMemory();
-  const heading = headingInto(next.depth);
+  const heading = headingInto(next);
   if (heroMemory && heading) mapMemory.setHeading(heroMemory, heading);
   exploreLevel = key;
   exploreLevelDepth = next.depth;
+  exploreLevelWild = !!next.wild;
   exploreKeepsVisits = key.startsWith('land:') || !!next.kept;
   exploreSkip.clear();
   noticed.clear();
   landMemory = null;
   memoryTurn = -1;
-  wayOnLabel = { key: '', label: null };
+  exploreNextCache = { key: '', next: 'explore' };
   exploreAnchor = null;
   exploreLastStop = null;
   exploreSeenItems.clear();
@@ -996,40 +1097,63 @@ function updateMapMemory(snap: LevelSnapshot): void {
   const current = place && place.depth === snap.depth && !!place.wild === snap.wild ? place : null;
   if (!current) return;
   const key = levelKey(current) ?? `other:${current.dungeon}:${current.depth}:${current.wild}`;
-  if (key !== exploreLevel) enterLevel(key, current);
   const pos = snap.py * snap.width + snap.px;
+  if (key !== exploreLevel) {
+    enterLevel(key, current);
+    arrival = pos;
+    memoryPos = pos;
+  }
   if (snap.turn === memoryTurn && pos === memoryPos) return;
+  if (memoryPos >= 0 && cellDistance(snap.width, memoryPos, pos) > 1 && /void jumpgate/.test(underfootName(snap))) arrival = pos;
+  else if (pos !== arrival) arrival = -1;
   memoryTurn = snap.turn;
   memoryPos = pos;
   noteVisited(snap);
   rememberLand(snap, key);
 }
 
+/** Steps between two cells of a level. */
+function cellDistance(width: number, a: number, b: number): number {
+  return Math.max(Math.abs((a % width) - (b % width)), Math.abs(Math.floor(a / width) - Math.floor(b / width)));
+}
+
 /* What each terrain feature means to exploring, by feature index (built with the materials). */
 let featureRoles: { down: boolean[]; up: boolean[] } = { down: [], up: [] };
 
+/**
+ * Exploring's plan for this level. The way on is in the hero's heading; a
+ * dungeon level with no known way that way (the bottom of a dungeon, the
+ * top of one entered from its far end) is left the other way.
+ */
 function explorePlan(): ExplorePlan {
-  const heading = (lastSnap?.depth ?? 0) > 0 ? (heroMemory?.heading ?? 'down') : 'down';
-  const role = (table: boolean[]) => (i: number) => !!lastSnap && !!table[lastSnap.feat[i]];
+  const heading = heroMemory?.heading ?? 'down';
+  const role = (roles: boolean[]) => (i: number) => !!lastSnap && !!roles[lastSnap.feat[i]];
   return {
     skip: exploreSkip,
     heading,
     isExit: role(featureRoles[heading]),
+    isBackExit: (lastSnap?.depth ?? 0) > 0 ? role(featureRoles[heading === 'up' ? 'down' : 'up']) : undefined,
     anchor: exploreAnchor,
     collectItems: alwaysPickup(),
   };
 }
 
-/** 'Way down' or 'Way up' once exploring has nothing left but the way on; null otherwise. */
-function wayOnLabelFor(snap: LevelSnapshot | null): string | null {
-  if (!snap?.atCommand || snap.wild || travel || !materialsLoaded) return null;
-  const key = `${exploreLevel}:${snap.turn}:${snap.px},${snap.py}:${exploreSkip.size}:${heroMemory?.heading}`;
-  if (wayOnLabel.key !== key) {
-    const plan = explorePlan();
-    const stop = nextStop(snap, materials, plan);
-    wayOnLabel = { key, label: stop?.kind === 'exit' ? (plan.heading === 'up' ? 'Way up' : 'Way down') : null };
-  }
-  return wayOnLabel.label;
+/** What Explore would do now (see `ExploreNext`); on the land, once nothing is left, the way on is the world map. */
+function exploreNext(snap: LevelSnapshot | null): ExploreNext {
+  if (!snap?.atCommand || snap.wild || !materialsLoaded) return 'explore';
+  const key = `${exploreLevel}:${snap.turn}:${snap.px},${snap.py}:${exploreSkip.size}:${heroMemory?.heading}:${alwaysPickup()}`;
+  if (exploreNextCache.key !== key) exploreNextCache = { key, next: exploreNextFrom(snap) };
+  return exploreNextCache.next;
+}
+
+function exploreNextFrom(snap: LevelSnapshot): ExploreNext {
+  const plan = explorePlan();
+  const stop = nextStop(snap, materials, plan);
+  if (!stop && nextStop(snap, materials, plan, true)) return 'explore';
+  if (!stop) return snap.depth === 0 ? 'worldMap' : 'none';
+  if (stop.kind !== 'exit') return 'explore';
+  if (stop.x === snap.px && stop.y === snap.py) return 'here';
+  return (plan.heading === 'up') !== !!stop.back ? 'up' : 'down';
 }
 
 function refresh(): void {
@@ -1150,6 +1274,7 @@ function refresh(): void {
     inStore = !!store;
     audio.setView(ended ? 'gameover' : 'game');
     audio.update(snap, state, inStore);
+    followAttempt(previous, state);
     coach.update(mode === 'map' && snap.atCommand && !looking && lookCard.hidden && !map.overview, snap.turn);
     hud.updateMessages(
       state.messages ?? [],
@@ -1332,7 +1457,6 @@ function gearSuggestion(): GearSuggestion | null {
   if (!inventory?.ready || !player) return null;
   return suggestedGear(inventory, {
     inDungeon: snap.depth > 0,
-    hurt: player.mhp > 0 && player.chp < player.mhp / 2,
     hungry: statusLabels(player).some((l) => l === 'Hungry' || l === 'Weak'),
     wieldsWeapons: heroStyle().weapons,
   });
@@ -1350,9 +1474,24 @@ function adjacentFoe(): MonsterState | null {
 function useSuggested(): void {
   const gear = gearSuggestion();
   if (!gear) return;
-  const command = gear.kind === 'heal' ? 'q' : gear.kind === 'eat' ? 'E' : 'w';
+  const command = gear.kind === 'eat' ? 'E' : 'w';
   const action = itemActions(gear.item, 'pack').find((a) => a.command === command);
   if (action) runMacro(itemMacro(action, gear.item, 'pack'));
+}
+
+/** What the map toolbar is built from at the command prompt: what is underfoot and around, what Explore would do, and the hero's own buttons. */
+function mapSituation(snap: LevelSnapshot): Partial<ActionContext> {
+  if (travel instanceof Explore) return { exploring: settings.explorePace };
+  const quick = quickEntry();
+  return {
+    arrived: arrival === snap.py * snap.width + snap.px,
+    danger: dangerInView(),
+    exploreNext: exploreNext(snap),
+    gear: gearSuggestion()?.kind ?? null,
+    quick: quick ? { label: recentLabel(quick), unavailable: recentUnavailable(quick, true) } : null,
+    magic: magicLabel(),
+    fire: fireSlot(),
+  };
 }
 
 function updateActionBar(force = false): void {
@@ -1379,30 +1518,24 @@ function updateActionBar(force = false): void {
       underfoot: snap && snap.inDungeon ? underfootName(snap) : '',
       floorObjects: snap?.floorObjects ?? 0,
       alwaysPickup: alwaysPickup(),
-      gear: gearSuggestion()?.kind ?? null,
+      ...(mode === 'map' && snap?.atCommand ? mapSituation(snap) : {}),
       foe: foe && snap ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
-      foeInView: hostileInView(),
-      recast: mode === 'map' && snap?.atCommand ? (() => {
-        const entry = recastEntry();
-        return entry ? recentLabel(entry) : null;
-      })() : null,
-      canFire: mode === 'map' && !!snap?.atCommand && canFire(),
-      magic: mode === 'map' && snap?.atCommand ? magicLabel() : undefined,
       worldMap: !!snap?.inDungeon && snap.depth === 0 && snap.wild,
-      wayOn: mode === 'map' ? wayOnLabelFor(snap) : null,
     });
   currentActions = actions;
   termView.setActions(mode === 'overlay' ? panelActions(actions) : []);
-  const key = actions.map((a) => `${a.id}:${a.label}`).join(',');
+  const key = actions.map((a) => `${a.id}:${a.label}:${!!a.unavailable}`).join(',');
   if (key === actionsKey && !force) return;
+  if (actionsKey.includes('pace:') && !key.includes('pace:')) toolbarSettlesAt = performance.now() + TOOLBAR_SETTLE_MS;
   actionsKey = key;
   toolbar.replaceChildren(
     ...actions.map((action) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.dataset.action = action.id;
-      button.className = action.primary ? 'action primary' : 'action';
+      button.className = ['action', action.primary ? 'primary' : '', action.unavailable ? 'unavailable' : ''].filter(Boolean).join(' ');
       button.setAttribute('aria-label', action.label);
+      if (action.unavailable) button.setAttribute('aria-description', action.unavailable);
       const icon = document.createElement('span');
       icon.className = 'action-icon';
       icon.textContent = iconText(action.icon);
@@ -1426,7 +1559,12 @@ function panelActions(actions: readonly Action[]): PopAction[] {
 }
 
 function runAction(action: Action): void {
-  if (travel || picker) stopAutomation(null, 'action');
+  hideToast();
+  if (action.unavailable) {
+    refuse(action.unavailable);
+    return;
+  }
+  if ((travel || picker) && !action.continues) stopAutomation(null, 'action');
   switch (action.effect.kind) {
     case 'keys':
       send(action.effect.keys);
@@ -1551,6 +1689,7 @@ function stopAutomation(message: string | null, cause: string): void {
   picker = null;
   map.setPath(null);
   if (message) showToast(message);
+  updateActionBar();
   requestFrame();
 }
 
@@ -1562,10 +1701,12 @@ function stepTravel(): void {
   if (travel instanceof Explore) noteSpotted(ctx.snap);
   const step = travel.step(ctx);
   if (step.kind === 'stop') {
-    const dark = step.reason === 'explored' && travel instanceof Explore && gearSuggestion()?.kind === 'light';
+    const dark = step.reason === 'explored' && travel instanceof Explore && ctx.snap.depth > 0 && ctx.snap.lightRadius <= 0;
     const spotted = travel instanceof Explore ? spottedText() : null;
     const reason = dark
-      ? 'It is too dark to explore. Tap Light to light your way.'
+      ? gearSuggestion()?.kind === 'light'
+        ? 'It is too dark to explore. Tap Light to light your way.'
+        : 'It is too dark to explore further without a light.'
       : step.creature
         ? `You stop: ${titleName(step.creature)} is near.`
         : step.reason === 'arrived' && travelApproximate
@@ -1588,6 +1729,7 @@ function startTravel(goal: MapPoint): void {
   const ctx = travelContext();
   if (!ctx) return;
   stopAutomation(null, 'new travel');
+  hideToast();
   recentreMap();
   const snap = ctx.snap;
   const approach = approachTarget(snap, materials, goal);
@@ -1598,6 +1740,12 @@ function startTravel(goal: MapPoint): void {
   travel = new Travel(approach?.point ?? goal, ctx, { noticed });
   travelApproximate = !!approach && !approach.exact;
   stepTravel();
+}
+
+/** The pause between steps of travel and exploring: Relaxed walks at half speed, whatever the animation setting. */
+function travelStepMs(): number {
+  if (settings.explorePace === 'relaxed') return TRAVEL_STEP_MS * 2;
+  return animating() ? TRAVEL_STEP_MS : 0;
 }
 
 /* Exploring carries on from where it began when the hero is about where it last stopped. */
@@ -1625,8 +1773,8 @@ function spottedText(): string | null {
 
 /**
  * Walks to unexplored places until something needs attention; on an
- * explored level, goes to the way on, which a
- * further press takes.
+ * explored level, goes to the way on, which a further press takes (on the
+ * land, once nothing is left, it opens the world map).
  */
 function startExplore(): void {
   const ctx = travelContext();
@@ -1638,14 +1786,15 @@ function startExplore(): void {
   if (!exploreAnchor || !resumed) exploreAnchor = here;
   exploreSpotted.clear();
   for (const o of lastState?.objects ?? []) exploreSeenItems.add(o.y * ctx.snap.width + o.x);
-  const plan = explorePlan();
-  const stop = nextStop(ctx.snap, materials, plan);
-  if (stop?.kind === 'exit' && stop.x === ctx.snap.px && stop.y === ctx.snap.py) {
-    send([BACKSLASH, (plan.heading === 'up' ? '<' : '>').charCodeAt(0)]);
+  const next = exploreNext(ctx.snap);
+  const way = next === 'worldMap' ? '<' : next === 'here' ? transitionUnderfoot(underfootName(ctx.snap))?.command : null;
+  if (way) {
+    send([BACKSLASH, way.charCodeAt(0)]);
     return;
   }
-  travel = new Explore(plan, noticed);
+  travel = new Explore(explorePlan(), noticed);
   travelApproximate = false;
+  updateActionBar();
   stepTravel();
 }
 
@@ -2021,10 +2170,11 @@ const engine = new Engine(buffer, {
         return;
       }
     } else if (travel && !travelTimer) {
-      travelTimer = window.setTimeout(stepTravel, animating() ? TRAVEL_STEP_MS : 0);
+      travelTimer = window.setTimeout(stepTravel, travelStepMs());
     } else if (picker) {
       stepTargeting();
     }
+    settleAttempt();
     requestFrame();
   },
   onKey(code) {
@@ -2288,6 +2438,7 @@ stage.addEventListener(
 /* Toolbar */
 
 toolbar.addEventListener('click', (e) => {
+  if (performance.now() < toolbarSettlesAt) return;
   const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
   const action = currentActions.find((a) => a.id === button?.dataset.action);
   if (action) runAction(action);
@@ -2381,12 +2532,16 @@ function returnToTitle(): void {
   exploreLastStop = null;
   exploreSeenItems.clear();
   exploreLevelDepth = -1;
+  exploreLevelWild = false;
   exploreKeepsVisits = false;
   heroMemory = null;
   heroMemoryId = '';
   landMemory = null;
   memoryTurn = -1;
-  wayOnLabel = { key: '', label: null };
+  exploreNextCache = { key: '', next: 'explore' };
+  arrival = -1;
+  attempt = null;
+  hideToast();
   mapMemory.loaded = false;
   placeKey = '';
   styleKey = '';

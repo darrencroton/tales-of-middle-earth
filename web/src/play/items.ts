@@ -207,26 +207,21 @@ export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace
 }
 
 export interface GearSuggestion {
-  kind: 'weapon' | 'light' | 'heal' | 'eat';
+  kind: 'weapon' | 'light' | 'eat';
   item: ItemState;
 }
 
 export interface Situation {
   /** Below the town, where a light is needed. */
   inDungeon: boolean;
-  /** Health under half. */
-  hurt: boolean;
   hungry: boolean;
   /** The hero fights with weapons, so an empty weapon hand is worth filling. */
   wieldsWeapons?: boolean;
 }
 
-const HEALING = /Cure (Light|Serious|Critical) Wounds|\bHealing\b|\bof Life\b/i;
-
 /**
- * The most useful thing to do with the pack right now: drink a known
- * healing potion when hurt, eat when hungry, wield a weapon when none is
- * wielded (for heroes who fight with weapons), or (below the town) light a light source.
+ * Gear the hero needs to go on: food when hungry, a weapon when none is
+ * wielded (for heroes who fight with weapons), or (below the town) a light.
  */
 export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>, situation: Situation): GearSuggestion | null {
   const equipped = (index: number) => inventory.equip.some((slot) => slot.i === index && slot.name);
@@ -235,7 +230,6 @@ export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>,
     return item ? { kind, item } : null;
   };
   return (
-    (situation.hurt ? find('heal', (i) => (i.tval === TV.POTION || i.tval === TV.POTION2) && HEALING.test(i.name)) : null) ??
     (situation.hungry ? find('eat', (i) => i.tval === TV.FOOD) : null) ??
     (situation.wieldsWeapons !== false && !equipped(INVEN_WIELD) ? find('weapon', (i) => WEAPON_TVALS.has(i.tval)) : null) ??
     (situation.inDungeon && !equipped(INVEN_LITE) ? find('light', (i) => i.tval === TV.LITE) : null)

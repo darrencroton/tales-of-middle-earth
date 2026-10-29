@@ -3,8 +3,10 @@ import {
   createCharacter,
   dismissMore,
   equipSuggested,
+  foeInSight,
   jumpToLevel,
   playerPos,
+  pressExplore,
   screenText,
   viewMode,
   waitAtCommand,
@@ -322,18 +324,19 @@ test('spells are cast from the Magic sheet, and recent ones are offered first', 
   await dismissMore(page);
   await waitAtCommand(page);
 
-  /* A magic user keeps Cast and gets the last spell beside it, with or without a foe in view. */
-  await expect(page.locator('#toolbar [data-action="cast"]')).toBeVisible();
+  /* A magic user's buttons keep their places after the changing first one: the last spell, then Cast. */
+  const ids = () => page.locator('#toolbar button').evaluateAll((buttons) => buttons.slice(1).map((b) => b.getAttribute('data-action')));
+  expect(await ids()).toEqual(['recast', 'cast', 'inventory', 'rest', 'commands', 'menu']);
   await expect(page.locator('#toolbar [data-action="recast"]')).toContainText('Manathrust');
-  await expect(page.locator('#toolbar [data-action="equip"]')).toHaveCount(0);
   const mana = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.csp ?? 0);
-  const before = await mana();
+  const turn = () => page.evaluate(() => window.__tome!.engine.snapshot()?.turn ?? 0);
+  const [before, then] = [await mana(), await turn()];
   await page.locator('#toolbar [data-action="recast"]').click();
-  /* Aimed at the nearest foe when one is in view, otherwise tome2 asks for a target. */
+  /* Aimed at the nearest foe when one is in sight; otherwise refused, without taking a turn. */
   await expect
-    .poll(async () => /^Direction/.test(await screenText(page)) || (await mana()) < before, { timeout: 20_000 })
+    .poll(async () => (await mana()) < before || /No target in sight/.test((await page.locator('#toast').textContent()) ?? ''), { timeout: 20_000 })
     .toBe(true);
-  if (/^Direction/.test(await screenText(page))) await page.keyboard.press('Escape');
+  if ((await mana()) === before) expect(await turn()).toBe(then);
   await dismissMore(page);
   await waitAtCommand(page);
 
@@ -419,7 +422,8 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   await expect(page.locator('#look-card')).toContainText('yourself');
   await page.locator('#look-card .look-button', { hasText: '✕' }).click();
 
-  await page.locator('#toolbar [data-action="look"]').click();
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await page.locator('.sheet .command', { hasText: 'Look' }).click();
   await expect(page.locator('#look-banner')).toBeVisible();
   await page.mouse.click(point.x + 30, point.y);
   await expect(page.locator('#look-card .look-text')).toHaveText(/You see|not explored/);
@@ -498,10 +502,7 @@ test('explore reveals the level after the suggested weapon and light are equippe
   for (let i = 0; i < 5 && (await known()) <= before; i++) {
     await dismissMore(page);
     await waitAtCommand(page);
-    const explore = page.locator('#toolbar [data-action="explore"]');
-    if (!(await explore.count())) break;
-    await explore.click();
-    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+    await pressExplore(page);
   }
   expect(await known()).toBeGreaterThan(before);
 });
@@ -572,8 +573,7 @@ test('Explore in town finds the way down and the quest level below Bree stays na
   await createCharacter(page, 'Delver');
 
   await equipSuggested(page);
-  const explore = page.locator('#toolbar [data-action="explore"]');
-  await expect(explore).toBeVisible();
+  await expect(page.locator('#toolbar [data-action="inventory"]')).toBeVisible();
   await expect(page.locator('#toolbar [data-action="dungeon"]')).toHaveCount(0);
   for (let i = 0; i < 30 && !(await page.locator('#toolbar [data-action="descend"]').count()); i++) {
     await dismissMore(page);
@@ -584,9 +584,7 @@ test('Explore in town finds the way down and the quest level below Bree stays na
       await page.waitForTimeout(300);
       continue;
     }
-    if (!(await explore.count())) break;
-    await explore.click();
-    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+    await pressExplore(page);
   }
   await expect(page.locator('#toolbar [data-action="descend"]')).toBeVisible();
 
@@ -597,7 +595,9 @@ test('Explore in town finds the way down and the quest level below Bree stays na
   expect(await viewMode(page)).toBe('map');
   await expect(page.locator('.termview')).toBeHidden();
   expect((await screenText(page)).split('\n')[0]).not.toMatch(/-more-/);
-  await expect(page.locator('#toolbar [data-action="explore"]')).toBeVisible();
+  /* The stairs the hero arrived by give way to gear and Explore until there is nothing else to do or a foe is in sight. */
+  await equipSuggested(page);
+  if (!(await foeInSight(page))) await expect(page.locator('#toolbar [data-action="ascend"]')).toHaveCount(0);
   expect(await page.evaluate(() => window.__tome!.engine.gameState()!.messages!.length)).toBeGreaterThan(0);
 });
 

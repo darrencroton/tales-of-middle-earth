@@ -190,6 +190,8 @@ export interface MonsterState {
   afraid: number;
   unique: number;
   status: number;
+  /** A spell or missile can be aimed at it (in line of fire, as tome2's targeting needs). */
+  target?: number;
   ridx?: number;
   ego?: number;
   level?: number;

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createCharacter, dismissMore, equipSuggested, jumpToLevel, playerPos, waitAtCommand, waitForEngine } from './helpers.ts';
+import { createCharacter, dismissMore, equipSuggested, jumpToLevel, playerPos, pressExplore, waitAtCommand, waitForEngine } from './helpers.ts';
 
 /** A fingerprint of the level's terrain, and how many grids the hero remembers. */
 function level(page: Page): Promise<{ terrain: number; known: number; depth: number }> {
@@ -19,10 +19,7 @@ async function explore(page: Page, times: number): Promise<void> {
   for (let i = 0; i < times; i++) {
     await dismissMore(page);
     await waitAtCommand(page);
-    const button = page.locator('#toolbar [data-action="explore"]');
-    if (!(await button.count())) break;
-    await button.click();
-    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+    await pressExplore(page);
   }
   await dismissMore(page);
   await waitAtCommand(page);

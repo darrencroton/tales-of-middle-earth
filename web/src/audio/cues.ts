@@ -31,6 +31,7 @@ export type CueId =
   | 'read'
   | 'eat'
   | 'cast'
+  | 'fizzle'
   | 'fire'
   | 'throw'
   | 'zap'
@@ -200,6 +201,35 @@ const INTENT_CUES: Readonly<Record<string, CueId>> = {
 export function intentCue(key: string): Cue | null {
   const id = INTENT_CUES[key];
   return id ? { id } : null;
+}
+
+/* tome2's messages for a spell, power or device that was tried and did not work (the attempt still takes its turn). */
+const FAILED = /^You failed to (get the spell off|concentrate|use the|activate)/;
+/* Messages that only report a question the player dismissed. */
+const DISMISSED = /^(Cancelled|Never mind)\b/i;
+
+/**
+ * How a command ended, once tome2 is back at the command prompt: `failed`
+ * when it took its turn but tome2 says the attempt failed, `refused` when
+ * tome2 turned it down without taking a turn (and said why). The message is
+ * tome2's own. Null when it worked or was cancelled.
+ */
+export function attemptOutcome(tookTime: boolean, messages: readonly string[]): { kind: 'failed' | 'refused'; message: string } | null {
+  if (tookTime) {
+    const failed = messages.find((m) => FAILED.test(m));
+    return failed ? { kind: 'failed', message: failed } : null;
+  }
+  const told = messages.filter((m) => !DISMISSED.test(m));
+  return told.length ? { kind: 'refused', message: told[told.length - 1] } : null;
+}
+
+/** The sound for a command once it has ended: its own when it worked, `fizzle` when it failed, `deny` when refused. */
+export function outcomeCue(key: string, tookTime: boolean, messages: readonly string[]): Cue | null {
+  const cue = intentCue(key);
+  if (!cue) return null;
+  const outcome = attemptOutcome(tookTime, messages);
+  if (!outcome) return tookTime ? cue : null;
+  return { id: outcome.kind === 'failed' ? 'fizzle' : 'deny' };
 }
 
 type Tracked = Pick<PlayerState, 'name' | 'lev' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'status' | 'food'>;
