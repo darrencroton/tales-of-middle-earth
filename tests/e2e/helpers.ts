@@ -195,7 +195,10 @@ export async function equipSuggested(page: Page): Promise<void> {
   await expect(page.locator('#toolbar [data-action="equip"]')).toHaveCount(0);
 }
 
-/** Explores once: the toolbar's Explore when it is the changing button, otherwise Explore under More. Waits until exploring stops. */
+/* Taps on the toolbar are ignored this long after exploring ends (`TOOLBAR_SETTLE_MS` in main.ts), with a margin. */
+const TOOLBAR_SETTLE_MS = 500;
+
+/** Explores once: the toolbar's Explore when it is the changing button, otherwise Explore under More. Waits until exploring stops and the toolbar takes taps again. */
 export async function pressExplore(page: Page): Promise<void> {
   const button = page.locator('#toolbar [data-action="explore"]');
   if (await button.count()) {
@@ -205,6 +208,7 @@ export async function pressExplore(page: Page): Promise<void> {
     await page.locator('.sheet .command', { hasText: 'Explore' }).click();
   }
   await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+  await page.waitForTimeout(TOOLBAR_SETTLE_MS);
 }
 
 /** An awake hostile creature is in line of sight. */
