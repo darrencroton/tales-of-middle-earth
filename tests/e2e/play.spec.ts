@@ -354,12 +354,21 @@ test('race powers are in the Magic sheet, their lettered questions are buttons, 
     await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
     await expect(page.locator('.sheet-title')).toHaveText('Magic');
   };
-  await openMagic();
-  await page.locator('.sheet .row-button', { hasText: "Thunderlord's Powers" }).click();
-  await expect(page.locator('.sheet-layer')).toBeHidden();
-  const strike = page.locator('.prompt-card [data-choice="T"]');
-  await expect(strike).toHaveText('Thunder strike');
-  await strike.click();
+  /* A power can fail to concentrate; a hero tries again. */
+  const aimed = async () => (await screenText(page)).split('\n')[0].startsWith('Direction');
+  for (let attempt = 0; attempt < 4 && !(await aimed()); attempt++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await openMagic();
+    await page.locator('.sheet .row-button', { hasText: "Thunderlord's Powers" }).click();
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+    const strike = page.locator('.prompt-card [data-choice="T"]');
+    await expect(strike).toHaveText('Thunder strike');
+    await strike.click();
+    await expect
+      .poll(async () => (await aimed()) || (await page.evaluate(() => window.__tome!.engine.snapshot()?.atCommand ?? false)), { timeout: 10_000 })
+      .toBe(true);
+  }
   await waitForScreen(page, /^Direction/);
   await page.keyboard.press('Escape');
   await dismissMore(page);
