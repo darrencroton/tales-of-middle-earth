@@ -199,7 +199,7 @@ export class FilePages {
     this.cached = null;
     this.sourceCache = null;
     const next = line + this.pageHeight >= this.size ? 0 : line + this.pageHeight;
-    this.done = this.size <= this.pageHeight || this.covered(next, Math.min(this.size, next + this.pageHeight));
+    this.done = this.covered(next, Math.min(this.size, next + this.pageHeight));
     return !this.done;
   }
 

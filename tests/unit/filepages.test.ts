@@ -60,6 +60,21 @@ describe('file viewer pages', () => {
     assert.equal(file.rows.length, 29);
   });
 
+  it('goes back for the top of a short file opened part-way down', () => {
+    const file = new FilePages({ caption: "Help file 'c.txt'", line: 10, size: 15 }, 20);
+    assert.equal(file.add(10, page(10, 20, 15)), true);
+    assert.equal(file.add(0, page(0, 20, 15)), false);
+    assert.deepEqual(file.rows.map(text), Array.from({ length: 15 }, (_, i) => `line ${i}`));
+    assert.equal(file.rowOf(10), 10);
+  });
+
+  it('is whole at once when empty', () => {
+    const file = new FilePages({ caption: 'Fate status', line: 0, size: 0 }, 20);
+    assert.equal(file.add(0, page(0, 20, 0)), false);
+    assert.ok(file.complete);
+    assert.equal(file.rows.length, 0);
+  });
+
   it('needs no more pages for a short file and keeps its own copy of the rows', () => {
     const rows = page(0, 20, 5);
     const file = new FilePages({ caption: 'Quest status', line: 0, size: 5 }, 20);
