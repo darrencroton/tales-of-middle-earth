@@ -77,7 +77,7 @@ test('tapping the map travels there along a known path', async ({ page }) => {
   const after = Math.max(Math.abs(end.x - target!.x), Math.abs(end.y - target!.y));
   const context = `stopped (${cause || 'never started'}) at ${JSON.stringify(end)} from ${JSON.stringify(start)} towards ${JSON.stringify(target)}\n${await screenText(page)}`;
   if (after > 0 && cause !== 'interrupted') {
-    await expect(page.locator('#toast'), context).toContainText(/near|hurt|blocked/);
+    await expect(page.locator('#toast'), context).toContainText(/in sight|hurt|blocked|light/);
   }
   expect(after, context).toBeLessThan(before);
 
@@ -134,7 +134,8 @@ test('a stack is dropped by the number chosen, and the floor list shows alone', 
   await page.locator('.sheet .item-row', { hasText: 'Ration' }).click();
   await expect(page.locator('.sheet [data-action="dropall"]')).toHaveCount(0);
   await page.locator('.sheet [data-action="drop"]').click();
-  await expect(page.locator('.sheet.sheet-quantity .stepper-value')).toHaveText(String(food));
+  await expect(page.locator('.sheet.sheet-quantity .stepper-value')).toHaveText('1');
+  await page.locator('.sheet.sheet-quantity .stepper-button', { hasText: `All ${food}` }).click();
   await page.locator('.sheet.sheet-quantity .stepper-button', { hasText: '−' }).click();
   await page.locator('.sheet.sheet-quantity .stepper-button', { hasText: '−' }).click();
   await expect(page.locator('.sheet.sheet-quantity [data-action="confirm"]')).toHaveText(`Drop ${food - 2}`);
@@ -507,7 +508,7 @@ test('explore reveals the level after the suggested weapon and light are equippe
   expect(await known()).toBeGreaterThan(before);
 });
 
-test('a tap on unseen ground walks as near to it as the known way leads', async ({ page }) => {
+test('a tap on unseen ground takes one step towards it', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Torchbearer');
@@ -536,16 +537,10 @@ test('a tap on unseen ground walks as near to it as the known way leads', async 
       for (let x = 0; x < snap.width; x++) {
         const d = Math.max(Math.abs(x - snap.px), Math.abs(y - snap.py));
         if (d < far || d > far + 4 || known(x, y) || !onMap(x, y)) continue;
-        const toTarget = Math.hypot(x - snap.px, y - snap.py);
-        let closer = false;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const nx = snap.px + dx;
-            const ny = snap.py + dy;
-            if ((dx || dy) && open(nx, ny) && Math.hypot(x - nx, y - ny) < toTarget) closer = true;
-          }
-        }
-        if (closer && d < bestScore) {
+        /* The neighbour in the tap's direction (as `stepTowards` picks it first) is open floor. */
+        const octant = Math.round(Math.atan2(y - snap.py, x - snap.px) / (Math.PI / 4)) * (Math.PI / 4);
+        const ahead = open(snap.px + Math.round(Math.cos(octant)), snap.py + Math.round(Math.sin(octant)));
+        if (ahead && d < bestScore) {
           bestScore = d;
           best = { x, y };
         }
@@ -565,6 +560,7 @@ test('a tap on unseen ground walks as near to it as the known way leads', async 
   await expect(page.locator('#toast'), context).not.toContainText('no way there');
   const distance = (p: { x: number; y: number }) => Math.hypot(p.x - target!.x, p.y - target!.y);
   if (!/monster|hurt/.test(cause)) expect(distance(end), context).toBeLessThan(distance(start));
+  expect(Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)), context).toBeLessThanOrEqual(1);
 });
 
 test('Explore in town finds the way down and the quest level below Bree stays native', async ({ page }) => {

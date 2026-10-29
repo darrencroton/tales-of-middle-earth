@@ -14,6 +14,9 @@ import {
   type Cue,
   type CueId,
   type DoorKinds,
+  type LauncherKind,
+  type SpellTone,
+  type WeaponKind,
 } from './cues.ts';
 import { MusicPlayer } from './music.ts';
 import { sceneFor, sceneKey, themeFor, type Place, type View } from './places.ts';
@@ -50,6 +53,8 @@ const BACKSLASH = 0x5c;
 interface Intent {
   key: string;
   turn: number;
+  /** The school of the spell a cast is for. */
+  tone: SpellTone | null;
 }
 
 /**
@@ -77,6 +82,9 @@ export class GameAudio {
   private prevLevel = '';
   private turn = 0;
   private intent: Intent | null = null;
+  private weapon: WeaponKind = 'unarmed';
+  private launcher: LauncherKind | null = null;
+  private castTone: SpellTone | null = null;
   private commandNext = false;
   private readonly announced = new Set<number>();
   private readonly lastPlayed = new Map<CueId, number>();
@@ -247,12 +255,24 @@ export class GameAudio {
     this.doors = doors;
   }
 
+  /** What the hero fights and shoots with, for the sounds of their blows and shots. */
+  setGear(weapon: WeaponKind, launcher: LauncherKind | null): void {
+    this.weapon = weapon;
+    this.launcher = launcher;
+  }
+
+  /** The school of the spell being cast (one under way, or the next `m` taken), for its casting sound. */
+  castingTone(tone: SpellTone | null): void {
+    this.castTone = tone;
+    if (this.intent?.key === 'm') this.intent.tone = tone;
+  }
+
   /** The engine took a key; `atCommand` says whether it was waiting for a command. */
   keyConsumed(code: number, atCommand: boolean): void {
     if (!this.prevState) return;
     if (this.commandNext) {
       this.commandNext = false;
-      this.intent = { key: String.fromCharCode(code), turn: this.turn };
+      this.intent = this.newIntent(code);
       return;
     }
     if (!atCommand) return;
@@ -260,7 +280,15 @@ export class GameAudio {
       this.commandNext = true;
       return;
     }
-    this.intent = { key: String.fromCharCode(code), turn: this.turn };
+    this.intent = this.newIntent(code);
+  }
+
+  /** A command key taken; a cast takes the school armed by `castingTone`. */
+  private newIntent(code: number): Intent {
+    const key = String.fromCharCode(code);
+    const tone = key === 'm' ? this.castTone : null;
+    this.castTone = null;
+    return { key, turn: this.turn, tone };
   }
 
   /** Compares with the last state seen and plays what happened. */
@@ -280,7 +308,7 @@ export class GameAudio {
         const tookTime = snap.turn !== this.intent.turn;
         const cue = tookTime || snap.atCommand ? outcomeCue(this.intent.key, tookTime, fresh) : null;
         if (cue) {
-          cues.push(cue);
+          cues.push(cue.id === 'cast' && this.intent.tone ? { ...cue, variant: this.intent.tone } : cue);
           intentPlayed = cue.id !== 'deny';
         }
         if (cue || tookTime || !intentCue(this.intent.key)) this.intent = null;
@@ -308,6 +336,13 @@ export class GameAudio {
         const index = cues.findIndex((c) => c.id === 'kill');
         cues[index] = { id: 'kill-unique' };
       }
+    }
+
+    const melee = cues.some((c) => c.id === 'hit' || c.id === 'crit');
+    for (let i = 0; i < cues.length; i++) {
+      const id = cues[i].id;
+      if (id === 'hit' || id === 'crit' || (melee && (id === 'kill' || id === 'kill-unique'))) cues[i] = { ...cues[i], variant: this.weapon };
+      else if (id === 'fire' && this.launcher) cues[i] = { ...cues[i], variant: this.launcher };
     }
 
     this.prevState = state;
@@ -407,6 +442,7 @@ export class GameAudio {
     this.prevFeat = null;
     this.prevLevel = '';
     this.intent = null;
+    this.castTone = null;
     this.commandNext = false;
     this.announced.clear();
     this.intensityTarget = 0;

@@ -142,8 +142,15 @@ describe('explore', () => {
     const explore = new Explore(plan(-1));
     const ctx = (snap: LevelSnapshot, monsters: MonsterState[]) => ({ snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters, hp: 10 });
     assert.equal(explore.step(ctx(before, [])).kind, 'keys');
-    const orc = { id: 7, name: 'Cave orc', x: 6, y: 1, status: -1, asleep: 0 } as MonsterState;
-    assert.deepEqual(explore.step(ctx(after, [orc])), { kind: 'stop', reason: 'monster', creature: 'Cave orc' });
+    const orc = { id: 7, name: 'Cave orc', x: 6, y: 1, status: -1, asleep: 0, target: 1 } as MonsterState;
+    assert.deepEqual(explore.step(ctx(after, [orc])), { kind: 'stop', reason: 'monster', creature: 'Cave orc', asleep: false });
+  });
+
+  it('stops when the light goes out', () => {
+    const snap = { ...level(['#######', '#@....?', '#######']), atCommand: true, icky: false, floorObjects: 0, depth: 1, lightRadius: 1 };
+    const explore = new Explore(plan(-1));
+    assert.equal(explore.step({ snap, materials, monsters: [], hp: 10 }).kind, 'keys');
+    assert.deepEqual(explore.step({ snap: { ...snap, px: 2, lightRadius: 0 }, materials, monsters: [], hp: 10 }), { kind: 'stop', reason: 'dark' });
   });
 
   it('says when a creature is all that stands in the way', () => {

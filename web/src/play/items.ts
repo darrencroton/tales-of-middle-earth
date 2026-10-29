@@ -134,10 +134,10 @@ export function itemActions(item: ItemState, place: ItemPlace): ItemAction[] {
   return actions;
 }
 
-/** The number to answer a quantity prompt with; a choice not yet made counts as the whole stack. */
+/** The number to answer a quantity prompt with; a choice not yet made counts as one. */
 export function quantityAnswer(quantity: ItemAction['quantity'], stack: number): number {
   if (typeof quantity === 'number') return Math.max(1, Math.min(stack, Math.round(quantity)));
-  return quantity === 'one' ? 1 : Math.max(1, stack);
+  return quantity === 'all' ? Math.max(1, stack) : 1;
 }
 
 /** Menu letter tome2 uses for an inventory or equipment index. */

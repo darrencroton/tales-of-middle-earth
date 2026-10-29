@@ -1,12 +1,10 @@
 import type { Material } from '../render/materials.ts';
-import { CAVE_MARK, CAVE_SEEN, isHostile, LAYER_MASK, LAYER_OBJECT, type LevelSnapshot } from '../render/snapshot.ts';
+import { CAVE_MARK, CAVE_SEEN, LAYER_MASK, LAYER_OBJECT, type LevelSnapshot } from '../render/snapshot.ts';
 import type { Point } from './pathfinding.ts';
-import { Travel, travelGrid, type TravelContext, type TravelStep } from './travel.ts';
+import { hostilesInSight, lightWentOut, Travel, travelGrid, type TravelContext, type TravelStep } from './travel.ts';
 
 const MAX_TARGETS = 500;
 const MAX_RETRIES = 6;
-/* Exploring only stops for awake creatures right next to the player (and new ones). */
-const EXPLORE_DANGER_RADIUS = 1;
 /* Each step between a place and the anchor counts this many times a step from the hero, up to `ANCHOR_REACH` steps. */
 const ANCHOR_WEIGHT = 2;
 /* How far the anchor's pull reaches: once nothing is left that close, the hero becomes the new anchor. */
@@ -167,16 +165,14 @@ export class Explore {
   private stop: ExploreStop | null = null;
   private targets = 0;
   private lastHp: number | null = null;
+  private lastLight: number | null = null;
   private readonly plan: ExplorePlan;
-  private readonly noticed: Set<number>;
   private readonly avoid = new Set<number>();
-  /** Hostiles in view when exploring began, shared by all its journeys (see `TravelOptions`). */
-  private known: Set<number> | null = null;
+  /** Hostiles in view at the last step, shared by all its journeys (see `TravelOptions`). */
+  private inSight: Set<number> | null = null;
 
-  /** `noticed` is shared with travel (see `TravelOptions`). */
-  constructor(plan: ExplorePlan, noticed: Set<number> = new Set()) {
+  constructor(plan: ExplorePlan) {
     this.plan = { ...plan, avoid: this.avoid };
-    this.noticed = noticed;
   }
 
   /** Where the map is filling out from now (it moves on once its surroundings are explored). */
@@ -206,10 +202,12 @@ export class Explore {
   }
 
   step(ctx: TravelContext): TravelStep {
-    if (this.lastHp !== null && ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };
-    this.lastHp = ctx.hp;
     const { snap } = ctx;
-    this.known ??= new Set(ctx.monsters.filter(isHostile).map((m) => m.id));
+    if (this.lastHp !== null && ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };
+    if (lightWentOut(snap, this.lastLight)) return { kind: 'stop', reason: 'dark' };
+    this.lastHp = ctx.hp;
+    this.lastLight = snap.lightRadius;
+    this.inSight ??= new Set(hostilesInSight(ctx.monsters).map((m) => m.id));
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       if (this.travel && !this.worthReaching(snap, ctx.materials)) this.travel = null;
       if (!this.travel) {
@@ -223,7 +221,7 @@ export class Explore {
         if (stop.kind === 'exit' && stop.x === snap.px && stop.y === snap.py) return { kind: 'stop', reason: this.exitReason(stop) };
         this.stop = stop;
         this.targets++;
-        this.travel = new Travel(stop, ctx, { dangerRadius: EXPLORE_DANGER_RADIUS, noticed: this.noticed, known: this.known });
+        this.travel = new Travel(stop, ctx, { inSight: this.inSight });
       }
       const step = this.travel.step(ctx);
       if (step.kind === 'keys') return step;

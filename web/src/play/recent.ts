@@ -247,6 +247,11 @@ export class CastWatcher {
   private spell: string | null = null;
   private spellMode = false;
 
+  /** The spell being cast, once it is known. */
+  get casting(): string | null {
+    return this.command && this.spellMode ? this.spell : null;
+  }
+
   /** A command that opens tome2's menus was given (or a recent one is being replayed). */
   begin(command: 'm' | 'U', steps: readonly string[] = [], spell: string | null = null): void {
     this.command = command;

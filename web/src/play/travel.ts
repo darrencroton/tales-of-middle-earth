@@ -15,7 +15,6 @@ import { directionDigit } from './prompts.ts';
 const MAX_STEPS = 400;
 /* Visits to one cell that end a journey as going round in circles. */
 const MAX_VISITS = 3;
-const DANGER_RADIUS = 2;
 const WALK = ';'.charCodeAt(0);
 const OPEN = 'o'.charCodeAt(0);
 
@@ -25,6 +24,7 @@ export type TravelStopReason =
   | 'hurt'
   | 'blocked'
   | 'shut'
+  | 'dark'
   | 'unreachable'
   | 'interrupted'
   | 'limit'
@@ -41,6 +41,8 @@ export type TravelStep =
       reason: TravelStopReason;
       /** The creature that stopped travel. */
       creature?: string;
+      /** It was asleep. */
+      asleep?: boolean;
     };
 
 export interface TravelContext {
@@ -52,10 +54,11 @@ export interface TravelContext {
 
 export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
   arrived: null,
-  monster: 'You stop: a creature is near.',
+  monster: 'You stop: a creature is in sight.',
   hurt: 'You stop: you are hurt.',
   blocked: 'You stop: the way is blocked.',
   shut: 'You stop: the door will not open.',
+  dark: 'You stop: your light has gone out.',
   unreachable: 'You know no way there yet.',
   interrupted: null,
   limit: 'You stop to get your bearings.',
@@ -171,12 +174,25 @@ export function approachTarget(snap: LevelSnapshot, materials: readonly Material
 }
 
 /**
- * The border cell nearest a point outside the level, for walking off the
- * edge of an area of the land into the next; null for a point inside.
+ * The cell for one step towards a place the hero has not seen: the
+ * neighbour in its direction, or when that is a known wall (or off the
+ * level), the one up to 45° either side nearer that direction. Null when
+ * all three are walled.
  */
-export function edgeCell(width: number, height: number, point: Point): Point | null {
-  if (point.x >= 0 && point.y >= 0 && point.x < width && point.y < height) return null;
-  return { x: Math.max(0, Math.min(width - 1, point.x)), y: Math.max(0, Math.min(height - 1, point.y)) };
+export function stepTowards(snap: LevelSnapshot, materials: readonly Material[], point: Point): Point | null {
+  const dx = point.x - snap.px;
+  const dy = point.y - snap.py;
+  if (dx === 0 && dy === 0) return null;
+  const angle = Math.atan2(dy, dx);
+  const eighth = Math.PI / 4;
+  const octant = Math.round(angle / eighth);
+  const tries = [octant, octant - 1, octant + 1].sort((a, b) => Math.abs(angle - a * eighth) - Math.abs(angle - b * eighth));
+  for (const o of tries) {
+    const x = snap.px + Math.round(Math.cos(o * eighth));
+    const y = snap.py + Math.round(Math.sin(o * eighth));
+    if (!knownBarrier(snap, materials, x, y)) return { x, y };
+  }
+  return null;
 }
 
 /** Whether the player has seen or remembers a cell. */
@@ -185,40 +201,41 @@ export function isKnown(snap: LevelSnapshot, point: Point): boolean {
   return (snap.info[point.y * snap.width + point.x] & (CAVE_MARK | CAVE_SEEN)) !== 0;
 }
 
-/** Forgets noticed creatures that are no longer in sight. */
-export function forgetUnseen(noticed: Set<number>, monsters: readonly MonsterState[]): void {
-  if (noticed.size === 0) return;
-  const inSight = new Set(monsters.map((m) => m.id));
-  for (const id of noticed) if (!inSight.has(id)) noticed.delete(id);
+/** Hostile creatures in the hero's line of sight (not those only sensed, by telepathy or detection). */
+export function hostilesInSight(monsters: readonly MonsterState[]): MonsterState[] {
+  return monsters.filter((m) => isHostile(m) && !!m.target);
 }
 
 export interface TravelOptions {
-  /** Awake hostile creatures this close stop travel. */
-  dangerRadius?: number;
   /**
-   * Creatures that have already stopped travel once, shared between
-   * journeys; one that drops out of sight is forgotten.
+   * Hostile creatures in sight at the last step (at first, those in sight
+   * when travel began); shared between journeys, so one that comes into
+   * sight between them still stops the next.
    */
-  noticed?: Set<number>;
-  /**
-   * Hostile creatures already in view when travel began (others stop it on
-   * sight); shared between journeys, so one first seen between them still does.
-   */
-  known?: Set<number>;
+  inSight?: Set<number>;
+  /** Only the one step to a neighbouring cell (a tap beside the hero): no stops on the way, and nothing to say after. */
+  oneStep?: boolean;
+}
+
+/** Whether the light carried has just gone out below the town. */
+export function lightWentOut(snap: Pick<LevelSnapshot, 'depth' | 'lightRadius'>, lastLight: number | null): boolean {
+  return snap.depth > 0 && lastLight !== null && lastLight > 0 && snap.lightRadius <= 0;
 }
 
 /**
- * Walks the player towards a goal one step per engine idle, stopping in the
- * way Brogue's travel does: on arrival, when hurt, or when danger appears
- * (a new awake hostile creature, or a known one awake and close). Each
- * creature stops travel only once while it stays in sight. It also stops
- * when the way keeps changing under it and the hero comes back to where
- * they have already been twice.
+ * Walks the player towards a goal one step per engine idle, stopping on
+ * arrival, when hurt, when the light goes out, or when a hostile creature
+ * comes into sight, asleep or awake (creatures already in sight do not
+ * stop it). It also stops when the way keeps changing under it and the
+ * hero comes back to where they have already been twice. A one-step
+ * journey (`oneStep`) just takes that step.
  */
 export class Travel {
   readonly goal: Point;
-  private readonly known: Set<number>;
+  private readonly inSight: Set<number>;
+  private readonly single: boolean;
   private lastHp: number;
+  private lastLight: number;
   private lastPos: Point | null = null;
   private lastWasMove = false;
   private lastDoor: Point | null = null;
@@ -226,31 +243,33 @@ export class Travel {
   private finishing = false;
   private readonly visits = new Map<number, number>();
 
-  private readonly dangerRadius: number;
-  private readonly noticed: Set<number>;
-
   /** Steps taken so far. */
   get walked(): number {
     return this.steps;
   }
 
+  /** Only the one step (see `TravelOptions`). */
+  get oneStep(): boolean {
+    return this.single;
+  }
+
   constructor(goal: Point, start: TravelContext, options: TravelOptions = {}) {
     this.goal = goal;
-    this.dangerRadius = options.dangerRadius ?? DANGER_RADIUS;
-    this.noticed = options.noticed ?? new Set();
-    forgetUnseen(this.noticed, start.monsters);
-    this.known = options.known ?? new Set(start.monsters.filter(isHostile).map((m) => m.id));
+    this.inSight = options.inSight ?? new Set(hostilesInSight(start.monsters).map((m) => m.id));
+    this.single = !!options.oneStep;
     this.lastHp = start.hp;
+    this.lastLight = start.snap.lightRadius;
   }
 
   step(ctx: TravelContext): TravelStep {
     const { snap } = ctx;
     const pos = { x: snap.px, y: snap.py };
-    forgetUnseen(this.noticed, ctx.monsters);
 
     if (!snap.atCommand || snap.icky) return { kind: 'stop', reason: 'interrupted' };
     if (this.finishing || (pos.x === this.goal.x && pos.y === this.goal.y)) return { kind: 'stop', reason: 'arrived' };
+    if (this.single && this.steps > 0) return { kind: 'stop', reason: 'interrupted' };
     if (ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };
+    if (lightWentOut(snap, this.lastLight)) return { kind: 'stop', reason: 'dark' };
     if (this.lastPos && Math.max(Math.abs(this.lastPos.x - pos.x), Math.abs(this.lastPos.y - pos.y)) > 1) {
       /* A new area of the land, or a teleport: the goal no longer means the same place. */
       return { kind: 'stop', reason: 'interrupted' };
@@ -267,15 +286,11 @@ export class Travel {
     if (this.steps >= MAX_STEPS) return { kind: 'stop', reason: 'limit' };
 
     const goalIsMonster = ctx.monsters.some((m) => m.x === this.goal.x && m.y === this.goal.y);
-    for (const m of ctx.monsters) {
-      if (!isHostile(m) || this.noticed.has(m.id)) continue;
-      if (m.x === this.goal.x && m.y === this.goal.y) continue;
-      if (!this.known.has(m.id)) {
-        if (!m.asleep) return this.notice(m);
-        this.known.add(m.id);
-      }
-      if (!m.asleep && Math.max(Math.abs(m.x - pos.x), Math.abs(m.y - pos.y)) <= this.dangerRadius) return this.notice(m);
-    }
+    const hostiles = hostilesInSight(ctx.monsters);
+    const arrival = hostiles.find((m) => !this.inSight.has(m.id) && (m.x !== this.goal.x || m.y !== this.goal.y));
+    this.inSight.clear();
+    for (const m of hostiles) this.inSight.add(m.id);
+    if (arrival && !this.single) return { kind: 'stop', reason: 'monster', creature: arrival.name, asleep: !!arrival.asleep };
 
     const path = findPath(travelGrid(snap, ctx.materials), pos, this.goal);
     if (!path || path.length === 0) return { kind: 'stop', reason: 'unreachable' };
@@ -294,6 +309,7 @@ export class Travel {
 
     this.steps++;
     this.lastHp = ctx.hp;
+    this.lastLight = snap.lightRadius;
     this.lastPos = pos;
 
     if (closedDoor) {
@@ -308,8 +324,4 @@ export class Travel {
     return { kind: 'keys', keys: [BACKSLASH, WALK, digit], path };
   }
 
-  private notice(m: MonsterState): TravelStep {
-    this.noticed.add(m.id);
-    return { kind: 'stop', reason: 'monster', creature: m.name };
-  }
 }

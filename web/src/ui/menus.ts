@@ -249,18 +249,18 @@ export interface QuantityQuestion {
   /** What the number counts, shown above the stepper. */
   label: string;
   max: number;
-  /** Starts here; the whole stack by default. */
+  /** Starts here; one by default. */
   initial?: number;
   /** Verb for the confirming button ("Drop" → "Drop 3"). */
   verb: string;
   danger?: boolean;
 }
 
-/** Asks how many of a stack to use: a stepper starting at all of them, then the confirming button. */
+/** Asks how many of a stack to use: a stepper starting at one, then the confirming button. */
 export function askQuantity(sheets: Sheets, question: QuantityQuestion): Promise<number | null> {
   return new Promise((resolve) => {
     const max = Math.max(1, question.max);
-    let value = Math.max(1, Math.min(max, question.initial ?? max));
+    let value = Math.max(1, Math.min(max, question.initial ?? 1));
     let settled = false;
     const finish = (n: number | null) => {
       if (settled) return;

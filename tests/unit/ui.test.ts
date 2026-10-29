@@ -94,7 +94,8 @@ describe('item actions', () => {
     runner.step(screen('(Inven: a-f, ESC) Drop which item?'));
     assert.deepEqual(runner.step(screen('Quantity (1-6): 1')), [...codes('4'), 13]);
     assert.equal(quantityAnswer(9, 6), 6);
-    assert.equal(quantityAnswer('ask', 6), 6);
+    assert.equal(quantityAnswer('ask', 6), 1);
+    assert.equal(quantityAnswer('all', 6), 6);
     assert.equal(quantityAnswer('one', 6), 1);
 
     runner.start(itemMacro({ id: 'inscribe', label: 'Inscribe', command: '{', needsText: true }, food, 'pack', '@E1'));

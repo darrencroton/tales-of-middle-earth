@@ -1,7 +1,7 @@
 import './styles.css';
 import { GameAudio } from './audio/audio.ts';
 import type { Place } from './audio/places.ts';
-import { attemptOutcome, doorKinds, freshMessages } from './audio/cues.ts';
+import { attemptOutcome, doorKinds, freshMessages, launcherKind, spellTone, weaponKind, type SpellTone } from './audio/cues.ts';
 import { Engine } from './engine.ts';
 import { areaName, Hud, rowSegments, statusLabels, type HudEntity } from './hud.ts';
 import { attachMapGestures, attachPinch } from './input/gestures.ts';
@@ -15,7 +15,7 @@ import { commandGroups, commandKeys, contextActions, transitionUnderfoot, waitCo
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { approachTarget, edgeCell, forgetUnseen, isKnown, STOP_MESSAGES, Travel, type TravelContext } from './play/travel.ts';
+import { approachTarget, isKnown, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
 import { CAVE_MARK, isHostile, LAYER_MASK, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
@@ -149,8 +149,6 @@ let features: FeatureInfo[] = [];
 let materials: Material[] = [];
 let travel: Travel | Explore | null = null;
 const exploreSkip = new Set<number>();
-/** Creatures that have already stopped travel on this level. */
-const noticed = new Set<number>();
 /* Map memory: the level exploring is on (`levelKey`, or a stand-in where there is none), the hero's memory and the land area's remembered grids. */
 let exploreLevel: string | null = null;
 let exploreLevelDepth = -1;
@@ -361,13 +359,33 @@ function runRecent(entry: RecentAction, aim = false, anyway = false): void {
   if (!macro) return;
   if (entry.kind === 'spell') castWatcher.begin('m', [], entry.name);
   else castWatcher.begin(entry.command, entry.steps);
+  audio.castingTone(entry.kind === 'spell' ? castingTone(entry.name) : null);
   watchAttempt();
   runMacro(macro);
+}
+
+/** The casting sound for a spell in the books carried, by its school. */
+function castingTone(name: string): SpellTone | null {
+  const school = currentSpells()?.books.flatMap((b) => b.spells).find((s) => s.name === name)?.school;
+  return school ? spellTone(school) : null;
 }
 
 /** Starts watching an action begun from a button, so a refusal or failure is told once tome2 is back at the command prompt. */
 function watchAttempt(): void {
   attempt = lastSnap ? { turn: lastSnap.turn, messages: [] } : null;
+}
+
+let gearTurn = -1;
+
+/** Tells the audio what the hero fights and shoots with, once a game turn. */
+function hearGear(turn: number): void {
+  if (turn === gearTurn) return;
+  const equip = engine.inventory()?.equip;
+  if (!equip) return;
+  gearTurn = turn;
+  const held = (part: number) => equip.find((slot) => slot.part === part && !slot.empty && !!slot.name);
+  const launcher = held(INVEN_BOW);
+  audio.setGear(weaponKind(held(INVEN_WIELD)?.tval), launcherKind(launcher?.tval, launcher?.sval));
 }
 
 /** Gathers the messages of a watched action. */
@@ -1058,7 +1076,6 @@ function enterLevel(key: string, next: Place): void {
   exploreLevelWild = !!next.wild;
   exploreKeepsVisits = key.startsWith('land:') || !!next.kept;
   exploreSkip.clear();
-  noticed.clear();
   landMemory = null;
   memoryTurn = -1;
   exploreNextCache = { key: '', next: 'explore' };
@@ -1261,7 +1278,6 @@ function refresh(): void {
     }
     const previous = lastState;
     lastState = state;
-    forgetUnseen(noticed, state.monsters ?? []);
     hud.update(state, snap.py, snap.px);
     if (state.player) feel.update(state.player);
     const sameHero = !!previous && previous.player?.name === state.player?.name;
@@ -1273,6 +1289,7 @@ function refresh(): void {
     if (store && !inStore) audio.cue('shop');
     inStore = !!store;
     audio.setView(ended ? 'gameover' : 'game');
+    hearGear(snap.turn);
     audio.update(snap, state, inStore);
     followAttempt(previous, state);
     coach.update(mode === 'map' && snap.atCommand && !looking && lookCard.hidden && !map.overview, snap.turn);
@@ -1701,26 +1718,27 @@ function stepTravel(): void {
   if (travel instanceof Explore) noteSpotted(ctx.snap);
   const step = travel.step(ctx);
   if (step.kind === 'stop') {
-    const dark = step.reason === 'explored' && travel instanceof Explore && ctx.snap.depth > 0 && ctx.snap.lightRadius <= 0;
     const spotted = travel instanceof Explore ? spottedText() : null;
-    const reason = dark
-      ? gearSuggestion()?.kind === 'light'
-        ? 'It is too dark to explore. Tap Light to light your way.'
-        : 'It is too dark to explore further without a light.'
-      : step.creature
-        ? `You stop: ${titleName(step.creature)} is near.`
-        : step.reason === 'arrived' && travelApproximate
-          ? travel instanceof Travel && travel.walked >= FAR_WALK_STEPS
-            ? STOP_MESSAGES.closest
-            : null
-          : STOP_MESSAGES[step.reason];
-    const message = [reason, spotted].filter(Boolean).join(' ');
+    const message = [stopMessage(travel, step, ctx.snap), spotted].filter(Boolean).join(' ');
     stopAutomation(message || null, step.reason);
     return;
   }
   map.setPath(step.path);
   engine.sendKeys(step.keys);
+  if (travel instanceof Travel && travel.oneStep) stopAutomation(null, 'step');
   requestFrame();
+}
+
+/** What to tell the player when travel or exploring stops. */
+function stopMessage(journey: Travel | Explore, step: Extract<TravelStep, { kind: 'stop' }>, snap: LevelSnapshot): string | null {
+  const light = gearSuggestion()?.kind === 'light';
+  if (step.reason === 'explored' && journey instanceof Explore && snap.depth > 0 && snap.lightRadius <= 0) {
+    return light ? 'It is too dark to explore. Tap Light to light your way.' : 'It is too dark to explore further without a light.';
+  }
+  if (step.reason === 'dark' && light) return 'Your light has gone out. Tap Light to light another.';
+  if (step.creature) return `You stop: ${titleName(step.creature)} in sight${step.asleep ? ', asleep' : ''}.`;
+  if (step.reason === 'arrived' && travelApproximate) return journey instanceof Travel && journey.walked >= FAR_WALK_STEPS ? STOP_MESSAGES.closest : null;
+  return STOP_MESSAGES[step.reason];
 }
 
 /**
@@ -1739,7 +1757,7 @@ function startTravel(goal: MapPoint): void {
     showToast(STOP_MESSAGES.unreachable ?? '');
     return;
   }
-  travel = new Travel(approach?.point ?? goal, ctx, { noticed });
+  travel = new Travel(approach?.point ?? goal, ctx);
   travelApproximate = !!approach && !approach.exact;
   stepTravel();
 }
@@ -1797,7 +1815,7 @@ function startExplore(): void {
     send([BACKSLASH, way.charCodeAt(0)]);
     return;
   }
-  travel = new Explore(explorePlan(), noticed);
+  travel = new Explore(explorePlan());
   travelApproximate = false;
   updateActionBar();
   stepTravel();
@@ -1901,7 +1919,7 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
     const cell = map.cellAt(clientX, clientY);
     if (map.overview) {
       setOverview(false);
-      if (cell && snap.atCommand) startTravel(cell);
+      if (cell && snap.atCommand) goTowards(snap, cell);
       return;
     }
     if (looking) {
@@ -1912,8 +1930,7 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
       hideLookCard();
       return;
     }
-    const outside = map.gridAt(clientX, clientY);
-    const goal = cell ?? (onLand(snap) && outside ? edgeCell(snap.width, snap.height, outside) : null);
+    const goal = cell ?? (prompt === 'none' ? map.gridAt(clientX, clientY) : null);
     recentreMap();
     if (goal) tapMapCell(snap, goal, prompt);
     return;
@@ -1923,11 +1940,6 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
     return;
   }
   continueIfWaiting();
-}
-
-/** Walking the land, where stepping off the edge of an area leads into the next. */
-function onLand(snap: LevelSnapshot): boolean {
-  return snap.inDungeon && snap.depth === 0 && !snap.wild && !place?.quest;
 }
 
 function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
@@ -1953,21 +1965,34 @@ function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<type
     send([BACKSLASH, waitCommand(alwaysPickup()).charCodeAt(0)]);
     return;
   }
-  if (!isKnown(snap, cell)) {
-    strideInto(snap, cell);
-    return;
-  }
-  startTravel(cell);
+  goTowards(snap, cell);
 }
 
-/** A tap on unseen ground: walks as near as the known way leads, or one step into the dark. */
-function strideInto(snap: LevelSnapshot, cell: MapPoint): void {
-  if (approachTarget(snap, materials, cell)) {
-    startTravel(cell);
+/**
+ * Where a tap on the map takes the hero: travel to a place they have seen,
+ * one step to a neighbouring cell, and one step towards anywhere unseen,
+ * blank screen beyond the level included.
+ */
+function goTowards(snap: LevelSnapshot, point: MapPoint): void {
+  if (isKnown(snap, point) && !isAdjacent(snap.px, snap.py, point.x, point.y)) {
+    startTravel(point);
     return;
   }
-  const digit = directionDigit(cell.x - snap.px, cell.y - snap.py);
-  if (digit && digit !== '5') send([BACKSLASH, ...keyCodes(';' + digit)]);
+  const step = isKnown(snap, point) ? point : stepTowards(snap, materials, point);
+  if (step) startStep(step);
+}
+
+/** One step to a neighbouring cell (a closed door there is opened, then walked through). */
+function startStep(cell: MapPoint): void {
+  const ctx = travelContext();
+  if (!ctx) return;
+  stopAutomation(null, 'step');
+  hideToast();
+  const mat = materials[ctx.snap.feat[cell.y * ctx.snap.width + cell.x]];
+  const door = !!mat?.door && !mat.walkable;
+  travel = new Travel(cell, ctx, { oneStep: !door });
+  travelApproximate = false;
+  stepTravel();
 }
 
 attachMapGestures(stage, {
@@ -2197,7 +2222,10 @@ const engine = new Engine(buffer, {
 function send(codes: number[] | null): void {
   if (!codes || codes.length === 0) return;
   const key = codes.length === 1 ? codes[0] : codes.length === 2 && codes[0] === BACKSLASH ? codes[1] : null;
-  if (key !== null && lastSnap?.inDungeon) castWatcher.note(rowZeroText(), buffer.screenText(), key, !!lastSnap.atCommand);
+  if (key !== null && lastSnap?.inDungeon) {
+    castWatcher.note(rowZeroText(), buffer.screenText(), key, !!lastSnap.atCommand);
+    if (castWatcher.casting) audio.castingTone(castingTone(castWatcher.casting));
+  }
   if (travel || picker) stopAutomation(null, 'send');
   if (macros.running) macros.cancel();
   recentreMap();
@@ -2531,7 +2559,6 @@ function returnToTitle(): void {
   streak = { count: 0, lastTurn: 0 };
   persistMapMemory();
   exploreSkip.clear();
-  noticed.clear();
   exploreLevel = null;
   exploreAnchor = null;
   exploreLastStop = null;
@@ -2549,6 +2576,7 @@ function returnToTitle(): void {
   hideToast();
   mapMemory.loaded = false;
   placeKey = '';
+  gearTurn = -1;
   styleKey = '';
   place = null;
   placePos = { x: -1, y: -1 };
