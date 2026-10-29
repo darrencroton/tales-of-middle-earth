@@ -1,5 +1,5 @@
 import type { Material } from '../render/materials.ts';
-import { CAVE_MARK, CAVE_SEEN, LAYER_MASK, LAYER_OBJECT, type LevelSnapshot } from '../render/snapshot.ts';
+import { CAVE_MARK, CAVE_SEEN, isHostile, LAYER_MASK, LAYER_OBJECT, type LevelSnapshot } from '../render/snapshot.ts';
 import type { Point } from './pathfinding.ts';
 import { Travel, travelGrid, type TravelContext, type TravelStep } from './travel.ts';
 
@@ -25,6 +25,8 @@ export interface ExplorePlan {
   anchor?: Point | null;
   /** Walk over items not yet stood on (the hero picks things up as they go). */
   collectItems?: boolean;
+  /** Ways on found out of reach during this exploration. */
+  avoidExits?: ReadonlySet<number>;
 }
 
 export type StopKind = 'item' | 'frontier' | 'exit';
@@ -132,7 +134,7 @@ export function nextStop(snap: LevelSnapshot, materials: readonly Material[], pl
 
   let exit = -1;
   for (let i = 0; i < depth.length; i++) {
-    if (depth[i] < 0 || plan.skip.has(i) || !plan.isExit(i)) continue;
+    if (depth[i] < 0 || plan.avoidExits?.has(i) || !plan.isExit(i)) continue;
     if (exit < 0 || depth[i] < depth[exit]) exit = i;
   }
   return exit >= 0 ? stopAt(snap, exit, 'exit') : null;
@@ -152,10 +154,13 @@ export class Explore {
   private lastHp: number | null = null;
   private readonly plan: ExplorePlan;
   private readonly noticed: Set<number>;
+  private readonly unreachableExits = new Set<number>();
+  /** Hostiles in view when exploring began, shared by all its journeys (see `TravelOptions`). */
+  private known: Set<number> | null = null;
 
   /** `noticed` is shared with travel (see `TravelOptions`). */
   constructor(plan: ExplorePlan, noticed: Set<number> = new Set()) {
-    this.plan = { ...plan };
+    this.plan = { ...plan, avoidExits: this.unreachableExits };
     this.noticed = noticed;
   }
 
@@ -181,6 +186,7 @@ export class Explore {
     if (this.lastHp !== null && ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };
     this.lastHp = ctx.hp;
     const { snap } = ctx;
+    this.known ??= new Set(ctx.monsters.filter(isHostile).map((m) => m.id));
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       if (this.travel && !this.worthReaching(snap, ctx.materials)) this.travel = null;
       if (!this.travel) {
@@ -197,7 +203,7 @@ export class Explore {
         if (stop.kind === 'exit' && stop.x === snap.px && stop.y === snap.py) return { kind: 'stop', reason: this.exitReason };
         this.stop = stop;
         this.targets++;
-        this.travel = new Travel(stop, ctx, { dangerRadius: EXPLORE_DANGER_RADIUS, noticed: this.noticed });
+        this.travel = new Travel(stop, ctx, { dangerRadius: EXPLORE_DANGER_RADIUS, noticed: this.noticed, known: this.known });
       }
       const step = this.travel.step(ctx);
       if (step.kind === 'keys') return step;
@@ -205,7 +211,11 @@ export class Explore {
       const stop = this.stop!;
       this.travel = null;
       const arrived = step.reason === 'arrived';
-      if (stop.kind === 'exit' && arrived) return { kind: 'stop', reason: this.exitReason };
+      if (stop.kind === 'exit') {
+        if (arrived) return { kind: 'stop', reason: this.exitReason };
+        this.unreachableExits.add(stop.mark);
+        continue;
+      }
       this.plan.skip.add(stop.mark);
     }
     return { kind: 'stop', reason: 'blocked' };

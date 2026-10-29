@@ -5,7 +5,7 @@ import { decodeRuns, encodeRuns, levelKey, mergeKnown, missingCells } from '../.
 import { approachTarget, inferredFloor } from '../../web/src/play/travel.ts';
 import { fightingStyle, suggestedGear } from '../../web/src/play/items.ts';
 import type { Material } from '../../web/src/render/materials.ts';
-import { CAVE_MARK, LAYER_MONSTER, LAYER_OBJECT, LAYER_TERRAIN, type EquipSlot, type ItemState, type LevelSnapshot } from '../../web/src/render/snapshot.ts';
+import { CAVE_MARK, LAYER_MONSTER, LAYER_OBJECT, LAYER_TERRAIN, type EquipSlot, type ItemState, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
 
 const FLOOR = 1;
 const WALL = 2;
@@ -115,6 +115,22 @@ describe('explore', () => {
     const snap = level(['##########', '#F.@...F>#', '##########']);
     const exit = 1 * 10 + 8;
     assert.deepEqual(nextStop(snap, materials, plan(exit)), { x: 8, y: 1, kind: 'exit', mark: exit });
+  });
+
+  it('still heads for stairs where the hero once dropped an item', () => {
+    const snap = level(['######', '#@..>#', '######']);
+    const exit = 1 * 6 + 4;
+    assert.deepEqual(nextStop(snap, materials, plan(exit, { skip: new Set([exit]) }))?.kind, 'exit');
+  });
+
+  it('stops for a hostile first seen as it chooses a new goal', () => {
+    const before = level(['#########', '#@..?????', '#########']);
+    const after = level(['#########', '#.@.....?', '#########']);
+    const explore = new Explore(plan(-1));
+    const ctx = (snap: LevelSnapshot, monsters: MonsterState[]) => ({ snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters, hp: 10 });
+    assert.equal(explore.step(ctx(before, [])).kind, 'keys');
+    const orc = { id: 7, name: 'Cave orc', x: 6, y: 1, status: -1, asleep: 0 } as MonsterState;
+    assert.deepEqual(explore.step(ctx(after, [orc])), { kind: 'stop', reason: 'monster', creature: 'Cave orc' });
   });
 
   it('says when a creature is all that stands in the way', () => {

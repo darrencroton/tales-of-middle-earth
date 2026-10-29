@@ -196,6 +196,11 @@ export interface TravelOptions {
    * journeys; one that drops out of sight is forgotten.
    */
   noticed?: Set<number>;
+  /**
+   * Hostile creatures already in view when travel began (others stop it on
+   * sight); shared between journeys, so one first seen between them still does.
+   */
+  known?: Set<number>;
 }
 
 /**
@@ -222,7 +227,7 @@ export class Travel {
     this.dangerRadius = options.dangerRadius ?? DANGER_RADIUS;
     this.noticed = options.noticed ?? new Set();
     forgetUnseen(this.noticed, start.monsters);
-    this.known = new Set(start.monsters.filter(isHostile).map((m) => m.id));
+    this.known = options.known ?? new Set(start.monsters.filter(isHostile).map((m) => m.id));
     this.lastHp = start.hp;
   }
 
