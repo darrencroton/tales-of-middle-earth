@@ -1710,7 +1710,9 @@ function stepTravel(): void {
       : step.creature
         ? `You stop: ${titleName(step.creature)} is near.`
         : step.reason === 'arrived' && travelApproximate
-          ? STOP_MESSAGES.closest
+          ? travel instanceof Travel && travel.walked >= FAR_WALK_STEPS
+            ? STOP_MESSAGES.closest
+            : null
           : STOP_MESSAGES[step.reason];
     const message = [reason, spotted].filter(Boolean).join(' ');
     stopAutomation(message || null, step.reason);
@@ -1741,6 +1743,9 @@ function startTravel(goal: MapPoint): void {
   travelApproximate = !!approach && !approach.exact;
   stepTravel();
 }
+
+/* Steps a walk that stops short of an unknown place takes before it says so. */
+const FAR_WALK_STEPS = 10;
 
 /** The pause between steps of travel and exploring: Relaxed walks at half speed, whatever the animation setting. */
 function travelStepMs(): number {

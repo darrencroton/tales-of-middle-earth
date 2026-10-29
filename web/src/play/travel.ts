@@ -229,6 +229,11 @@ export class Travel {
   private readonly dangerRadius: number;
   private readonly noticed: Set<number>;
 
+  /** Steps taken so far. */
+  get walked(): number {
+    return this.steps;
+  }
+
   constructor(goal: Point, start: TravelContext, options: TravelOptions = {}) {
     this.goal = goal;
     this.dangerRadius = options.dangerRadius ?? DANGER_RADIUS;

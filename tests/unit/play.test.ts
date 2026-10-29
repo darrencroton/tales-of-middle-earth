@@ -137,6 +137,7 @@ describe('travel', () => {
     const travel = new Travel({ x: 2, y: 0 }, ctx(snap));
     const first = travel.step(ctx(snap));
     assert.deepEqual(first.kind === 'keys' && first.keys, [92, ...keys(';6')]);
+    assert.equal(travel.walked, 1);
     snap.px = 2;
     assert.deepEqual(travel.step(ctx(snap)), { kind: 'stop', reason: 'arrived' });
   });
