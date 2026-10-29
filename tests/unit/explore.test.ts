@@ -90,6 +90,19 @@ describe('explore', () => {
     assert.deepEqual(new Explore(plan(exit, { heading: 'up' })).step(there), { kind: 'stop', reason: 'exitUp' });
   });
 
+  it('takes the way back only where the level has no known way on', () => {
+    const snap = level(['########', '#<.@..>#', '########']);
+    const [up, down] = [1 * 8 + 1, 1 * 8 + 6];
+    const isBackExit = (i: number) => i === up;
+    assert.deepEqual(nextStop(snap, materials, plan(down, { isBackExit })), { x: 6, y: 1, kind: 'exit', mark: down });
+    assert.deepEqual(nextStop(snap, materials, plan(-1, { isBackExit })), { x: 1, y: 1, kind: 'exit', mark: up, back: true });
+    const there = { ...snap, px: 1, atCommand: true, icky: false, floorObjects: 0 };
+    assert.deepEqual(new Explore(plan(-1, { isBackExit })).step({ snap: there, materials, monsters: [], hp: 10 }), { kind: 'stop', reason: 'exitUp' });
+    /* A way on that is known but out of reach is not a reason to turn back. */
+    const walled = level(['########', '#<.@.#>#', '########']);
+    assert.equal(nextStop(walled, materials, plan(1 * 8 + 6, { isBackExit })), null);
+  });
+
   it('does not count walkable thickets that hide the view as unexplored edges', () => {
     const snap = level(['#####', '#@.T?', '#####']);
     assert.equal(frontier(snap), null);
@@ -129,8 +142,15 @@ describe('explore', () => {
     const explore = new Explore(plan(-1));
     const ctx = (snap: LevelSnapshot, monsters: MonsterState[]) => ({ snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters, hp: 10 });
     assert.equal(explore.step(ctx(before, [])).kind, 'keys');
-    const orc = { id: 7, name: 'Cave orc', x: 6, y: 1, status: -1, asleep: 0 } as MonsterState;
-    assert.deepEqual(explore.step(ctx(after, [orc])), { kind: 'stop', reason: 'monster', creature: 'Cave orc' });
+    const orc = { id: 7, name: 'Cave orc', x: 6, y: 1, status: -1, asleep: 0, view: 1, target: 1 } as MonsterState;
+    assert.deepEqual(explore.step(ctx(after, [orc])), { kind: 'stop', reason: 'monster', creature: 'Cave orc', asleep: false });
+  });
+
+  it('stops when the light goes out', () => {
+    const snap = { ...level(['#######', '#@....?', '#######']), atCommand: true, icky: false, floorObjects: 0, depth: 1, lightRadius: 1 };
+    const explore = new Explore(plan(-1));
+    assert.equal(explore.step({ snap, materials, monsters: [], hp: 10 }).kind, 'keys');
+    assert.deepEqual(explore.step({ snap: { ...snap, px: 2, lightRadius: 0 }, materials, monsters: [], hp: 10 }), { kind: 'stop', reason: 'dark' });
   });
 
   it('says when a creature is all that stands in the way', () => {
@@ -138,6 +158,28 @@ describe('explore', () => {
     snap.layer[1 * 7 + 3] = LAYER_MONSTER;
     const ctx = { snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp: 10 };
     assert.deepEqual(new Explore(plan(-1)).step(ctx), { kind: 'stop', reason: 'creatureInWay' });
+  });
+
+  it('passes over a corridor a creature blocked only until it stops, so the corridor is explored later', () => {
+    const snap = level(['######', '#@..?#', '######']);
+    const skip = new Set<number>();
+    const explore = new Explore(plan(-1, { skip }));
+    const ctx = { snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp: 10 };
+    assert.equal(explore.step(ctx).kind, 'keys');
+    /* The step did not move the hero: something unseen was in the way. */
+    assert.deepEqual(explore.step(ctx), { kind: 'stop', reason: 'blocked' });
+    assert.equal(skip.size, 0);
+    assert.equal(new Explore(plan(-1, { skip })).step(ctx).kind, 'keys');
+  });
+
+  it('marks the places it reaches as done', () => {
+    const snap = level(['######', '#@.??#', '######']);
+    const skip = new Set<number>();
+    const explore = new Explore(plan(-1, { skip }));
+    const ctx = (px: number) => ({ snap: { ...snap, px, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp: 10 });
+    assert.equal(explore.step(ctx(1)).kind, 'keys');
+    explore.step(ctx(2));
+    assert.ok(skip.has(1 * 6 + 2));
   });
 });
 
@@ -212,7 +254,7 @@ describe('suggested gear', () => {
   const torch = { i: 1, name: '3 Wooden Torches', tval: 39 } as ItemState;
   const ration = { i: 2, name: '5 Rations of Food', tval: 80 } as ItemState;
   const potion = { i: 3, name: 'a Potion of Cure Light Wounds', tval: 71 } as ItemState;
-  const calm = { inDungeon: true, hurt: false, hungry: false };
+  const calm = { inDungeon: true, hungry: false };
   const armed = [{ i: 24, part: 24, name: 'a Sword', tval: 23 }] as EquipSlot[];
   const lit = [...armed, { i: 36, part: 36, name: 'a Lantern', tval: 39 }] as EquipSlot[];
 
@@ -239,10 +281,10 @@ describe('suggested gear', () => {
     assert.deepEqual(fightingStyle([]), { weapons: true, magic: true });
   });
 
-  it('suggests healing when hurt and food when hungry', () => {
+  it('suggests food when hungry, and never a potion', () => {
     const pack = [ration, potion];
-    assert.equal(suggestedGear({ pack, equip: lit }, { ...calm, hurt: true, hungry: true })?.kind, 'heal');
     assert.equal(suggestedGear({ pack, equip: lit }, { ...calm, hungry: true })?.kind, 'eat');
-    assert.equal(suggestedGear({ pack: [ration], equip: lit }, { ...calm, hurt: true }), null);
+    assert.equal(suggestedGear({ pack: [potion], equip: lit }, { ...calm, hungry: true }), null);
+    assert.equal(suggestedGear({ pack, equip: lit }, calm), null);
   });
 });

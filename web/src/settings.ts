@@ -1,4 +1,5 @@
 import type { VolumeLevel } from './audio/audio.ts';
+import type { ExplorePace } from './play/actions.ts';
 import type { GlyphMode } from './render/appearance.ts';
 import { MAX_ZOOM, MIN_ZOOM } from './render/map.ts';
 
@@ -17,6 +18,8 @@ export interface Settings {
   sound: VolumeLevel;
   /** Dungeon levels stay as the hero left them (otherwise each visit makes a new one, as in classic ToME). */
   persistentLevels: boolean;
+  /** How fast exploring and travel walk on screen. */
+  explorePace: ExplorePace;
 }
 
 const STORAGE_KEY = 'tome2mobile.settings';
@@ -54,6 +57,7 @@ export function defaultSettings(prefersReducedMotion: boolean): Settings {
     music: 'medium',
     sound: 'medium',
     persistentLevels: true,
+    explorePace: 'normal',
   };
 }
 
@@ -71,6 +75,7 @@ export function sanitiseSettings(raw: unknown, defaults: Settings): Settings {
   const messages = value.messages === 'flow' || value.messages === 'pause' ? value.messages : defaults.messages;
   const volume = (v: unknown, fallback: VolumeLevel): VolumeLevel => (VOLUME_LEVELS.includes(v as VolumeLevel) ? (v as VolumeLevel) : fallback);
   const persistentLevels = typeof value.persistentLevels === 'boolean' ? value.persistentLevels : defaults.persistentLevels;
+  const explorePace = value.explorePace === 'normal' || value.explorePace === 'relaxed' ? value.explorePace : defaults.explorePace;
   return {
     animation,
     glyphs,
@@ -80,6 +85,7 @@ export function sanitiseSettings(raw: unknown, defaults: Settings): Settings {
     music: volume(value.music, defaults.music),
     sound: volume(value.sound, defaults.sound),
     persistentLevels,
+    explorePace,
   };
 }
 

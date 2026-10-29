@@ -687,17 +687,27 @@ html.keyboard-open .sheet-layer {
   color: var(--fg);
 }
 
+#toolbar .action.settling {
+  pointer-events: none;
+}
+
+#toolbar .action.unavailable .action-icon,
+#toolbar .action.unavailable .action-label {
+  opacity: 0.45;
+}
+
 #toolbar .action:active,
 [data-ctrl-toggle][aria-pressed="true"] {
   background: var(--button-active);
   border-color: var(--accent);
 }
 
+/* Outside #app, over sheets too; `showToast` places it over the foot of the map. */
 #toast {
-  position: absolute;
-  left: 50%;
-  bottom: 1rem;
-  max-width: calc(100% - 2rem);
+  position: fixed;
+  left: var(--toast-x, 50%);
+  bottom: var(--toast-bottom, 1rem);
+  max-width: var(--toast-width, calc(100% - 2rem));
   transform: translate(-50%, 8px);
   padding: 0.5rem 1rem;
   border: 1px solid rgb(217 164 65 / 0.45);
@@ -707,7 +717,7 @@ html.keyboard-open .sheet-layer {
   opacity: 0;
   pointer-events: none;
   transition: opacity 200ms ease, transform 200ms ease;
-  z-index: 26;
+  z-index: 45;
 }
 
 #toast.visible {

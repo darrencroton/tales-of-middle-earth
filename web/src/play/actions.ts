@@ -20,6 +20,8 @@ export type NativeView =
   | 'fallen'
   | 'explore'
   | 'equip'
+  | 'halt'
+  | 'pace'
   | 'closeFile';
 
 export type ActionEffect =
@@ -39,6 +41,10 @@ export interface Action {
   effect: ActionEffect;
   /** Highlighted as the most likely next action. */
   primary?: boolean;
+  /** Why it cannot be done now: the button stays, and a tap says so instead. */
+  unavailable?: string;
+  /** Leaves exploring or travel running. */
+  continues?: boolean;
 }
 
 export interface CommandDef {
@@ -164,6 +170,18 @@ export function commandGroups(where: Surroundings): { title: string; commands: C
   }));
 }
 
+/** What Explore does next: explore the level, go to the way on, take the way on underfoot, leave the land for the world map, or nothing. */
+export type ExploreNext = 'explore' | 'down' | 'up' | 'here' | 'worldMap' | 'none';
+
+/** How fast exploring and travel walk on screen. */
+export type ExplorePace = 'normal' | 'relaxed';
+
+/** One of the hero's own buttons, with why it cannot be done now (it stays in place either way). */
+export interface Slot {
+  label?: string;
+  unavailable?: string | null;
+}
+
 export interface ActionContext {
   mode: 'title' | 'screen' | 'map' | 'overlay';
   prompt: PromptKind;
@@ -188,33 +206,39 @@ export interface ActionContext {
   alwaysPickup: boolean;
   /** On the world map, travelling between places. */
   worldMap?: boolean;
-  /** Something worth using from the pack. */
-  gear?: 'weapon' | 'light' | 'heal' | 'eat' | null;
+  /** Exploring is under way, at this pace. */
+  exploring?: ExplorePace | null;
+  /** The hero stands where they arrived on this level (or landed after a jump) and has not stepped off. */
+  arrived?: boolean;
+  /** An awake hostile creature is in view. */
+  danger?: boolean;
+  /** What Explore would do. */
+  exploreNext?: ExploreNext;
+  /** Gear the hero needs to go on: a light below the town, a weapon for a fighter, food when hungry. */
+  gear?: 'weapon' | 'light' | 'eat' | null;
   /** Direction digit of the weakest hostile creature next to the player. */
   foe?: string | null;
-  /** A hostile creature is in view. */
-  foeInView?: boolean;
-  /** Name of what to offer again: a magic user's last spell or power, or another hero's last aimed action while a foe is in view. */
-  recast?: string | null;
-  /** A launcher and ammunition are ready. */
-  canFire?: boolean;
-  /** 'Way down' or 'Way up' when exploring has nothing left but the way on. */
-  wayOn?: string | null;
-  /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers or does not use them. */
+  /** The hero's one-tap repeat: their last (or first) spell or power, or the last aimed thing they used. */
+  quick?: Slot | null;
+  /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers to use. */
   magic?: string | null;
+  /** A launcher is wielded. */
+  fire?: Slot | null;
 }
 
 /* More buttons than this crowd a phone's toolbar. */
 const MAX_MAP_ACTIONS = 7;
-/* Buttons that give way, in order, when the toolbar is full; all are also under More. */
-const OVERFLOW_ORDER = ['look', 'rest', 'explore', 'fire', 'recast', 'cast'];
+/* The hero's buttons that give way, in order, when the toolbar is full; both are also under More. */
+const OVERFLOW_ORDER = ['rest', 'fire'];
 
 const FALLEN: Action = { id: 'fallen', label: 'Your hero', icon: '@', effect: { kind: 'native', view: 'fallen' } };
 const KEYBOARD: Action = { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } };
 const MENU: Action = { id: 'menu', label: 'Menu', icon: '☰', effect: { kind: 'menu' } };
+const COMMANDS: Action = { id: 'commands', label: 'More', icon: '⋯', effect: { kind: 'commands' } };
 const ESCAPE: Action = { id: 'escape', label: 'Back', icon: '‹', effect: { kind: 'keys', keys: [27] } };
 const CANCEL: Action = { id: 'escape', label: 'Cancel', icon: '✕', effect: { kind: 'keys', keys: [27] } };
 const STOP: Action = { id: 'stop', label: 'Stop', icon: '■', effect: { kind: 'keys', keys: [27] }, primary: true };
+const HALT: Action = { id: 'stop', label: 'Stop', icon: '■', effect: { kind: 'native', view: 'halt' }, primary: true };
 const ENTER: Action = { id: 'enter', label: 'Enter', icon: '⏎', effect: { kind: 'keys', keys: [13] } };
 const UP: Action = { id: 'up', label: 'Up', icon: '▲', effect: { kind: 'nav', direction: 'up' } };
 const DOWN: Action = { id: 'down', label: 'Down', icon: '▼', effect: { kind: 'nav', direction: 'down' } };
@@ -223,31 +247,101 @@ function command(id: string, label: string, icon: string, def: Pick<CommandDef, 
   return { id, label, icon, effect: { kind: 'keys', keys: commandKeys(def) }, primary };
 }
 
-const GEAR_ACTIONS: Readonly<Record<'weapon' | 'light' | 'heal' | 'eat', [string, string]>> = {
+/** The pace button shown while exploring: it names the pace and switches to the other. */
+export function paceAction(pace: ExplorePace): Action {
+  return {
+    id: 'pace',
+    label: pace === 'relaxed' ? 'Relaxed' : 'Normal',
+    icon: pace === 'relaxed' ? '›' : '»',
+    effect: { kind: 'native', view: 'pace' },
+    continues: true,
+  };
+}
+
+/** A way to somewhere else from the terrain underfoot: its button and the command that takes it. */
+export interface Transition {
+  id: 'descend' | 'ascend' | 'enter' | 'leave' | 'rift';
+  label: string;
+  icon: string;
+  command: '>' | '<';
+}
+
+const TRANSITIONS: readonly [RegExp, Transition][] = [
+  [/void jumpgate/, { id: 'rift', label: 'Enter rift', icon: '◌', command: '>' }],
+  [/quest entrance/, { id: 'enter', label: 'Enter', icon: '>', command: '>' }],
+  [/quest exit/, { id: 'leave', label: 'Leave', icon: '<', command: '<' }],
+  [/down staircase|shaft down|quest down|town exit|path to the next/, { id: 'descend', label: 'Descend', icon: '>', command: '>' }],
+  [/up staircase|shaft up|quest up|path to the previous/, { id: 'ascend', label: 'Ascend', icon: '<', command: '<' }],
+];
+
+/** The way on (or back) under the hero, if the terrain is one. */
+export function transitionUnderfoot(underfoot: string): Transition | null {
+  return TRANSITIONS.find(([pattern]) => pattern.test(underfoot))?.[1] ?? null;
+}
+
+const GEAR_ACTIONS: Readonly<Record<'weapon' | 'light' | 'eat', [string, string]>> = {
   weapon: ['Wield', '†'],
   light: ['Light', '☀'],
-  heal: ['Heal', '✚'],
   eat: ['Eat', '◓'],
 };
 
-function gearAction(kind: keyof typeof GEAR_ACTIONS): Action {
-  const [label, icon] = GEAR_ACTIONS[kind];
-  return { id: 'equip', label, icon, effect: { kind: 'native', view: 'equip' }, primary: true };
+const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {
+  explore: ['Explore', '⇢'],
+  none: ['Explore', '⇢'],
+  here: ['Explore', '⇢'],
+  down: ['Way down', '↓'],
+  up: ['Way up', '↑'],
+  worldMap: ['World map', '⇱'],
+};
+
+/**
+ * The toolbar's one changing button, the first of these that applies: the
+ * world map's Walk here; the way on underfoot; Attack a foe alongside; the
+ * way the hero arrived by, to get away from a foe in view; what lies
+ * underfoot to pick up or use; gear the hero needs to go on; the way the
+ * hero arrived by once Explore has nothing else to do; and Explore, named
+ * for what it will do.
+ */
+export function contextualAction(ctx: ActionContext): Action {
+  if (ctx.worldMap) return command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true);
+  const next = ctx.exploreNext ?? 'explore';
+  const transition = transitionUnderfoot(ctx.underfoot);
+  const take = transition ? command(transition.id, transition.label, transition.icon, { command: transition.command }, true) : null;
+  if (take && !ctx.arrived) return take;
+  if (ctx.foe) return { id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true };
+  if (take && ctx.danger) return take;
+  if (ctx.floorObjects > 0) return command('pickup', 'Pick up', '⇡', { command: pickupCommand(ctx.alwaysPickup) }, true);
+  if (/fountain/.test(ctx.underfoot)) return command('drink', 'Drink', '⌂', { command: 'H' }, true);
+  if (/altar/.test(ctx.underfoot)) return command('sacrifice', 'Sacrifice', '0', { command: 'O' }, true);
+  if (ctx.gear) {
+    const [label, icon] = GEAR_ACTIONS[ctx.gear];
+    return { id: 'equip', label, icon, effect: { kind: 'native', view: 'equip' }, primary: true };
+  }
+  if (take && (next === 'here' || next === 'none')) return take;
+  const [label, icon] = EXPLORE_LABELS[next];
+  return { id: 'explore', label, icon, effect: { kind: 'native', view: 'explore' }, primary: true };
 }
 
-/** Situational actions for the terrain and items under the player. */
-export function situationalActions(underfoot: string, floorObjects: number, alwaysPickup = false): Action[] {
-  const actions: Action[] = [];
-  if (floorObjects > 0) actions.push(command('pickup', 'Pick up', '⇡', { command: pickupCommand(alwaysPickup) }, true));
-  if (/down staircase|shaft down|quest down|quest entrance|town exit|path to the next/.test(underfoot)) {
-    actions.push(command('descend', 'Descend', '>', { command: '>' }, true));
+function slotAction(id: string, slot: Slot, label: string, icon: string, effect: ActionEffect): Action {
+  return { id, label: slot.label ?? label, icon, effect, ...(slot.unavailable ? { unavailable: slot.unavailable } : {}) };
+}
+
+/** The hero's own buttons, which keep their places: quick repeat, magic, Fire, Items, Rest, More and Menu. */
+function heroActions(ctx: ActionContext): Action[] {
+  const actions: Action[] = [
+    ...(ctx.quick ? [slotAction('recast', ctx.quick, 'Again', '✺', { kind: 'native', view: 'recast' })] : []),
+    ...(ctx.magic ? [{ id: 'cast', label: ctx.magic, icon: '✦', effect: { kind: 'native', view: 'magic' } } as Action] : []),
+    ...(ctx.fire ? [slotAction('fire', ctx.fire, 'Fire', '➶', { kind: 'native', view: 'fire' })] : []),
+    { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
+    command('rest', 'Rest', '☾', { command: 'R', then: '&\r' }),
+    COMMANDS,
+    MENU,
+  ];
+  for (const id of OVERFLOW_ORDER) {
+    if (actions.length < MAX_MAP_ACTIONS) break;
+    const index = actions.findIndex((a) => a.id === id);
+    if (index >= 0) actions.splice(index, 1);
   }
-  if (/void jumpgate/.test(underfoot)) actions.push(command('rift', 'Enter rift', '◌', { command: '>' }, true));
-  if (/up staircase|shaft up|quest up|quest exit|path to the previous/.test(underfoot)) {
-    actions.push(command('ascend', 'Ascend', '<', { command: '<' }, true));
-  }
-  if (/fountain/.test(underfoot)) actions.push(command('drink', 'Drink', '⌂', { command: 'H' }));
-  if (/altar/.test(underfoot)) actions.push(command('sacrifice', 'Sacrifice', '0', { command: 'O' }));
   return actions;
 }
 
@@ -304,33 +398,8 @@ export function contextActions(ctx: ActionContext): Action[] {
   }
 
   if (ctx.mode === 'map' && ctx.atCommand) {
-    const situational = situationalActions(ctx.underfoot, ctx.floorObjects, ctx.alwaysPickup);
-    const actions: Action[] = [
-      ...(ctx.foe ? [{ id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true } as Action] : []),
-      ...(ctx.recast
-        ? [{ id: 'recast', label: ctx.recast, icon: '✺', effect: { kind: 'native', view: 'recast' }, primary: !ctx.foe && !!ctx.foeInView } as Action]
-        : []),
-      ...(ctx.foeInView && ctx.canFire
-        ? [{ id: 'fire', label: 'Fire', icon: '➶', effect: { kind: 'native', view: 'fire' }, primary: !ctx.foe && !ctx.recast } as Action]
-        : []),
-      ...(ctx.gear ? [gearAction(ctx.gear)] : []),
-      ...situational,
-      ...(ctx.worldMap
-        ? [command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true)]
-        : [{ id: 'explore', label: ctx.wayOn ?? 'Explore', icon: ctx.wayOn === 'Way up' ? '↑' : ctx.wayOn ? '↓' : '⇢', effect: { kind: 'native', view: 'explore' } } as Action]),
-      { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
-      ...(ctx.foe ? [] : [command('rest', 'Rest', '☾', { command: 'R', then: '&\r' })]),
-      ...(ctx.magic === null ? [] : [{ id: 'cast', label: ctx.magic ?? 'Cast', icon: '✦', effect: { kind: 'native', view: 'magic' } } as Action]),
-      { id: 'look', label: 'Look', icon: '◉', effect: { kind: 'native', view: 'look' } },
-      { id: 'commands', label: 'More', icon: '⋯', effect: { kind: 'commands' } },
-      MENU,
-    ];
-    for (const id of OVERFLOW_ORDER) {
-      if (actions.length <= MAX_MAP_ACTIONS) break;
-      const index = actions.findIndex((a) => a.id === id);
-      if (index >= 0) actions.splice(index, 1);
-    }
-    return actions;
+    if (ctx.exploring) return [HALT, paceAction(ctx.exploring), MENU];
+    return [contextualAction(ctx), ...heroActions(ctx)];
   }
 
   if (ctx.mode === 'overlay' || ctx.mode === 'screen') return ctx.listShown ? [ESCAPE, MENU] : [ESCAPE, UP, DOWN, MENU];

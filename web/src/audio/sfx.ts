@@ -1,5 +1,5 @@
 import type { AudioCore } from './core.ts';
-import type { Cue, CueId, Element } from './cues.ts';
+import type { Cue, CueId, Element, LauncherKind, SpellTone, WeaponKind } from './cues.ts';
 import { degreeToMidi, midiToFrequency, SCALES, type ScaleName } from './theory.ts';
 import { playVoice } from './voices.ts';
 
@@ -58,6 +58,7 @@ const TRIM_DB: Partial<Record<CueId, number>> = {
   read: 11,
   eat: 14,
   cast: 7,
+  fizzle: 9,
   fire: 11,
   throw: 10,
   zap: 13,
@@ -136,9 +137,9 @@ export class SoundEffects {
   private dispatch(cue: Cue, t: number, s: number, far: number): void {
     switch (cue.id) {
       case 'hit':
-        return this.hit(t, s, false);
+        return this.hit(t, s, false, cue.variant as WeaponKind | undefined);
       case 'crit':
-        return this.hit(t, 1, true);
+        return this.hit(t, 1, true, cue.variant as WeaponKind | undefined);
       case 'miss':
         return this.whoosh(t, 0.16, 650, 2600, 0.17);
       case 'hurt':
@@ -150,9 +151,9 @@ export class SoundEffects {
       case 'parry':
         return this.whoosh(t, 0.1, 450, 1500, 0.2);
       case 'kill':
-        return this.kill(t);
+        return this.kill(t, cue.variant as WeaponKind | undefined);
       case 'kill-unique':
-        return this.killUnique(t);
+        return this.killUnique(t, cue.variant as WeaponKind | undefined);
       case 'impact':
         return this.thump(t, 0.25 * s, 110, 55, 0.1);
       case 'door-open':
@@ -190,9 +191,11 @@ export class SoundEffects {
       case 'eat':
         return this.eat(t);
       case 'cast':
-        return this.cast(t);
+        return this.cast(t, cue.variant as SpellTone | undefined);
+      case 'fizzle':
+        return this.fizzle(t);
       case 'fire':
-        return this.bow(t);
+        return this.shoot(t, cue.variant as LauncherKind | undefined);
       case 'throw':
         return this.whoosh(t, 0.22, 400, 1600, 0.22);
       case 'zap':
@@ -379,11 +382,36 @@ export class SoundEffects {
 
   /* Combat */
 
-  private hit(t: number, s: number, crit: boolean): void {
+  /** A blow, shaped by the weapon: a blade slices and rings, an axe chops, a mace thuds, a spear thrusts, a fist punches. */
+  private hit(t: number, s: number, crit: boolean, weapon: WeaponKind = 'blade'): void {
     const pitch = rand(0.88, 1.12);
     const pan = rand(-0.2, 0.2);
-    this.thump(t, 0.35 + 0.35 * s, 150 * pitch, 50 * pitch, 0.09 + 0.05 * s, pan);
-    this.noise(this.out(pan, 1), t, { type: 'bandpass', freq: 2200 * pitch, to: 700, glide: 0.07, q: 0.9, level: 0.16 + 0.14 * s, decay: 0.035 });
+    const out = () => this.out(pan, 1);
+    switch (weapon) {
+      case 'blade':
+        this.thump(t, 0.25 + 0.25 * s, 170 * pitch, 60 * pitch, 0.07 + 0.04 * s, pan);
+        this.noise(out(), t, { type: 'bandpass', freq: 3200 * pitch, to: 900, glide: 0.08, q: 1.2, level: 0.18 + 0.14 * s, decay: 0.035 });
+        this.ring(out(), t + 0.01, 2400 * pitch, 1.41, 1.2, 0.025, 0.12);
+        break;
+      case 'axe':
+        this.thump(t, 0.45 + 0.35 * s, 130 * pitch, 45 * pitch, 0.11 + 0.05 * s, pan);
+        this.noise(out(), t, { type: 'bandpass', freq: 1300 * pitch, to: 380, glide: 0.06, q: 1.1, level: 0.2 + 0.14 * s, decay: 0.04 });
+        this.noise(out(), t + 0.015, { type: 'highpass', freq: 2500, level: 0.08, decay: 0.01 });
+        break;
+      case 'blunt':
+        this.thump(t, 0.55 + 0.35 * s, 105 * pitch, 34 * pitch, 0.13 + 0.06 * s, pan);
+        this.noise(out(), t, { type: 'lowpass', freq: 900 * pitch, to: 300, glide: 0.08, level: 0.16 + 0.12 * s, decay: 0.05, brown: true });
+        break;
+      case 'polearm':
+        this.whoosh(t, 0.08, 700, 2400, 0.12, pan);
+        this.thump(t + 0.07, 0.35 + 0.3 * s, 150 * pitch, 55 * pitch, 0.08 + 0.05 * s, pan);
+        this.noise(out(), t + 0.07, { type: 'bandpass', freq: 1800 * pitch, to: 600, glide: 0.05, q: 1, level: 0.12 + 0.1 * s, decay: 0.03 });
+        break;
+      case 'unarmed':
+        this.thump(t, 0.3 + 0.25 * s, 140 * pitch, 70 * pitch, 0.06 + 0.03 * s, pan);
+        this.noise(out(), t, { type: 'lowpass', freq: 1400 * pitch, level: 0.1 + 0.08 * s, decay: 0.025 });
+        break;
+    }
     if (crit) {
       this.noise(this.out(pan, 1), t + 0.025, { type: 'lowpass', freq: 3500, level: 0.25, decay: 0.05 });
       this.thump(t + 0.03, 0.45, 95, 40, 0.16, pan);
@@ -412,14 +440,14 @@ export class SoundEffects {
     this.hurt(t + 0.03, s);
   }
 
-  private kill(t: number): void {
-    this.hit(t, 0.9, false);
+  private kill(t: number, weapon?: WeaponKind): void {
+    this.hit(t, 0.9, false, weapon);
     this.noise(this.out(rand(-0.2, 0.2), 1), t + 0.09, { type: 'lowpass', freq: 700, to: 200, glide: 0.25, level: 0.18, attack: 0.01, decay: 0.12, brown: true });
     this.arpeggio(t + 0.12, [4, 7], 0.08, 0.05, 'celesta', 1);
   }
 
-  private killUnique(t: number): void {
-    this.hit(t, 1, true);
+  private killUnique(t: number, weapon?: WeaponKind): void {
+    this.hit(t, 1, true, weapon);
     playVoice(this.core, 'gong', this.out(0, 1), t + 0.05, 4, this.key.root - 12, 0.9, { bright: 0.7, sustained: false });
     [0, 0.18, 0.36].forEach((d, i) => playVoice(this.core, 'timpani', this.out(0, 1), t + d, 0.5, this.key.root - 12 + (i === 2 ? 7 : 0), 0.8, { bright: 0.7, sustained: false }));
     this.chord(t + 0.3, [0, 4, 7, 9], 2.2, 0.5, 'strings', 1);
@@ -578,16 +606,84 @@ export class SoundEffects {
 
   /* Magic */
 
-  private cast(t: number): void {
-    this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 400, to: 3000, glide: 0.35, q: 2, level: 0.08, attack: 0.3, decay: 0.08 });
-    this.tone(this.out(0, 1), t, { type: 'triangle', freq: 300, to: 900, glide: 0.35, level: 0.05, attack: 0.3, decay: 0.08 });
-    this.arpeggio(t + 0.33, [7, 11], 0.06, 0.08, 'celesta', 1);
+  /** A gathering swell, then the release coloured by the spell's school (the god's, for a prayer). */
+  private cast(t: number, tone: SpellTone = 'arcane'): void {
+    const swell = (freq: number, to: number, level: number, brown = false) =>
+      this.noise(this.out(0, 1), t, { type: brown ? 'lowpass' : 'bandpass', freq, to, glide: 0.35, q: 2, level, attack: 0.3, decay: 0.08, brown });
+    const release = t + 0.33;
+    switch (tone) {
+      case 'arcane':
+        swell(400, 3000, 0.08);
+        this.tone(this.out(0, 1), t, { type: 'triangle', freq: 300, to: 900, glide: 0.35, level: 0.05, attack: 0.3, decay: 0.08 });
+        this.arpeggio(release, [7, 11], 0.06, 0.08, 'celesta', 1);
+        break;
+      case 'fire':
+        swell(300, 2600, 0.12, true);
+        for (let i = 0; i < 4; i++) this.noise(this.out(rand(-0.3, 0.3), 1), release + i * rand(0.02, 0.05), { type: 'highpass', freq: 2500, level: 0.06, decay: 0.008 });
+        this.whoosh(release, 0.25, 500, 1800, 0.12, 0);
+        break;
+      case 'frost':
+        swell(3000, 7000, 0.06);
+        this.arpeggio(release, [7, 11, 14], 0.05, 0.08, 'celesta', 2);
+        break;
+      case 'storm':
+        swell(600, 3500, 0.08);
+        this.zap(release);
+        break;
+      case 'earth':
+        swell(150, 500, 0.14, true);
+        this.thump(release, 0.4, 90, 35, 0.18);
+        break;
+      case 'shadow':
+        swell(200, 900, 0.08, true);
+        this.tone(this.out(0, 1), t, { type: 'sawtooth', freq: 110, to: 82, glide: 0.5, level: 0.04, attack: 0.25, decay: 0.15, detune: 25 });
+        this.arpeggio(release, [0, 1], 0.1, 0.06, 'bell', 0);
+        break;
+      case 'nature':
+        swell(1200, 2200, 0.06);
+        this.arpeggio(release, [0, 4, 7], 0.07, 0.09, 'harp', 1);
+        break;
+      case 'holy':
+        swell(800, 2400, 0.05);
+        this.chord(release - 0.1, [0, 4, 7], 0.9, 0.35, 'choir', 1);
+        this.arpeggio(release, [7, 11], 0.08, 0.07, 'bell', 1);
+        break;
+      case 'mind':
+        swell(500, 1800, 0.06);
+        this.warble(t, 7);
+        break;
+      case 'song':
+        this.arpeggio(t, [0, 2, 4, 7, 9], 0.06, 0.1, 'harp', 1);
+        break;
+    }
   }
 
-  private bow(t: number): void {
-    this.tone(this.out(0.1, 1), t, { type: 'triangle', freq: 190, to: 170, glide: 0.1, level: 0.12, decay: 0.07 });
-    this.noise(this.out(0.1, 1), t, { type: 'highpass', freq: 2000, level: 0.1, decay: 0.006 });
-    this.whoosh(t + 0.04, 0.18, 2200, 800, 0.12, 0.3);
+  /** A cast that gathers and collapses: the swell of `cast` cut short by a falling puff. */
+  private fizzle(t: number): void {
+    this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 400, to: 1300, glide: 0.2, q: 2, level: 0.07, attack: 0.18, decay: 0.04 });
+    this.tone(this.out(0, 1), t + 0.2, { type: 'triangle', freq: 520, to: 170, glide: 0.22, level: 0.06, decay: 0.07, detune: 30 });
+    this.noise(this.out(0, 1), t + 0.2, { type: 'lowpass', freq: 1400, to: 200, glide: 0.25, level: 0.08, decay: 0.08, brown: true });
+  }
+
+  /** A shot: a bow's twang, a sling's whirl and release, a crossbow's click and thunk. */
+  private shoot(t: number, launcher: LauncherKind = 'bow'): void {
+    switch (launcher) {
+      case 'bow':
+        this.tone(this.out(0.1, 1), t, { type: 'triangle', freq: 190, to: 170, glide: 0.1, level: 0.12, decay: 0.07 });
+        this.noise(this.out(0.1, 1), t, { type: 'highpass', freq: 2000, level: 0.1, decay: 0.006 });
+        this.whoosh(t + 0.04, 0.18, 2200, 800, 0.12, 0.3);
+        break;
+      case 'sling':
+        this.whoosh(t, 0.12, 500, 1100, 0.08, -0.2);
+        this.whoosh(t + 0.13, 0.12, 550, 1300, 0.1, 0.2);
+        this.whoosh(t + 0.26, 0.16, 1600, 700, 0.14, 0.3);
+        break;
+      case 'crossbow':
+        this.noise(this.out(0.1, 1), t, { type: 'highpass', freq: 3500, level: 0.12, decay: 0.008 });
+        this.tone(this.out(0.1, 1), t + 0.02, { type: 'triangle', freq: 140, to: 95, glide: 0.06, level: 0.16, decay: 0.06 });
+        this.whoosh(t + 0.05, 0.14, 2600, 900, 0.12, 0.3);
+        break;
+    }
   }
 
   private zap(t: number): void {

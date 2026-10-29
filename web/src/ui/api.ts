@@ -28,7 +28,7 @@ export interface GameApi {
   highlight(point: MapPoint): void;
   /** Asks the player for a line of text in a native sheet. */
   askText(title: string, label: string, initial?: string): Promise<string | null>;
-  /** Asks how many of a stack to use, starting at all of them. */
+  /** Asks how many of a stack to use, starting at one. */
   askQuantity(question: QuantityQuestion): Promise<number | null>;
   /** The hero's recently used spells, powers and items, newest first. */
   recent(): readonly RecentAction[];

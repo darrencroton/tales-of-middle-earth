@@ -1,6 +1,7 @@
 import { readableColour } from '../render/colour.ts';
 import type { MessageState } from '../render/snapshot.ts';
 import type { VolumeLevel } from '../audio/audio.ts';
+import type { ExplorePace } from '../play/actions.ts';
 import {
   TEXT_SIZE_LABELS,
   TEXT_SIZE_PX,
@@ -116,6 +117,13 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
         update({ messages }),
       ),
       el('p', 'muted', 'Messages are always kept in the log: tap them to read back.'),
+    ),
+  );
+  body.append(
+    section(
+      'Exploring',
+      segmented<ExplorePace>('Exploring', [['normal', 'Normal'], ['relaxed', 'Relaxed']], current.explorePace, (explorePace) => update({ explorePace })),
+      el('p', 'muted', 'How fast Explore and travel walk. Relaxed takes its time, to watch the way unfold; the pace button on the toolbar switches it while exploring.'),
     ),
   );
   body.append(
@@ -241,18 +249,18 @@ export interface QuantityQuestion {
   /** What the number counts, shown above the stepper. */
   label: string;
   max: number;
-  /** Starts here; the whole stack by default. */
+  /** Starts here; one by default. */
   initial?: number;
   /** Verb for the confirming button ("Drop" → "Drop 3"). */
   verb: string;
   danger?: boolean;
 }
 
-/** Asks how many of a stack to use: a stepper starting at all of them, then the confirming button. */
+/** Asks how many of a stack to use: a stepper starting at one, then the confirming button. */
 export function askQuantity(sheets: Sheets, question: QuantityQuestion): Promise<number | null> {
   return new Promise((resolve) => {
     const max = Math.max(1, question.max);
-    let value = Math.max(1, Math.min(max, question.initial ?? max));
+    let value = Math.max(1, Math.min(max, question.initial ?? 1));
     let settled = false;
     const finish = (n: number | null) => {
       if (settled) return;

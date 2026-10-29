@@ -134,10 +134,10 @@ export function itemActions(item: ItemState, place: ItemPlace): ItemAction[] {
   return actions;
 }
 
-/** The number to answer a quantity prompt with; a choice not yet made counts as the whole stack. */
+/** The number to answer a quantity prompt with; a choice not yet made counts as one. */
 export function quantityAnswer(quantity: ItemAction['quantity'], stack: number): number {
   if (typeof quantity === 'number') return Math.max(1, Math.min(stack, Math.round(quantity)));
-  return quantity === 'one' ? 1 : Math.max(1, stack);
+  return quantity === 'all' ? Math.max(1, stack) : 1;
 }
 
 /** Menu letter tome2 uses for an inventory or equipment index. */
@@ -207,26 +207,21 @@ export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace
 }
 
 export interface GearSuggestion {
-  kind: 'weapon' | 'light' | 'heal' | 'eat';
+  kind: 'weapon' | 'light' | 'eat';
   item: ItemState;
 }
 
 export interface Situation {
   /** Below the town, where a light is needed. */
   inDungeon: boolean;
-  /** Health under half. */
-  hurt: boolean;
   hungry: boolean;
   /** The hero fights with weapons, so an empty weapon hand is worth filling. */
   wieldsWeapons?: boolean;
 }
 
-const HEALING = /Cure (Light|Serious|Critical) Wounds|\bHealing\b|\bof Life\b/i;
-
 /**
- * The most useful thing to do with the pack right now: drink a known
- * healing potion when hurt, eat when hungry, wield a weapon when none is
- * wielded (for heroes who fight with weapons), or (below the town) light a light source.
+ * Gear the hero needs to go on: food when hungry, a weapon when none is
+ * wielded (for heroes who fight with weapons), or (below the town) a light.
  */
 export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>, situation: Situation): GearSuggestion | null {
   const equipped = (index: number) => inventory.equip.some((slot) => slot.i === index && slot.name);
@@ -235,7 +230,6 @@ export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>,
     return item ? { kind, item } : null;
   };
   return (
-    (situation.hurt ? find('heal', (i) => (i.tval === TV.POTION || i.tval === TV.POTION2) && HEALING.test(i.name)) : null) ??
     (situation.hungry ? find('eat', (i) => i.tval === TV.FOOD) : null) ??
     (situation.wieldsWeapons !== false && !equipped(INVEN_WIELD) ? find('weapon', (i) => WEAPON_TVALS.has(i.tval)) : null) ??
     (situation.inDungeon && !equipped(INVEN_LITE) ? find('light', (i) => i.tval === TV.LITE) : null)

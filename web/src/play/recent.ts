@@ -83,9 +83,9 @@ export function recentSource(entry: RecentAction): string {
   return entry.kind === 'item' ? entry.verb : 'Spell';
 }
 
-/** An item's name without its count or article, for labels ("3 Potions of X" → "Potions of X"). */
+/** An item's name without its count, article or charges, for labels ("3 Potions of X" → "Potions of X"). */
 export function itemBaseName(name: string): string {
-  return name.replace(/^(a|an|the|some|\d+) /i, '');
+  return name.replace(/^(a|an|the|some|\d+) /i, '').replace(/ \(\d+ charges?\)/, '');
 }
 
 export function itemRecent(command: string, verb: string, item: Pick<ItemState, 'tval' | 'sval' | 'name'>): RecentAction {
@@ -246,6 +246,11 @@ export class CastWatcher {
   private steps: string[] = [];
   private spell: string | null = null;
   private spellMode = false;
+
+  /** The spell being cast, once it is known. */
+  get casting(): string | null {
+    return this.command && this.spellMode ? this.spell : null;
+  }
 
   /** A command that opens tome2's menus was given (or a recent one is being replayed). */
   begin(command: 'm' | 'U', steps: readonly string[] = [], spell: string | null = null): void {

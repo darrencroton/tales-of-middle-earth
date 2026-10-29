@@ -31,6 +31,7 @@ export type CueId =
   | 'read'
   | 'eat'
   | 'cast'
+  | 'fizzle'
   | 'fire'
   | 'throw'
   | 'zap'
@@ -74,11 +75,20 @@ export type CueId =
   | 'quest'
   | 'save';
 
+/** What the hero strikes with, for the sound of a blow. */
+export type WeaponKind = 'blade' | 'axe' | 'blunt' | 'polearm' | 'unarmed';
+/** What the hero shoots with. */
+export type LauncherKind = 'bow' | 'sling' | 'crossbow';
+/** The colour of a spell's casting sound, from its school or god. */
+export type SpellTone = 'arcane' | 'fire' | 'frost' | 'storm' | 'earth' | 'shadow' | 'nature' | 'holy' | 'mind' | 'song';
+
 export interface Cue {
   id: CueId;
   /** 0..1, how hard or how much. */
   strength?: number;
   element?: Element;
+  /** The weapon, launcher or spell school behind a blow, shot or cast. */
+  variant?: WeaponKind | LauncherKind | SpellTone;
   /** Grid distance from the player, for sounds heard rather than made. */
   distance?: number;
 }
@@ -200,6 +210,69 @@ const INTENT_CUES: Readonly<Record<string, CueId>> = {
 export function intentCue(key: string): Cue | null {
   const id = INTENT_CUES[key];
   return id ? { id } : null;
+}
+
+/* tome2 object kinds (TV_*) of wielded weapons, and launcher kinds (SV_*) of slings and crossbows. */
+const WEAPON_KINDS: Readonly<Record<number, WeaponKind>> = { 6: 'blunt', 20: 'axe', 21: 'blunt', 22: 'polearm', 23: 'blade', 24: 'axe' };
+const TV_BOW = 19;
+const SLINGS = new Set([2]);
+const CROSSBOWS = new Set([23, 24]);
+
+/** The kind of weapon wielded (by its tval), or bare hands. */
+export function weaponKind(tval: number | null | undefined): WeaponKind {
+  return (tval !== null && tval !== undefined && WEAPON_KINDS[tval]) || 'unarmed';
+}
+
+/** The kind of launcher wielded (by its tval and sval), or null without one (a boomerang is thrown). */
+export function launcherKind(tval: number | null | undefined, sval: number | null | undefined): LauncherKind | null {
+  if (tval !== TV_BOW || sval === null || sval === undefined) return null;
+  return SLINGS.has(sval) ? 'sling' : CROSSBOWS.has(sval) ? 'crossbow' : 'bow';
+}
+
+const SPELL_TONES: [RegExp, SpellTone][] = [
+  [/Fire|Tulkas|Aul/i, 'fire'],
+  [/Water|Ulmo/i, 'frost'],
+  [/Air|Manw/i, 'storm'],
+  [/Earth|Geomancy/i, 'earth'],
+  [/Udun|Demon|Melkor|Mandos|Necro/i, 'shadow'],
+  [/Nature|Yavanna|Druid/i, 'nature'],
+  [/Eru|Varda|Prayer/i, 'holy'],
+  [/Mind/i, 'mind'],
+  [/Music/i, 'song'],
+];
+
+/** The casting sound for a spell's school (or god); Mana, Conveyance, Divination, Temporal and Meta are arcane. */
+export function spellTone(school: string): SpellTone {
+  return SPELL_TONES.find(([pattern]) => pattern.test(school))?.[1] ?? 'arcane';
+}
+
+/* tome2's messages for a spell, power or device that was tried and did not work (the attempt still takes its turn). */
+const FAILED = /^You failed to (get the spell off|concentrate|use the|activate)/;
+/* Messages that only report a question the player dismissed. */
+const DISMISSED = /^(Cancelled|Never mind)\b/i;
+
+/**
+ * How a command ended, once tome2 is back at the command prompt: `failed`
+ * when it took its turn but tome2 says the attempt failed, `refused` when
+ * tome2 turned it down without taking a turn (and said why). The message is
+ * tome2's own. Null when it worked or was cancelled.
+ */
+export function attemptOutcome(tookTime: boolean, messages: readonly string[]): { kind: 'failed' | 'refused'; message: string } | null {
+  if (tookTime) {
+    const failed = messages.find((m) => FAILED.test(m));
+    return failed ? { kind: 'failed', message: failed } : null;
+  }
+  const told = messages.filter((m) => !DISMISSED.test(m));
+  return told.length ? { kind: 'refused', message: told[told.length - 1] } : null;
+}
+
+/** The sound for a command once it has ended: its own when it worked, `fizzle` when it failed, `deny` when refused. */
+export function outcomeCue(key: string, tookTime: boolean, messages: readonly string[]): Cue | null {
+  const cue = intentCue(key);
+  if (!cue) return null;
+  const outcome = attemptOutcome(tookTime, messages);
+  if (!outcome) return tookTime ? cue : null;
+  return { id: outcome.kind === 'failed' ? 'fizzle' : 'deny' };
 }
 
 type Tracked = Pick<PlayerState, 'name' | 'lev' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'status' | 'food'>;

@@ -14,6 +14,10 @@ import {
   transitionKind,
 } from '../../web/src/audio/composer.ts';
 import {
+  attemptOutcome,
+  launcherKind,
+  spellTone,
+  weaponKind,
   danger,
   doorCues,
   doorKinds,
@@ -22,6 +26,7 @@ import {
   intentCue,
   messageCues,
   newThreats,
+  outcomeCue,
   playerCues,
 } from '../../web/src/audio/cues.ts';
 import { sceneFor, sceneKey, themeFor, type Place } from '../../web/src/audio/places.ts';
@@ -430,6 +435,41 @@ describe('sound cues', () => {
     assert.equal(intentCue('E')?.id, 'eat');
     assert.equal(intentCue('w')?.id, 'wield');
     assert.equal(intentCue('8'), null);
+  });
+
+  it('names the weapon, launcher and spell school behind a sound', () => {
+    assert.equal(weaponKind(23), 'blade');
+    assert.equal(weaponKind(24), 'axe');
+    assert.equal(weaponKind(21), 'blunt');
+    assert.equal(weaponKind(22), 'polearm');
+    assert.equal(weaponKind(undefined), 'unarmed');
+    assert.equal(launcherKind(19, 2), 'sling');
+    assert.equal(launcherKind(19, 13), 'bow');
+    assert.equal(launcherKind(19, 24), 'crossbow');
+    assert.equal(launcherKind(15, 2), null);
+    assert.equal(launcherKind(undefined, undefined), null);
+    assert.equal(spellTone('Mana'), 'arcane');
+    assert.equal(spellTone('Fire'), 'fire');
+    assert.equal(spellTone('Water'), 'frost');
+    assert.equal(spellTone('Air'), 'storm');
+    assert.equal(spellTone('Udun'), 'shadow');
+    assert.equal(spellTone('Nature'), 'nature');
+    assert.equal(spellTone('Eru Iluvatar'), 'holy');
+    assert.equal(spellTone('Music'), 'song');
+    assert.equal(spellTone('Conveyance'), 'arcane');
+  });
+
+  it('tells a command that worked from one that failed or was refused', () => {
+    assert.equal(outcomeCue('m', true, ['You cast it.'])?.id, 'cast');
+    assert.equal(outcomeCue('m', true, ['You failed to get the spell off!'])?.id, 'fizzle');
+    assert.equal(outcomeCue('a', true, ['You failed to use the wand properly.'])?.id, 'fizzle');
+    assert.equal(outcomeCue('m', false, ['You cannot see!'])?.id, 'deny');
+    assert.equal(outcomeCue('m', false, []), null);
+    assert.equal(outcomeCue('m', false, ['Cancelled.']), null);
+    assert.equal(outcomeCue('8', false, ['There is a wall in the way.']), null);
+    assert.deepEqual(attemptOutcome(false, ['You do not have enough mana to use this power.']), { kind: 'refused', message: 'You do not have enough mana to use this power.' });
+    assert.deepEqual(attemptOutcome(true, ['You failed to concentrate hard enough!']), { kind: 'failed', message: 'You failed to concentrate hard enough!' });
+    assert.equal(attemptOutcome(true, ['The orc dies.']), null);
   });
 
   it('hears changes in the player', () => {
