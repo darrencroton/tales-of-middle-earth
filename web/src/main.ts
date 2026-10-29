@@ -1547,8 +1547,8 @@ function updateActionBar(force = false): void {
   if (key === actionsKey && !force) return;
   actionsKey = key;
   const now = performance.now();
-  const settle = mode === 'map' && toolbarSlots.length > 0;
-  toolbarSlots = actions.map((action, i) => {
+  const settle = toolbarSlots.length > 0;
+  toolbarSlots = mode !== 'map' ? [] : actions.map((action, i) => {
     const slot = `${action.id}:${action.label}`;
     const old = toolbarSlots[i];
     if (old?.key === slot) return old;
@@ -1560,7 +1560,7 @@ function updateActionBar(force = false): void {
       button.type = 'button';
       button.dataset.action = action.id;
       button.className = ['action', action.primary ? 'primary' : '', action.unavailable ? 'unavailable' : ''].filter(Boolean).join(' ');
-      const wait = toolbarSlots[i].until - now;
+      const wait = (toolbarSlots[i]?.until ?? 0) - now;
       if (wait > 0) {
         button.classList.add('settling');
         window.setTimeout(() => button.classList.remove('settling'), wait);
