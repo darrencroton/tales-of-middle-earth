@@ -495,8 +495,19 @@ html.keyboard-open .sheet-layer {
 
 .hud-player .meta {
   display: flex;
-  flex-wrap: wrap;
   gap: 0.2rem 0.7rem;
+  white-space: nowrap;
+}
+
+.hud-player .meta > span {
+  flex: 0 0 auto;
+}
+
+.hud-player .meta .place {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .meta .good,
@@ -509,37 +520,43 @@ html.keyboard-open .sheet-layer {
   color: #e07a6a;
 }
 
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin-top: 0.3rem;
-}
-
-.chips:empty {
-  display: none;
-}
-
-.chip {
-  padding: 0 0.5em;
-  border-radius: 1em;
-  background: #3a1f1a;
-  color: #f0b8a8;
-  font-size: var(--fs-small);
-}
-
+/* The strip of ailments and what is in view keeps one height, full or empty, so the map never changes size. */
 .hud-entities {
+  --strip-height: max(calc(var(--touch) * 0.8), 2.75rem);
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
+  align-items: stretch;
   gap: 0.3rem;
+  flex: 0 0 var(--strip-height);
+  height: var(--strip-height);
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
 }
 
-.hud-entities:empty {
-  display: none;
+.hud-entities > li {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.hud-entities .chip {
+  align-self: center;
+  padding: 0.1em 0.6em;
+  border-radius: 1em;
+  background: #3a1f1a;
+  color: #f0b8a8;
+  font-size: var(--fs-small);
+  white-space: nowrap;
+}
+
+.hud-entities .quiet {
+  align-self: center;
+  padding-left: 0.2rem;
+  color: var(--faint);
+  font-size: var(--fs-small);
+  font-style: italic;
 }
 
 .entity {
@@ -814,8 +831,19 @@ html.keyboard-open .sheet-layer {
 
   #hud .hud-entities {
     flex: 0 1 auto;
+    height: auto;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  #hud .hud-entities .chip,
+  #hud .hud-entities .quiet {
+    align-self: flex-start;
+  }
+
+  #hud .hud-player .meta {
+    flex-wrap: wrap;
+    white-space: normal;
   }
 
   /* In the narrow sidebar, names wrap onto a second line rather than being cut. */

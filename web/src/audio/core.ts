@@ -3,7 +3,7 @@
  * music, a reverb and an echo, and the noise and waveforms the
  * instruments are built from.
  *
- *   music players → musicTone → EQ → musicVolume → master → limiter → speakers
+ *   music players → musicTone → EQ → musicDuck → musicVolume → master → limiter → speakers
  *   sound effects, ambience → high-pass → soundVolume → master
  *   musicVolume, soundVolume → sends → high-pass → reverb / echo → master
  */
@@ -13,6 +13,8 @@ export class AudioCore {
   readonly musicIn: GainNode;
   readonly musicTone: BiquadFilterNode;
   readonly musicVolume: GainNode;
+  /** Dips the music under a sound that should stand out (`duck`). */
+  readonly musicDuck: GainNode;
   readonly soundIn: GainNode;
   readonly soundVolume: GainNode;
   readonly ambienceIn: GainNode;
@@ -74,7 +76,9 @@ export class AudioCore {
     this.musicTone.connect(rumble);
     rumble.connect(mud);
     mud.connect(presence);
-    presence.connect(this.musicVolume);
+    this.musicDuck = ctx.createGain();
+    presence.connect(this.musicDuck);
+    this.musicDuck.connect(this.musicVolume);
     this.musicVolume.connect(this.master);
     this.musicReverb = ctx.createGain();
     this.musicReverb.gain.value = 0.5;
@@ -104,6 +108,15 @@ export class AudioCore {
 
   get now(): number {
     return this.ctx.currentTime;
+  }
+
+  /** Lowers the music by `db` from `t` for about `hold` seconds, then lets it swell back. */
+  duck(t: number, db: number, hold: number): void {
+    const gain = this.musicDuck.gain;
+    const depth = Math.pow(10, -db / 20);
+    gain.cancelScheduledValues(t);
+    gain.setTargetAtTime(Math.min(depth, gain.value), t, 0.015);
+    gain.setTargetAtTime(1, t + hold, 0.3);
   }
 
   /**

@@ -123,7 +123,7 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
     section(
       'Exploring',
       segmented<ExplorePace>('Exploring', [['normal', 'Normal'], ['relaxed', 'Relaxed']], current.explorePace, (explorePace) => update({ explorePace })),
-      el('p', 'muted', 'How fast Explore and travel walk. Relaxed takes its time, to watch the way unfold; the pace button on the toolbar switches it while exploring.'),
+      el('p', 'muted', 'How fast Explore and travel walk. Relaxed takes its time, to watch the way unfold; Speed on the toolbar switches it while exploring.'),
     ),
   );
   body.append(

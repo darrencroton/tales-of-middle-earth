@@ -14,7 +14,7 @@ Map (toolbar, HUD, gestures)
 ├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Descend/Ascend/Enter rift,
 │   Attack, Pick up, Drink, Wield/Light/Eat, Explore/Way down/Way up/World map — then the hero's
 │   own buttons in fixed places: quick spell or aimed item, Cast/Powers, Fire, Items, Rest, More,
-│   Menu; while exploring: Stop, pace, Menu)
+│   Menu; while exploring: Stop, Speed, Menu)
 │   ├── Items ─────────────── Inventory            panel, tabs Pack · Equipment · Floor     depth 1
 │   │                         └── Item              card over Inventory (actions)            depth 2
 │   │                             ├── How many?     card over Item (Drop, Destroy)           depth 3
@@ -38,7 +38,7 @@ Map (toolbar, HUD, gestures)
 │       ├── How to play / About                    panel (prose)
 │       ├── Saved games ───── Saved games          menu: Export · Import                    depth 2
 │       └── Save and quit ─── confirmation         card
-├── HUD
+├── HUD (one height always: the strip of ailments and chips keeps its place when empty)
 │   ├── hero name ─────────── Character (or Fallen hero after death)
 │   ├── creature / item chip ─ Creature / Item     card
 │   └── message log ───────── Messages             panel

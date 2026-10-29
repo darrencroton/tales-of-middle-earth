@@ -185,6 +185,22 @@ export async function jumpToLevel(page: Page, level: number): Promise<void> {
   await waitAtCommand(page);
 }
 
+/** Uses tome2's wizard commands (page loaded with ?wizard) to summon a creature (by r_info index, asleep) beside the hero. */
+export async function summonBeside(page: Page, raceIndex: number): Promise<void> {
+  const rowZero = async () => (await screenText(page)).split('\n')[0] ?? '';
+  let text = await screenText(page);
+  await sendText(page, `0${raceIndex}\u0001`);
+  text = await waitForSettle(page, text, 5_000);
+  for (let i = 0; i < 10 && !/Debug Command/.test(await rowZero()); i++) {
+    await sendText(page, /\[y\/n\]/.test(await rowZero()) ? 'y' : ' ');
+    text = await waitForSettle(page, text, 5_000);
+  }
+  await sendText(page, 'n');
+  await waitForSettle(page, text, 5_000);
+  await dismissMore(page);
+  await waitAtCommand(page);
+}
+
 /** Takes the toolbar's gear suggestions (wield, light) until none is left. */
 export async function equipSuggested(page: Page): Promise<void> {
   for (let i = 0; i < 3 && (await page.locator('#toolbar [data-action="equip"]').count()); i++) {

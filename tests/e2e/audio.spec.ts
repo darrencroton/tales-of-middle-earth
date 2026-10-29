@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createCharacter, equipSuggested, jumpToLevel, waitForEngine } from './helpers.ts';
+import { createCharacter, dismissMore, equipSuggested, jumpToLevel, waitAtCommand, waitForEngine, waitForScreen } from './helpers.ts';
 
 async function audioStatus(page: Page) {
   return page.evaluate(() => window.__tome!.audio.status);
@@ -46,6 +46,43 @@ test('music follows the player from the title to town and dungeon, and actions m
   await expect.poll(async () => (await audioStatus(page)).theme).not.toBeNull();
 
   expect(errors).toEqual([]);
+});
+
+test('a spell sounds as it is let go, before its bolt, and only once', async ({ page }) => {
+  await page.goto('/');
+  await waitForEngine(page);
+  await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
+  await expect.poll(async () => (await audioStatus(page)).state).toBe('running');
+  await createCharacter(page, 'Spark', { race: 'High-Elf', cls: 'Mage' });
+
+  /* Aims along open ground, so the bolt is drawn before it ends. */
+  const direction = await page.evaluate(() => {
+    const snap = window.__tome!.engine.snapshot()!;
+    const floor = snap.feat[snap.py * snap.width + snap.px];
+    const ways: [string, number, number][] = [['6', 1, 0], ['4', -1, 0], ['2', 0, 1], ['8', 0, -1]];
+    const open = ways.find(([, dx, dy]) =>
+      [1, 2, 3].every((k) => {
+        const x = snap.px + dx * k;
+        const y = snap.py + dy * k;
+        return x >= 0 && y >= 0 && x < snap.width && y < snap.height && snap.feat[y * snap.width + x] === floor;
+      }),
+    );
+    return open?.[0] ?? '6';
+  });
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
+  await page.locator('.sheet .spell-row', { hasText: 'Manathrust' }).click();
+  await waitForScreen(page, /^Direction/);
+  const before = (await audioStatus(page)).recent.length;
+  await page.evaluate((d) => window.__tome!.sendText(d), direction);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  await expect.poll(async () => (await audioStatus(page)).recent.slice(before).includes('cast') || (await audioStatus(page)).recent.slice(before).includes('fizzle')).toBe(true);
+  const heard = (await audioStatus(page)).recent.slice(before);
+  if (!heard.includes('fizzle')) {
+    expect(heard.filter((id) => id === 'cast')).toHaveLength(1);
+    expect(heard.indexOf('bolt')).toBeGreaterThan(heard.indexOf('cast'));
+  }
 });
 
 test('the title theme plays again as soon as a game ends, without another tap', async ({ page }) => {

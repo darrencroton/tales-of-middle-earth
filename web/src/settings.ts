@@ -26,6 +26,13 @@ const STORAGE_KEY = 'tome2mobile.settings';
 
 export const VOLUME_LEVELS: readonly VolumeLevel[] = ['off', 'low', 'medium', 'high'];
 
+/** How long tome2 shows each step of a bolt or blast, as its delay_factor (the cube, in ms): 27 ms, 8 ms, or not drawn. */
+export const EFFECT_DELAY: Record<AnimationLevel, number> = {
+  full: 3,
+  reduced: 2,
+  off: 0,
+};
+
 export const ANIMATION_FPS: Record<AnimationLevel, number> = {
   full: 20,
   reduced: 8,

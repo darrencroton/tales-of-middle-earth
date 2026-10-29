@@ -213,6 +213,8 @@ export interface ObjectState {
   name: string;
   ch: number;
   attr: number;
+  /** Money, which the hero takes up just by stepping on it. */
+  gold?: number;
   y: number;
   x: number;
 }

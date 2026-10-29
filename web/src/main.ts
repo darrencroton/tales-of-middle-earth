@@ -27,7 +27,7 @@ import {
   exportFilename,
   writeFiles,
 } from './saves.ts';
-import { ANIMATION_FPS, applyTextSize, loadSettings, saveSettings, type Settings } from './settings.ts';
+import { ANIMATION_FPS, applyTextSize, EFFECT_DELAY, loadSettings, saveSettings, type Settings } from './settings.ts';
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
 import { TitleScreen } from './title.ts';
 import { openSoundtrack } from './ui/soundtrack.ts';
@@ -52,6 +52,7 @@ import { buildMemorial, entryKey, memorialKey, type Memorial } from './play/memo
 import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
 import { el, iconText, section } from './ui/dom.ts';
+import { onTap } from './ui/tap.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
 import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate } from './ui/menus.ts';
@@ -84,6 +85,7 @@ declare global {
       mapCellCentre(x: number, y: number): { x: number; y: number };
       actions(): string[];
       travelling(): boolean;
+      settings(): Settings;
       lastStopCause(): string;
       exploreStop(): { kind: string; x: number; y: number; heading: string } | null;
       macroRunning(): boolean;
@@ -99,6 +101,7 @@ const EFFECT_LINGER_MS = 160;
 const HIGHLIGHT_MS = 2500;
 const MAX_EFFECT_CELLS = 600;
 const TRAVEL_STEP_MS = 45;
+const RELAXED_STEP_MS = 120;
 const PLACE_POLL_MS = 2000;
 const CTRL_S = 0x13;
 const CTRL_X = 0x18;
@@ -172,6 +175,8 @@ let exploreAnchor: MapPoint | null = null;
 let exploreLastStop: MapPoint | null = null;
 /** Items seen on this level while exploring (by cell), and those first seen during the current exploration. */
 const exploreSeenItems = new Set<number>();
+/** Cells where money has been seen on this level: exploring takes it up whatever the hero picks up. */
+const levelGold = new Set<number>();
 const exploreSpotted = new Map<number, string>();
 let travelTimer = 0;
 /** The current travel only gets as near as the known way allows. */
@@ -191,6 +196,8 @@ let toolbarSlots: { key: string; until: number }[] = [];
 let dirty = true;
 let effectsAt = 0;
 let hasEffects = false;
+/* A frame of a bolt or blast is being drawn (tome2 is mid-turn). */
+let drawingEffect = false;
 let ctrlLatched = false;
 let lastRenderMs = 0;
 let placeKey = '';
@@ -622,8 +629,7 @@ function openNative(view: NativeView): void {
     case 'pace':
       settings = { ...settings, explorePace: settings.explorePace === 'relaxed' ? 'normal' : 'relaxed' };
       saveSettings(settings);
-      showToast(settings.explorePace === 'relaxed' ? 'Exploring at a relaxed pace.' : 'Exploring at the normal pace.');
-      updateActionBar(true);
+      updateActionBar();
       break;
     case 'knowledge':
       openKnowledge(api);
@@ -1084,6 +1090,7 @@ function enterLevel(key: string, next: Place): void {
   exploreAnchor = null;
   exploreLastStop = null;
   exploreSeenItems.clear();
+  levelGold.clear();
   if (heroMemory && exploreKeepsVisits) for (const cell of heroMemory.visited[key] ?? []) exploreSkip.add(cell);
 }
 
@@ -1153,14 +1160,14 @@ function explorePlan(): ExplorePlan {
     isExit: role(featureRoles[heading]),
     isBackExit: (lastSnap?.depth ?? 0) > 0 ? role(featureRoles[heading === 'up' ? 'down' : 'up']) : undefined,
     anchor: exploreAnchor,
-    collectItems: alwaysPickup(),
+    collect: alwaysPickup() ? () => true : (i) => levelGold.has(i),
   };
 }
 
 /** What Explore would do now (see `ExploreNext`); on the land, once nothing is left, the way on is the world map. */
 function exploreNext(snap: LevelSnapshot | null): ExploreNext {
   if (!snap?.atCommand || snap.wild || !materialsLoaded) return 'explore';
-  const key = `${exploreLevel}:${snap.turn}:${snap.px},${snap.py}:${exploreSkip.size}:${heroMemory?.heading}:${alwaysPickup()}`;
+  const key = `${exploreLevel}:${snap.turn}:${snap.px},${snap.py}:${exploreSkip.size}:${levelGold.size}:${heroMemory?.heading}:${alwaysPickup()}`;
   if (exploreNextCache.key !== key) exploreNextCache = { key, next: exploreNextFrom(snap) };
   return exploreNextCache.next;
 }
@@ -1280,6 +1287,7 @@ function refresh(): void {
     }
     const previous = lastState;
     lastState = state;
+    for (const o of state.objects ?? []) if (o.gold) levelGold.add(o.y * snap.width + o.x);
     hud.update(state, snap.py, snap.px);
     if (state.player) feel.update(state.player);
     const sameHero = !!previous && previous.player?.name === state.player?.name;
@@ -1501,6 +1509,7 @@ function useSuggested(): void {
 /** What the map toolbar is built from at the command prompt: what is underfoot and around, what Explore would do, and the hero's own buttons. */
 function mapSituation(snap: LevelSnapshot): Partial<ActionContext> {
   if (travel instanceof Explore) return { exploring: settings.explorePace };
+  if (!snap.atCommand) return {};
   const quick = quickEntry();
   return {
     arrived: arrival === snap.py * snap.width + snap.px,
@@ -1514,6 +1523,8 @@ function mapSituation(snap: LevelSnapshot): Partial<ActionContext> {
 }
 
 function updateActionBar(force = false): void {
+  /* A bolt or blast being drawn is part of a turn under way: the toolbar waits for it to end. */
+  if (drawingEffect) return;
   const snap = lastSnap;
   const directed = mode === 'screen' ? director.actions() : null;
   const prompt = currentPrompt();
@@ -1537,13 +1548,13 @@ function updateActionBar(force = false): void {
       underfoot: snap && snap.inDungeon ? underfootName(snap) : '',
       floorObjects: snap?.floorObjects ?? 0,
       alwaysPickup: alwaysPickup(),
-      ...(mode === 'map' && snap?.atCommand ? mapSituation(snap) : {}),
+      ...(mode === 'map' && snap ? mapSituation(snap) : {}),
       foe: foe && snap ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
       worldMap: !!snap?.inDungeon && snap.depth === 0 && snap.wild,
     });
   currentActions = actions;
   termView.setActions(mode === 'overlay' ? panelActions(actions) : []);
-  const key = actions.map((a) => `${a.id}:${a.label}:${!!a.unavailable}`).join(',');
+  const key = actions.map((a) => `${a.id}:${a.label}:${a.icon}:${!!a.unavailable}:${!!a.primary}`).join(',');
   if (key === actionsKey && !force) return;
   actionsKey = key;
   const now = performance.now();
@@ -1554,29 +1565,36 @@ function updateActionBar(force = false): void {
     if (old?.key === slot) return old;
     return { key: slot, until: settle && !NEVER_SETTLE.has(action.id) ? now + TOOLBAR_SETTLE_MS : 0 };
   });
-  toolbar.replaceChildren(
-    ...actions.map((action, i) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.dataset.action = action.id;
-      button.className = ['action', action.primary ? 'primary' : '', action.unavailable ? 'unavailable' : ''].filter(Boolean).join(' ');
-      const wait = (toolbarSlots[i]?.until ?? 0) - now;
-      if (wait > 0) {
-        button.classList.add('settling');
-        window.setTimeout(() => button.classList.remove('settling'), wait);
-      }
-      button.setAttribute('aria-label', action.label);
-      if (action.unavailable) button.setAttribute('aria-description', action.unavailable);
-      const icon = document.createElement('span');
-      icon.className = 'action-icon';
-      icon.textContent = iconText(action.icon);
-      const label = document.createElement('span');
-      label.className = action.label.length > 9 ? 'action-label longer' : action.label.length > 6 ? 'action-label long' : 'action-label';
-      label.textContent = action.label;
-      button.append(icon, label);
-      return button;
-    }),
-  );
+  while (toolbar.childElementCount > actions.length) toolbar.lastElementChild?.remove();
+  actions.forEach((action, i) => {
+    const button = (toolbar.children[i] as HTMLButtonElement | undefined) ?? toolbar.appendChild(actionButton());
+    drawAction(button, action, (toolbarSlots[i]?.until ?? 0) - now);
+  });
+}
+
+function actionButton(): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.append(el('span', 'action-icon'), el('span'));
+  return button;
+}
+
+/** Shows an action on a toolbar button, in place, so a tap under way is not lost when the bar changes. */
+function drawAction(button: HTMLButtonElement, action: Action, settleMs: number): void {
+  button.dataset.action = action.id;
+  button.className = ['action', action.primary ? 'primary' : '', action.unavailable ? 'unavailable' : ''].filter(Boolean).join(' ');
+  window.clearTimeout(Number(button.dataset.settle ?? 0));
+  if (settleMs > 0) {
+    button.classList.add('settling');
+    button.dataset.settle = String(window.setTimeout(() => button.classList.remove('settling'), settleMs));
+  }
+  button.setAttribute('aria-label', action.label);
+  if (action.unavailable) button.setAttribute('aria-description', action.unavailable);
+  else button.removeAttribute('aria-description');
+  const [icon, label] = button.children as unknown as [HTMLElement, HTMLElement];
+  icon.textContent = iconText(action.icon);
+  label.className = action.label.length > 9 ? 'action-label longer' : action.label.length > 6 ? 'action-label long' : 'action-label';
+  label.textContent = action.label;
 }
 
 /* Toolbar actions a pop-up's own frame already offers (its close button) or that belong to the map. */
@@ -1779,9 +1797,9 @@ function startTravel(goal: MapPoint): void {
 /* Steps a walk that stops short of an unknown place takes before it says so. */
 const FAR_WALK_STEPS = 10;
 
-/** The pause between steps of travel and exploring: Relaxed walks at half speed, whatever the animation setting. */
+/** The pause between steps of travel and exploring: Relaxed walks at its own slower pace, whatever the animation setting. */
 function travelStepMs(): number {
-  if (settings.explorePace === 'relaxed') return TRAVEL_STEP_MS * 2;
+  if (settings.explorePace === 'relaxed') return RELAXED_STEP_MS;
   return animating() ? TRAVEL_STEP_MS : 0;
 }
 
@@ -2125,8 +2143,7 @@ const engine = new Engine(buffer, {
   },
   onRunning() {
     layout();
-    engine.setAutoMore(settings.messages === 'flow');
-    engine.setPersistentLevels(settings.persistentLevels);
+    applyEngineSettings();
     dirty = true;
     requestFrame();
     const storageError = engine.storageError;
@@ -2226,7 +2243,12 @@ const engine = new Engine(buffer, {
   },
   onEffectFrame() {
     director.effectFrame();
-    refresh();
+    drawingEffect = true;
+    try {
+      refresh();
+    } finally {
+      drawingEffect = false;
+    }
     captureEffects();
     if (mode === 'map' || mode === 'overlay') map.render(performance.now(), animating());
   },
@@ -2484,9 +2506,8 @@ stage.addEventListener(
 
 /* Toolbar */
 
-toolbar.addEventListener('click', (e) => {
-  const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
-  const action = currentActions.find((a) => a.id === button?.dataset.action);
+onTap(toolbar, 'button[data-action]', (button) => {
+  const action = currentActions.find((a) => a.id === button.dataset.action);
   if (action) runAction(action);
 });
 
@@ -2506,10 +2527,9 @@ function openSettingsSheet(): void {
       if (exploreLevel?.startsWith('level:')) exploreKeepsVisits = false;
     }
     settings = next;
-    engine.setPersistentLevels(settings.persistentLevels);
     saveSettings(settings);
     applySettings();
-    engine.setAutoMore(settings.messages === 'flow');
+    applyEngineSettings();
     audio.setVolumes(settings.music, settings.sound);
     map.zoom = settings.zoom;
     pinchStartZoom = settings.zoom;
@@ -2524,6 +2544,13 @@ function openSettingsSheet(): void {
 function applySettings(): void {
   applyTextSize(settings.textSize);
   document.documentElement.dataset.animation = settings.animation;
+}
+
+/** Applies the settings tome2 itself keeps: messages flowing past, kept levels, and how bolts and blasts are drawn. */
+function applyEngineSettings(): void {
+  engine.setAutoMore(settings.messages === 'flow');
+  engine.setPersistentLevels(settings.persistentLevels);
+  engine.setEffectDelay(EFFECT_DELAY[settings.animation]);
 }
 
 function inGame(): boolean {
@@ -2576,6 +2603,7 @@ function returnToTitle(): void {
   exploreAnchor = null;
   exploreLastStop = null;
   exploreSeenItems.clear();
+  levelGold.clear();
   exploreLevelDepth = -1;
   exploreLevelWild = false;
   exploreKeepsVisits = false;
@@ -2772,6 +2800,7 @@ window.__tome = {
   mapCellCentre: (x, y) => map.cellCentre(x, y),
   actions: () => currentActions.map((a) => a.id),
   travelling: () => travel !== null,
+  settings: () => settings,
   lastStopCause: () => lastStopCause,
   exploreStop: () => {
     if (!lastSnap) return null;

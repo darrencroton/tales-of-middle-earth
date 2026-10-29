@@ -508,6 +508,36 @@ test('explore reveals the level after the suggested weapon and light are equippe
   expect(await known()).toBeGreaterThan(before);
 });
 
+test('while exploring, Speed switches the pace without stopping and Stop stops', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Pacer');
+  await jumpToLevel(page, 2);
+  await equipSuggested(page);
+
+  const travelling = () => page.evaluate(() => window.__tome!.travelling());
+  const pace = () => page.evaluate(() => window.__tome!.settings().explorePace);
+  let started = false;
+  for (let i = 0; i < 8 && !started; i++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    const explore = page.locator('#toolbar [data-action="explore"]');
+    if (!(await explore.count())) break;
+    await explore.tap();
+    started = await travelling();
+  }
+  test.skip(!started, 'exploring stopped at once each time');
+
+  await expect(page.locator('#toolbar button')).toHaveText([/Stop/, /Speed/, /Menu/]);
+  const before = await pace();
+  await page.locator('#toolbar [data-action="pace"]').tap();
+  expect(await pace()).not.toBe(before);
+  if (await travelling()) {
+    await page.locator('#toolbar [data-action="stop"]').tap();
+    expect(await travelling()).toBe(false);
+  }
+});
+
 test('a tap on unseen ground takes one step towards it', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);

@@ -2,6 +2,7 @@ import type { GameState, LevelSnapshot } from '../render/snapshot.ts';
 import { AmbiencePlayer } from './ambience.ts';
 import { AudioCore } from './core.ts';
 import {
+  attemptOutcome,
   danger,
   doorCues,
   elementFromColour,
@@ -55,7 +56,14 @@ interface Intent {
   turn: number;
   /** The school of the spell a cast is for. */
   tone: SpellTone | null;
+  /** Its sound has played already, as it was let go (see `effects`). */
+  sounded?: boolean;
 }
+
+/* Commands whose sound belongs to the moment they are let go: played with the first bolt drawn, or at the end of the turn. */
+const RELEASED = new Set<CueId>(['cast', 'fire', 'throw', 'zap', 'activate']);
+/* Shots and throws carry their own flight; the bolt drawn for the missile adds no sound of its own. */
+const MISSILES = new Set<CueId>(['fire', 'throw']);
 
 /**
  * The game's sound: music chosen by place and story, ambience beneath it,
@@ -304,14 +312,15 @@ export class GameAudio {
       const heard = new Set<CueId>();
       let intentPlayed = false;
       const fresh = freshMessages(prev, state);
-      if (this.intent) {
-        const tookTime = snap.turn !== this.intent.turn;
-        const cue = tookTime || snap.atCommand ? outcomeCue(this.intent.key, tookTime, fresh) : null;
-        if (cue) {
-          cues.push(cue.id === 'cast' && this.intent.tone ? { ...cue, variant: this.intent.tone } : cue);
-          intentPlayed = cue.id !== 'deny';
-        }
-        if (cue || tookTime || !intentCue(this.intent.key)) this.intent = null;
+      const intent = this.intent;
+      if (intent) {
+        const tookTime = snap.turn !== intent.turn;
+        /* A failure is told as it happens, before a creature's bolt could be taken for the spell. */
+        const failed = !!intentCue(intent.key) && attemptOutcome(true, fresh)?.kind === 'failed';
+        const cue = failed ? ({ id: 'fizzle' } as Cue) : tookTime || snap.atCommand ? outcomeCue(intent.key, tookTime, fresh) : null;
+        if (cue && !(intent.sounded && RELEASED.has(cue.id))) cues.push(this.voiced(cue, intent));
+        if (cue) intentPlayed = cue.id !== 'deny';
+        if (cue || tookTime || !intentCue(intent.key)) this.intent = null;
       }
       for (const text of fresh) {
         for (const cue of messageCues(text)) {
@@ -342,7 +351,6 @@ export class GameAudio {
     for (let i = 0; i < cues.length; i++) {
       const id = cues[i].id;
       if (id === 'hit' || id === 'crit' || (melee && (id === 'kill' || id === 'kill-unique'))) cues[i] = { ...cues[i], variant: this.weapon };
-      else if (id === 'fire' && this.launcher) cues[i] = { ...cues[i], variant: this.launcher };
     }
 
     this.prevState = state;
@@ -356,20 +364,42 @@ export class GameAudio {
     this.play(cues);
   }
 
-  /** A bolt or explosion is being drawn over the map. */
+  /** A command's own sound, coloured by what is behind it: the spell's school, the launcher. */
+  private voiced(cue: Cue, intent: Intent): Cue {
+    if (cue.id === 'cast' && intent.tone) return { ...cue, variant: intent.tone };
+    if (cue.id === 'fire' && this.launcher) return { ...cue, variant: this.launcher };
+    return cue;
+  }
+
+  /** The sound of the command under way, once, when what it lets go is first drawn (a spell's bolt, an arrow). */
+  private release(): Cue | null {
+    const intent = this.intent;
+    const cue = intent && !intent.sounded ? intentCue(intent.key) : null;
+    if (!intent || !cue || !RELEASED.has(cue.id)) return null;
+    intent.sounded = true;
+    return this.voiced(cue, intent);
+  }
+
+  /**
+   * A bolt or explosion is being drawn over the map. The hero's own spell,
+   * shot or throw sounds as it is let go, just before its bolt, rather than
+   * at the end of the turn on top of what it struck.
+   */
   effects(cells: readonly { attr: number }[]): void {
     if (!cells.length) return;
     const now = performance.now();
     const kind: CueId = cells.length > 6 ? 'explosion' : 'bolt';
     const continuing = now - this.effectAt < EFFECT_GAP_MS;
     this.effectAt = now;
+    const release = this.release();
     /* One sound per animation, except the blast at the end of a ball spell. */
-    if (continuing && !(kind === 'explosion' && this.effectKind === 'bolt')) return;
+    if (continuing && !release && !(kind === 'explosion' && this.effectKind === 'bolt')) return;
     this.effectKind = kind;
     const counts = new Map<number, number>();
     for (const c of cells) counts.set(c.attr, (counts.get(c.attr) ?? 0) + 1);
     const attr = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
-    this.play([{ id: kind, element: elementFromColour(attr) }]);
+    const drawn: Cue = { id: kind, element: elementFromColour(attr) };
+    this.play(release ? (MISSILES.has(release.id) && kind === 'bolt' ? [release] : [release, drawn]) : [drawn]);
   }
 
   /** Plays a sound that is not tied to game state (shop bell, menus). */

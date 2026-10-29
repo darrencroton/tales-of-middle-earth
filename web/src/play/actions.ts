@@ -247,11 +247,11 @@ function command(id: string, label: string, icon: string, def: Pick<CommandDef, 
   return { id, label, icon, effect: { kind: 'keys', keys: commandKeys(def) }, primary };
 }
 
-/** The pace button shown while exploring: it names the pace and switches to the other. */
-export function paceAction(pace: ExplorePace): Action {
+/** The Speed button shown while exploring: it switches between the paces, its icon showing the one walked at. */
+export function speedAction(pace: ExplorePace): Action {
   return {
     id: 'pace',
-    label: pace === 'relaxed' ? 'Relaxed' : 'Normal',
+    label: 'Speed',
     icon: pace === 'relaxed' ? '›' : '»',
     effect: { kind: 'native', view: 'pace' },
     continues: true,
@@ -397,10 +397,9 @@ export function contextActions(ctx: ActionContext): Action[] {
     return [{ id: 'done', label: 'Done', icon: '✓', effect: { kind: 'keys', keys: [27] }, primary: true }, MENU];
   }
 
-  if (ctx.mode === 'map' && ctx.atCommand) {
-    if (ctx.exploring) return [HALT, paceAction(ctx.exploring), MENU];
-    return [contextualAction(ctx), ...heroActions(ctx)];
-  }
+  /* Exploring keeps its buttons between steps too, while tome2 is busy with the last one. */
+  if (ctx.mode === 'map' && ctx.exploring) return [HALT, speedAction(ctx.exploring), MENU];
+  if (ctx.mode === 'map' && ctx.atCommand) return [contextualAction(ctx), ...heroActions(ctx)];
 
   if (ctx.mode === 'overlay' || ctx.mode === 'screen') return ctx.listShown ? [ESCAPE, MENU] : [ESCAPE, UP, DOWN, MENU];
 

@@ -6,6 +6,7 @@ import {
   dismissMore,
   jumpToLevel,
   playerRegion,
+  summonBeside,
   viewMode,
   waitAtCommand,
   waitForEngine,
@@ -122,6 +123,35 @@ test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }
   const stats = await page.evaluate(() => window.__tome!.stats());
   testInfo.annotations.push({ type: 'map render ms', description: stats.renderMs.toFixed(2) });
   expect(stats.renderMs).toBeLessThan(250);
+});
+
+test('the map keeps its size whatever the HUD strip shows', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Steady');
+  await jumpToLevel(page, 1);
+  /* A Cave spider (they come in groups) asleep beside the hero fills the strip. */
+  await summonBeside(page, 60);
+  await expect(page.locator('#hud .hud-entities .entity.foe').first()).toBeVisible();
+
+  /* The same strip empty, with only an ailment, and full again, measured in one go so the HUD cannot redraw between. */
+  const sizes = await page.evaluate(() => {
+    const strip = document.querySelector<HTMLElement>('#hud .hud-entities')!;
+    const stage = document.querySelector<HTMLElement>('#stage')!;
+    const full = [...strip.children];
+    const measure = () => [stage.getBoundingClientRect().height, stage.getBoundingClientRect().width].join('x');
+    const quiet = Object.assign(document.createElement('li'), { className: 'quiet', textContent: 'All quiet' });
+    const chip = Object.assign(document.createElement('li'), { className: 'chip', textContent: 'Hungry' });
+    const result = [measure()];
+    strip.replaceChildren(quiet);
+    result.push(measure());
+    strip.replaceChildren(chip);
+    result.push(measure());
+    strip.replaceChildren(...full);
+    result.push(measure());
+    return result;
+  });
+  expect(new Set(sizes).size, sizes.join(' / ')).toBe(1);
 });
 
 test('settings persist: text size, glyphs and animation', async ({ page }) => {

@@ -50,6 +50,7 @@ interface EmscriptenModule {
   _web_monster_desc(index: number): number;
   _web_character_json(): number;
   _web_set_auto_more(on: number): void;
+  _web_set_effect_delay(factor: number): void;
   _web_place_json(): number;
   _web_scores_json(): number;
   _web_birth_json(): number;
@@ -241,6 +242,13 @@ export class Engine {
     const mod = this.module;
     if (!mod || this.state !== 'running') return;
     mod._web_set_auto_more(on ? 1 : 0);
+  }
+
+  /** How long each step of a bolt or blast is shown (tome2's delay_factor, 0..9: the cube in ms); 0 draws none. */
+  setEffectDelay(factor: number): void {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return;
+    mod._web_set_effect_delay(factor);
   }
 
   /** Keeps dungeon levels as the hero left them, or makes them anew on each visit (and forgets kept ones). */

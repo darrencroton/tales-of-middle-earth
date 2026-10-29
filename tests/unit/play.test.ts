@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, contextualAction, paceAction, pickupCommand, transitionUnderfoot, waitCommand } from '../../web/src/play/actions.ts';
+import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, contextualAction, pickupCommand, speedAction, transitionUnderfoot, waitCommand } from '../../web/src/play/actions.ts';
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
@@ -423,16 +423,18 @@ describe('actions', () => {
     assert.equal(first({ underfoot: 'down staircase', arrived: true, exploreNext: 'worldMap' }), 'World map');
   });
 
-  it('shows Stop and the pace while exploring; the pace leaves it running', () => {
+  it('shows Stop, Speed and Menu while exploring, between steps too; Speed leaves it running', () => {
     const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
     const exploring = contextActions({ ...base, exploring: 'normal' });
     assert.deepEqual(exploring.map((a) => [a.id, a.label]), [
       ['stop', 'Stop'],
-      ['pace', 'Normal'],
+      ['pace', 'Speed'],
       ['menu', 'Menu'],
     ]);
     assert.equal(exploring[1].continues, true);
-    assert.equal(paceAction('relaxed').label, 'Relaxed');
+    assert.deepEqual(contextActions({ ...base, atCommand: false, exploring: 'relaxed' }).map((a) => a.id), ['stop', 'pace', 'menu']);
+    assert.equal(speedAction('relaxed').label, 'Speed');
+    assert.notEqual(speedAction('relaxed').icon, speedAction('normal').icon);
   });
 
   it('names the way to and from the world map on the surface', () => {
