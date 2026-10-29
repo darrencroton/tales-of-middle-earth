@@ -338,7 +338,10 @@ describe('actions', () => {
     assert.deepEqual(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none' }).map((a) => a.id), ['escape', 'up', 'down', 'menu']);
     assert.deepEqual(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none', listShown: true }).map((a) => a.id), ['escape', 'menu']);
     assert.deepEqual(contextActions({ ...base, prompt: 'yesno', cardShown: true }).map((a) => a.id), ['menu']);
-    assert.ok(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none', screen: 'help' }).some((a) => a.id === 'pagedown'));
+    assert.deepEqual(contextActions({ ...base, mode: 'overlay', atCommand: false, prompt: 'none', screen: 'file' }).map((a) => [a.id, a.label]), [
+      ['escape', 'Done'],
+      ['menu', 'Menu'],
+    ]);
   });
 
   it('opens native views for items, looking and the level map', () => {

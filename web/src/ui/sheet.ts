@@ -8,6 +8,15 @@ const SWIPE_CLOSE = 60;
 export type SheetAction = PopAction;
 export type SheetTab = PopTab;
 
+/**
+ * How a sheet is presented (docs/ui-system.md):
+ * - `panel`: a screen of its own (lists, tabs, long reading) at the one pop-up height, so its controls never move;
+ * - `menu`: a short list of places to go, as tall as its rows;
+ * - `card`: details or a question about one thing, as tall as its content, floating over whatever opened it.
+ * Panels and menus opened from a panel or menu take its place (Back returns); cards and anything opened from a card float above.
+ */
+export type SheetKind = 'panel' | 'menu' | 'card';
+
 export interface SheetContent {
   title: string;
   subtitle?: string;
@@ -18,8 +27,8 @@ export interface SheetContent {
   actions?: SheetAction[];
   /** The sheet's views, as a fixed row at its foot. */
   tabs?: SheetTab[];
-  /** Sheets keep one tall size so they do not jump as their content changes; short questions fit their content. */
-  size?: 'fit';
+  /** Defaults to `panel`. */
+  kind?: SheetKind;
   /** Keys for the sheet's own content, before list navigation; true when used. */
   onKey?(e: KeyboardEvent): boolean;
   /** Element to highlight first (defaults to the first navigable item). */
@@ -42,24 +51,115 @@ export interface SheetTrail {
   places: (SheetPlace | undefined)[];
 }
 
-/**
- * Native panels (inventory, character, menus, information) shown over the
- * game. Sheets stack: a sheet opened from another gets a back button.
- * Tapping outside, Escape or the close button dismisses them.
- */
-export class Sheets {
-  private readonly layer: HTMLElement;
-  private readonly panel: HTMLElement;
-  private readonly header: HTMLElement;
+/** One layer of pop-ups: a backdrop and a frame showing the newest of its sheets. */
+class Frame {
+  readonly root: HTMLElement;
+  readonly panel: HTMLElement;
+  readonly body: HTMLElement;
+  readonly footer: HTMLElement;
+  readonly nav: ListNav;
+  readonly entries: SheetContent[] = [];
   private readonly titleEl: HTMLElement;
   private readonly subtitleEl: HTMLElement;
   private readonly badgeEl: HTMLElement;
   private readonly backButton: HTMLButtonElement;
-  private readonly body: HTMLElement;
-  private readonly footer: HTMLElement;
-  private readonly nav: ListNav;
-  private stack: SheetContent[] = [];
-  /** Where to return to on each sheet below the top. */
+
+  constructor(id: string, onBack: () => void, onClose: () => void) {
+    this.root = el('div', 'sheet-frame');
+    const backdrop = el('div', 'sheet-backdrop');
+    this.panel = el('section', 'sheet');
+    this.panel.setAttribute('role', 'dialog');
+    this.panel.setAttribute('aria-modal', 'true');
+    this.panel.tabIndex = -1;
+
+    const header = el('header', 'sheet-header');
+    this.backButton = el('button', 'sheet-back', '‹');
+    this.backButton.type = 'button';
+    this.backButton.setAttribute('aria-label', 'Back');
+    this.badgeEl = el('span', 'sheet-badge');
+    const titles = el('div', 'sheet-titles');
+    this.titleEl = el('h2', 'sheet-title');
+    this.titleEl.id = id;
+    this.panel.setAttribute('aria-labelledby', id);
+    this.subtitleEl = el('p', 'sheet-subtitle');
+    titles.append(this.titleEl, this.subtitleEl);
+    const close = el('button', 'sheet-close', '✕');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close');
+    header.append(this.backButton, this.badgeEl, titles, close);
+
+    this.body = el('div', 'sheet-body');
+    this.footer = el('footer', 'sheet-actions');
+    this.panel.append(header, this.body, this.footer);
+    this.root.append(backdrop, this.panel);
+    this.nav = new ListNav(this.panel, this.body);
+
+    backdrop.addEventListener('click', onClose);
+    close.addEventListener('click', onClose);
+    this.backButton.addEventListener('click', onBack);
+    let dragStart: number | null = null;
+    header.addEventListener(
+      'touchstart',
+      (e) => {
+        dragStart = e.touches.length === 1 ? e.touches[0].clientY : null;
+      },
+      { passive: true },
+    );
+    header.addEventListener('touchend', (e) => {
+      const start = dragStart;
+      dragStart = null;
+      const end = e.changedTouches[0]?.clientY;
+      if (start !== null && end !== undefined && end - start > SWIPE_CLOSE) onClose();
+    });
+  }
+
+  get top(): SheetContent | undefined {
+    return this.entries[this.entries.length - 1];
+  }
+
+  set covered(on: boolean) {
+    this.root.inert = on;
+    this.root.classList.toggle('covered', on);
+  }
+
+  render(top: SheetContent, layered: boolean): void {
+    const kind = top.kind ?? 'panel';
+    this.root.className = `sheet-frame frame-${kind}${layered ? ' layered' : ''}${this.root.inert ? ' covered' : ''}`;
+    this.panel.className = `sheet sheet-${kind} ${top.className ?? ''}`.trim();
+    this.titleEl.textContent = top.title;
+    this.subtitleEl.textContent = top.subtitle ?? '';
+    this.subtitleEl.hidden = !top.subtitle;
+    this.badgeEl.replaceChildren(...(top.badge ? [top.badge] : []));
+    this.badgeEl.hidden = !top.badge;
+    this.backButton.hidden = this.entries.length < 2;
+    this.body.replaceChildren(top.body);
+    renderFooter(this.footer, top.actions ?? [], top.tabs ?? []);
+  }
+
+  /** The first thing to highlight when nothing else is asked for. */
+  fallback(): HTMLElement | null {
+    return this.body.querySelector<HTMLElement>('[data-nav]') ?? this.footer.querySelector<HTMLElement>('.primary, .pop-tab.selected') ?? null;
+  }
+
+  place(): SheetPlace {
+    const active = this.nav.active;
+    return { index: active ? this.nav.items().indexOf(active) : -1, scroll: this.body.scrollTop };
+  }
+}
+
+/**
+ * Native pop-ups (inventory, character, menus, information) shown over the
+ * game. A panel or menu opened from another takes its place in the same
+ * frame, with a back button; a card floats in a frame of its own above
+ * whatever opened it, which stays in view, and closing it returns there.
+ * Escape goes back one step; the close button, a tap outside or a swipe
+ * down on the header closes the frame it belongs to.
+ */
+export class Sheets {
+  private readonly layer: HTMLElement;
+  private readonly frames: Frame[] = [];
+  private framesMade = 0;
+  /** Where to return to on each sheet below the top of its frame. */
   private readonly remembered = new WeakMap<SheetContent, SheetPlace>();
   private readonly onChange: () => void;
   private restoreFocus: Element | null = null;
@@ -68,125 +168,96 @@ export class Sheets {
     this.onChange = onChange;
     this.layer = el('div', 'sheet-layer');
     this.layer.hidden = true;
-    const backdrop = el('div', 'sheet-backdrop');
-    this.panel = el('section', 'sheet');
-    this.panel.setAttribute('role', 'dialog');
-    this.panel.setAttribute('aria-modal', 'true');
-    this.panel.tabIndex = -1;
-
-    this.header = el('header', 'sheet-header');
-    this.backButton = el('button', 'sheet-back', '‹');
-    this.backButton.type = 'button';
-    this.backButton.setAttribute('aria-label', 'Back');
-    this.badgeEl = el('span', 'sheet-badge');
-    const titles = el('div', 'sheet-titles');
-    this.titleEl = el('h2', 'sheet-title');
-    this.titleEl.id = 'sheet-title';
-    this.panel.setAttribute('aria-labelledby', this.titleEl.id);
-    this.subtitleEl = el('p', 'sheet-subtitle');
-    titles.append(this.titleEl, this.subtitleEl);
-    const close = el('button', 'sheet-close', '✕');
-    close.type = 'button';
-    close.setAttribute('aria-label', 'Close');
-    this.header.append(this.backButton, this.badgeEl, titles, close);
-
-    this.body = el('div', 'sheet-body');
-    this.footer = el('footer', 'sheet-actions');
-    this.panel.append(this.header, this.body, this.footer);
-    this.layer.append(backdrop, this.panel);
     root.append(this.layer);
-    this.nav = new ListNav(this.panel, this.body);
-
-    backdrop.addEventListener('click', () => this.closeAll());
-    let dragStart: number | null = null;
-    this.header.addEventListener(
-      'touchstart',
-      (e) => {
-        dragStart = e.touches.length === 1 ? e.touches[0].clientY : null;
-      },
-      { passive: true },
-    );
-    this.header.addEventListener('touchend', (e) => {
-      const start = dragStart;
-      dragStart = null;
-      const end = e.changedTouches[0]?.clientY;
-      if (start !== null && end !== undefined && end - start > SWIPE_CLOSE) this.closeAll();
-    });
-    close.addEventListener('click', () => this.closeAll());
-    this.backButton.addEventListener('click', () => this.back());
   }
 
   get isOpen(): boolean {
-    return this.stack.length > 0;
+    return this.frames.length > 0;
   }
 
+  /** Number of sheets open, in all frames. */
   get depth(): number {
-    return this.stack.length;
+    return this.frames.reduce((n, f) => n + f.entries.length, 0);
+  }
+
+  private get topFrame(): Frame | undefined {
+    return this.frames[this.frames.length - 1];
   }
 
   /** The sheet on top is this one. */
   isTop(content: SheetContent): boolean {
-    return this.stack[this.stack.length - 1] === content;
+    return this.topFrame?.top === content;
   }
 
   /** Opens a sheet on top of any already open. */
   open(content: SheetContent): void {
-    if (this.stack.length === 0) this.restoreFocus = document.activeElement;
-    else this.rememberActive();
-    this.stack.push(content);
-    this.show();
+    this.push(content);
+    this.onChange();
   }
 
   /** The open sheets, to reopen with `restore` (null when none are open). */
   snapshot(): SheetTrail | null {
-    if (this.stack.length === 0) return null;
-    this.rememberActive();
-    return { stack: [...this.stack], places: this.stack.map((c) => this.remembered.get(c)) };
+    if (!this.isOpen) return null;
+    const stack: SheetContent[] = [];
+    const places: (SheetPlace | undefined)[] = [];
+    for (const frame of this.frames) {
+      for (const content of frame.entries) {
+        stack.push(content);
+        places.push(content === frame.top ? frame.place() : this.remembered.get(content));
+      }
+    }
+    return { stack, places };
   }
 
   /** Reopens saved sheets over whatever is open, rebuilding those that can be. */
   restore(trail: SheetTrail): void {
-    const stack: SheetContent[] = [];
+    let restored = false;
     trail.stack.forEach((saved, i) => {
       const content = saved.rebuild ? saved.rebuild() : saved;
       if (!content) return;
       const place = trail.places[i];
       if (place) this.remembered.set(content, place);
-      stack.push(content);
+      this.push(content);
+      restored = true;
     });
-    if (stack.length === 0) return;
-    if (this.stack.length === 0) this.restoreFocus = document.activeElement;
-    else this.rememberActive();
-    this.stack.push(...stack);
-    this.show();
+    if (restored) this.onChange();
   }
 
   /** Replaces the top sheet (or opens one). */
   replace(content: SheetContent): void {
-    if (this.stack.length === 0) {
+    const frame = this.topFrame;
+    if (!frame) {
       this.open(content);
       return;
     }
-    this.stack[this.stack.length - 1] = content;
-    this.show();
+    frame.entries[frame.entries.length - 1] = content;
+    this.show(frame, null);
+    this.onChange();
   }
 
+  /** Goes back one step: the previous sheet in the frame, or closes the frame when it holds one sheet. */
   back(): void {
-    const top = this.stack.pop();
-    top?.onClose?.();
-    if (this.stack.length > 0) this.show();
-    else this.hide();
+    const frame = this.topFrame;
+    if (!frame) return;
+    if (frame.entries.length < 2) {
+      this.closeFrame(frame);
+      return;
+    }
+    frame.entries.pop()?.onClose?.();
+    const top = frame.top;
+    if (top) this.show(frame, this.remembered.get(top) ?? null);
+    this.onChange();
   }
 
   closeAll(): void {
-    const closing = this.stack.reverse();
-    this.stack = [];
-    for (const sheet of closing) sheet.onClose?.();
-    this.hide();
+    const first = this.frames[0];
+    if (first) this.closeFrame(first);
   }
 
   /** Keyboard handling while a sheet is open; always consumes the key. */
   handleKey(e: KeyboardEvent): void {
+    const frame = this.topFrame;
+    if (!frame) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       this.back();
@@ -194,89 +265,103 @@ export class Sheets {
     }
     const target = e.target as HTMLElement | null;
     if (target?.closest('input, textarea, select')) return;
-    const top = this.stack[this.stack.length - 1];
-    const onControl = (e.key === 'Enter' || e.key === ' ') && !!target?.closest('button') && target !== this.panel;
+    const top = frame.top;
+    const onControl = (e.key === 'Enter' || e.key === ' ') && !!target?.closest('button') && target !== frame.panel;
     if (!onControl && top?.onKey?.(e)) {
       e.preventDefault();
       return;
     }
     /* A focused button activates itself on Enter or Space. */
-    if ((e.key === 'Enter' || e.key === ' ') && target?.closest('button, a') && target !== this.panel) return;
-    if (e.key === 'Backspace' && this.stack.length > 1) {
+    if ((e.key === 'Enter' || e.key === ' ') && target?.closest('button, a') && target !== frame.panel) return;
+    if (e.key === 'Backspace' && frame.entries.length > 1) {
       e.preventDefault();
       this.back();
       return;
     }
-    if (this.nav.handleKey(e)) {
+    if (frame.nav.handleKey(e)) {
       e.preventDefault();
-      this.nav.active?.focus({ preventScroll: true });
+      frame.nav.active?.focus({ preventScroll: true });
     }
   }
 
   /**
-   * Swaps the top sheet's content in place, keeping its scroll position and
-   * highlight (for views that update as the game answers).
+   * Swaps a sheet's content in place, keeping its scroll position and
+   * highlight (for views that update as the game answers). `previous`
+   * defaults to the top sheet.
    */
   update(content: SheetContent, previous?: SheetContent): void {
-    const at = previous ? this.stack.indexOf(previous) : this.stack.length - 1;
-    if (at < 0) return;
-    if (at < this.stack.length - 1) {
-      this.stack[at] = content;
+    const frame = previous ? this.frames.find((f) => f.entries.includes(previous)) : this.topFrame;
+    if (!frame) return;
+    const at = previous ? frame.entries.indexOf(previous) : frame.entries.length - 1;
+    frame.entries[at] = content;
+    if (at < frame.entries.length - 1) return;
+    const activeKey = frame.nav.active?.dataset.key;
+    const scroll = frame.body.scrollTop;
+    frame.render(content, this.frames.indexOf(frame) > 0);
+    frame.body.scrollTop = scroll;
+    const same = activeKey ? frame.nav.items().find((item) => item.dataset.key === activeKey) : undefined;
+    const fallback = frame.body.querySelector<HTMLElement>('[data-nav]') ?? frame.footer.querySelector<HTMLElement>('.pop-tab.selected, .primary');
+    frame.nav.setActive(content.initial ?? same ?? fallback, !!content.initial);
+  }
+
+  /** Puts a sheet in the top frame, or in a new frame above it for cards and for anything opened from a card. */
+  private push(content: SheetContent): void {
+    const frame = this.topFrame;
+    if (!frame) this.restoreFocus = document.activeElement;
+    else this.remembered.set(frame.top!, frame.place());
+    if (frame && content.kind !== 'card' && frame.top?.kind !== 'card') {
+      frame.entries.push(content);
+      this.show(frame, this.remembered.get(content) ?? null);
       return;
     }
-    const activeKey = this.nav.active?.dataset.key;
-    const scroll = this.body.scrollTop;
-    this.stack[this.stack.length - 1] = content;
-    this.render(content);
-    this.body.scrollTop = scroll;
-    const same = activeKey ? this.nav.items().find((item) => item.dataset.key === activeKey) : undefined;
-    const fallback = this.body.querySelector<HTMLElement>('[data-nav]') ?? this.footer.querySelector<HTMLElement>('.pop-tab.selected, .primary');
-    this.nav.setActive(content.initial ?? same ?? fallback, !!content.initial);
-  }
-
-  private render(top: SheetContent): void {
-    this.panel.className = `sheet ${top.size === 'fit' ? 'sheet-fit' : 'sheet-tall'} ${top.className ?? ''}`.trim();
-    this.titleEl.textContent = top.title;
-    this.subtitleEl.textContent = top.subtitle ?? '';
-    this.subtitleEl.hidden = !top.subtitle;
-    this.badgeEl.replaceChildren(...(top.badge ? [top.badge] : []));
-    this.badgeEl.hidden = !top.badge;
-    this.backButton.hidden = this.stack.length < 2;
-    this.body.replaceChildren(top.body);
-    renderFooter(this.footer, top.actions ?? [], top.tabs ?? []);
-  }
-
-  private show(): void {
-    const top = this.stack[this.stack.length - 1];
-    this.render(top);
-    this.body.scrollTop = 0;
-    const wasHidden = this.layer.hidden;
+    const next: Frame = new Frame(
+      `sheet-title-${++this.framesMade}`,
+      () => this.back(),
+      () => this.closeFrame(next),
+    );
+    next.entries.push(content);
+    if (frame) frame.covered = true;
+    this.frames.push(next);
+    this.layer.append(next.root);
     this.layer.hidden = false;
-    if (wasHidden) this.panel.focus({ preventScroll: true });
-    const fallback =
-      this.body.querySelector<HTMLElement>('[data-nav]') ??
-      this.footer.querySelector<HTMLElement>('.primary, .pop-tab.selected') ??
-      null;
-    const place = this.remembered.get(top);
-    if (place) this.body.scrollTop = place.scroll;
-    const previous = place ? this.nav.items()[place.index] : null;
-    this.nav.setActive(previous ?? top.initial ?? fallback, false);
+    this.show(next, this.remembered.get(content) ?? null);
+    next.panel.focus({ preventScroll: true });
+  }
+
+  /** Closes a frame and every frame above it, top first. */
+  private closeFrame(frame: Frame): void {
+    const at = this.frames.indexOf(frame);
+    if (at < 0) return;
+    const closing = this.frames.splice(at);
+    for (const f of closing.reverse()) {
+      for (const content of f.entries.reverse()) content.onClose?.();
+      f.entries.length = 0;
+      f.root.remove();
+    }
+    const below = this.topFrame;
+    if (below) {
+      below.covered = false;
+      below.panel.focus({ preventScroll: true });
+      below.nav.active?.focus({ preventScroll: true });
+    } else {
+      this.hide();
+    }
     this.onChange();
   }
 
-  private rememberActive(): void {
-    const top = this.stack[this.stack.length - 1];
+  private show(frame: Frame, place: SheetPlace | null): void {
+    const top = frame.top;
     if (!top) return;
-    const active = this.nav.active;
-    this.remembered.set(top, { index: active ? this.nav.items().indexOf(active) : -1, scroll: this.body.scrollTop });
+    frame.render(top, this.frames.indexOf(frame) > 0);
+    frame.body.scrollTop = place?.scroll ?? 0;
+    const previous = place ? frame.nav.items()[place.index] : null;
+    frame.nav.setActive(previous ?? top.initial ?? frame.fallback(), false);
   }
 
   private hide(): void {
     this.layer.hidden = true;
-    this.body.replaceChildren();
     const restore = this.restoreFocus;
     this.restoreFocus = null;
     if (restore instanceof HTMLElement && restore.isConnected) restore.focus({ preventScroll: true });
-    this.onChange();
   }
 }

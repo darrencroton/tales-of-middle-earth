@@ -44,13 +44,3 @@ export function describableRange(prompt: string): [string, string] | null {
   const m = /Descs ([A-Z])-([A-Z])/.exec(prompt);
   return m ? [m[1], m[2]] : null;
 }
-
-/** True for tome2's file viewer heading: "[ToME 2.4.1 (…), Artifacts Seen, Line 0/0]". */
-export function isFileViewer(prompt: string): boolean {
-  return /^\[.*, Line \d+\/\d+\]$/.test(prompt.trim());
-}
-
-/** True when the file viewer shows an empty file. */
-export function isEmptyFile(prompt: string): boolean {
-  return /, Line 0\/0\]$/.test(prompt.trim());
-}

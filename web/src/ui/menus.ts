@@ -37,7 +37,7 @@ export function openMenu(sheets: Sheets, title: string, items: MenuItem[], subti
       }),
     );
   }
-  sheets.open({ title, subtitle, body: list, className: 'sheet-menu' });
+  sheets.open({ title, subtitle, body: list, kind: 'menu', className: 'sheet-menu' });
 }
 
 function segmented<T extends string>(
@@ -178,7 +178,7 @@ export function openTemplate(sheets: Sheets, title: string, templateId: string):
 export function openMessage(sheets: Sheets, title: string, message: string): void {
   const body = el('div', 'prose');
   body.append(el('p', undefined, message));
-  sheets.open({ title, body, size: 'fit', actions: [{ label: 'OK', primary: true, run: () => sheets.back() }] });
+  sheets.open({ title, body, kind: 'card', actions: [{ label: 'OK', primary: true, run: () => sheets.back() }] });
 }
 
 /**
@@ -225,7 +225,7 @@ export function askText(
       title,
       subtitle: error || (initial ? label : undefined),
       body: form,
-      size: 'fit',
+      kind: 'card',
       className: error ? 'sheet-ask has-error' : 'sheet-ask',
       onClose: () => finish(null),
     });
@@ -287,7 +287,7 @@ export function askQuantity(sheets: Sheets, question: QuantityQuestion): Promise
     sheets.open({
       title: question.title,
       body,
-      size: 'fit',
+      kind: 'card',
       className: 'sheet-quantity',
       actions: [
         { id: 'cancel', label: 'Cancel', run: () => sheets.back() },
@@ -320,7 +320,7 @@ export function confirmSheet(sheets: Sheets, title: string, message: string, yes
   sheets.open({
     title,
     body,
-    size: 'fit',
+    kind: 'card',
     actions: [
       { label: 'Cancel', run: () => sheets.back() },
       { label: yes, primary: !danger, danger, run },

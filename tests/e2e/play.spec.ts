@@ -247,7 +247,7 @@ test('the character sheet keeps its tabs at the foot and shows skills, abilities
   await page.locator('.sheet .row-button', { hasText: 'Knowledge' }).click();
   await page.locator('.sheet .row-button', { hasText: 'Quests' }).click();
   await expect(page.locator('.termview .tv-title')).toHaveText(/Quest/);
-  await page.locator('.termview [data-action="done"]').click();
+  await page.locator('.termview .tv-close').click();
   await waitAtCommand(page);
   await expect(page.locator('.sheet-title')).toHaveText('Knowledge');
   await expect(page.locator('.sheet .row-button.is-active')).toContainText('Quests');
@@ -599,4 +599,64 @@ test('Explore in town finds the way down and the quest level below Bree stays na
   expect((await screenText(page)).split('\n')[0]).not.toMatch(/-more-/);
   await expect(page.locator('#toolbar [data-action="explore"]')).toBeVisible();
   expect(await page.evaluate(() => window.__tome!.engine.gameState()!.messages!.length)).toBeGreaterThan(0);
+});
+
+test('knowledge and help read as whole files, links open more, and cards float over the list that opened them', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Reader', { cls: 'Mage' });
+  const rowZero = () => page.evaluate(() => window.__tome!.screenText().split('\n')[0]);
+
+  /* A knowledge list is one scrolling list, with nothing to page. */
+  await page.locator('#toolbar [data-action="menu"]').click();
+  await page.locator('.sheet .row-button', { hasText: 'Knowledge' }).click();
+  await page.locator('.sheet .row-button', { hasText: 'Unique' }).click();
+  await expect(page.locator('.termview .tv-title')).toHaveText('Known Uniques');
+  const size = Number(/Line \d+\/(\d+)\]/.exec(await rowZero())?.[1]);
+  expect(size).toBeGreaterThan(40);
+  await expect(page.locator('.termview .tv-text')).toHaveCount(size);
+  await expect(page.locator('.termview .tv-footer')).toBeHidden();
+  await page.locator('.termview .tv-close').click();
+  await waitAtCommand(page);
+  await expect(page.locator('.sheet .row-button.is-active')).toContainText('Unique');
+  await page.locator('.sheet .sheet-close').click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  /* Help: a lettered link, a link inside the text, back to where the index was left, and out. */
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await page.locator('.sheet .command', { hasText: 'Help' }).click();
+  await page.locator('.termview .tv-choice', { hasText: 'Alphabetical index' }).click();
+  await expect.poll(rowZero).toMatch(/index\.txt/);
+  const link = page.locator('.termview .tv-link', { hasText: /^Abilities$/ }).first();
+  await link.scrollIntoViewIfNeeded();
+  const scrolled = await page.locator('.termview .tv-body').evaluate((b) => b.scrollTop);
+  await link.click();
+  await expect.poll(rowZero).toMatch(/ability\.txt/);
+  await expect(page.locator('.termview .tv-back')).toBeVisible();
+  await page.locator('.termview .tv-back').click();
+  await expect.poll(rowZero).toMatch(/index\.txt/);
+  await expect.poll(() => page.locator('.termview .tv-body').evaluate((b) => b.scrollTop)).toBe(scrolled);
+  await page.locator('.termview .tv-close').click();
+  await waitAtCommand(page);
+  await expect(page.locator('.sheet-title')).toHaveText('Commands');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  /* An item's card floats over the inventory; closing it, or tapping outside it, returns to the list. */
+  await page.locator('#toolbar [data-action="inventory"]').click();
+  const panelHeight = await page.locator('.sheet.sheet-panel').evaluate((n) => n.getBoundingClientRect().height);
+  await page.locator('.sheet .item-row').nth(1).click();
+  const card = page.locator('.sheet-frame.frame-card .sheet-card');
+  await expect(card).toBeVisible();
+  expect(await card.evaluate((n) => n.getBoundingClientRect().height)).toBeLessThan(panelHeight - 50);
+  await expect(page.locator('.sheet.sheet-panel .sheet-title')).toHaveText('Inventory');
+  await card.locator('.sheet-close').click();
+  await expect(card).toHaveCount(0);
+  await expect(page.locator('.sheet .item-row.is-active')).toHaveCount(1);
+  await page.locator('.sheet .item-row').nth(1).click();
+  await page.locator('.sheet-frame.frame-card .sheet-backdrop').click({ position: { x: 10, y: 10 } });
+  await expect(card).toHaveCount(0);
+  await expect(page.locator('.sheet.sheet-panel')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
 });
