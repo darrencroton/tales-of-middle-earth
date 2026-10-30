@@ -4,11 +4,11 @@ import {
   createCharacter,
   dismissMore,
   equipSuggested,
-  foeInSight,
   jumpToLevel,
   playerPos,
   pressExplore,
   screenText,
+  stepOffStairs,
   viewMode,
   waitAtCommand,
   waitForEngine,
@@ -621,15 +621,17 @@ test('a tap on unseen ground takes one step towards it', async ({ page }) => {
   expect(Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)), context).toBeLessThanOrEqual(1);
 });
 
-test('Explore in town finds the way down and the quest level below Bree stays native', async ({ page }) => {
+test('Explore in town never leads to a way down, and the quest level below Bree stays native', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Delver');
 
   await equipSuggested(page);
   await expect(page.locator('#toolbar [data-action="inventory"]')).toBeVisible();
-  await expect(page.locator('#toolbar [data-action="dungeon"]')).toHaveCount(0);
-  for (let i = 0; i < 30 && !(await page.locator('#toolbar [data-action="descend"]').count()); i++) {
+  const first = async () => (await page.evaluate(() => window.__tome!.actions()))[0];
+  const label = () => page.locator('#toolbar button[data-action]').first().textContent();
+  for (let i = 0; i < 30 && !/World map/.test((await label()) ?? ''); i++) {
+    expect((await page.evaluate(() => window.__tome!.exploreStop()))?.kind).not.toBe('exit');
     await dismissMore(page);
     await waitAtCommand(page);
     const attack = page.locator('#toolbar [data-action="attack"]');
@@ -638,8 +640,30 @@ test('Explore in town finds the way down and the quest level below Bree stays na
       await page.waitForTimeout(300);
       continue;
     }
+    if ((await first()) !== 'explore') await stepOffStairs(page);
     await pressExplore(page);
   }
+  await expect(page.locator('#toolbar button[data-action]').first()).toContainText('World map');
+
+  /* The way down is the player's to find: travel to it, and its button takes it. */
+  const stairs = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const snap = tome.engine.snapshot()!;
+    const names = tome.engine.features().map((f) => f.name.toLowerCase());
+    const i = snap.feat.findIndex((f, n) => /down staircase|quest down/.test(names[f] ?? '') && (snap.info[n] & 0x11) !== 0);
+    return i < 0 ? null : { x: i % snap.width, y: Math.floor(i / snap.width) };
+  });
+  expect(stairs).not.toBeNull();
+  for (let i = 0; i < 12; i++) {
+    const here = await playerPos(page);
+    if (here.x === stairs!.x && here.y === stairs!.y) break;
+    await page.evaluate(() => window.__tome!.sendText('\u0001z'));
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await page.evaluate(({ x, y }) => window.__tome!.tapCell(x, y), stairs!);
+    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+  }
+  await waitAtCommand(page);
   await expect(page.locator('#toolbar [data-action="descend"]')).toBeVisible();
 
   const depthBefore = await page.evaluate(() => window.__tome!.engine.snapshot()!.depth);
@@ -649,9 +673,6 @@ test('Explore in town finds the way down and the quest level below Bree stays na
   expect(await viewMode(page)).toBe('map');
   await expect(page.locator('.termview')).toBeHidden();
   expect((await screenText(page)).split('\n')[0]).not.toMatch(/-more-/);
-  /* The stairs the hero arrived by give way to gear and Explore until there is nothing else to do or a foe is in sight. */
-  await equipSuggested(page);
-  if (!(await foeInSight(page))) await expect(page.locator('#toolbar [data-action="ascend"]')).toHaveCount(0);
   expect(await page.evaluate(() => window.__tome!.engine.gameState()!.messages!.length)).toBeGreaterThan(0);
 });
 

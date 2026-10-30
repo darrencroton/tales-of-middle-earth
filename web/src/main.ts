@@ -155,7 +155,6 @@ const exploreSkip = new Set<number>();
 /* Map memory: the level exploring is on (`levelKey`, or a stand-in where there is none), the hero's memory and the land area's remembered grids. */
 let exploreLevel: string | null = null;
 let exploreLevelDepth = -1;
-let exploreLevelWild = false;
 /** Exploring's visits on this level are kept between visits: on the land, and on dungeon levels tome2 keeps. */
 let exploreKeepsVisits = false;
 const mapMemory = new MapMemoryStore();
@@ -1073,14 +1072,11 @@ function persistMapMemory(): void {
 }
 
 /**
- * Which way the hero is now heading, from the place left and the place
- * entered (tome2 depths hold across dungeons): on the land, up after leaving
- * a dungeon and down after coming from the world map; null keeps it.
+ * Which way the hero is now heading below ground, from the depth left and
+ * the depth entered (tome2 depths hold across dungeons); null keeps it.
  */
 function headingInto(next: Place): 'down' | 'up' | null {
-  if (exploreLevel === null) return null;
-  if (next.depth === 0) return next.wild ? null : exploreLevelDepth > 0 ? 'up' : exploreLevelWild ? 'down' : null;
-  if (next.depth === exploreLevelDepth) return null;
+  if (exploreLevel === null || next.depth === 0 || next.depth === exploreLevelDepth) return null;
   return next.depth > exploreLevelDepth ? 'down' : 'up';
 }
 
@@ -1090,7 +1086,6 @@ function enterLevel(key: string, next: Place): void {
   if (heroMemory && heading) mapMemory.setHeading(heroMemory, heading);
   exploreLevel = key;
   exploreLevelDepth = next.depth;
-  exploreLevelWild = !!next.wild;
   exploreKeepsVisits = key.startsWith('land:') || !!next.kept;
   exploreSkip.clear();
   landMemory = null;
@@ -1173,18 +1168,20 @@ function updateMapMemory(snap: LevelSnapshot): void {
 let featureRoles: { down: boolean[]; up: boolean[] } = { down: [], up: [] };
 
 /**
- * Exploring's plan for this level. The way on is in the hero's heading; a
- * dungeon level with no known way that way (the bottom of a dungeon, the
- * top of one entered from its far end) is left the other way.
+ * Exploring's plan for this level. Below ground the way on is in the hero's
+ * heading; a dungeon level with no known way that way (the bottom of a
+ * dungeon, the top of one entered from its far end) is left the other way.
+ * On the land it leads to no entrance: finding them is the player's.
  */
 function explorePlan(): ExplorePlan {
   const heading = heroMemory?.heading ?? 'down';
-  const role = (roles: boolean[]) => (i: number) => !!lastSnap && !!roles[lastSnap.feat[i]];
+  const underground = (lastSnap?.depth ?? 0) > 0;
+  const role = (roles: boolean[]) => (i: number) => underground && !!lastSnap && !!roles[lastSnap.feat[i]];
   return {
     skip: exploreSkip,
     heading,
     isExit: role(featureRoles[heading]),
-    isBackExit: (lastSnap?.depth ?? 0) > 0 ? role(featureRoles[heading === 'up' ? 'down' : 'up']) : undefined,
+    isBackExit: underground ? role(featureRoles[heading === 'up' ? 'down' : 'up']) : undefined,
     anchor: exploreAnchor,
     collect: alwaysPickup() ? () => true : (i) => levelGold.has(i),
   };
@@ -2640,7 +2637,6 @@ function returnToTitle(): void {
   exploreSeenItems.clear();
   levelGold.clear();
   exploreLevelDepth = -1;
-  exploreLevelWild = false;
   exploreKeepsVisits = false;
   heroMemory = null;
   heroMemoryId = '';

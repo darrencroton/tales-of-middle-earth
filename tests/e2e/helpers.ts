@@ -301,8 +301,3 @@ export async function pressExplore(page: Page): Promise<void> {
   }
   await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
 }
-
-/** An awake hostile creature is in line of sight. */
-export async function foeInSight(page: Page): Promise<boolean> {
-  return page.evaluate(() => (window.__tome!.engine.gameState()?.monsters ?? []).some((m) => m.status < 0 && !m.asleep && !!m.target));
-}
