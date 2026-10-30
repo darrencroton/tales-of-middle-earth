@@ -90,10 +90,9 @@ describe('birth details', () => {
 describe('run options', async () => {
   const { questChoices, questsText, RUN_OPTION_TEXT } = await import('../../web/src/flow/runoptions.ts');
 
-  it('offers the usual numbers of random quests and the one drawn, within what tome2 allows', () => {
-    assert.deepEqual(questChoices(20, 98), [0, 10, 20, 40, 60]);
-    assert.deepEqual(questChoices(15, 98), [0, 10, 15, 20, 40, 60]);
-    assert.deepEqual(questChoices(5, 30), [0, 5, 10, 20]);
+  it('offers the usual numbers of random quests, within what tome2 allows', () => {
+    assert.deepEqual(questChoices(98), [0, 10, 20, 40, 60]);
+    assert.deepEqual(questChoices(30), [0, 10, 20]);
   });
 
   it('says what the random quests are, and names every option', () => {

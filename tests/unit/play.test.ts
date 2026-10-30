@@ -104,7 +104,7 @@ function level(rows: string[], player: { x: number; y: number }): LevelSnapshot 
   return {
     inDungeon: true, icky: false, width, height, py: player.y, px: player.x, lightRadius: 1, depth: 1,
     wild: false, blind: false, hallucinating: false, panelRow: 0, panelCol: 0, rowMap: 1, colMap: 13,
-    atCommand: true, turn: 1, floorObjects: 0,
+    atCommand: true, turn: 1, floorObjects: 0, heroActing: false,
     feat, info: new Uint16Array(n).fill(CAVE_SEEN), glyph: new Uint8Array(n), attr: new Uint8Array(n), layer,
     effect: new Uint8Array(n).fill(NO_EFFECT),
   };

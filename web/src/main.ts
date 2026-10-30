@@ -18,7 +18,7 @@ import { TargetPicker } from './play/targeting.ts';
 import { approachTarget, hostilesInSight, isKnown, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
-import { CAVE_MARK, isHostile, LAYER_MASK, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
+import { CAVE_MARK, isHostile, LAYER_MASK, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -177,6 +177,8 @@ let exploreLastStop: MapPoint | null = null;
 const exploreSeenItems = new Set<number>();
 /** Cells where money has been seen on this level: exploring takes it up whatever the hero picks up. */
 const levelGold = new Set<number>();
+/* Counts changes to `levelGold`, for what Explore would do. */
+let levelGoldVersion = 0;
 const exploreSpotted = new Map<number, string>();
 let travelTimer = 0;
 /** The current travel only gets as near as the known way allows. */
@@ -1094,15 +1096,29 @@ function enterLevel(key: string, next: Place): void {
   if (heroMemory && exploreKeepsVisits) for (const cell of heroMemory.visited[key] ?? []) exploreSkip.add(cell);
 }
 
-/** Notes the cells in view that hold money, and forgets those that hold something else or nothing. */
+/**
+ * Notes the cells in view that hold money, taking them out of the places
+ * exploring is done with, and forgets those that hold something else or
+ * nothing (a creature standing on money hides it).
+ */
 function noteGold(objects: readonly ObjectState[], snap: LevelSnapshot): void {
   const cells = objects.map((o) => o.y * snap.width + o.x);
   const gold = new Set(cells.filter((_, i) => objects[i].gold));
+  let changed = false;
   for (const cell of cells) {
-    if (gold.has(cell)) levelGold.add(cell);
-    else levelGold.delete(cell);
+    if (gold.has(cell)) {
+      changed ||= !levelGold.has(cell);
+      levelGold.add(cell);
+      exploreSkip.delete(cell);
+    } else {
+      changed ||= levelGold.delete(cell);
+    }
   }
-  for (const cell of levelGold) if ((snap.layer[cell] & LAYER_MASK) !== LAYER_OBJECT) levelGold.delete(cell);
+  for (const cell of levelGold) {
+    const top = snap.layer[cell] & LAYER_MASK;
+    if (top !== LAYER_OBJECT && top !== LAYER_MONSTER) changed ||= levelGold.delete(cell);
+  }
+  if (changed) levelGoldVersion++;
 }
 
 /** Items the hero has stood on (or dropped) count as visited. */
@@ -1178,7 +1194,7 @@ function explorePlan(): ExplorePlan {
 /** What Explore would do now (see `ExploreNext`); on the land, once nothing is left, the way on is the world map. */
 function exploreNext(snap: LevelSnapshot | null): ExploreNext {
   if (!snap?.atCommand || snap.wild || !materialsLoaded) return 'explore';
-  const key = `${exploreLevel}:${snap.turn}:${snap.px},${snap.py}:${exploreSkip.size}:${levelGold.size}:${heroMemory?.heading}:${alwaysPickup()}`;
+  const key = `${exploreLevel}:${snap.turn}:${snap.px},${snap.py}:${exploreSkip.size}:${levelGoldVersion}:${heroMemory?.heading}:${alwaysPickup()}`;
   if (exploreNextCache.key !== key) exploreNextCache = { key, next: exploreNextFrom(snap) };
   return exploreNextCache.next;
 }
@@ -2104,7 +2120,7 @@ function captureEffects(): void {
   }
   if (effects.length > MAX_EFFECT_CELLS) return;
   map.setEffects(effects);
-  audio.effects(effects);
+  audio.effects(effects, snap.heroActing);
   hasEffects = effects.length > 0;
   effectsAt = performance.now();
 }
@@ -2436,7 +2452,9 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.isComposing || controlOwnsKey(e.target, e.key)) return;
-  if (mode === 'screen' && director.handleKey(e)) {
+  const directed = mode === 'screen' ? director.handleKey(e) : false;
+  if (directed === 'browser') return;
+  if (directed) {
     e.preventDefault();
     return;
   }
@@ -2477,7 +2495,13 @@ window.addEventListener('keydown', (e) => {
   send(codes);
 });
 
-attachSoftKeyboard(keyboardInput, send, () => ctrlLatched);
+attachSoftKeyboard(
+  keyboardInput,
+  (codes) => {
+    if (!director.readyShowing) send(codes);
+  },
+  () => ctrlLatched,
+);
 
 /* Zoom */
 

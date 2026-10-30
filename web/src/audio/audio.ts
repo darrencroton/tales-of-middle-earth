@@ -384,14 +384,14 @@ export class GameAudio {
     return this.voiced(cue, intent);
   }
 
-  /** A bolt or explosion is being drawn over the map; the hero's own spell, shot or throw under way sounds first, just before its bolt. */
-  effects(cells: readonly { attr: number }[]): void {
+  /** A bolt or explosion is being drawn over the map; one drawn during the hero's own spell, shot or throw sounds it first, just before the bolt. */
+  effects(cells: readonly { attr: number }[], heroActing: boolean): void {
     if (!cells.length) return;
     const now = performance.now();
     const kind: CueId = cells.length > 6 ? 'explosion' : 'bolt';
     const continuing = now - this.effectAt < EFFECT_GAP_MS;
     this.effectAt = now;
-    const release = this.release();
+    const release = heroActing ? this.release() : null;
     /* One sound per animation, except the blast at the end of a ball spell. */
     if (continuing && !release && !(kind === 'explosion' && this.effectKind === 'bolt')) return;
     this.effectKind = kind;

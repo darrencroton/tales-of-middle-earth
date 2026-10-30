@@ -1,7 +1,5 @@
 /* A pointer that moves further than this (px) between down and up is a drag, not a tap. */
 const TAP_SLOP = 12;
-/* A click this soon (ms) after a press ended is that press's own. */
-const CLICK_AFTER_PRESS_MS = 1000;
 
 /**
  * Calls `handler` when an element matching `selector` inside `root` is
@@ -15,8 +13,8 @@ const CLICK_AFTER_PRESS_MS = 1000;
 export function onTap(root: HTMLElement, selector: string, handler: (target: HTMLElement, event: Event) => void): void {
   let down: { pointer: number; target: HTMLElement; tap: string | undefined; x: number; y: number } | null = null;
   let tapped = false;
-  /* When a press last ended in `root`: the click after it is the press's, handled or dropped at pointerup. */
-  let pressEnded = -Infinity;
+  /* A press ended in `root`: the pointer click after it is the press's, handled or dropped at pointerup. */
+  let pressed = false;
   const match = (node: EventTarget | null): HTMLElement | null => {
     const target = node instanceof Element ? node.closest<HTMLElement>(selector) : null;
     return target && root.contains(target) ? target : null;
@@ -41,6 +39,7 @@ export function onTap(root: HTMLElement, selector: string, handler: (target: HTM
   root.addEventListener('pointerdown', (e) => {
     if (!e.isPrimary) return;
     tapped = false;
+    pressed = false;
     const target = e.button === 0 ? match(e.target) : null;
     down = target ? { pointer: e.pointerId, target, tap: target.dataset.tap, x: e.clientX, y: e.clientY } : null;
     if (target && e.pointerType === 'touch' && e.target instanceof HTMLElement) {
@@ -54,7 +53,7 @@ export function onTap(root: HTMLElement, selector: string, handler: (target: HTM
     const start = down;
     if (!start || start.pointer !== e.pointerId) return;
     down = null;
-    pressEnded = performance.now();
+    pressed = true;
     if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > TAP_SLOP) return;
     const target = current(start);
     if (!target || !releasedOver(target, e)) return;
@@ -63,8 +62,8 @@ export function onTap(root: HTMLElement, selector: string, handler: (target: HTM
   });
   root.addEventListener('click', (e) => {
     const target = match(e.target);
-    const pressed = performance.now() - pressEnded < CLICK_AFTER_PRESS_MS;
-    pressEnded = -Infinity;
-    if (target && !pressed) handler(target, e);
+    const fromPress = pressed && e.detail > 0;
+    pressed = false;
+    if (target && !fromPress) handler(target, e);
   });
 }

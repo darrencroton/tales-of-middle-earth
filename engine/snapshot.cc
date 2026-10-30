@@ -114,10 +114,11 @@ enum HeaderSlot {
 	H_AT_COMMAND,
 	H_TURN,
 	H_FLOOR_OBJECTS,
+	H_HERO_ACTING,
 	H_COUNT
 };
 
-constexpr int32_t SNAPSHOT_VERSION = 2;
+constexpr int32_t SNAPSHOT_VERSION = 3;
 
 enum Layer : uint8_t {
 	LAYER_UNKNOWN = 0,
@@ -569,6 +570,8 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	header[H_PTR_LAYER] = ptr(layer_buf.data());
 	header[H_PTR_EFFECT] = ptr(effect_buf.data());
 	header[H_AT_COMMAND] = (inkey_flag && !character_icky) ? 1 : 0;
+	/* The hero's own command is under way (tome2 takes its energy once it is done). */
+	header[H_HERO_ACTING] = (character_generated && p_ptr->energy >= 100 && !inkey_flag) ? 1 : 0;
 	header[H_TURN] = static_cast<int32_t>(turn);
 	header[H_FLOOR_OBJECTS] = 0;
 

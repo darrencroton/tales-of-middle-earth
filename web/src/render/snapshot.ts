@@ -16,7 +16,7 @@ export const LAYER_MULTI_HUED = 0x80;
 
 export const NO_EFFECT = 0xff;
 
-export const SNAPSHOT_VERSION = 2;
+export const SNAPSHOT_VERSION = 3;
 
 /* Header slot indices, matching HeaderSlot in engine/snapshot.cc. */
 const H = {
@@ -45,7 +45,8 @@ const H = {
   AT_COMMAND: 22,
   TURN: 23,
   FLOOR_OBJECTS: 24,
-  COUNT: 25,
+  HERO_ACTING: 25,
+  COUNT: 26,
 } as const;
 
 export interface LevelSnapshot {
@@ -68,6 +69,8 @@ export interface LevelSnapshot {
   atCommand: boolean;
   turn: number;
   floorObjects: number;
+  /** The hero's own command is under way (before creatures act in the same turn). */
+  heroActing: boolean;
   feat: Uint8Array;
   info: Uint16Array;
   glyph: Uint8Array;
@@ -115,6 +118,7 @@ export function readSnapshot(memory: SnapshotMemory, headerPtr: number): LevelSn
     atCommand: header[H.AT_COMMAND] !== 0,
     turn: header[H.TURN],
     floorObjects: header[H.FLOOR_OBJECTS],
+    heroActing: header[H.HERO_ACTING] !== 0,
     feat: bytes(header[H.PTR_FEAT]),
     info: memory.HEAPU16.slice(header[H.PTR_INFO] >> 1, (header[H.PTR_INFO] >> 1) + n),
     glyph: bytes(header[H.PTR_GLYPH]),

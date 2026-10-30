@@ -78,7 +78,7 @@ const results = await page.evaluate(async (scenarios) => {
     const events = sc.events.map((e, i) => ({ ...e, at: e.at + offset, seed: 11 + i * 97 }));
     const full = await render(events, sc.music, dur);
     const rows = [];
-    for (const [k, event] of events.entries()) {
+    for (const event of events) {
       const aloneWave = await render([event], null, dur);
       const alone = power(aloneWave);
       const rest = full.map((v, i) => v - aloneWave[i]);
@@ -101,15 +101,14 @@ const results = await page.evaluate(async (scenarios) => {
           onOthers += others[f];
         }
       }
-      const alonePlay = events.length > 1 || sc.music;
+      const measured = events.length > 1 || sc.music;
       rows.push({
         cue: `${event.cue.id}${event.cue.variant ? `:${event.cue.variant}` : ''}${event.cue.element ? `/${event.cue.element}` : ''}`,
         at: Math.round((event.at - offset) * 1000) / 1000,
         peak: db(peak),
         active: n * 20,
-        over: alonePlay ? db(eCue) - db(eOthers) : null,
-        onset: alonePlay ? db(onCue) - db(onOthers) : null,
-        k,
+        over: measured ? db(eCue) - db(eOthers) : null,
+        onset: measured ? db(onCue) - db(onOthers) : null,
       });
     }
     out.push({ name: sc.name, rows });

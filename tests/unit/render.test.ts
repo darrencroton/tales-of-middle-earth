@@ -49,6 +49,7 @@ function makeSnapshot(width: number, height: number, fill: Partial<Record<'feat'
     atCommand: true,
     turn: 0,
     floorObjects: 0,
+    heroActing: false,
     feat: new Uint8Array(n).fill(fill.feat ?? FLOOR),
     info: new Uint16Array(n).fill(fill.info ?? 0),
     glyph: new Uint8Array(n).fill('.'.charCodeAt(0)),

@@ -523,7 +523,7 @@ export class TermView {
           break;
         }
         case 'option': {
-          const row = el('button', `tv-option${block.value ? ' on' : ''}${block.row === cursorRow ? ' current' : ''}`);
+          const row = el('button', `tv-option${block.row === cursorRow ? ' current' : ''}`);
           row.type = 'button';
           row.dataset.nav = '';
           row.dataset.option = String(optionIndex++);

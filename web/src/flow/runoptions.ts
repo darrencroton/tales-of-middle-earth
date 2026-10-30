@@ -22,12 +22,12 @@ export const RUN_OPTION_TEXT: Readonly<Record<RunOptionName, { label: string; de
 /** How many random quests a run has until the player picks another (tome2's default, which its own prompt cuts to one digit). */
 export const DEFAULT_QUESTS = 20;
 
-/* The numbers of random quests offered, besides the one drawn. */
+/* The numbers of random quests offered. */
 const QUEST_STEPS = [0, 10, 20, 40, 60];
 
-/** The numbers of random quests to choose from: the usual steps, the one drawn, and never more than tome2 allows. */
-export function questChoices(current: number, max: number): number[] {
-  return [...new Set([...QUEST_STEPS, current])].filter((n) => n >= 0 && n <= max).sort((a, b) => a - b);
+/** The numbers of random quests to choose from, never more than tome2 allows. */
+export function questChoices(max: number): number[] {
+  return QUEST_STEPS.filter((n) => n <= max);
 }
 
 /** What the random quests are for a number of them. */

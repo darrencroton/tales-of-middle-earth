@@ -528,16 +528,23 @@ export class Director {
     return [menu];
   }
 
-  handleKey(e: KeyboardEvent): boolean {
+  /** The last creation screen is showing, where any key but S and Q would begin the game in tome2. */
+  get readyShowing(): boolean {
+    return !this.view.hidden && this.phase === 'birth' && READY_SCREEN.test(this.screen());
+  }
+
+  /** Handles a key on the native screens: true when used, 'browser' when it is left to the browser, false for tome2. */
+  handleKey(e: KeyboardEvent): boolean | 'browser' {
     if (this.view.hidden) return false;
     const back = e.key === 'Backspace' || (e.key === 'Escape' && this.choice);
     if (back && this.phase === 'birth' && this.picks.length && !this.replay) {
       this.back();
       return true;
     }
-    /* On the last screen any key but S and Q begins the game in tome2: arrows and Enter move through the run instead, Escape begins. */
-    if (this.phase === 'birth' && READY_SCREEN.test(this.screen())) {
+    /* On the last screen arrows and Enter move through the run, Escape begins, and other keys do nothing. */
+    if (this.readyShowing) {
       if (e.key === 'Escape') return false;
+      if (e.key === 'Tab' || e.ctrlKey || e.metaKey || e.altKey || /^F\d{1,2}$/.test(e.key)) return 'browser';
       this.nav.handleKey(e);
       return true;
     }
@@ -680,6 +687,7 @@ export class Director {
     });
     const run = kind === 'confirm' ? this.deps.engine.runOptions() : null;
     const key = JSON.stringify([kind, stats, ratings, field('Race'), field('Class'), run, this.quests]);
+    const arriving = !this.renderedKey.startsWith('hero:');
     this.show(
       `hero:${key}`,
       () => {
@@ -729,6 +737,7 @@ export class Director {
         const body = el('div', 'birth-body single');
         body.append(card);
         if (run) body.append(this.runCard(run));
+        requestAnimationFrame(() => (arriving ? this.nav.setActive(-1) : this.nav.refresh()));
         return [header, body];
       },
       'birth hero',
@@ -745,7 +754,7 @@ export class Director {
     if (unusual) {
       quests.append(el('p', 'muted', RUN_OPTION_TEXT.unusualRooms.detail));
     } else {
-      const choices = questChoices(this.quests, run.maxQuests).map((n) => [String(n), n === 0 ? 'None' : String(n)] as [string, string]);
+      const choices = questChoices(run.maxQuests).map((n) => [String(n), n === 0 ? 'None' : String(n)] as [string, string]);
       quests.append(
         segmented('Random quests', choices, String(this.quests), (value) => {
           this.quests = Number(value);
@@ -768,8 +777,9 @@ export class Director {
       words.append(el('span', 'run-option-label', text.label), el('span', 'run-option-detail', text.detail));
       row.append(words, el('span', 'switch'));
       row.addEventListener('click', () => {
-        this.deps.engine.setRunOption(index, !option.on);
-        if (option.name === 'unusualRooms' && option.on) this.deps.engine.setRandomQuests(this.quests);
+        const on = !!this.deps.engine.runOptions()?.options[index]?.on;
+        this.deps.engine.setRunOption(index, !on);
+        if (option.name === 'unusualRooms' && on) this.deps.engine.setRandomQuests(this.quests);
         this.deps.requestRefresh();
       });
       card.append(row);
