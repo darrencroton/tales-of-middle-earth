@@ -112,6 +112,21 @@ test('help opens from the title screen, with races and classes from the game its
   await page.locator('#title-screen [data-link="help"]').click();
   await expect(page.locator('.sheet-title')).toHaveText('Help');
   await expect(page.locator('.sheet .row-button', { hasText: 'The original ToME manual' })).toHaveCount(0);
+
+  /* Searching keeps the first result highlighted: the arrows move from it, and Enter in the field opens it. */
+  await page.locator('.help-search').fill('stairs');
+  await expect(page.locator('.sheet .row-button.is-active')).toContainText('Stairs and levels');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.sheet .row-button.is-active')).toContainText('Stairs and levels');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.sheet .row-button.is-active')).not.toContainText('Stairs and levels');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('.help-search')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.sheet-title')).toHaveText('Stairs and levels');
+  await page.keyboard.press('Escape');
+  await page.locator('.help-search').fill('');
   await page.locator('.sheet .row-button', { hasText: 'Races and classes' }).click();
   const mods = page.locator('.help-topic .sheet-section', { hasText: 'Race modifiers' }).locator('.row-button');
   await expect(mods.first()).toHaveText('Classical');

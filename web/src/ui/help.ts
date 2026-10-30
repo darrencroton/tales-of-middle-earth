@@ -125,6 +125,11 @@ export function openHelp(deps: HelpDeps, topicId?: string): void {
   const results = el('div', 'help-results');
   body.append(search, results);
 
+  /* As the results change, the first is highlighted: Enter in the field opens it, and the list's arrows start from it. */
+  const highlightFirst = () => {
+    const first = results.querySelector<HTMLElement>('[data-nav]');
+    if (first) sheets.highlight(first);
+  };
   const render = () => {
     const query = search.value.trim();
     results.replaceChildren();
@@ -147,12 +152,14 @@ export function openHelp(deps: HelpDeps, topicId?: string): void {
     for (const topic of found) list.append(topicRow(topic, openTopic));
     results.append(section(`${found.length} ${found.length === 1 ? 'topic' : 'topics'}`, list));
   };
-  search.addEventListener('input', render);
+  search.addEventListener('input', () => {
+    render();
+    highlightFirst();
+  });
   const onKey = (e: KeyboardEvent): boolean => {
     /* ArrowUp from the first row goes back to the field. */
     const first = results.querySelector<HTMLElement>('[data-nav]');
     if (e.key !== 'ArrowUp' || !first?.classList.contains('is-active')) return false;
-    first.classList.remove('is-active');
     search.focus();
     return true;
   };
@@ -162,12 +169,11 @@ export function openHelp(deps: HelpDeps, topicId?: string): void {
       e.preventDefault();
       first.click();
     } else if (e.key === 'ArrowDown' && first) {
-      /* The list takes over from the field: the key is handed to the sheet's navigation. */
+      /* The list takes over from the field at its first row. */
       e.preventDefault();
-      const panel = search.closest<HTMLElement>('.sheet');
       search.blur();
-      panel?.focus({ preventScroll: true });
-      panel?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      search.closest<HTMLElement>('.sheet')?.focus({ preventScroll: true });
+      highlightFirst();
     }
   });
   render();

@@ -306,6 +306,11 @@ export class Sheets {
     frame.nav.setActive(content.initial ?? same ?? fallback, !!content.initial);
   }
 
+  /** Highlights an item of an open sheet (its list was rebuilt in place), scrolling it into view. */
+  highlight(item: HTMLElement): void {
+    this.frames.find((f) => f.body.contains(item))?.nav.setActive(item);
+  }
+
   /** Opens a sheet and shows it, remembering where the one it covers was left. */
   private push(content: SheetContent): void {
     const frame = this.topFrame;
