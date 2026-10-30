@@ -88,6 +88,12 @@ test('the run is set up under the hero on the last creation screen, and the game
       expect((await page.evaluate(() => window.__tome!.engine.runOptions()))?.drawn).toBe(0);
       await unusual.click();
       await expect(card.locator('.segment.selected')).toHaveText('10');
+
+      /* Arrows move through the run rather than beginning the game. */
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowDown');
+      await expect(page.locator('.director .is-active')).toHaveCount(1);
+      expect(await inDungeon(page)).toBe(false);
     },
   });
   const run = await page.evaluate(() => window.__tome!.engine.runOptions());
