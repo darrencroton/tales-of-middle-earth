@@ -21,7 +21,9 @@ describe('help', () => {
       searchHelp('poison cut').map((t) => t.id).slice(0, 1),
       ['ailments'],
     );
+    assert.equal(searchHelp('how do I eat?')[0]?.id, 'ailments');
     assert.deepEqual(searchHelp('xyzzy'), []);
+    assert.deepEqual(searchHelp('how do I'), []);
     assert.deepEqual(searchHelp('  '), []);
   });
 

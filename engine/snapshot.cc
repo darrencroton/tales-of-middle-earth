@@ -807,7 +807,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
  * history show it and readers of tome2's messages can leave it out. The
  * text is written to the buffer web_notice_buffer returns.
  */
-static int const NOTICE_COLOUR = 16;
+extern int const NOTICE_COLOUR = 16;
 static std::vector<char> notice_text;
 
 EMSCRIPTEN_KEEPALIVE char *web_notice_buffer(int bytes)

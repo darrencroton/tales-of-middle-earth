@@ -88,12 +88,12 @@ export function openHelp(deps: HelpDeps, topicId?: string): void {
     if (topic.special === 'races') {
       const data = deps.birthData();
       for (const [title, kind, step, key] of BIRTH_SECTIONS) {
-        const entries = (data?.[key] ?? []) as BirthEntry[];
+        /* tome2's tables hold a blank first race modifier (no modifier: Classical), empty slots and placeholders. */
+        const entries = ((data?.[key] ?? []) as BirthEntry[]).filter((e, i) => (e.title.trim() || i === 0) && !/^x+$/i.test(e.title.trim()));
         if (!entries.length) continue;
         const list = el('div', 'menu-list');
         for (const entry of entries) {
-          const name = entry.title || 'Classical';
-          list.append(navButton(name, { onClick: () => openBirthEntry(sheets, kind, entry, step) }));
+          list.append(navButton(entry.title.trim() || 'Classical', { onClick: () => openBirthEntry(sheets, kind, entry, step) }));
         }
         body.append(section(title, list));
       }
@@ -148,6 +148,14 @@ export function openHelp(deps: HelpDeps, topicId?: string): void {
     results.append(section(`${found.length} ${found.length === 1 ? 'topic' : 'topics'}`, list));
   };
   search.addEventListener('input', render);
+  const onKey = (e: KeyboardEvent): boolean => {
+    /* ArrowUp from the first row goes back to the field. */
+    const first = results.querySelector<HTMLElement>('[data-nav]');
+    if (e.key !== 'ArrowUp' || !first?.classList.contains('is-active')) return false;
+    first.classList.remove('is-active');
+    search.focus();
+    return true;
+  };
   search.addEventListener('keydown', (e) => {
     const first = results.querySelector<HTMLElement>('[data-nav]');
     if (e.key === 'Enter' && search.value.trim() && first) {
@@ -164,7 +172,7 @@ export function openHelp(deps: HelpDeps, topicId?: string): void {
   });
   render();
 
-  sheets.open({ title: 'Help', subtitle: 'How to play, and where to find things', body, className: 'sheet-help' });
+  sheets.open({ title: 'Help', subtitle: 'How to play, and where to find things', body, className: 'sheet-help', onKey });
   const topic = topicId ? findTopic(topicId) : null;
   if (topic && available(topic)) openTopic(topic);
 }

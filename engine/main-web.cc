@@ -153,6 +153,9 @@ extern "C" struct passwd *__wrap_getpwuid(uid_t)
 	return &entry;
 }
 
+/* The colour of our own messages in tome2's log (engine/snapshot.cc), drawn in gold where tome2 shows its log. */
+extern int const NOTICE_COLOUR;
+
 static void send_palette()
 {
 	for (int i = 0; i < 256; i++)
@@ -162,6 +165,7 @@ static void send_palette()
 		               angband_color_table[i][2],
 		               angband_color_table[i][3]);
 	}
+	web_set_colour(NOTICE_COLOUR, 246, 212, 138);
 }
 
 class WebFrontend final : public Frontend {

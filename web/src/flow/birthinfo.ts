@@ -236,7 +236,7 @@ export function birthDetails(entry: BirthEntry, step: BirthStep): BirthDetails {
       : null;
 
   return {
-    title: entry.title || 'Classical',
+    title: entry.title.trim() || 'Classical',
     paragraphs: paragraphs(entry.desc),
     experimental,
     stats,

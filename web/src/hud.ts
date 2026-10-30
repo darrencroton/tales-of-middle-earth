@@ -321,9 +321,15 @@ export class Hud {
 
     const palette = this.palette();
     const lines: HTMLElement[] = [];
-    let history = messages.filter((m) => /[^\s=\-_~*]/.test(m.text));
-    /* The prompt line repeats the newest messages (joined on one row); keep each once. */
-    while (currentText && history.length && currentText.includes(history[0].text.slice(0, 20))) history = history.slice(1);
+    /* The prompt line repeats the newest of tome2's messages (joined on one row); keep each once. Notices are never on it. */
+    const history: MessageState[] = [];
+    let repeating = !!currentText;
+    for (const m of messages) {
+      if (!/[^\s=\-_~*]/.test(m.text)) continue;
+      if (repeating && !isNotice(m) && currentText.includes(m.text.slice(0, 20))) continue;
+      if (!isNotice(m)) repeating = false;
+      history.push(m);
+    }
     const historyCount = currentText ? VISIBLE_MESSAGES - 1 : VISIBLE_MESSAGES;
 
     history.slice(0, historyCount).reverse().forEach((m, i, arr) => {

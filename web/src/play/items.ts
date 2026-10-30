@@ -222,8 +222,8 @@ export interface Situation {
 }
 
 const SV_TORCH = 0;
-/* Lanterns, Dwarven lanterns and Feanorian lamps, refilled from flasks of oil. */
-const LAMP_SVALS = new Set([1, 3, 4]);
+/* The lantern, refilled from flasks of oil (other lamps burn no fuel). */
+const SV_LANTERN = 1;
 
 /** A light that still gives light: one that burns no fuel, or has fuel left. */
 function burning(item: Pick<ItemState, 'fuel'>): boolean {
@@ -248,7 +248,7 @@ export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>,
     (situation.hungry ? find('eat', 'E', (i) => i.tval === TV.FOOD) : null) ??
     (situation.wieldsWeapons !== false && !worn(INVEN_WIELD) ? find('weapon', 'w', (i) => WEAPON_TVALS.has(i.tval)) : null) ??
     (situation.inDungeon && lightOut
-      ? ((light && LAMP_SVALS.has(light.sval ?? -1) ? find('light', 'F', (i) => i.tval === TV.FLASK) : null) ??
+      ? ((light?.sval === SV_LANTERN ? find('light', 'F', (i) => i.tval === TV.FLASK) : null) ??
         (light?.sval === SV_TORCH ? find('light', 'F', (i) => i.tval === TV.LITE && i.sval === SV_TORCH && burning(i)) : null) ??
         find('light', 'w', (i) => i.tval === TV.LITE && burning(i)))
       : null)

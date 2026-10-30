@@ -46,7 +46,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'What the game is, and what you are here to do.',
         keywords: 'goal quest aim win roguelike permadeath sauron morgoth ring',
         body: [
-          'Tales of Middle-earth is a roguelike: every dungeon level is made as you enter it, no two adventures are alike, and when your hero falls, that tale is over. It is hard, and that is half the fun: each hero teaches you something for the next.',
+          'Tales of Middle-earth is a roguelike: every dungeon level is made when you first enter it, no two adventures are alike, and when your hero falls, that tale is over. It is hard, and that is half the fun: each hero teaches you something for the next.',
           { heading: 'Your quest' },
           'A shadow lies over Mirkwood. Your first great task is to find the Necromancer in the tower of *Dol Guldur* and defeat him. That wakes a greater evil: *Sauron* must be found and beaten, and the *One Ring* cast into the fires of *Mount Doom*, where it was forged. Last of all, *Morgoth* waits in the depths of *Angband*.',
           'It is a long road. Along the way are towns to rest in, people who need help, dozens of dungeons and treasures with stories of their own.',
@@ -71,7 +71,7 @@ export const HELP: readonly HelpGroup[] = [
         body: [
           {
             steps: [
-              '*Check your gear.* Open *Items* and wear what you started with. If your weapon hand is empty, the toolbar offers *Wield*.',
+              '*Check your gear.* Open *Items* and tap what you started with to wield or wear it.',
               '*Shop in Bree.* Walk into a shop’s door to trade. The General Store has food, torches, a lantern and flasks of oil; the Alchemist has scrolls of *Phase Door* and *Word of Recall*; the Temple has healing potions.',
               '*Find a way down.* Look around Bree and the land beyond it: *Explore* walks it for you, but finding the way into a dungeon is up to you. The *Barrow-downs* are the gentlest (levels 1 to 10). Stand on an entrance and the toolbar offers to take it.',
               '*Fight one at a time.* Stand in a corridor so only one creature can reach you, and press and hold anything new to see what it is first.',
@@ -99,7 +99,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Drag', 'Look around without moving. Your next move brings the view back.'],
               ['Pinch', 'Zoom the map.'],
               ['Tap the messages', 'Read the whole message log.'],
-              ['Tap your name', 'Your character.'],
+              ['Tap your name', 'Your character: tap your name by your health, below the map (beside it with the phone on its side).'],
               ['Tap a creature or item below the map', 'What it is, and what you can do with it.'],
             ],
           },
@@ -120,7 +120,7 @@ export const HELP: readonly HelpGroup[] = [
         title: 'The toolbar',
         icon: '▭',
         summary: 'What each button does, and the one that changes.',
-        keywords: 'button bar action descend ascend stairs attack pick up eat wield light explore way down way up again cast fire items rest more menu',
+        keywords: 'button bar action descend ascend stairs attack pick up wield explore way down way up again cast fire items rest more menu',
         body: [
           'The first button changes with where you are and what is around you. It is the first of these that applies:',
           {
@@ -296,13 +296,13 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Ailments and hunger',
         icon: '☠',
         summary: 'Poison, cuts, fear, hunger and more.',
-        keywords: 'status poison poisoned cut bleeding stun stunned confused blind afraid fear paralysed paralyzed hallucinating slow fast hungry weak food',
+        keywords: 'status poison poisoned cut bleeding stun stunned confused blind afraid fear paralysed paralyzed hallucinating slow fast hungry hunger weak food eat eating starving',
         body: [
           'Ailments show in the strip below your health. Most wear off with time; potions cure them sooner.',
           {
             terms: [
               ['Poisoned', 'You lose a little health each turn until it passes.'],
-              ['Cut', 'You bleed. Deep cuts get worse; healing closes them.'],
+              ['Cut', 'You bleed, and do not heal while you do. Small cuts close in time; a mortal wound needs curing.'],
               ['Stunned', 'You fight and think badly. A heavy stun can knock you out.'],
               ['Confused', 'You stagger about and cannot read scrolls.'],
               ['Blind', 'You cannot see or read.'],
@@ -324,7 +324,7 @@ export const HELP: readonly HelpGroup[] = [
         keywords: 'light torch lantern lamp oil flask fuel dark darkness refuel',
         body: [
           'Below ground you need a light to see. A torch burns out in time; a lantern burns three times as long and refills from flasks of oil.',
-          'When your light grows faint you are warned. When it goes out, exploring stops and the toolbar offers *Light*: it adds a spare torch to a dying one, refills a lantern from a flask, or lights another light from your pack.',
+          'When your light grows faint you are warned. When it goes out, exploring stops and the toolbar offers *Light*: it puts a spare torch to the spent one, refills a lantern from a flask, or lights another light from your pack.',
           'Carry spares. Some rare lights never need fuel.',
           'Explore will not wander in the dark: without a light, it stops and says so.',
         ],
@@ -397,7 +397,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'Stats, level and the character sheet.',
         keywords: 'character sheet stats strength intelligence wisdom dexterity constitution charisma level experience summary',
         body: [
-          'Tap your name above the map, or Menu → Character. *Summary* shows your health, mana, stats and progress; *Skills* and *Abilities* are where you grow; *Full sheet* lists every bonus and resistance.',
+          'Tap your name by your health, or Menu → Character. *Summary* shows your health, mana, stats and progress; *Skills* and *Abilities* are where you grow; *Full sheet* lists every bonus and resistance.',
           {
             terms: [
               ['Strength', 'Harder blows, and more you can carry.'],
@@ -468,7 +468,7 @@ export const HELP: readonly HelpGroup[] = [
           {
             terms: [
               ['Eru Ilúvatar', 'The One. Grants wisdom and mana, and while you pray may turn aside evil blows. Wants blunt or blessed weapons, and no good creatures harmed.'],
-              ['Manwë Súlimo', 'Lord of the winds. Grants speed, then levitation and flight. Piety slowly fades.'],
+              ['Manwë Súlimo', 'Lord of the winds. Grants levitation, and while you pray, speed, free action and flight. Piety slowly fades.'],
               ['Tulkas', 'The champion. Grants strength and toughness, and loves evil and demons slain while you pray.'],
               ['Yavanna Kementári', 'Giver of Fruits. Lets you pass through trees and heal on grass; never harm animals while you pray.'],
               ['Melkor Bauglir', 'The Dark Enemy. Grants strength and fire resistance for a little of your mind. Piety drains quickly.'],
@@ -485,7 +485,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'Race, class, and the choices before you begin.',
         keywords: 'new character creation birth create race class name random back options quests fates small levels',
         body: [
-          'Choose a race, a race modifier, a class and its specialisation (and for some, a god), then name your hero. *Back* steps back a choice; *Random* picks for you.',
+          'Choose a race, a race modifier, a class and its specialisation (and for some, a god), then name your hero. *Back* steps back a choice; *Random* highlights one for you to take or change.',
           'Last comes *Ready to begin?*: the hero you have made, and how your adventure is set up. These can only be chosen now:',
           {
             terms: [
@@ -493,7 +493,7 @@ export const HELP: readonly HelpGroup[] = [
               ...Object.values(RUN_OPTION_TEXT).map(({ label, detail }): [string, string] => [label, detail]),
             ],
           },
-          { tip: 'For a first hero, try a Wood-Elf Archer, a Half-Troll Unbeliever or a Half-Ogre Warrior: tough, simple and strong from the start.' },
+          { tip: 'For a first hero, try a Wood-Elf Archer, a Troll Unbeliever or a Half-Ogre Warrior: tough, simple and strong from the start.' },
         ],
         see: ['races', 'first-steps'],
       },
@@ -548,7 +548,7 @@ export const HELP: readonly HelpGroup[] = [
         keywords: 'save saving load continue export import backup device browser quit',
         body: [
           'The game saves when you leave the app. Menu → *Save game* saves now; *Save and quit* saves and returns to the title.',
-          'Your games are kept in this browser. *Saved games → Export* downloads a backup (with your chronicle and map memory); *Import* restores one, here or on another device.',
+          'Your games are kept in this browser. *Saved games → Export* (*Saves* on the title screen) downloads a backup (with your chronicle and map memory); *Import* restores one, here or on another device.',
           'Clearing this site’s data in your browser deletes your games: export them first.',
           'Add the game to your home screen to play full screen, even offline.',
         ],
@@ -622,9 +622,14 @@ function blockText(block: HelpBlock): string {
   return ('list' in block ? block.list : block.steps).join(' ');
 }
 
-/** Topics matching every word of the query, best first: by title, then keywords and summary, then the text. */
+/* Words a question is made of rather than about. */
+const STOP_WORDS = new Set(['a', 'an', 'and', 'are', 'can', 'do', 'does', 'for', 'get', 'how', 'i', 'in', 'is', 'it', 'me', 'my', 'of', 'on', 'or', 'the', 'to', 'what', 'when', 'where', 'which', 'who', 'why', 'with', 'you', 'your']);
+
+/** Topics with a word starting with each word of the query (but those a question is made of), best first: by title, then keywords and summary, then the text. */
 export function searchHelp(query: string): HelpTopic[] {
-  const words = plain(query).split(/[^a-z0-9'-]+/).filter(Boolean);
+  const words = plain(query)
+    .split(/[^a-z0-9'-]+/)
+    .filter((w) => w && !STOP_WORDS.has(w));
   if (!words.length) return [];
   const scored: [HelpTopic, number][] = [];
   for (const topic of TOPICS) {
@@ -633,7 +638,8 @@ export function searchHelp(query: string): HelpTopic[] {
     const text = plain(topic.body.map(blockText).join(' '));
     let score = 0;
     for (const word of words) {
-      const s = title.includes(word) ? 4 : tags.includes(word) ? 2 : text.includes(word) ? 1 : 0;
+      const starts = new RegExp(`(?:^|[^a-z0-9])${word.replace(/[-']/g, '\\$&')}`);
+      const s = starts.test(title) ? 4 : starts.test(tags) ? 2 : starts.test(text) ? 1 : 0;
       if (!s) {
         score = 0;
         break;

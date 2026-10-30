@@ -16,6 +16,7 @@ import {
 import type { RunOptions } from './flow/runoptions.ts';
 import type { ScreenCopy, TerminalBuffer } from './terminal.ts';
 import { syncToStorage, type EmscriptenFS } from './saves.ts';
+import { keyCodes } from './input/keys.ts';
 
 /** Functions the C++ frontend (engine/main-web.cc) calls through Module.tome. */
 export interface TomeBridge {
@@ -298,12 +299,12 @@ export class Engine {
     }
   }
 
-  /** Adds a message of our own to tome2's message log (see `NOTICE_COLOUR`). */
+  /** Adds a message of our own to tome2's message log (see `NOTICE_COLOUR`), in tome2's one byte a character. */
   addNotice(text: string): void {
     const mod = this.module;
     if (!mod || this.state !== 'running' || !text) return;
     try {
-      const bytes = new TextEncoder().encode(text);
+      const bytes = Uint8Array.from(keyCodes(text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, '...').replace(/[–—]/g, '-')));
       const ptr = mod._web_notice_buffer(bytes.length);
       mod.HEAPU8.set(bytes, ptr);
       mod._web_add_notice();

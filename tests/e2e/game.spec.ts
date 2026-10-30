@@ -113,6 +113,9 @@ test('help opens from the title screen, with races and classes from the game its
   await expect(page.locator('.sheet-title')).toHaveText('Help');
   await expect(page.locator('.sheet .row-button', { hasText: 'The original ToME manual' })).toHaveCount(0);
   await page.locator('.sheet .row-button', { hasText: 'Races and classes' }).click();
+  const mods = page.locator('.help-topic .sheet-section', { hasText: 'Race modifiers' }).locator('.row-button');
+  await expect(mods.first()).toHaveText('Classical');
+  await expect(mods.filter({ hasText: /^(x+|\s*)$/ })).toHaveCount(0);
   await page.locator('.help-topic .row-button', { hasText: /^Hobbit$/ }).click();
   const card = page.locator('.sheet-frame.frame-card .birth-card');
   await expect(card.first().locator('h3')).toHaveText('Hobbit');

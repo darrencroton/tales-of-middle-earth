@@ -11,7 +11,7 @@ import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
-import { commandGroups, commandKeys, contextActions, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
+import { commandGroups, commandKeys, contextActions, contextualAction, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
@@ -888,7 +888,6 @@ function noteViewerLevel(key: string, line: number): void {
 function readViewer(): boolean {
   const heading = viewerHeading(rowZeroText());
   if (!heading) {
-    if (viewerLevels.length) manualWanted = false;
     viewerFiles.clear();
     helpFiles.clear();
     viewerLevels = [];
@@ -903,6 +902,7 @@ function readViewer(): boolean {
     openHelpSheet();
     return true;
   }
+  manualWanted = false;
   if (viewerClosing > 0) {
     viewerClosing--;
     engine.sendKeys([KEY_ESCAPE]);
@@ -1784,9 +1784,26 @@ function stepTravel(): void {
   requestFrame();
 }
 
+/** The toolbar's changing button at the command prompt once nothing is running. */
+function changingButton(snap: LevelSnapshot): Action {
+  const foe = adjacentFoe();
+  return contextualAction({
+    mode: 'map',
+    prompt: 'none',
+    atCommand: true,
+    underfoot: underfootName(snap),
+    floorObjects: snap.floorObjects,
+    alwaysPickup: alwaysPickup(),
+    exploreNext: exploreNext(snap),
+    gear: gearSuggestion()?.kind ?? null,
+    foe: foe ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
+    worldMap: snap.depth === 0 && snap.wild,
+  });
+}
+
 /** What to tell the player when travel or exploring stops. */
 function stopMessage(journey: Travel | Explore, step: Extract<TravelStep, { kind: 'stop' }>, snap: LevelSnapshot): string | null {
-  const light = gearSuggestion()?.kind === 'light';
+  const light = changingButton(snap).id === 'equip' && gearSuggestion()?.kind === 'light';
   if (step.reason === 'explored' && journey instanceof Explore && snap.depth > 0 && snap.lightRadius <= 0) {
     return light ? 'It is too dark to explore. Tap Light to light your way.' : 'It is too dark to explore further without a light.';
   }
@@ -2374,7 +2391,7 @@ let fullWidth = 0;
 
 function editingText(): boolean {
   const active = document.activeElement;
-  return active instanceof HTMLTextAreaElement || (active instanceof HTMLInputElement && active.type === 'text');
+  return active instanceof HTMLTextAreaElement || (active instanceof HTMLInputElement && (active.type === 'text' || active.type === 'search'));
 }
 
 /**
