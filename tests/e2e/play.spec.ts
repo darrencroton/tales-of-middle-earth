@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
+  castUntilAimed,
   createCharacter,
   dismissMore,
   equipSuggested,
@@ -318,9 +319,10 @@ test('spells are cast from the Magic sheet, and recent ones are offered first', 
   };
   await openMagic();
   await expect(page.locator('.sheet .recent-button')).toHaveCount(0);
-  await page.locator('.sheet .spell-row', { hasText: 'Manathrust' }).click();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
-  await waitForScreen(page, /^Direction/);
+  await castUntilAimed(page, 'Manathrust');
   await page.keyboard.press('Escape');
   await dismissMore(page);
   await waitAtCommand(page);

@@ -226,6 +226,43 @@ export async function summonBeside(page: Page, raceIndex: number): Promise<void>
   await waitAtCommand(page);
 }
 
+/**
+ * Casts a spell from the Magic sheet until tome2 asks where to aim it: a
+ * new caster often fails to get a spell off, and tome2 says so before it
+ * would ask. `failed` runs after each failure, back at the command prompt.
+ */
+export async function castUntilAimed(page: Page, spell: string, failed?: () => Promise<void>): Promise<void> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const total = await page.evaluate(() => window.__tome!.engine.gameState()?.messageTotal ?? 0);
+    await page.locator('#toolbar [data-action="commands"]').click();
+    await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
+    await expect(page.locator('.sheet-title')).toHaveText('Magic');
+    await page.locator('.sheet .spell-row', { hasText: spell }).click();
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+    let outcome = '';
+    await expect
+      .poll(
+        async () => {
+          outcome = await page.evaluate((before) => {
+            const tome = window.__tome!;
+            if (/^Direction/.test(tome.screenText())) return 'aimed';
+            const state = tome.engine.gameState();
+            const fresh = (state?.messages ?? []).slice(0, Math.max(0, (state?.messageTotal ?? 0) - before));
+            return fresh.some((m) => /You failed to get the spell off/.test(m.text)) ? 'failed' : '';
+          }, total);
+          return outcome;
+        },
+        { timeout: 30_000, message: `${spell} was neither aimed nor failed` },
+      )
+      .not.toBe('');
+    if (outcome === 'aimed') return;
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await failed?.();
+  }
+  throw new Error(`${spell} failed six times in a row`);
+}
+
 /** Takes the toolbar's gear suggestions (wield, light) until none is left. */
 export async function equipSuggested(page: Page): Promise<void> {
   for (let i = 0; i < 3 && (await page.locator('#toolbar [data-action="equip"]').count()); i++) {

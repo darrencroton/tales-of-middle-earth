@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createCharacter, dismissMore, equipSuggested, jumpToLevel, waitAtCommand, waitForEngine, waitForScreen } from './helpers.ts';
+import { castUntilAimed, createCharacter, dismissMore, equipSuggested, jumpToLevel, waitAtCommand, waitForEngine } from './helpers.ts';
 
 async function audioStatus(page: Page) {
   return page.evaluate(() => window.__tome!.audio.status);
@@ -48,11 +48,7 @@ test('music follows the player from the title to town and dungeon, and actions m
   expect(errors).toEqual([]);
 });
 
-test('a spell sounds as it is let go, before its bolt, and only once', async ({ page }) => {
-  page.on('pageerror', (err) => console.log(`page error: ${err.message}`));
-  page.on('console', (msg) => {
-    if (msg.type() === 'error' || msg.type() === 'warning') console.log(`console ${msg.type()}: ${msg.text()}`);
-  });
+test('a spell sounds as it is let go, before its bolt, and only once; a failed one fizzles', async ({ page }) => {
   await page.goto('/');
   await waitForEngine(page);
   await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
@@ -73,20 +69,20 @@ test('a spell sounds as it is let go, before its bolt, and only once', async ({ 
     );
     return open?.[0] ?? '6';
   });
-  await page.locator('#toolbar [data-action="commands"]').click();
-  await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
-  await page.locator('.sheet .spell-row', { hasText: 'Manathrust' }).click();
-  await waitForScreen(page, /^Direction/);
+  let start = (await audioStatus(page)).recent.length;
+  await castUntilAimed(page, 'Manathrust', async () => {
+    await expect.poll(async () => (await audioStatus(page)).recent.slice(start)).toContain('fizzle');
+    expect((await audioStatus(page)).recent.slice(start)).not.toContain('cast');
+    start = (await audioStatus(page)).recent.length;
+  });
   const before = (await audioStatus(page)).recent.length;
   await page.evaluate((d) => window.__tome!.sendText(d), direction);
   await dismissMore(page);
   await waitAtCommand(page);
-  await expect.poll(async () => (await audioStatus(page)).recent.slice(before).includes('cast') || (await audioStatus(page)).recent.slice(before).includes('fizzle')).toBe(true);
+  await expect.poll(async () => (await audioStatus(page)).recent.slice(before)).toContain('cast');
   const heard = (await audioStatus(page)).recent.slice(before);
-  if (!heard.includes('fizzle')) {
-    expect(heard.filter((id) => id === 'cast')).toHaveLength(1);
-    expect(heard.indexOf('bolt')).toBeGreaterThan(heard.indexOf('cast'));
-  }
+  expect(heard.filter((id) => id === 'cast')).toHaveLength(1);
+  expect(heard.indexOf('bolt')).toBeGreaterThan(heard.indexOf('cast'));
 });
 
 test('the title theme plays again as soon as a game ends, without another tap', async ({ page }) => {
