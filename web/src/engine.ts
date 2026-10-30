@@ -65,6 +65,8 @@ interface EmscriptenModule {
   _web_set_persistent_levels(on: number): void;
   _web_mark_buffer(count: number): number;
   _web_mark_known(): number;
+  _web_notice_buffer(bytes: number): number;
+  _web_add_notice(): void;
 }
 
 interface ModuleOptions {
@@ -293,6 +295,20 @@ export class Engine {
     } catch (err) {
       console.error('Restoring map memory failed', err);
       return 0;
+    }
+  }
+
+  /** Adds a message of our own to tome2's message log (see `NOTICE_COLOUR`). */
+  addNotice(text: string): void {
+    const mod = this.module;
+    if (!mod || this.state !== 'running' || !text) return;
+    try {
+      const bytes = new TextEncoder().encode(text);
+      const ptr = mod._web_notice_buffer(bytes.length);
+      mod.HEAPU8.set(bytes, ptr);
+      mod._web_add_notice();
+    } catch (err) {
+      console.error('Adding a notice to the message log failed', err);
     }
   }
 

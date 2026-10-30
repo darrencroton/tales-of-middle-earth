@@ -8,6 +8,7 @@ const TIPS: [string, string][] = [
   ['⇢', 'Explore finds new places and stops when something needs you.'],
   ['◎', 'Tap the map to walk there; tap a creature next to you, or Attack, to fight it.'],
   ['◉', 'Press and hold anything to see what it is. Drag to look around.'],
+  ['?', 'Menu → Help explains the rest, and has a search.'],
 ];
 
 function seen(): boolean {

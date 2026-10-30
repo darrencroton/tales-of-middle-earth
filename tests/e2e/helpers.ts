@@ -263,8 +263,25 @@ export async function castUntilAimed(page: Page, spell: string, failed?: () => P
   throw new Error(`${spell} failed six times in a row`);
 }
 
-/** Takes the toolbar's gear suggestions (wield, light) until none is left. */
+const TRANSITIONS = new Set(['descend', 'ascend', 'enter', 'leave', 'rift']);
+
+/** Steps off the stairs (or other way on) the hero stands on, whose button would otherwise take the toolbar's first place. */
+export async function stepOffStairs(page: Page): Promise<void> {
+  const first = async () => (await page.evaluate(() => window.__tome!.actions()))[0] ?? '';
+  for (const dir of '26481379') {
+    if (!TRANSITIONS.has(await first())) return;
+    const turn = await page.evaluate(() => window.__tome!.engine.snapshot()?.turn ?? 0);
+    await page.evaluate((d) => window.__tome!.sendText(`\\;${d}`), dir);
+    await expect.poll(() => page.evaluate(() => window.__tome!.engine.pendingKeys)).toBe(0);
+    await page.waitForFunction((t) => (window.__tome!.engine.snapshot()?.turn ?? 0) !== t, turn, { timeout: 2_000 }).catch(() => undefined);
+    await dismissMore(page);
+    await waitAtCommand(page);
+  }
+}
+
+/** Takes the toolbar's gear suggestions (wield, light) until none is left, off the stairs where they show. */
 export async function equipSuggested(page: Page): Promise<void> {
+  await stepOffStairs(page);
   for (let i = 0; i < 3 && (await page.locator('#toolbar [data-action="equip"]').count()); i++) {
     await page.locator('#toolbar [data-action="equip"]').click();
     await dismissMore(page);

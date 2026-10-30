@@ -141,7 +141,6 @@ export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
       { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
       { label: 'Knowledge', icon: '¶', command: '~', native: 'knowledge' },
       { label: 'Messages', icon: '≣', command: '\u0010', native: 'history' },
-      { label: 'Help', icon: '?', command: '?', reading: true },
     ],
   },
   {
@@ -210,10 +209,6 @@ export interface ActionContext {
   worldMap?: boolean;
   /** Exploring is under way, at this pace. */
   exploring?: ExplorePace | null;
-  /** The hero stands where they arrived on this level (or landed after a jump) and has not stepped off. */
-  arrived?: boolean;
-  /** An awake hostile creature is in view. */
-  danger?: boolean;
   /** What Explore would do. */
   exploreNext?: ExploreNext;
   /** Gear the hero needs to go on: a light below the town, a weapon for a fighter, food when hungry. */
@@ -299,20 +294,15 @@ const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {
 
 /**
  * The toolbar's one changing button, the first of these that applies: the
- * world map's Walk here; the way on underfoot; Attack a foe alongside; the
- * way the hero arrived by, to get away from a foe in view; what lies
- * underfoot to pick up or use; gear the hero needs to go on; the way the
- * hero arrived by once Explore has nothing else to do; and Explore, named
- * for what it will do.
+ * world map's Walk here; the way on underfoot (a staircase is always what it
+ * does); Attack a foe alongside; what lies underfoot to pick up or use; gear
+ * the hero needs to go on; and Explore, named for what it will do.
  */
 export function contextualAction(ctx: ActionContext): Action {
   if (ctx.worldMap) return command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true);
-  const next = ctx.exploreNext ?? 'explore';
   const transition = transitionUnderfoot(ctx.underfoot);
-  const take = transition ? command(transition.id, transition.label, transition.icon, { command: transition.command }, true) : null;
-  if (take && !ctx.arrived) return take;
+  if (transition) return command(transition.id, transition.label, transition.icon, { command: transition.command }, true);
   if (ctx.foe) return { id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true };
-  if (take && ctx.danger) return take;
   if (ctx.floorObjects > 0) return command('pickup', 'Pick up', '⇡', { command: pickupCommand(ctx.alwaysPickup) }, true);
   if (/fountain/.test(ctx.underfoot)) return command('drink', 'Drink', '⌂', { command: 'H' }, true);
   if (/altar/.test(ctx.underfoot)) return command('sacrifice', 'Sacrifice', '0', { command: 'O' }, true);
@@ -320,8 +310,7 @@ export function contextualAction(ctx: ActionContext): Action {
     const [label, icon] = GEAR_ACTIONS[ctx.gear];
     return { id: 'equip', label, icon, effect: { kind: 'native', view: 'equip' }, primary: true };
   }
-  if (take && (next === 'here' || next === 'none')) return take;
-  const [label, icon] = EXPLORE_LABELS[next];
+  const [label, icon] = EXPLORE_LABELS[ctx.exploreNext ?? 'explore'];
   return { id: 'explore', label, icon, effect: { kind: 'native', view: 'explore' }, primary: true };
 }
 

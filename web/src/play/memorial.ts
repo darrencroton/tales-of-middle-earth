@@ -1,5 +1,5 @@
 import type { Chronicle } from './chronicle.ts';
-import type { CharacterState, InventoryState, MessageState, MonsterState, PlayerState, ScoreEntry } from '../render/snapshot.ts';
+import { isNotice, type CharacterState, type InventoryState, type MessageState, type MonsterState, type PlayerState, type ScoreEntry } from '../render/snapshot.ts';
 
 /** Game turns in a day of Middle-earth (tome2's DAY at ten game turns a player turn). */
 export const TURNS_PER_DAY = 115200;
@@ -78,10 +78,10 @@ export function findKiller(cause: string, monsters: readonly MonsterState[], px:
   return matches[0] ?? null;
 }
 
-/** The last messages before the end, oldest first, without blank or repeated filler lines. */
+/** tome2's last messages before the end, oldest first, without blank or repeated filler lines. */
 export function lastWords(messages: readonly MessageState[], palette: readonly string[], count = LAST_WORDS): MemorialLine[] {
   return messages
-    .filter((m) => /[^\s=\-_~*]/.test(m.text))
+    .filter((m) => !isNotice(m) && /[^\s=\-_~*]/.test(m.text))
     .slice(0, count)
     .reverse()
     .map((m) => ({ text: m.text, colour: palette[m.color] ?? '' }));

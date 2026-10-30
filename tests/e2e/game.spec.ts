@@ -106,6 +106,24 @@ test('the run is set up under the hero on the last creation screen, and the game
   expect(await page.evaluate(() => window.__tome!.engine.setRandomQuests(5))).toBe(false);
 });
 
+test('help opens from the title screen, with races and classes from the game itself', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await page.locator('#title-screen [data-link="help"]').click();
+  await expect(page.locator('.sheet-title')).toHaveText('Help');
+  await expect(page.locator('.sheet .row-button', { hasText: 'The original ToME manual' })).toHaveCount(0);
+  await page.locator('.sheet .row-button', { hasText: 'Races and classes' }).click();
+  await page.locator('.help-topic .row-button', { hasText: /^Hobbit$/ }).click();
+  const card = page.locator('.sheet-frame.frame-card .birth-card');
+  await expect(card.first().locator('h3')).toHaveText('Hobbit');
+  await expect(card.first().locator('.birth-stat')).toHaveCount(6);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-title')).toHaveText('Races and classes');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+});
+
 test('exports saves from the title screen as a downloadable bundle', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);

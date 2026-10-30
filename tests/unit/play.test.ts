@@ -377,7 +377,7 @@ describe('actions', () => {
     const mage = { quick: { label: 'Manathrust' }, magic: 'Cast' };
     const layout = ids(mage).slice(1);
     assert.deepEqual(layout, ['recast', 'cast', 'inventory', 'rest', 'commands', 'menu']);
-    for (const changing of [{ foe: '6' }, { floorObjects: 2 }, { underfoot: 'down staircase' }, { gear: 'light' as const }, { danger: true }, { exploreNext: 'down' as const }]) {
+    for (const changing of [{ foe: '6' }, { floorObjects: 2 }, { underfoot: 'down staircase' }, { gear: 'light' as const }, { exploreNext: 'down' as const }]) {
       assert.deepEqual(ids({ ...mage, ...changing }).slice(1), layout);
     }
     const unavailable = contextActions({ ...base, ...mage, quick: { label: 'Manathrust', unavailable: 'No target in sight.' } }).find((a) => a.id === 'recast');
@@ -409,18 +409,15 @@ describe('actions', () => {
     assert.deepEqual(first({ underfoot: 'void jumpgate' }), ['rift', 'Enter rift']);
   });
 
-  it('leaves the way the hero arrived by until there is nothing else to do, or a foe appears', () => {
+  it('is always the stair underfoot, whatever else applies', () => {
     const base = { mode: 'map' as const, atCommand: true, underfoot: 'up staircase', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
     const first = (ctx: Partial<Parameters<typeof contextualAction>[0]>) => contextualAction({ ...base, ...ctx }).label;
-    assert.equal(first({ arrived: true, exploreNext: 'explore' }), 'Explore');
-    assert.equal(first({ arrived: true, exploreNext: 'down' }), 'Way down');
-    assert.equal(first({ arrived: true, exploreNext: 'none' }), 'Ascend');
-    assert.equal(first({ arrived: true, exploreNext: 'none', gear: 'light' }), 'Light');
-    assert.equal(first({ arrived: true, exploreNext: 'explore', danger: true }), 'Ascend');
-    assert.equal(first({ arrived: true, exploreNext: 'explore', danger: true, foe: '6' }), 'Attack');
-    assert.equal(first({ arrived: false, exploreNext: 'explore' }), 'Ascend');
-    assert.equal(first({ underfoot: 'path to the next area', arrived: true, exploreNext: 'here' }), 'Descend');
-    assert.equal(first({ underfoot: 'down staircase', arrived: true, exploreNext: 'worldMap' }), 'World map');
+    for (const exploreNext of ['explore', 'down', 'up', 'none', 'worldMap'] as const) assert.equal(first({ exploreNext }), 'Ascend');
+    assert.equal(first({ foe: '6', floorObjects: 1, gear: 'light' }), 'Ascend');
+    assert.equal(first({ underfoot: 'down staircase', exploreNext: 'up' }), 'Descend');
+    assert.equal(first({ underfoot: 'down staircase', exploreNext: 'worldMap' }), 'Descend');
+    assert.equal(first({ underfoot: 'path to the next area', exploreNext: 'here' }), 'Descend');
+    assert.equal(first({ underfoot: 'open floor', exploreNext: 'down' }), 'Way down');
   });
 
   it('shows Stop, Speed and Menu while exploring, between steps too; Speed leaves it running', () => {

@@ -655,7 +655,7 @@ test('Explore in town finds the way down and the quest level below Bree stays na
   expect(await page.evaluate(() => window.__tome!.engine.gameState()!.messages!.length)).toBeGreaterThan(0);
 });
 
-test('knowledge and help read as whole files, links open more, and cards float over the list that opened them', async ({ page }) => {
+test('knowledge and the manual read as whole files, help is searchable, links open more, and cards float over the list that opened them', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Reader', { cls: 'Mage' });
@@ -676,9 +676,24 @@ test('knowledge and help read as whole files, links open more, and cards float o
   await page.locator('.sheet .sheet-close').click();
   await expect(page.locator('.sheet-layer')).toBeHidden();
 
-  /* Help: a lettered link, a link inside the text, back to where the index was left, and out. */
-  await page.locator('#toolbar [data-action="commands"]').click();
-  await page.locator('.sheet .command', { hasText: 'Help' }).click();
+  /* Help: a search, a topic, its related topics, and back with the search kept. */
+  await page.locator('#toolbar [data-action="menu"]').click();
+  await page.locator('.sheet .row-button', { hasText: 'Help' }).click();
+  await expect(page.locator('.sheet-title')).toHaveText('Help');
+  await page.locator('.help-search').fill('torch');
+  await page.locator('.sheet .row-button', { hasText: 'Light and darkness' }).click();
+  await expect(page.locator('.sheet-title')).toHaveText('Light and darkness');
+  await page.locator('.help-topic .row-button', { hasText: 'Explore and travel' }).click();
+  await expect(page.locator('.sheet-title')).toHaveText('Explore and travel');
+  await page.locator('.sheet-back').click();
+  await page.locator('.sheet-back').click();
+  await expect(page.locator('.sheet-title')).toHaveText('Help');
+  await expect(page.locator('.help-search')).toHaveValue('torch');
+
+  /* The original manual: a lettered link, a link inside the text, back to where the index was left, and out to Help. */
+  await page.locator('.help-search').fill('manual');
+  await page.locator('.sheet .row-button', { hasText: 'The original ToME manual' }).click();
+  await page.locator('.sheet .sheet-action', { hasText: 'Open the manual' }).click();
   await page.locator('.termview .tv-choice', { hasText: 'Alphabetical index' }).click();
   await expect.poll(rowZero).toMatch(/index\.txt/);
   const link = page.locator('.termview .tv-link', { hasText: /^Abilities$/ }).first();
@@ -692,7 +707,14 @@ test('knowledge and help read as whole files, links open more, and cards float o
   await expect.poll(() => page.locator('.termview .tv-body').evaluate((b) => b.scrollTop)).toBe(scrolled);
   await page.locator('.termview .tv-close').click();
   await waitAtCommand(page);
-  await expect(page.locator('.sheet-title')).toHaveText('Commands');
+  await expect(page.locator('.sheet-title')).toHaveText('The original ToME manual');
+  await page.locator('.sheet .sheet-close').click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  /* The ? key opens Help rather than tome2's help screens. */
+  await page.keyboard.press('?');
+  await expect(page.locator('.sheet-title')).toHaveText('Help');
+  await waitAtCommand(page);
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
 

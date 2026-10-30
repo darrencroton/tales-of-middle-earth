@@ -26,6 +26,8 @@ export interface TitleCallbacks {
   onMusic(): void;
   /** Show the Hall of Fame. */
   onFame(): void;
+  /** Show the help. */
+  onHelp(): void;
   /** The screen has finished leaving. */
   onHidden(): void;
 }
@@ -171,6 +173,7 @@ export class TitleScreen {
     find<HTMLButtonElement>('[data-link="saves"]').addEventListener('click', () => this.callbacks.onSaves());
     find<HTMLButtonElement>('[data-link="music"]').addEventListener('click', () => this.callbacks.onMusic());
     find<HTMLButtonElement>('[data-link="fame"]').addEventListener('click', () => this.callbacks.onFame());
+    find<HTMLButtonElement>('[data-link="help"]').addEventListener('click', () => this.callbacks.onHelp());
     this.root.addEventListener('click', (e) => {
       if (this.introDone && !(e.target as HTMLElement).closest('button, a')) this.finishIntro();
     });

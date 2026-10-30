@@ -2,7 +2,7 @@ import type { Place } from './audio/places.ts';
 import { readableColour } from './render/colour.ts';
 import { bar, el, fraction } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
-import { isAlly, isHostile, type GameState, type MessageState, type MonsterState, type ObjectState, type PlayerState } from './render/snapshot.ts';
+import { isAlly, isHostile, isNotice, type GameState, type MessageState, type MonsterState, type ObjectState, type PlayerState } from './render/snapshot.ts';
 
 export interface TextSegment {
   text: string;
@@ -329,8 +329,8 @@ export class Hud {
     history.slice(0, historyCount).reverse().forEach((m, i, arr) => {
       const age = arr.length - 1 - i;
       const turns = this.turn - (this.seenAt.get(keyOf(m, messages.indexOf(m))) ?? this.turn);
-      const line = el('div', 'msg', m.text);
-      line.style.color = readableColour(palette[m.color] ?? '#ddd');
+      const line = el('div', isNotice(m) ? 'msg notice' : 'msg', m.text);
+      if (!isNotice(m)) line.style.color = readableColour(palette[m.color] ?? '#ddd');
       line.style.opacity = String(Math.max(0.22, 0.85 - turns * 0.12 - age * 0.18));
       lines.push(line);
     });

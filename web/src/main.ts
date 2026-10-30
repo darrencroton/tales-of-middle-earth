@@ -15,10 +15,10 @@ import { commandGroups, commandKeys, contextActions, transitionUnderfoot, waitCo
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { approachTarget, hostilesInSight, isKnown, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
+import { approachTarget, isKnown, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
-import { CAVE_MARK, isHostile, LAYER_MASK, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
+import { CAVE_MARK, isHostile, LAYER_MASK, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -31,6 +31,7 @@ import { ANIMATION_FPS, applyTextSize, EFFECT_DELAY, loadSettings, saveSettings,
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
 import { TitleScreen } from './title.ts';
 import { openSoundtrack } from './ui/soundtrack.ts';
+import { openHelp } from './ui/help.ts';
 import { openMagic, openSpell, RecentStore, recentUsable } from './ui/magic.ts';
 import { CastWatcher, fireMacro, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
 import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
@@ -41,7 +42,6 @@ import {
   INVEN_AMMO,
   INVEN_BOW,
   INVEN_WIELD,
-  itemActions,
   itemMacro,
   SLOT_NAMES,
   suggestedGear,
@@ -68,7 +68,7 @@ import { parseAbilities, parseSkills } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
 import { hallOfFameElements, heroEntry, isHallOfFame, parseTomb, tombElements } from './ui/gameover.ts';
 import { careerElements, ChronicleStore } from './ui/deeds.ts';
-import { extendStreak, newChronicle, newDeeds, newMessages, nextTimeTip, record, slainMonsters, type Chronicle, type Slain, type Streak } from './play/chronicle.ts';
+import { extendStreak, newChronicle, newDeeds, nextTimeTip, record, slainMonsters, type Chronicle, type Slain, type Streak } from './play/chronicle.ts';
 import { parseFullSheet } from './ui/charsheet.ts';
 
 declare global {
@@ -166,8 +166,6 @@ let memoryTurn = -1;
 let memoryPos = -1;
 /* What Explore would do (the toolbar's label), by turn and place. */
 let exploreNextCache: { key: string; next: ExploreNext } = { key: '', next: 'explore' };
-/** The cell where the hero arrived on this level (or landed through a Void Jumpgate), until they step off it; -1 once they have. */
-let arrival = -1;
 /** A spell, power, item or shot started from a button: once tome2 is back at the command prompt, a refusal or failure is told. */
 let attempt: { turn: number; messages: string[] } | null = null;
 /** Where exploring this level began (the map fills outwards from it), and where the hero stood when it last stopped. */
@@ -281,7 +279,13 @@ function setCtrlLatched(value: boolean): void {
 
 const TOAST_MS = 4400;
 let toastTimer = 0;
-function showToast(text: string): void {
+/** Shows a short message over the foot of the map; unless it repeats one of tome2's (`log` false), it also goes in the message log. */
+function showToast(text: string, log = true): void {
+  if (log && inGame()) {
+    engine.addNotice(text);
+    dirty = true;
+    requestFrame();
+  }
   const area = stage.getBoundingClientRect();
   toast.style.setProperty('--toast-x', `${area.left + area.width / 2}px`);
   toast.style.setProperty('--toast-bottom', `calc(${window.innerHeight - area.bottom}px + 1rem)`);
@@ -410,7 +414,7 @@ function settleAttempt(): void {
   if (!attempt || !snap?.atCommand || snap.icky || macros.running) return;
   const outcome = attemptOutcome(snap.turn !== attempt.turn, attempt.messages);
   attempt = null;
-  if (outcome) showToast(outcome.message);
+  if (outcome) showToast(outcome.message, false);
 }
 
 /* Spells carried, read once per game turn for the toolbar. */
@@ -469,11 +473,6 @@ function recentUnavailable(entry: RecentAction, needTarget: boolean): string | n
 }
 
 const NO_TARGET = 'No target in sight.';
-
-/** An awake hostile creature in line of sight (not one only sensed by telepathy). */
-function dangerInView(): boolean {
-  return hostilesInSight(lastState?.monsters ?? []).some((m) => !m.asleep);
-}
 
 /** A hostile creature a spell or missile can be aimed at, as tome2's "nearest target" needs. */
 function targetInSight(): boolean {
@@ -681,7 +680,7 @@ function setOverview(on: boolean): void {
   if (on) {
     setLooking(false);
     recentreMap();
-    showToast('Tap a place to travel there');
+    showToast('Tap a place to travel there', false);
   }
   updateActionBar(true);
   dirty = true;
@@ -830,6 +829,8 @@ let viewerMove: 'open' | 'back' | null = null;
 let linkWanted: { key: string; link: HelpLink; tries: number } | null = null;
 /** Escapes still to send to leave the viewer, one per idle. */
 let viewerClosing = 0;
+/* The original ToME manual was asked for from Help; otherwise tome2's help index (the ? key) gives way to Help. */
+let manualWanted = false;
 /* Escapes allowed for leaving the viewer, or one more than the files known to be open. */
 const VIEWER_DEPTH = 12;
 
@@ -888,6 +889,7 @@ function noteViewerLevel(key: string, line: number): void {
 function readViewer(): boolean {
   const heading = viewerHeading(rowZeroText());
   if (!heading) {
+    if (viewerLevels.length) manualWanted = false;
     viewerFiles.clear();
     helpFiles.clear();
     viewerLevels = [];
@@ -897,6 +899,11 @@ function readViewer(): boolean {
     return false;
   }
   if (engine.pendingKeys > 0) return false;
+  if (!manualWanted && viewerLevels.length === 0 && heading.caption === "Help file 'help.hlp'") {
+    engine.sendKeys([KEY_ESCAPE]);
+    openHelpSheet();
+    return true;
+  }
   if (viewerClosing > 0) {
     viewerClosing--;
     engine.sendKeys([KEY_ESCAPE]);
@@ -1153,21 +1160,13 @@ function updateMapMemory(snap: LevelSnapshot): void {
   const pos = snap.py * snap.width + snap.px;
   if (key !== exploreLevel) {
     enterLevel(key, current);
-    arrival = pos;
     memoryPos = pos;
   }
   if (snap.turn === memoryTurn && pos === memoryPos) return;
-  if (memoryPos >= 0 && cellDistance(snap.width, memoryPos, pos) > 1 && /void jumpgate/.test(underfootName(snap))) arrival = pos;
-  else if (pos !== arrival) arrival = -1;
   memoryTurn = snap.turn;
   memoryPos = pos;
   noteVisited(snap);
   rememberLand(snap, key);
-}
-
-/** Steps between two cells of a level. */
-function cellDistance(width: number, a: number, b: number): number {
-  return Math.max(Math.abs((a % width) - (b % width)), Math.abs(Math.floor(a / width) - Math.floor(b / width)));
 }
 
 /* What each terrain feature means to exploring, by feature index (built with the materials). */
@@ -1397,6 +1396,7 @@ function chronicleUpdate(player: PlayerState, slain: readonly Slain[], turn: num
     chronicles.award(hero, deeds);
     if (deeds.length > 2) feel.showDeed(`${deeds.length} deeds earned`, deeds.map((d) => d.title).join(' · '));
     else for (const deed of deeds) feel.showDeed(deed.title, deed.text);
+    for (const deed of deeds) engine.addNotice(`Deed earned: ${deed.title}.`);
     audio.cue('levelup');
   }
   if (deeds.length || JSON.stringify(hero) !== before || JSON.stringify(chronicles.career) !== careerBefore) chronicles.save();
@@ -1527,10 +1527,7 @@ function adjacentFoe(): MonsterState | null {
 
 function useSuggested(): void {
   const gear = gearSuggestion();
-  if (!gear) return;
-  const command = gear.kind === 'eat' ? 'E' : 'w';
-  const action = itemActions(gear.item, 'pack').find((a) => a.command === command);
-  if (action) runMacro(itemMacro(action, gear.item, 'pack'));
+  if (gear) runMacro(itemMacro({ id: gear.kind, label: gear.kind, command: gear.command }, gear.item, 'pack'));
 }
 
 /** What the map toolbar is built from at the command prompt: what is underfoot and around, what Explore would do, and the hero's own buttons. */
@@ -1539,8 +1536,6 @@ function mapSituation(snap: LevelSnapshot): Partial<ActionContext> {
   if (!snap.atCommand) return {};
   const quick = quickEntry();
   return {
-    arrived: arrival === snap.py * snap.width + snap.px,
-    danger: dangerInView(),
     exploreNext: exploreNext(snap),
     gear: gearSuggestion()?.kind ?? null,
     quick: quick ? { label: recentLabel(quick), unavailable: recentUnavailable(quick, true) } : null,
@@ -1798,7 +1793,7 @@ function stopMessage(journey: Travel | Explore, step: Extract<TravelStep, { kind
   if (step.reason === 'explored' && journey instanceof Explore && snap.depth > 0 && snap.lightRadius <= 0) {
     return light ? 'It is too dark to explore. Tap Light to light your way.' : 'It is too dark to explore further without a light.';
   }
-  if (step.reason === 'dark' && light) return 'Your light has gone out. Tap Light to light another.';
+  if (step.reason === 'dark' && light) return 'Your light has gone out. Tap Light to light your way again.';
   if (step.creature) return `You stop: ${titleName(step.creature)} in sight${step.asleep ? ', asleep' : ''}.`;
   if (step.reason === 'arrived' && travelApproximate) return journey instanceof Travel && journey.walked >= FAR_WALK_STEPS ? STOP_MESSAGES.closest : null;
   return STOP_MESSAGES[step.reason];
@@ -2328,6 +2323,7 @@ const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.
   onSaves: () => openSavesMenu(),
   onMusic: () => openSoundtrack(sheets, audio),
   onFame: () => openHallOfFame(),
+  onHelp: () => openHelpSheet(),
   onHidden: () => {
     dirty = true;
     requestFrame();
@@ -2606,7 +2602,7 @@ function saveAndQuit(): void {
   quitting = true;
   stopAutomation(null, 'quit');
   persistMapMemory();
-  showToast('Saving…');
+  showToast('Saving…', false);
   runMacro(quitMacro());
 }
 
@@ -2651,7 +2647,6 @@ function returnToTitle(): void {
   landMemory = null;
   memoryTurn = -1;
   exploreNextCache = { key: '', next: 'explore' };
-  arrival = -1;
   attempt = null;
   hideToast();
   mapMemory.loaded = false;
@@ -2724,6 +2719,23 @@ function openHallOfFame(): void {
   sheets.open({ title: 'Hall of Fame', subtitle: 'Heroes of Middle-earth, remembered', body, className: 'sheet-fame' });
 }
 
+/** Help, with the original ToME manual during a game (Help reopens when it closes). */
+function openHelpSheet(topic?: string): void {
+  openHelp(
+    {
+      sheets,
+      birthData: () => engine.birthData(),
+      openManual: inGame()
+        ? () => {
+            manualWanted = !!lastSnap?.atCommand;
+            api.command('?');
+          }
+        : undefined,
+    },
+    topic,
+  );
+}
+
 function openSavesMenu(): void {
   openMenu(
     sheets,
@@ -2748,7 +2760,7 @@ function openGameMenu(): void {
       if (!saveGame('toast')) showToast('Finish what you are doing first.');
     } },
     { label: 'Settings', icon: '⚙', hint: 'Text size, animation, map', run: () => openSettingsSheet() },
-    { label: 'How to play', icon: '?', run: () => openTemplate(sheets, 'How to play', 'help-template') },
+    { label: 'Help', icon: '?', hint: 'How to play, with a search', run: () => openHelpSheet() },
     { label: 'Saved games', icon: '⇅', hint: 'Export or import', run: openSavesMenu },
     { label: 'About', icon: 'ℹ', run: () => openTemplate(sheets, 'About', 'about-template') },
     { label: playing ? 'Save and quit' : 'Quit to title', icon: '⏻', hint: 'Back to the title screen', hidden: fallen, run: () => {

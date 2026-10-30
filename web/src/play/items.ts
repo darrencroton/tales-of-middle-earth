@@ -209,6 +209,8 @@ export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace
 export interface GearSuggestion {
   kind: 'weapon' | 'light' | 'eat';
   item: ItemState;
+  /** Eat it, wield it, or refuel the light with it. */
+  command: 'E' | 'w' | 'F';
 }
 
 export interface Situation {
@@ -219,20 +221,37 @@ export interface Situation {
   wieldsWeapons?: boolean;
 }
 
+const SV_TORCH = 0;
+/* Lanterns, Dwarven lanterns and Feanorian lamps, refilled from flasks of oil. */
+const LAMP_SVALS = new Set([1, 3, 4]);
+
+/** A light that still gives light: one that burns no fuel, or has fuel left. */
+function burning(item: Pick<ItemState, 'fuel'>): boolean {
+  return item.fuel === undefined || item.fuel > 0;
+}
+
 /**
  * Gear the hero needs to go on: food when hungry, a weapon when none is
- * wielded (for heroes who fight with weapons), or (below the town) a light.
+ * wielded (for heroes who fight with weapons), or (below the town) a light
+ * when none is lit: fuel for the light that went out (a flask of oil for a
+ * lamp, another torch for a torch), else another light to wield.
  */
 export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>, situation: Situation): GearSuggestion | null {
-  const equipped = (index: number) => inventory.equip.some((slot) => slot.i === index && slot.name);
-  const find = (kind: GearSuggestion['kind'], test: (item: ItemState) => boolean): GearSuggestion | null => {
+  const worn = (index: number) => inventory.equip.find((slot) => slot.i === index && slot.name);
+  const find = (kind: GearSuggestion['kind'], command: GearSuggestion['command'], test: (item: ItemState) => boolean): GearSuggestion | null => {
     const item = inventory.pack.find(test);
-    return item ? { kind, item } : null;
+    return item ? { kind, item, command } : null;
   };
+  const light = worn(INVEN_LITE);
+  const lightOut = !light || !burning(light);
   return (
-    (situation.hungry ? find('eat', (i) => i.tval === TV.FOOD) : null) ??
-    (situation.wieldsWeapons !== false && !equipped(INVEN_WIELD) ? find('weapon', (i) => WEAPON_TVALS.has(i.tval)) : null) ??
-    (situation.inDungeon && !equipped(INVEN_LITE) ? find('light', (i) => i.tval === TV.LITE) : null)
+    (situation.hungry ? find('eat', 'E', (i) => i.tval === TV.FOOD) : null) ??
+    (situation.wieldsWeapons !== false && !worn(INVEN_WIELD) ? find('weapon', 'w', (i) => WEAPON_TVALS.has(i.tval)) : null) ??
+    (situation.inDungeon && lightOut
+      ? ((light && LAMP_SVALS.has(light.sval ?? -1) ? find('light', 'F', (i) => i.tval === TV.FLASK) : null) ??
+        (light?.sval === SV_TORCH ? find('light', 'F', (i) => i.tval === TV.LITE && i.sval === SV_TORCH && burning(i)) : null) ??
+        find('light', 'w', (i) => i.tval === TV.LITE && burning(i)))
+      : null)
   );
 }
 

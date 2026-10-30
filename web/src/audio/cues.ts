@@ -1,4 +1,4 @@
-import { isHostile, type GameState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
+import { isHostile, newMessages, type GameState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
 
 export type Element = 'fire' | 'cold' | 'lightning' | 'poison' | 'magic' | 'dark' | 'earth';
 
@@ -95,14 +95,8 @@ export interface Cue {
 
 /** Messages newer than the previous state, oldest first, without repeat counts. */
 export function freshMessages(prev: Pick<GameState, 'messageTotal' | 'messages'> | null, next: Pick<GameState, 'messageTotal' | 'messages'>): string[] {
-  const messages = next.messages ?? [];
   if (!prev) return [];
-  const added = Math.max(0, (next.messageTotal ?? 0) - (prev.messageTotal ?? 0));
-  let count = Math.min(messages.length, added);
-  /* A repeated message is merged into the newest one with a count. */
-  if (count === 0 && messages[0] && prev.messages?.[0] && messages[0].text !== prev.messages[0].text) count = 1;
-  return messages
-    .slice(0, count)
+  return newMessages(prev, next)
     .reverse()
     .map((m) => m.text.replace(/\s*\(x\d+\)\s*$/, ''));
 }

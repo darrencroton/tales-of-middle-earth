@@ -1,5 +1,5 @@
 import { readableColour } from '../render/colour.ts';
-import type { MessageState } from '../render/snapshot.ts';
+import { isNotice, type MessageState } from '../render/snapshot.ts';
 import type { VolumeLevel } from '../audio/audio.ts';
 import type { ExplorePace } from '../play/actions.ts';
 import {
@@ -167,8 +167,8 @@ export function openHistory(sheets: Sheets, messages: readonly MessageState[], p
   const list = el('ol', 'history');
   for (const m of [...messages].reverse()) {
     if (!/[^\s=\-_~*]/.test(m.text)) continue;
-    const item = el('li', undefined, m.text);
-    if (m.color !== 1) item.style.color = readableColour(palette[m.color] ?? '');
+    const item = el('li', isNotice(m) ? 'notice' : undefined, m.text);
+    if (m.color !== 1 && !isNotice(m)) item.style.color = readableColour(palette[m.color] ?? '');
     list.append(item);
   }
   if (!list.childElementCount) list.append(el('li', 'muted', 'No messages yet.'));

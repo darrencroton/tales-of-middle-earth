@@ -25,8 +25,7 @@ Map (toolbar, HUD, gestures)
 │   │   ├── Look ──────────── look mode: banner + look card on the map (About → card)
 │   │   ├── native commands → the native panel, in the same frame (Back returns to Commands)
 │   │   ├── item commands (Quaff, Read…) → tome2 item prompt (TermView panel, tabs)
-│   │   └── reading commands (Inspect, Help, Options) → tome2 screen; Commands reopens after
-│   │       └── Help ──────── reader (TermView panel): links open files, ‹ returns
+│   │   └── reading commands (Inspect, Options) → tome2 screen; Commands reopens after
 │   └── Menu ──────────────── Menu                 menu                                     depth 1
 │       ├── Character ─────── Character            panel, tabs Summary · Skills · Abilities · Full sheet
 │       │                     └── tome2 question    card over Character (save skills?)
@@ -35,7 +34,11 @@ Map (toolbar, HUD, gestures)
 │       │                     └── list ─────────── reader (TermView panel); Knowledge reopens after
 │       ├── Save game (toast)
 │       ├── Settings ──────── Settings             panel                                    depth 2
-│       ├── How to play / About                    panel (prose)
+│       ├── Help ──────────── Help                 panel: search, topics by group           depth 2
+│       │                     ├── topic ────────── panel (See also → topic, ‹ returns)       depth 3
+│       │                     │   └── race/class ─ card                                      depth 4
+│       │                     └── ToME manual ──── reader (TermView panel); Help reopens after
+│       ├── About                                  panel (prose)
 │       ├── Saved games ───── Saved games          menu: Export · Import                    depth 2
 │       └── Save and quit ─── confirmation         card
 ├── HUD (one height always: the strip of ailments and chips keeps its place when empty)
@@ -52,7 +55,7 @@ Shop (walk in) ─────────────── TermView panel (sto
 Death ──────────────────────── death card → end-of-game summary (full screen) → Hall of Fame (full screen)
                                 └── Fallen hero     panel, tabs Hero · Gear · Skills · Last moments
                                     └── Item / foe  card
-Title ──────────────────────── Continue/New · Settings (panel) · Saved games (menu)
+Title ──────────────────────── Continue/New · Help (panel) · Settings (panel) · Saved games (menu)
                                 · Soundtrack (panel) · Hall of Fame (panel → Fallen hero)
 Character creation ─────────── director screens (full screen, Back/Random/Choose), name card;
                                Ready to begin: the hero, then Your adventure (random quests, birth options)
@@ -81,7 +84,7 @@ where the code comes from.
 
 | Type | Purpose | Examples | Size | Where |
 |---|---|---|---|---|
-| **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, How to play; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
+| **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, Help and its topics; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
 | **Menu** | A short list of places to go | Menu, Knowledge, Saved games | its rows, capped at `--popup-height` | bottom sheet |
 | **Card** | Details of one thing, or a question | Item, spell, creature, shop item, memorial item/foe, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
 | **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card, death card | its content | bottom of the map, no backdrop |
@@ -178,7 +181,7 @@ No key hints anywhere.
 | Items → item → look → back | Item replaced the list; ✕ closed both | Item card floats over the list; ✕ / tap outside returns to the list at the same row |
 | Items → item → Drop → how many → Drop | Each step replaced the last | Question floats over the item over the list; Drop closes all and shows the map |
 | Menu → Knowledge → Unique creatures → back | Paged list, Page down × 6, Done | One scrolling list (119 rows); ✕ returns to Knowledge with Unique creatures highlighted |
-| More → Help → index → a topic → back | Lettered links only; keyboard for the rest; Back via footer | Tap any link; ‹ returns to the index where it was left; ✕ returns to Commands |
+| Help | tome2's 80×24 help files under More, How to play under Menu; none on the title | One Help (Menu, title): search or browse our own topics; ‹ returns with the search kept; the original manual from Help, which reopens after |
 | Cast → spell ⓘ → Cast | Spell description filled the pop-up | Spell card over Magic; Cast casts, ✕ returns to Magic |
 | Map → creature chip → close | Tall pop-up | Card the size of the recall |
 | Menu → Saved games → Export | Two rows in Menu | One row, same menu as the title screen |
@@ -204,8 +207,8 @@ the top in landscape. A new e2e test covers the reader, help links and cards
   would need to page tome2 to an item before buying it.
 - **Character → Full sheet** keeps tome2's pages as labelled buttons (they are
   different views, not pagination).
-- The **help index** still shows tome2's *Basic keys* table, which means
-  nothing on a touch screen; rewriting help text is out of scope.
+- The **original ToME manual** (reached from Help) is tome2's own text, keys
+  and all; our Help topics are what the player is meant to read.
 - **Spell lists, options and other tome2 menus** remain TermView panels
   (modern rows, not native views); see AGENTS.md *Known gaps*.
 
