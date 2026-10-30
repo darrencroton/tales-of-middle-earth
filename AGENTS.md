@@ -25,7 +25,7 @@ ToME 2 (Tales of Middle-earth roguelike) compiled to WebAssembly and played as a
 - Keep the code clean, with nothing stale: remove code, exports, tests, messages and docs that a change makes unused rather than leaving them around.
 - Fix the cause, not the case: when a bug comes from how a system works (layout, timing, input, mixing), improve that system so the whole class of bug goes, making it more robust, modular and generic, rather than patching the one place it was seen. Look for the other places the same cause shows up.
 - For game feel (auto-explore, travel, pacing, what interrupts the player), research how other roguelikes do it (DCSS, Brogue, Cogmind, Angband variants) and adopt what feels most fun and natural for a player on a phone; note the source of a design in this file.
-- Before opening a PR, have all changes code reviewed by an independent agent (a fresh subagent reading the diff, not the session that wrote it) and iterate on its meaningful findings.
+- Fresh-eyes review is a standing step: before opening a PR, and again before pushing follow-up work to it (fixes from a review, PR review comments, CI fixes), have the changes not yet reviewed read by an independent agent (a fresh subagent reading the diff, not the session that wrote it) and iterate on its meaningful findings; the whole PR diff gets one more fresh review once its fixes are in. Address its findings together with the PR's own review comments.
 - Verify gameplay changes in the real game (targeted Playwright runs with `?wizard`), not only unit tests.
 
 ## Owner preferences
