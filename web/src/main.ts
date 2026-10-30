@@ -1145,6 +1145,8 @@ function rememberLand(snap: LevelSnapshot, key: string): void {
 }
 
 function updateMapMemory(snap: LevelSnapshot): void {
+  /* A level being built (the engine yields every 50 ms) cannot be marked yet. */
+  if (!snap.atCommand) return;
   const id = memoryHeroId();
   if (id && id !== heroMemoryId && mapMemory.loaded) {
     persistMapMemory();

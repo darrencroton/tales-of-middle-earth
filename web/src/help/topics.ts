@@ -73,7 +73,7 @@ export const HELP: readonly HelpGroup[] = [
             steps: [
               '*Check your gear.* Open *Items* and tap what you started with to wield or wear it.',
               '*Shop in Bree.* Walk into a shop’s door to trade. The General Store has food, torches, a lantern and flasks of oil; the Alchemist has scrolls of *Phase Door* and *Word of Recall*; the Temple has healing potions.',
-              '*Find a way down.* Look around Bree and the land beyond it: *Explore* walks it for you, but finding the way into a dungeon is up to you. The *Barrow-downs* are the gentlest (levels 1 to 10). Stand on an entrance and the toolbar offers to take it.',
+              '*Find a way down.* Look around Bree and the land beyond it: *Explore* walks it for you, but finding the way into a dungeon is up to you. The *Barrow-downs* are the gentlest (levels 1 to 10): follow the path west out of Bree and across the bridge, and the way in is not far beyond.',
               '*Fight one at a time.* Stand in a corridor so only one creature can reach you, and press and hold anything new to see what it is first.',
               '*Rest after each fight.* *Rest* brings back health and mana, and stops if anything comes into view.',
               '*Go back up* when you are hurt, out of potions or your pack is full. Sell what you found, restock, and go a little deeper next time.',
