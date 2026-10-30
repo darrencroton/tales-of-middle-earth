@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createCharacter, dismissMore, equipSuggested, jumpToLevel, playerPos, pressExplore, waitAtCommand, waitForEngine } from './helpers.ts';
+import { canvasBrightness, createCharacter, dismissMore, equipSuggested, jumpToLevel, playerPos, pressExplore, waitAtCommand, waitForEngine, waitForScreen } from './helpers.ts';
 
 /** A fingerprint of the level's terrain, and how many grids the hero remembers. */
 function level(page: Page): Promise<{ terrain: number; known: number; depth: number }> {
@@ -135,4 +135,44 @@ test('the first level stays as it was left after a trip up to the land', async (
   await waitAtCommand(page);
   expect((await level(page)).terrain).toBe(before.terrain);
   expect(await playerPos(page)).toEqual(left);
+});
+
+test('at night the land is drawn at once on coming down from the world map', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Nightowl');
+  const command = async (keys: string) => {
+    await page.evaluate((k) => window.__tome!.sendText(k), keys);
+    await dismissMore(page);
+    await waitAtCommand(page);
+  };
+  const night = () => page.evaluate(() => !!window.__tome!.engine.place()?.night);
+  test.setTimeout(300_000);
+  for (let i = 0; i < 12 && !(await night()); i++) {
+    await command('\u0001a');
+    await command('\u0001z');
+    const turn = await page.evaluate(() => window.__tome!.engine.snapshot()!.turn);
+    await page.evaluate(() => window.__tome!.sendText('\\R'));
+    await waitForScreen(page, /^Rest \(/);
+    await page.evaluate(() => window.__tome!.sendText('9999\r'));
+    await expect.poll(() => page.evaluate(() => window.__tome!.engine.snapshot()!.turn), { timeout: 60_000 }).toBeGreaterThan(turn);
+    await expect.poll(() => page.evaluate(() => window.__tome!.engine.snapshot()!.atCommand), { timeout: 60_000 }).toBe(true);
+    await dismissMore(page);
+    await waitAtCommand(page);
+  }
+  expect(await night(), 'night never fell').toBe(true);
+  await command('\u0001z');
+  const whole = { x: 0, y: 0, w: 1, h: 1 };
+  const lit = await canvasBrightness(page, '#map', whole);
+
+  const wild = () => page.evaluate(() => window.__tome!.engine.snapshot()!.wild);
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await page.locator('.sheet .command', { hasText: 'World map' }).click();
+  await expect.poll(wild).toBe(true);
+  await waitAtCommand(page);
+  await page.locator('#toolbar [data-action="walkhere"]').click();
+  await expect.poll(wild).toBe(false);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  await expect.poll(() => canvasBrightness(page, '#map', whole), { timeout: 5_000 }).toBeGreaterThan(lit / 2);
 });

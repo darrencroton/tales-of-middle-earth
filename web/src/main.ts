@@ -2220,8 +2220,8 @@ const engine = new Engine(buffer, {
     if (!mapMemory.loaded) mapMemory.load(engine.fs, engine.savePath);
     if (!macros.running && readViewer()) return;
     director.idle();
-    refresh();
     dirty = false;
+    refresh();
     if (lastSnap?.inDungeon && !lastSnap.icky) {
       base = buffer.copy();
       basePanel = { row: lastSnap.panelRow, col: lastSnap.panelCol };
