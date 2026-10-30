@@ -18,7 +18,7 @@ import { TargetPicker } from './play/targeting.ts';
 import { approachTarget, hostilesInSight, isKnown, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
-import { CAVE_MARK, isHostile, LAYER_MASK, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
+import { CAVE_MARK, isHostile, LAYER_MASK, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -1094,6 +1094,16 @@ function enterLevel(key: string, next: Place): void {
   if (heroMemory && exploreKeepsVisits) for (const cell of heroMemory.visited[key] ?? []) exploreSkip.add(cell);
 }
 
+/** Notes the cells in view that hold money, and forgets those in view that no longer do. */
+function noteGold(objects: readonly ObjectState[], width: number): void {
+  const cells = objects.map((o) => o.y * width + o.x);
+  const gold = new Set(cells.filter((_, i) => objects[i].gold));
+  for (const cell of cells) {
+    if (gold.has(cell)) levelGold.add(cell);
+    else levelGold.delete(cell);
+  }
+}
+
 /** Items the hero has stood on (or dropped) count as visited. */
 function noteVisited(snap: LevelSnapshot): void {
   if (snap.floorObjects > 0) exploreSkip.add(snap.py * snap.width + snap.px);
@@ -1287,7 +1297,7 @@ function refresh(): void {
     }
     const previous = lastState;
     lastState = state;
-    for (const o of state.objects ?? []) if (o.gold) levelGold.add(o.y * snap.width + o.x);
+    noteGold(state.objects ?? [], snap.width);
     hud.update(state, snap.py, snap.px);
     if (state.player) feel.update(state.player);
     const sameHero = !!previous && previous.player?.name === state.player?.name;
@@ -1579,8 +1589,11 @@ function actionButton(): HTMLButtonElement {
   return button;
 }
 
-/** Shows an action on a toolbar button, in place, so a tap under way is not lost when the bar changes. */
+/** Shows an action on a toolbar button, in place; a button given another action loses focus, and a tap begun on it is dropped. */
 function drawAction(button: HTMLButtonElement, action: Action, settleMs: number): void {
+  const tap = `${action.id}:${action.label}`;
+  if (button.dataset.tap !== tap && document.activeElement === button) button.blur();
+  button.dataset.tap = tap;
   button.dataset.action = action.id;
   button.className = ['action', action.primary ? 'primary' : '', action.unavailable ? 'unavailable' : ''].filter(Boolean).join(' ');
   window.clearTimeout(Number(button.dataset.settle ?? 0));
@@ -1589,7 +1602,8 @@ function drawAction(button: HTMLButtonElement, action: Action, settleMs: number)
     button.dataset.settle = String(window.setTimeout(() => button.classList.remove('settling'), settleMs));
   }
   button.setAttribute('aria-label', action.label);
-  if (action.unavailable) button.setAttribute('aria-description', action.unavailable);
+  const description = action.unavailable ?? action.detail;
+  if (description) button.setAttribute('aria-description', description);
   else button.removeAttribute('aria-description');
   const [icon, label] = button.children as unknown as [HTMLElement, HTMLElement];
   icon.textContent = iconText(action.icon);

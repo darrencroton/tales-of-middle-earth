@@ -86,3 +86,19 @@ describe('birth details', () => {
     assert.equal(birthDetails(data.classes[0], 'class').skills[0].value, '+1 · +0.3 per point');
   });
 });
+
+describe('run options', async () => {
+  const { questChoices, questsText, RUN_OPTION_TEXT } = await import('../../web/src/flow/runoptions.ts');
+
+  it('offers the usual numbers of random quests and the one drawn, within what tome2 allows', () => {
+    assert.deepEqual(questChoices(20, 98), [0, 10, 20, 40, 60]);
+    assert.deepEqual(questChoices(15, 98), [0, 10, 15, 20, 40, 60]);
+    assert.deepEqual(questChoices(5, 30), [0, 5, 10, 20]);
+  });
+
+  it('says what the random quests are, and names every option', () => {
+    assert.match(questsText(0), /No random quests/);
+    assert.match(questsText(20), /^20 levels/);
+    for (const text of Object.values(RUN_OPTION_TEXT)) assert.ok(text.label && text.detail);
+  });
+});

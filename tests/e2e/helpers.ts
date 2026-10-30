@@ -78,13 +78,22 @@ export async function beginNewCharacter(page: Page, name: string): Promise<void>
  * Creates a character through the native screens with default choices
  * until the town map is shown. Answers yes to tome2 questions (wizard mode).
  */
-export async function createCharacter(page: Page, name: string, picks: { race?: string; cls?: string } = {}): Promise<void> {
+export async function createCharacter(
+  page: Page,
+  name: string,
+  picks: { race?: string; cls?: string; beforeBegin?: () => Promise<void> } = {},
+): Promise<void> {
   await beginNewCharacter(page, name);
   await page.waitForTimeout(400);
   await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
   await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
 
+  let readied = false;
   for (let i = 0; i < 60 && !(await inDungeon(page)); i++) {
+    if (picks.beforeBegin && !readied && (await page.locator('#toolbar [data-action="begin"]').isVisible())) {
+      readied = true;
+      await picks.beforeBegin();
+    }
     const heading = (await page.locator('.director .birth-header h2').textContent().catch(() => '')) ?? '';
     const pick = /your race/.test(heading) ? picks.race : /your class/.test(heading) ? picks.cls : undefined;
     if (pick && (await page.locator('.director .birth-option.current').textContent()) !== pick) {

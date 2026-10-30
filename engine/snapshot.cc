@@ -83,6 +83,7 @@ void web_scratch_term_end();
 
 /* Map memory (engine/memory.cc). */
 void web_memory_tick();
+void web_run_options_tick();
 
 namespace {
 
@@ -554,6 +555,7 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	if (auto_more_override >= 0 && options) options->auto_more = auto_more_override != 0;
 	if (delay_override >= 0 && options) options->delay_factor = delay_override;
 	web_memory_tick();
+	web_run_options_tick();
 
 	header[H_VERSION] = SNAPSHOT_VERSION;
 	header[H_IN_DUNGEON] = ready ? 1 : 0;

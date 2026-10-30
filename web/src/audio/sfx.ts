@@ -624,11 +624,7 @@ export class SoundEffects {
 
   /* Magic */
 
-  /**
-   * A spell let go, coloured by its school (the god's, for a prayer): it
-   * starts at once, as it is played when the spell leaves the hand, with a
-   * short tail under the bolt that follows.
-   */
+  /** A spell let go, coloured by its school (the god's, for a prayer): an onset at once and a short tail. */
   private cast(t: number, tone: SpellTone = 'arcane'): void {
     const out = () => this.out(0, 1);
     const flare = (freq: number, to: number, level: number, brown = false) =>

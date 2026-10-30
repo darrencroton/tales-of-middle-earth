@@ -25,6 +25,8 @@ export class AudioCore {
   readonly brownNoise: AudioBuffer;
   private readonly waves = new Map<string, PeriodicWave>();
   private readonly lfos = new Map<number, OscillatorNode>();
+  private duckDepth = 1;
+  private duckUntil = 0;
 
   constructor(ctx: BaseAudioContext) {
     this.ctx = ctx;
@@ -110,13 +112,15 @@ export class AudioCore {
     return this.ctx.currentTime;
   }
 
-  /** Lowers the music by `db` from `t` for about `hold` seconds, then lets it swell back. */
+  /** Lowers the music by `db` from `t` for about `hold` seconds, then lets it swell back; overlapping dips keep the deepest level and the latest end. */
   duck(t: number, db: number, hold: number): void {
     const gain = this.musicDuck.gain;
-    const depth = Math.pow(10, -db / 20);
+    const active = t < this.duckUntil;
+    this.duckDepth = Math.min(Math.pow(10, -db / 20), active ? this.duckDepth : 1);
+    this.duckUntil = Math.max(t + hold, active ? this.duckUntil : 0);
     gain.cancelScheduledValues(t);
-    gain.setTargetAtTime(Math.min(depth, gain.value), t, 0.015);
-    gain.setTargetAtTime(1, t + hold, 0.3);
+    gain.setTargetAtTime(this.duckDepth, t, 0.015);
+    gain.setTargetAtTime(1, this.duckUntil, 0.3);
   }
 
   /**

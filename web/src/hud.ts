@@ -200,6 +200,7 @@ export class Hud {
     const player = el('button', 'hud-player');
     player.type = 'button';
     player.dataset.hud = 'player';
+    player.dataset.tap = 'player';
     player.setAttribute('aria-label', `${p.name}: character sheet`);
     const who = el('div', 'who');
     who.append(el('span', 'name', p.name), el('span', 'sub', `${p.race} ${p.cls} · Lv ${p.lev}`));
@@ -219,6 +220,7 @@ export class Hud {
       const button = el('button', 'entity skills', `${p.skillPoints} skill point${p.skillPoints === 1 ? '' : 's'} to spend`);
       button.type = 'button';
       button.dataset.hud = 'skills';
+      button.dataset.tap = 'skills';
       item.append(button);
       strip.append(item);
     }
@@ -262,6 +264,7 @@ export class Hud {
     button.type = 'button';
     button.dataset.hud = kind;
     button.dataset.id = String(id);
+    button.dataset.tap = `${kind}:${id}`;
     return button;
   }
 

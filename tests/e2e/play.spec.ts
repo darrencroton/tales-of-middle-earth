@@ -508,6 +508,23 @@ test('explore reveals the level after the suggested weapon and light are equippe
   expect(await known()).toBeGreaterThan(before);
 });
 
+test('a tap that opens a pop-up leaves it open', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Tapper');
+
+  /* The click a browser sends after a touch would land on what the tap opened under the finger. */
+  for (const selector of ['#toolbar [data-action="menu"]', '#toolbar [data-action="inventory"]', '#hud .hud-player']) {
+    await page.locator(selector).tap();
+    await expect(page.locator('.sheet-layer')).toBeVisible();
+    await page.waitForTimeout(600);
+    await expect(page.locator('.sheet-layer'), selector).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+  }
+});
+
 test('while exploring, Speed switches the pace without stopping and Stop stops', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);

@@ -307,6 +307,7 @@ export class GameAudio {
     const level = `${player.dungeon}:${player.depth}:${player.wild}:${snap.width}x${snap.height}`;
     const sameLevel = level === this.prevLevel;
     const cues: Cue[] = [];
+    let ranged = false;
 
     if (prev && prev.player?.name === player.name) {
       const heard = new Set<CueId>();
@@ -315,7 +316,8 @@ export class GameAudio {
       const intent = this.intent;
       if (intent) {
         const tookTime = snap.turn !== intent.turn;
-        /* A failure is told as it happens, before a creature's bolt could be taken for the spell. */
+        ranged = RELEASED.has(intentCue(intent.key)?.id ?? 'hit');
+        /* A failure sounds as soon as tome2 reports it. */
         const failed = !!intentCue(intent.key) && attemptOutcome(true, fresh)?.kind === 'failed';
         const cue = failed ? ({ id: 'fizzle' } as Cue) : tookTime || snap.atCommand ? outcomeCue(intent.key, tookTime, fresh) : null;
         if (cue && !(intent.sounded && RELEASED.has(cue.id))) cues.push(this.voiced(cue, intent));
@@ -347,10 +349,12 @@ export class GameAudio {
       }
     }
 
-    const melee = cues.some((c) => c.id === 'hit' || c.id === 'crit');
+    /* Blows take the weapon wielded; a spell's or shot's great hit is a heavy impact. */
+    const melee = !ranged && cues.some((c) => c.id === 'hit' || c.id === 'crit');
     for (let i = 0; i < cues.length; i++) {
       const id = cues[i].id;
-      if (id === 'hit' || id === 'crit' || (melee && (id === 'kill' || id === 'kill-unique'))) cues[i] = { ...cues[i], variant: this.weapon };
+      if (ranged && id === 'crit') cues[i] = { id: 'impact', strength: 1 };
+      else if (!ranged && (id === 'hit' || id === 'crit' || (melee && (id === 'kill' || id === 'kill-unique')))) cues[i] = { ...cues[i], variant: this.weapon };
     }
 
     this.prevState = state;
@@ -380,11 +384,7 @@ export class GameAudio {
     return this.voiced(cue, intent);
   }
 
-  /**
-   * A bolt or explosion is being drawn over the map. The hero's own spell,
-   * shot or throw sounds as it is let go, just before its bolt, rather than
-   * at the end of the turn on top of what it struck.
-   */
+  /** A bolt or explosion is being drawn over the map; the hero's own spell, shot or throw under way sounds first, just before its bolt. */
   effects(cells: readonly { attr: number }[]): void {
     if (!cells.length) return;
     const now = performance.now();

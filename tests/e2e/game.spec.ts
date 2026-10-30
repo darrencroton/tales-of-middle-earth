@@ -65,6 +65,41 @@ test('creates a character, saves and quits to the title, then continues', async 
   expect(errors).toEqual([]);
 });
 
+test('the run is set up under the hero on the last creation screen, and the game begins with it', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Planner', {
+    beforeBegin: async () => {
+      const card = page.locator('.birth-card.run');
+      await expect(card).toBeVisible();
+      await expect(card.locator('.segment.selected')).toHaveText('20');
+      expect((await page.evaluate(() => window.__tome!.engine.runOptions()))?.drawn).toBeGreaterThan(10);
+      const small = card.locator('.run-option', { hasText: 'Small levels' });
+      await expect(small).toHaveAttribute('aria-checked', 'false');
+      await small.click();
+      await expect(small).toHaveAttribute('aria-checked', 'true');
+      await card.locator('.segment', { hasText: /^10$/ }).click();
+      await expect(card.locator('.segment.selected')).toHaveText('10');
+
+      /* Unusual rooms leave no random quests; turning them off brings the chosen number back. */
+      const unusual = card.locator('.run-option', { hasText: 'Unusual rooms' });
+      await unusual.click();
+      await expect(card.locator('.segmented')).toHaveCount(0);
+      expect((await page.evaluate(() => window.__tome!.engine.runOptions()))?.drawn).toBe(0);
+      await unusual.click();
+      await expect(card.locator('.segment.selected')).toHaveText('10');
+    },
+  });
+  const run = await page.evaluate(() => window.__tome!.engine.runOptions());
+  /* tome2 skips a level where it finds no creature to hunt. */
+  expect(run?.drawn).toBeGreaterThan(5);
+  expect(run?.drawn).toBeLessThanOrEqual(10);
+  expect(run?.options.find((o) => o.name === 'smallLevels')?.on).toBe(1);
+  expect(run?.options.find((o) => o.name === 'unusualRooms')?.on).toBe(0);
+  /* Once the game has begun the run is fixed. */
+  expect(await page.evaluate(() => window.__tome!.engine.setRandomQuests(5))).toBe(false);
+});
+
 test('exports saves from the title screen as a downloadable bundle', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);

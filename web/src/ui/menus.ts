@@ -41,7 +41,8 @@ export function openMenu(sheets: Sheets, title: string, items: MenuItem[], subti
   sheets.open({ title, subtitle, body: list, kind: 'menu' });
 }
 
-function segmented<T extends string>(
+/** A row of mutually exclusive buttons, the current one selected; `onChange` gets the value tapped. */
+export function segmented<T extends string>(
   name: string,
   options: [T, string][],
   current: T,

@@ -125,7 +125,7 @@ test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }
   expect(stats.renderMs).toBeLessThan(250);
 });
 
-test('the map keeps its size whatever the HUD strip shows', async ({ page }) => {
+test('the map keeps its size whatever the HUD strip and toolbar show', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Steady');
@@ -134,7 +134,7 @@ test('the map keeps its size whatever the HUD strip shows', async ({ page }) => 
   await summonBeside(page, 60);
   await expect(page.locator('#hud .hud-entities .entity.foe').first()).toBeVisible();
 
-  /* The same strip empty, with only an ailment, and full again, measured in one go so the HUD cannot redraw between. */
+  /* The same strip empty, with only an ailment, and full again, then the toolbar changed, measured in one go so nothing redraws between. */
   const sizes = await page.evaluate(() => {
     const strip = document.querySelector<HTMLElement>('#hud .hud-entities')!;
     const stage = document.querySelector<HTMLElement>('#stage')!;
@@ -149,6 +149,19 @@ test('the map keeps its size whatever the HUD strip shows', async ({ page }) => 
     result.push(measure());
     strip.replaceChildren(...full);
     result.push(measure());
+    /* The toolbar with a spell's name on two lines, and as exploring shows it (three buttons). */
+    const toolbar = document.querySelector<HTMLElement>('#toolbar')!;
+    const buttons = [...toolbar.children] as HTMLElement[];
+    const label = buttons[0].querySelector<HTMLElement>('.action-label')!;
+    const [text, className] = [label.textContent, label.className];
+    label.className = 'action-label longer';
+    label.textContent = 'Manathrust of the Far Halls';
+    result.push(measure());
+    label.textContent = text;
+    label.className = className;
+    toolbar.replaceChildren(...buttons.slice(0, 3));
+    result.push(measure());
+    toolbar.replaceChildren(...buttons);
     return result;
   });
   expect(new Set(sizes).size, sizes.join(' / ')).toBe(1);

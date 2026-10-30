@@ -641,6 +641,9 @@ html.keyboard-open .sheet-layer {
 }
 
 .action-label.longer {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: calc(var(--fs-small) * 0.74);
   white-space: normal;
   text-align: center;
@@ -660,10 +663,11 @@ html.keyboard-open .sheet-layer {
   scrollbar-width: none;
 }
 
+/* One height whatever the buttons say (an icon over up to two lines of label), so the map above never changes size. */
 #toolbar .action {
   flex: 1 1 0;
   min-width: 0;
-  min-height: var(--touch);
+  height: max(var(--touch), calc(0.5rem + 2px + var(--fs-large) * 1.1 + 0.05rem + var(--fs-small) * 1.6));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -806,6 +810,7 @@ html.keyboard-open .sheet-layer {
 
   #toolbar .action {
     flex: 1 1 0;
+    height: auto;
     max-height: calc(var(--touch) * 1.5);
     min-height: calc(var(--touch) * 0.9);
   }
@@ -1204,11 +1209,11 @@ html.keyboard-open .tv-layer.panel {
   transition: transform 150ms ease;
 }
 
-.tv-option.on .switch {
+[role="switch"][aria-checked="true"] .switch {
   background: var(--accent);
 }
 
-.tv-option.on .switch::after {
+[role="switch"][aria-checked="true"] .switch::after {
   transform: translateX(1.2em);
 }
 
@@ -2374,6 +2379,48 @@ html.keyboard-tight .prompt-card.text .card-title {
 
 .birth-card.hero .stat-grid + .stat-grid {
   margin-top: 0.4rem;
+}
+
+/* The run's options under the hero on the last creation screen. */
+.birth-card.run h4:first-child {
+  margin-top: 0;
+}
+
+.run-quests {
+  margin-bottom: 0.5rem;
+}
+
+.run-quests .segmented {
+  margin: 0.2rem 0 0.4rem;
+}
+
+.run-option {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0.55rem 0.2rem;
+  border: 0;
+  border-top: 1px solid var(--panel-border);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.run-option-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.run-option-detail {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  line-height: 1.3;
 }
 
 @media (min-width: 720px), (orientation: landscape) {

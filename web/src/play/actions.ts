@@ -45,6 +45,8 @@ export interface Action {
   unavailable?: string;
   /** Leaves exploring or travel running. */
   continues?: boolean;
+  /** More about the button for assistive technology, such as the pace a switch is at. */
+  detail?: string;
 }
 
 export interface CommandDef {
@@ -253,6 +255,7 @@ export function speedAction(pace: ExplorePace): Action {
     id: 'pace',
     label: 'Speed',
     icon: pace === 'relaxed' ? '›' : '»',
+    detail: pace === 'relaxed' ? 'Relaxed pace' : 'Normal pace',
     effect: { kind: 'native', view: 'pace' },
     continues: true,
   };

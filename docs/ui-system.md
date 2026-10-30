@@ -54,7 +54,8 @@ Death ──────────────────────── d
                                     └── Item / foe  card
 Title ──────────────────────── Continue/New · Settings (panel) · Saved games (menu)
                                 · Soundtrack (panel) · Hall of Fame (panel → Fallen hero)
-Character creation ─────────── director screens (full screen, Back/Random/Choose), name card
+Character creation ─────────── director screens (full screen, Back/Random/Choose), name card;
+                               Ready to begin: the hero, then Your adventure (random quests, birth options)
 ```
 
 ## 2. Audit findings (before this redesign)
