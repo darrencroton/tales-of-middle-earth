@@ -16,16 +16,32 @@ export async function waitForEngine(page: Page): Promise<void> {
 
 export async function waitForScreen(page: Page, pattern: RegExp, timeout = 30_000): Promise<string> {
   let last = '';
-  await expect
-    .poll(
-      async () => {
-        last = await screenText(page);
-        return pattern.test(last);
-      },
-      { timeout, message: `screen never matched ${pattern}` },
-    )
-    .toBe(true);
+  try {
+    await expect
+      .poll(
+        async () => {
+          last = await screenText(page);
+          return pattern.test(last);
+        },
+        { timeout },
+      )
+      .toBe(true);
+  } catch {
+    throw new Error(`screen never matched ${pattern}\n${await whatShows(page, last)}`);
+  }
   return last;
+}
+
+/** What the player sees, for a failure message: tome2's top rows, any toast, and the pop-up open. */
+async function whatShows(page: Page, screen: string): Promise<string> {
+  const seen = await page.evaluate(() => ({
+    mode: window.__tome?.mode() ?? '',
+    toast: document.querySelector('#toast')?.textContent ?? '',
+    sheet: document.querySelector('.sheet-layer:not([hidden]) .sheet-title')?.textContent ?? '',
+    card: document.querySelector('.prompt-card:not([hidden])')?.textContent?.slice(0, 120) ?? '',
+  }));
+  const rows = screen.split('\n').slice(0, 3).map((r) => r.trimEnd()).join('\n');
+  return `mode: ${seen.mode}; toast: ${seen.toast || '-'}; pop-up: ${seen.sheet || '-'}; card: ${seen.card || '-'}\nscreen:\n${rows}`;
 }
 
 /** Waits until the screen differs from `before` and then stays unchanged briefly. */

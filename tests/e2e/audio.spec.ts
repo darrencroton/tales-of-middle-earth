@@ -49,6 +49,10 @@ test('music follows the player from the title to town and dungeon, and actions m
 });
 
 test('a spell sounds as it is let go, before its bolt, and only once', async ({ page }) => {
+  page.on('pageerror', (err) => console.log(`page error: ${err.message}`));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error' || msg.type() === 'warning') console.log(`console ${msg.type()}: ${msg.text()}`);
+  });
   await page.goto('/');
   await waitForEngine(page);
   await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
