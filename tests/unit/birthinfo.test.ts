@@ -98,7 +98,7 @@ describe('run options', async () => {
 
   it('says what the random quests are, and names every option', () => {
     assert.match(questsText(0), /No random quests/);
-    assert.match(questsText(20), /^20 levels/);
+    assert.match(questsText(20), /^Up to 20 levels/);
     for (const text of Object.values(RUN_OPTION_TEXT)) assert.ok(text.label && text.detail);
   });
 });

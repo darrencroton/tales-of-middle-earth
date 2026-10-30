@@ -112,11 +112,11 @@ export class AudioCore {
     return this.ctx.currentTime;
   }
 
-  /** Lowers the music by `db` from `t` for about `hold` seconds, then lets it swell back; overlapping dips keep the deepest level and the latest end. */
+  /** Lowers the music by `db` from `t` for about `hold` seconds, then lets it swell back; overlapping dips keep the deepest level and the latest end, and a dip never lifts music still swelling back. */
   duck(t: number, db: number, hold: number): void {
     const gain = this.musicDuck.gain;
     const active = t < this.duckUntil;
-    this.duckDepth = Math.min(Math.pow(10, -db / 20), active ? this.duckDepth : 1);
+    this.duckDepth = Math.min(Math.pow(10, -db / 20), active ? this.duckDepth : gain.value);
     this.duckUntil = Math.max(t + hold, active ? this.duckUntil : 0);
     gain.cancelScheduledValues(t);
     gain.setTargetAtTime(this.duckDepth, t, 0.015);

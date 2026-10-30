@@ -13,6 +13,8 @@
 #include "defines.hpp"
 #include "game.hpp"
 #include "monster2.hpp"
+#include "monster_race.hpp"
+#include "monster_race_flag.hpp"
 #include "options.hpp"
 #include "q_rand.hpp"
 #include "quest_type.hpp"
@@ -55,9 +57,16 @@ int random_quest_count()
 	return n;
 }
 
-/* Draws the random quests again, as tome2's birth does once it has asked how many. */
+/* Draws the random quests again, as tome2's birth does once it has asked how many, first freeing the uniques the last draw kept for its quests. */
 void draw_random_quests(int n)
 {
+	auto &r_info = game->edit_data.r_info;
+	for (auto const &q : random_quests)
+	{
+		if (!q.type || q.r_idx <= 0 || static_cast<std::size_t>(q.r_idx) >= r_info.size()) continue;
+		auto &r_ptr = r_info[q.r_idx];
+		if ((r_ptr.flags & RF_UNIQUE) && r_ptr.max_num == -1) r_ptr.max_num = 1;
+	}
 	n = options->ironman_rooms ? 0 : std::clamp(n, 0, MAX_RANDOM_QUEST - 1);
 	quest[QUEST_RANDOM].status = QUEST_STATUS_UNTAKEN;
 	get_monster_hook = monster_quest;

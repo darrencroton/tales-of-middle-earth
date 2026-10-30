@@ -1094,14 +1094,15 @@ function enterLevel(key: string, next: Place): void {
   if (heroMemory && exploreKeepsVisits) for (const cell of heroMemory.visited[key] ?? []) exploreSkip.add(cell);
 }
 
-/** Notes the cells in view that hold money, and forgets those in view that no longer do. */
-function noteGold(objects: readonly ObjectState[], width: number): void {
-  const cells = objects.map((o) => o.y * width + o.x);
+/** Notes the cells in view that hold money, and forgets those that hold something else or nothing. */
+function noteGold(objects: readonly ObjectState[], snap: LevelSnapshot): void {
+  const cells = objects.map((o) => o.y * snap.width + o.x);
   const gold = new Set(cells.filter((_, i) => objects[i].gold));
   for (const cell of cells) {
     if (gold.has(cell)) levelGold.add(cell);
     else levelGold.delete(cell);
   }
+  for (const cell of levelGold) if ((snap.layer[cell] & LAYER_MASK) !== LAYER_OBJECT) levelGold.delete(cell);
 }
 
 /** Items the hero has stood on (or dropped) count as visited. */
@@ -1297,7 +1298,7 @@ function refresh(): void {
     }
     const previous = lastState;
     lastState = state;
-    noteGold(state.objects ?? [], snap.width);
+    noteGold(state.objects ?? [], snap);
     hud.update(state, snap.py, snap.px);
     if (state.player) feel.update(state.player);
     const sameHero = !!previous && previous.player?.name === state.player?.name;

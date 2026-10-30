@@ -13,7 +13,7 @@ export interface RunOptions {
 export const RUN_OPTION_TEXT: Readonly<Record<RunOptionName, { label: string; detail: string }>> = {
   smallLevels: { label: 'Small levels', detail: 'Every dungeon level is small: quicker to explore, closer quarters.' },
   fates: { label: 'Fates', detail: 'As you grow, fate may mark you for a great reward or a dark end.' },
-  preserve: { label: 'Artifacts come back', detail: 'An artifact left behind unseen can turn up again later.' },
+  preserve: { label: 'Artifacts come back', detail: 'An artifact left behind before you knew what it was can turn up again later.' },
   noSelling: { label: 'No selling', detail: 'Shops pay nothing for your finds, but gold lying about is worth five times as much.' },
   unusualRooms: { label: 'Unusual rooms', detail: 'Every level is built from strange rooms. There are no random quests.' },
   jokes: { label: 'Joke monsters', detail: 'A few silly creatures join the dungeon.' },
@@ -33,5 +33,5 @@ export function questChoices(current: number, max: number): number[] {
 /** What the random quests are for a number of them. */
 export function questsText(n: number): string {
   if (n === 0) return 'No random quests: just the quests of the tale.';
-  return `${n} levels on the way down each hold a creature to hunt for a reward.`;
+  return `Up to ${n} levels on the way down each hold a creature to hunt for a reward.`;
 }

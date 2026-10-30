@@ -365,7 +365,7 @@ export class Director {
     }
     if (answer(/modify the options\s*\[y\/n\]/, keyCodes('n'))) return;
     if (answer(/Use same character as last time/, keyCodes(this.anew ? 'y' : 'n'))) return;
-    if (answer(/Number of quests\?/, [ENTER])) return;
+    if (answer(/Number of quests\?/, [...keyCodes('0'), ENTER])) return;
     if (answer(/Enter minimum attribute for/, [ENTER])) return;
     if (/Enter your player's name above/.test(screen)) {
       const key = `name:${screen}`;
@@ -533,6 +533,12 @@ export class Director {
     const back = e.key === 'Backspace' || (e.key === 'Escape' && this.choice);
     if (back && this.phase === 'birth' && this.picks.length && !this.replay) {
       this.back();
+      return true;
+    }
+    /* On the last screen any key but S and Q begins the game in tome2: arrows and Enter move through the run instead, Escape begins. */
+    if (this.phase === 'birth' && READY_SCREEN.test(this.screen())) {
+      if (e.key === 'Escape') return false;
+      this.nav.handleKey(e);
       return true;
     }
     if (!this.choice) return false;
