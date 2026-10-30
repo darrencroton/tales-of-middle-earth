@@ -236,6 +236,7 @@ void json_object(std::string &out, int index, object_type const *o_ptr)
 	json_int(out, "attr", object_attr(o_ptr));
 	json_int(out, "wear", wield_slot(o_ptr) >= 0 ? 1 : 0);
 	json_int(out, "activate", (flags & TR_ACTIVATE) ? 1 : 0);
+	if (flags & TR_FUEL_LITE) json_int(out, "fuel", o_ptr->timeout);
 	json_str(out, "ins", o_ptr->inscription, false);
 	out += '}';
 }
@@ -799,6 +800,28 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	return json.c_str();
 }
 
+
+/*
+ * A message of our own (a stop reason, a refusal, a deed) added to tome2's
+ * message log in NOTICE_COLOUR, which no tome2 message uses, so the log and
+ * history show it and readers of tome2's messages can leave it out. The
+ * text is written to the buffer web_notice_buffer returns.
+ */
+extern int const NOTICE_COLOUR = 16;
+static std::vector<char> notice_text;
+
+EMSCRIPTEN_KEEPALIVE char *web_notice_buffer(int bytes)
+{
+	notice_text.assign(static_cast<std::size_t>(std::max(0, bytes)) + 1, '\0');
+	return notice_text.data();
+}
+
+EMSCRIPTEN_KEEPALIVE void web_add_notice()
+{
+	if (!level_ready() || notice_text.empty() || !notice_text[0]) return;
+	notice_text.back() = '\0';
+	game->messages.add(notice_text.data(), NOTICE_COLOUR);
+}
 
 /*
  * Returns the pack, equipment and items underfoot as JSON. Item "i" is the

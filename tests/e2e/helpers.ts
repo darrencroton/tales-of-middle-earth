@@ -263,14 +263,32 @@ export async function castUntilAimed(page: Page, spell: string, failed?: () => P
   throw new Error(`${spell} failed six times in a row`);
 }
 
-/** Takes the toolbar's gear suggestions (wield, light) until none is left. */
-export async function equipSuggested(page: Page): Promise<void> {
-  for (let i = 0; i < 3 && (await page.locator('#toolbar [data-action="equip"]').count()); i++) {
-    await page.locator('#toolbar [data-action="equip"]').click();
+const TRANSITIONS = new Set(['descend', 'ascend', 'enter', 'leave', 'rift']);
+
+/** Steps off the stairs (or other way on) the hero stands on, whose button would otherwise take the toolbar's first place. */
+export async function stepOffStairs(page: Page): Promise<void> {
+  const first = async () => (await page.evaluate(() => window.__tome!.actions()))[0] ?? '';
+  for (const dir of '26481379') {
+    if (!TRANSITIONS.has(await first())) return;
+    const turn = await page.evaluate(() => window.__tome!.engine.snapshot()?.turn ?? 0);
+    await page.evaluate((d) => window.__tome!.sendText(`\\;${d}`), dir);
+    await expect.poll(() => page.evaluate(() => window.__tome!.engine.pendingKeys)).toBe(0);
+    await page.waitForFunction((t) => (window.__tome!.engine.snapshot()?.turn ?? 0) !== t, turn, { timeout: 2_000 }).catch(() => undefined);
     await dismissMore(page);
     await waitAtCommand(page);
   }
-  await expect(page.locator('#toolbar [data-action="equip"]')).toHaveCount(0);
+}
+
+/** Takes the gear the toolbar suggests (wield, light) until none is left, whatever the toolbar shows first (stairs, a foe). */
+export async function equipSuggested(page: Page): Promise<void> {
+  const gear = () => page.evaluate(() => window.__tome!.gear());
+  for (let i = 0; i < 3 && (await gear()); i++) {
+    await page.evaluate(() => window.__tome!.takeGear());
+    await expect.poll(() => page.evaluate(() => window.__tome!.macroRunning())).toBe(false);
+    await dismissMore(page);
+    await waitAtCommand(page);
+  }
+  expect(await gear()).toBeNull();
 }
 
 /** Explores once: the toolbar's Explore when it is the changing button, otherwise Explore under More. Waits until exploring stops. */
@@ -283,9 +301,4 @@ export async function pressExplore(page: Page): Promise<void> {
     await page.locator('.sheet .command', { hasText: 'Explore' }).click();
   }
   await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
-}
-
-/** An awake hostile creature is in line of sight. */
-export async function foeInSight(page: Page): Promise<boolean> {
-  return page.evaluate(() => (window.__tome!.engine.gameState()?.monsters ?? []).some((m) => m.status < 0 && !m.asleep && !!m.target));
 }

@@ -4,11 +4,11 @@ import {
   createCharacter,
   dismissMore,
   equipSuggested,
-  foeInSight,
   jumpToLevel,
   playerPos,
   pressExplore,
   screenText,
+  stepOffStairs,
   viewMode,
   waitAtCommand,
   waitForEngine,
@@ -181,7 +181,7 @@ test('tome2 menus show as tappable lists with a movable highlight', async ({ pag
   await dismissMore(page);
   await waitAtCommand(page);
 
-  await page.keyboard.press('?');
+  await page.keyboard.press('=');
   await expect.poll(() => viewMode(page)).toBe('overlay');
   await expect(page.locator('.termview .tv-close')).toBeVisible();
   const outside = await page.evaluate(() => {
@@ -621,15 +621,17 @@ test('a tap on unseen ground takes one step towards it', async ({ page }) => {
   expect(Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)), context).toBeLessThanOrEqual(1);
 });
 
-test('Explore in town finds the way down and the quest level below Bree stays native', async ({ page }) => {
+test('Explore in town never leads to a way down, and the quest level below Bree stays native', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Delver');
 
   await equipSuggested(page);
   await expect(page.locator('#toolbar [data-action="inventory"]')).toBeVisible();
-  await expect(page.locator('#toolbar [data-action="dungeon"]')).toHaveCount(0);
-  for (let i = 0; i < 30 && !(await page.locator('#toolbar [data-action="descend"]').count()); i++) {
+  const first = async () => (await page.evaluate(() => window.__tome!.actions()))[0];
+  const label = () => page.locator('#toolbar button[data-action]').first().textContent();
+  for (let i = 0; i < 30 && !/World map/.test((await label()) ?? ''); i++) {
+    expect((await page.evaluate(() => window.__tome!.exploreStop()))?.kind).not.toBe('exit');
     await dismissMore(page);
     await waitAtCommand(page);
     const attack = page.locator('#toolbar [data-action="attack"]');
@@ -638,8 +640,30 @@ test('Explore in town finds the way down and the quest level below Bree stays na
       await page.waitForTimeout(300);
       continue;
     }
+    if ((await first()) !== 'explore') await stepOffStairs(page);
     await pressExplore(page);
   }
+  await expect(page.locator('#toolbar button[data-action]').first()).toContainText('World map');
+
+  /* The way down is the player's to find: travel to it, and its button takes it. */
+  const stairs = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const snap = tome.engine.snapshot()!;
+    const names = tome.engine.features().map((f) => f.name.toLowerCase());
+    const i = snap.feat.findIndex((f, n) => /down staircase|quest down/.test(names[f] ?? '') && (snap.info[n] & 0x11) !== 0);
+    return i < 0 ? null : { x: i % snap.width, y: Math.floor(i / snap.width) };
+  });
+  expect(stairs).not.toBeNull();
+  for (let i = 0; i < 12; i++) {
+    const here = await playerPos(page);
+    if (here.x === stairs!.x && here.y === stairs!.y) break;
+    await page.evaluate(() => window.__tome!.sendText('\u0001z'));
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await page.evaluate(({ x, y }) => window.__tome!.tapCell(x, y), stairs!);
+    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+  }
+  await waitAtCommand(page);
   await expect(page.locator('#toolbar [data-action="descend"]')).toBeVisible();
 
   const depthBefore = await page.evaluate(() => window.__tome!.engine.snapshot()!.depth);
@@ -649,13 +673,10 @@ test('Explore in town finds the way down and the quest level below Bree stays na
   expect(await viewMode(page)).toBe('map');
   await expect(page.locator('.termview')).toBeHidden();
   expect((await screenText(page)).split('\n')[0]).not.toMatch(/-more-/);
-  /* The stairs the hero arrived by give way to gear and Explore until there is nothing else to do or a foe is in sight. */
-  await equipSuggested(page);
-  if (!(await foeInSight(page))) await expect(page.locator('#toolbar [data-action="ascend"]')).toHaveCount(0);
   expect(await page.evaluate(() => window.__tome!.engine.gameState()!.messages!.length)).toBeGreaterThan(0);
 });
 
-test('knowledge and help read as whole files, links open more, and cards float over the list that opened them', async ({ page }) => {
+test('knowledge and the manual read as whole files, help is searchable, links open more, and cards float over the list that opened them', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Reader', { cls: 'Mage' });
@@ -676,9 +697,24 @@ test('knowledge and help read as whole files, links open more, and cards float o
   await page.locator('.sheet .sheet-close').click();
   await expect(page.locator('.sheet-layer')).toBeHidden();
 
-  /* Help: a lettered link, a link inside the text, back to where the index was left, and out. */
-  await page.locator('#toolbar [data-action="commands"]').click();
-  await page.locator('.sheet .command', { hasText: 'Help' }).click();
+  /* Help: a search, a topic, its related topics, and back with the search kept. */
+  await page.locator('#toolbar [data-action="menu"]').click();
+  await page.locator('.sheet .row-button', { hasText: 'Help' }).click();
+  await expect(page.locator('.sheet-title')).toHaveText('Help');
+  await page.locator('.help-search').fill('torch');
+  await page.locator('.sheet .row-button', { hasText: 'Light and darkness' }).click();
+  await expect(page.locator('.sheet-title')).toHaveText('Light and darkness');
+  await page.locator('.help-topic .row-button', { hasText: 'Explore and travel' }).click();
+  await expect(page.locator('.sheet-title')).toHaveText('Explore and travel');
+  await page.locator('.sheet-back').click();
+  await page.locator('.sheet-back').click();
+  await expect(page.locator('.sheet-title')).toHaveText('Help');
+  await expect(page.locator('.help-search')).toHaveValue('torch');
+
+  /* The original manual: a lettered link, a link inside the text, back to where the index was left, and out to Help. */
+  await page.locator('.help-search').fill('manual');
+  await page.locator('.sheet .row-button', { hasText: 'The original ToME manual' }).click();
+  await page.locator('.sheet .sheet-action', { hasText: 'Open the manual' }).click();
   await page.locator('.termview .tv-choice', { hasText: 'Alphabetical index' }).click();
   await expect.poll(rowZero).toMatch(/index\.txt/);
   const link = page.locator('.termview .tv-link', { hasText: /^Abilities$/ }).first();
@@ -692,7 +728,14 @@ test('knowledge and help read as whole files, links open more, and cards float o
   await expect.poll(() => page.locator('.termview .tv-body').evaluate((b) => b.scrollTop)).toBe(scrolled);
   await page.locator('.termview .tv-close').click();
   await waitAtCommand(page);
-  await expect(page.locator('.sheet-title')).toHaveText('Commands');
+  await expect(page.locator('.sheet-title')).toHaveText('The original ToME manual');
+  await page.locator('.sheet .sheet-close').click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  /* The ? key opens Help rather than tome2's help screens. */
+  await page.keyboard.press('?');
+  await expect(page.locator('.sheet-title')).toHaveText('Help');
+  await waitAtCommand(page);
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
 

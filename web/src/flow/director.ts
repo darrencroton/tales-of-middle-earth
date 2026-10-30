@@ -4,6 +4,7 @@ import type { Action } from '../play/actions.ts';
 import { keyCodes } from '../play/macro.ts';
 import type { TerminalBuffer } from '../terminal.ts';
 import { moduleKey, type ModuleChoice, type SaveInfo, type TitleChoice, type TitleScreen } from '../title.ts';
+import { birthCard } from '../ui/birthcard.ts';
 import { el } from '../ui/dom.ts';
 import { ListNav } from '../ui/listnav.ts';
 import { askText, segmented } from '../ui/menus.ts';
@@ -635,7 +636,12 @@ export class Director {
 
         const current = choice.options.find((o) => o.current);
         const details = current ? this.details(choice, current.label) : null;
-        const card = birthCard(current?.label ?? '', details, choice, !!current?.unusual);
+        const tag = details?.experimental
+          ? 'Experimental: an unfinished choice that may be unbalanced. Greyed out, but you can still pick it.'
+          : current?.unusual
+            ? 'Not a natural fit for your race: playable, but expect a harder road.'
+            : null;
+        const card = birthCard(current?.label ?? '', details, choice.description.filter((d) => d !== 'EXPERIMENTAL'), tag);
 
         const list = el('div', 'birth-options');
         list.setAttribute('role', 'listbox');
@@ -788,55 +794,4 @@ export class Director {
   }
 }
 
-function signedStat(value: number): string {
-  return value > 0 ? `+${value}` : value < 0 ? `−${-value}` : '0';
-}
-
-/** What the highlighted option gives: description, stat changes, traits and skills. */
-function birthCard(label: string, details: BirthDetails | null, choice: BirthChoiceScreen, unusual: boolean): HTMLElement {
-  const card = el('article', 'birth-card');
-  card.append(el('h3', undefined, details?.title ?? label));
-  if (details?.experimental) {
-    card.append(el('p', 'birth-tag', 'Experimental: an unfinished choice that may be unbalanced. Greyed out, but you can still pick it.'));
-  } else if (unusual) {
-    card.append(el('p', 'birth-tag', 'Not a natural fit for your race: playable, but expect a harder road.'));
-  }
-  const text = details?.paragraphs.length ? details.paragraphs : choice.description.filter((d) => d !== 'EXPERIMENTAL');
-  for (const p of text) card.append(el('p', undefined, p));
-  if (!details) return card;
-
-  if (details.stats.length) {
-    const stats = el('div', 'birth-stats');
-    for (const s of details.stats) {
-      const chip = el('span', `birth-stat${s.value > 0 ? ' good' : s.value < 0 ? ' bad' : ''}`);
-      chip.append(el('span', 'birth-stat-name', s.name), el('span', 'birth-stat-value', signedStat(s.value)));
-      stats.append(chip);
-    }
-    card.append(stats);
-  }
-  if (details.facts.length) {
-    const facts = el('dl', 'birth-facts');
-    for (const f of details.facts) facts.append(el('dt', undefined, f.label), el('dd', f.tone ?? '', f.value));
-    card.append(facts);
-  }
-  if (details.traits.length) {
-    const list = el('ul', 'birth-traits');
-    for (const t of details.traits) {
-      const item = el('li', t.tone);
-      item.append(el('span', 'trait-level', t.level > 1 ? `Level ${t.level}` : 'Start'), el('span', 'trait-text', t.text));
-      if (t.detail) item.append(el('span', 'trait-detail', t.detail));
-      list.append(item);
-    }
-    card.append(el('h4', undefined, 'Abilities and traits'), list);
-  }
-  if (details.skills.length) {
-    const skills = el('dl', 'birth-skills');
-    for (const s of details.skills) skills.append(el('dt', undefined, s.name), el('dd', s.tone, s.value));
-    card.append(el('h4', undefined, 'Skills'), skills);
-  }
-  if (details.choices) {
-    card.append(el('h4', undefined, details.choices.label), el('p', 'birth-choices', details.choices.values.join(' · ')));
-  }
-  return card;
-}
 

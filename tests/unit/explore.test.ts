@@ -268,6 +268,23 @@ describe('suggested gear', () => {
     assert.equal(suggestedGear({ pack: [torch, dagger], equip: [] }, { ...calm, wieldsWeapons: false })?.kind, 'light');
   });
 
+  it('relights a light that has gone out: fuel for it, else another light', () => {
+    const fresh = { ...torch, sval: 0, fuel: 2500 };
+    const spent = { ...fresh, i: 4, fuel: 0 };
+    const flask = { i: 5, name: 'a Flask of oil', tval: 77, sval: 0 } as ItemState;
+    const out = (light: Partial<EquipSlot>) => [...armed, { i: 36, part: 36, name: 'a light', tval: 39, ...light }] as EquipSlot[];
+    const pick = (pack: ItemState[], equip: EquipSlot[]) => {
+      const gear = suggestedGear({ pack, equip }, calm);
+      return gear && [gear.command, gear.item.i];
+    };
+    assert.deepEqual(pick([fresh], out({ sval: 0, fuel: 0 })), ['F', 1]);
+    assert.deepEqual(pick([spent], out({ sval: 0, fuel: 0 })), null);
+    assert.deepEqual(pick([flask, fresh], out({ sval: 1, fuel: 0 })), ['F', 5]);
+    assert.deepEqual(pick([fresh], out({ sval: 1, fuel: 0 })), ['w', 1]);
+    assert.deepEqual(pick([fresh, flask], out({ sval: 1, fuel: 10 })), null);
+    assert.deepEqual(pick([fresh], out({ sval: 2 })), null);
+  });
+
   it('tells fighters, casters and those who do both apart', () => {
     const skill = (name: string, value: number, mod: number) => ({ name, value, mod });
     const warrior = [skill('Combat', 2000, 800), skill('Weaponmastery', 1000, 850)];

@@ -228,6 +228,29 @@ export interface MessageState {
   color: number;
 }
 
+/** The colour of our own messages in tome2's log (engine `NOTICE_COLOUR`): stop reasons, refusals, deeds. */
+export const NOTICE_COLOUR = 16;
+
+export function isNotice(m: Pick<MessageState, 'color'>): boolean {
+  return m.color === NOTICE_COLOUR;
+}
+
+/**
+ * tome2's messages that arrived between two states, newest first, leaving
+ * out our own. A message that repeats the newest one is merged into it with
+ * a count ("… (x2)") without raising the total, so a changed newest message
+ * counts as one new message.
+ */
+export function newMessages(
+  prev: Pick<GameState, 'messageTotal' | 'messages'>,
+  next: Pick<GameState, 'messageTotal' | 'messages'>,
+): MessageState[] {
+  const messages = next.messages ?? [];
+  let count = Math.min(messages.length, Math.max(0, (next.messageTotal ?? 0) - (prev.messageTotal ?? 0)));
+  if (count === 0 && messages[0] && prev.messages?.[0] && messages[0].text !== prev.messages[0].text) count = 1;
+  return messages.slice(0, count).filter((m) => !isNotice(m));
+}
+
 export interface GameState {
   ready: number;
   player?: PlayerState;
@@ -251,6 +274,8 @@ export interface ItemState {
   attr: number;
   wear: number;
   activate: number;
+  /** Turns of light left, for a light that burns fuel. */
+  fuel?: number;
   ins: string;
 }
 
