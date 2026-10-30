@@ -89,6 +89,9 @@ declare global {
       lastStopCause(): string;
       exploreStop(): { kind: string; x: number; y: number; heading: string } | null;
       macroRunning(): boolean;
+      /** The gear the toolbar would suggest (eat, weapon, light), whatever the toolbar shows first. */
+      gear(): string | null;
+      takeGear(): void;
       director: Director;
       audio: GameAudio;
     };
@@ -2873,6 +2876,8 @@ window.__tome = {
     return { kind: stop?.kind ?? 'none', x: stop?.x ?? -1, y: stop?.y ?? -1, heading: plan.heading ?? 'down' };
   },
   macroRunning: () => macros.running,
+  gear: () => gearSuggestion()?.kind ?? null,
+  takeGear: () => useSuggested(),
   director,
   audio,
 };

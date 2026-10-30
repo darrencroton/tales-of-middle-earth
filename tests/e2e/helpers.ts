@@ -279,15 +279,16 @@ export async function stepOffStairs(page: Page): Promise<void> {
   }
 }
 
-/** Takes the toolbar's gear suggestions (wield, light) until none is left, off the stairs where they show. */
+/** Takes the gear the toolbar suggests (wield, light) until none is left, whatever the toolbar shows first (stairs, a foe). */
 export async function equipSuggested(page: Page): Promise<void> {
-  await stepOffStairs(page);
-  for (let i = 0; i < 3 && (await page.locator('#toolbar [data-action="equip"]').count()); i++) {
-    await page.locator('#toolbar [data-action="equip"]').click();
+  const gear = () => page.evaluate(() => window.__tome!.gear());
+  for (let i = 0; i < 3 && (await gear()); i++) {
+    await page.evaluate(() => window.__tome!.takeGear());
+    await expect.poll(() => page.evaluate(() => window.__tome!.macroRunning())).toBe(false);
     await dismissMore(page);
     await waitAtCommand(page);
   }
-  await expect(page.locator('#toolbar [data-action="equip"]')).toHaveCount(0);
+  expect(await gear()).toBeNull();
 }
 
 /** Explores once: the toolbar's Explore when it is the changing button, otherwise Explore under More. Waits until exploring stops. */

@@ -15,8 +15,12 @@ function level(page: Page): Promise<{ terrain: number; known: number; depth: num
   });
 }
 
+/** Explores a few times, sending the creatures around away first (wizard mode), so a fight cannot end the test. */
 async function explore(page: Page, times: number): Promise<void> {
   for (let i = 0; i < times; i++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await page.evaluate(() => window.__tome!.sendText('\u0001z'));
     await dismissMore(page);
     await waitAtCommand(page);
     await pressExplore(page);
@@ -30,8 +34,9 @@ test('kept levels stay as the hero left them, and the way back is known', async 
   await waitForEngine(page);
   await createCharacter(page, 'Keeper');
   await jumpToLevel(page, 2);
-  await equipSuggested(page);
+  /* The hero arrives on stairs, which are always remembered; gear is taken just off them, in the dark. */
   const start = await playerPos(page);
+  await equipSuggested(page);
   await explore(page, 4);
 
   const before = await level(page);
@@ -40,6 +45,11 @@ test('kept levels stay as the hero left them, and the way back is known', async 
 
   /* Every floor the hero walked is remembered, so a tap on the start walks back there. */
   if (left.x !== start.x || left.y !== start.y) {
+    const remembered = await page.evaluate(([x, y]) => {
+      const snap = window.__tome!.engine.snapshot()!;
+      return (snap.info[y * snap.width + x] & 0x11) !== 0;
+    }, [start.x, start.y] as const);
+    expect(remembered, 'the start is remembered').toBe(true);
     await page.evaluate(([x, y]) => window.__tome!.tapCell(x, y), [start.x, start.y] as const);
     await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
     const cause = await page.evaluate(() => window.__tome!.lastStopCause());
