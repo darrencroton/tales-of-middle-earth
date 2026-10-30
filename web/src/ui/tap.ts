@@ -27,6 +27,11 @@ export function onTap(root: HTMLElement, selector: string, handler: (target: HTM
     if (start.tap === undefined) return null;
     return [...root.querySelectorAll<HTMLElement>(selector)].find((el) => el.dataset.tap === start.tap) ?? null;
   };
+  /* The pointer was let go over the element (or one redrawn as it), not beside it. */
+  const releasedOver = (target: HTMLElement, e: PointerEvent): boolean => {
+    const under = match(document.elementFromPoint(e.clientX, e.clientY));
+    return under === target || (!!under && target.dataset.tap !== undefined && under.dataset.tap === target.dataset.tap);
+  };
   /* Touch events stay with the element first touched, even once it is redrawn away, so it cancels its own click. */
   const cancelClick = (e: TouchEvent) => {
     if (tapped && e.cancelable) e.preventDefault();
@@ -52,7 +57,7 @@ export function onTap(root: HTMLElement, selector: string, handler: (target: HTM
     pressEnded = performance.now();
     if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > TAP_SLOP) return;
     const target = current(start);
-    if (!target) return;
+    if (!target || !releasedOver(target, e)) return;
     tapped = e.pointerType === 'touch';
     handler(target, e);
   });

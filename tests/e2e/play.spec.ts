@@ -508,7 +508,7 @@ test('explore reveals the level after the suggested weapon and light are equippe
   expect(await known()).toBeGreaterThan(before);
 });
 
-test('a tap that opens a pop-up leaves it open', async ({ page }) => {
+test('a tap that opens a pop-up leaves it open, and a press let go beside a button does nothing', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await createCharacter(page, 'Tapper');
@@ -523,6 +523,15 @@ test('a tap that opens a pop-up leaves it open', async ({ page }) => {
     await page.keyboard.press('Escape');
     await expect(page.locator('.sheet-layer')).toBeHidden();
   }
+
+  /* A press let go beside the button, over its neighbour, does nothing. */
+  const items = (await page.locator('#toolbar [data-action="inventory"]').boundingBox())!;
+  await page.mouse.move(items.x + items.width - 2, items.y + items.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(items.x + items.width + 8, items.y + items.height / 2);
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  await expect(page.locator('.sheet-layer')).toBeHidden();
 });
 
 test('while exploring, Speed switches the pace without stopping and Stop stops', async ({ page }) => {
