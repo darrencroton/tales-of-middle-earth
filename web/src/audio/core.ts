@@ -3,7 +3,7 @@
  * music, a reverb and an echo, and the noise and waveforms the
  * instruments are built from.
  *
- *   music players → musicTone → EQ → musicVolume → master → limiter → speakers
+ *   music players → musicTone → EQ → musicDuck → musicVolume → master → limiter → speakers
  *   sound effects, ambience → high-pass → soundVolume → master
  *   musicVolume, soundVolume → sends → high-pass → reverb / echo → master
  */
@@ -13,6 +13,8 @@ export class AudioCore {
   readonly musicIn: GainNode;
   readonly musicTone: BiquadFilterNode;
   readonly musicVolume: GainNode;
+  /** Dips the music under a sound that should stand out (`duck`). */
+  readonly musicDuck: GainNode;
   readonly soundIn: GainNode;
   readonly soundVolume: GainNode;
   readonly ambienceIn: GainNode;
@@ -23,6 +25,8 @@ export class AudioCore {
   readonly brownNoise: AudioBuffer;
   private readonly waves = new Map<string, PeriodicWave>();
   private readonly lfos = new Map<number, OscillatorNode>();
+  private duckDepth = 1;
+  private duckUntil = 0;
 
   constructor(ctx: BaseAudioContext) {
     this.ctx = ctx;
@@ -74,7 +78,9 @@ export class AudioCore {
     this.musicTone.connect(rumble);
     rumble.connect(mud);
     mud.connect(presence);
-    presence.connect(this.musicVolume);
+    this.musicDuck = ctx.createGain();
+    presence.connect(this.musicDuck);
+    this.musicDuck.connect(this.musicVolume);
     this.musicVolume.connect(this.master);
     this.musicReverb = ctx.createGain();
     this.musicReverb.gain.value = 0.5;
@@ -104,6 +110,17 @@ export class AudioCore {
 
   get now(): number {
     return this.ctx.currentTime;
+  }
+
+  /** Lowers the music by `db` from `t` for about `hold` seconds, then lets it swell back; overlapping dips keep the deepest level and the latest end, and a dip never lifts music still swelling back. */
+  duck(t: number, db: number, hold: number): void {
+    const gain = this.musicDuck.gain;
+    const active = t < this.duckUntil;
+    this.duckDepth = Math.min(Math.pow(10, -db / 20), active ? this.duckDepth : gain.value);
+    this.duckUntil = Math.max(t + hold, active ? this.duckUntil : 0);
+    gain.cancelScheduledValues(t);
+    gain.setTargetAtTime(this.duckDepth, t, 0.015);
+    gain.setTargetAtTime(1, this.duckUntil, 0.3);
   }
 
   /**

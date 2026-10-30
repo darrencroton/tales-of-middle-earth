@@ -94,6 +94,20 @@ const TRIM_DB: Partial<Record<CueId, number>> = {
   'ui-close': 11,
 };
 
+/** Sounds the music dips under (dB, and for how long), so the hero's own deeds and big moments stand out. */
+const DUCK: Partial<Record<CueId, [number, number]>> = {
+  cast: [5, 0.35],
+  fire: [4, 0.25],
+  throw: [3, 0.25],
+  zap: [4, 0.3],
+  activate: [4, 0.4],
+  crit: [3, 0.25],
+  'kill-unique': [7, 1.2],
+  levelup: [7, 1.5],
+  quest: [7, 1.5],
+  explosion: [3, 0.4],
+};
+
 /** Element sounds for bolts and explosions, from the colour tome2 draws them in. */
 const ELEMENT_NOISE: Record<Element, { freq: number; q: number; brown: boolean }> = {
   fire: { freq: 900, q: 0.6, brown: true },
@@ -127,6 +141,8 @@ export class SoundEffects {
     this.trim = Math.pow(10, (TRIM_DB[cue.id] ?? 0) / 20);
     try {
       this.dispatch(cue, t, s, far);
+      const duck = DUCK[cue.id];
+      if (duck) this.core.duck(t, duck[0], duck[1]);
     } catch (err) {
       console.warn('Sound effect failed', cue.id, err);
     } finally {
@@ -440,14 +456,16 @@ export class SoundEffects {
     this.hurt(t + 0.03, s);
   }
 
+  /** A creature falls: after a blow, the blow of the weapon that felled it; after a spell or a shot, whose own sound struck it, only the fall. */
   private kill(t: number, weapon?: WeaponKind): void {
-    this.hit(t, 0.9, false, weapon);
-    this.noise(this.out(rand(-0.2, 0.2), 1), t + 0.09, { type: 'lowpass', freq: 700, to: 200, glide: 0.25, level: 0.18, attack: 0.01, decay: 0.12, brown: true });
+    if (weapon) this.hit(t, 0.9, false, weapon);
+    else this.thump(t + 0.05, 0.25, 120, 42, 0.12);
+    this.noise(this.out(rand(-0.2, 0.2), 1), t + 0.09, { type: 'lowpass', freq: 700, to: 200, glide: 0.25, level: weapon ? 0.18 : 0.3, attack: 0.01, decay: 0.12, brown: true });
     this.arpeggio(t + 0.12, [4, 7], 0.08, 0.05, 'celesta', 1);
   }
 
   private killUnique(t: number, weapon?: WeaponKind): void {
-    this.hit(t, 1, true, weapon);
+    if (weapon) this.hit(t, 1, true, weapon);
     playVoice(this.core, 'gong', this.out(0, 1), t + 0.05, 4, this.key.root - 12, 0.9, { bright: 0.7, sustained: false });
     [0, 0.18, 0.36].forEach((d, i) => playVoice(this.core, 'timpani', this.out(0, 1), t + d, 0.5, this.key.root - 12 + (i === 2 ? 7 : 0), 0.8, { bright: 0.7, sustained: false }));
     this.chord(t + 0.3, [0, 4, 7, 9], 2.2, 0.5, 'strings', 1);
@@ -606,54 +624,60 @@ export class SoundEffects {
 
   /* Magic */
 
-  /** A gathering swell, then the release coloured by the spell's school (the god's, for a prayer). */
+  /** A spell let go, coloured by its school (the god's, for a prayer): an onset at once and a short tail. */
   private cast(t: number, tone: SpellTone = 'arcane'): void {
-    const swell = (freq: number, to: number, level: number, brown = false) =>
-      this.noise(this.out(0, 1), t, { type: brown ? 'lowpass' : 'bandpass', freq, to, glide: 0.35, q: 2, level, attack: 0.3, decay: 0.08, brown });
-    const release = t + 0.33;
+    const out = () => this.out(0, 1);
+    const flare = (freq: number, to: number, level: number, brown = false) =>
+      this.noise(out(), t, { type: brown ? 'lowpass' : 'bandpass', freq, to, glide: 0.12, q: 1.6, level, attack: 0.012, decay: 0.09, brown });
     switch (tone) {
       case 'arcane':
-        swell(400, 3000, 0.08);
-        this.tone(this.out(0, 1), t, { type: 'triangle', freq: 300, to: 900, glide: 0.35, level: 0.05, attack: 0.3, decay: 0.08 });
-        this.arpeggio(release, [7, 11], 0.06, 0.08, 'celesta', 1);
+        flare(900, 4200, 0.35);
+        this.tone(out(), t, { type: 'triangle', freq: 280, to: 1100, glide: 0.12, level: 0.14, attack: 0.01, decay: 0.1 });
+        this.ring(out(), t + 0.02, midiToFrequency(this.midi(7, 2)), 2.01, 0.8, 0.05, 0.25);
+        this.arpeggio(t + 0.03, [7, 11, 14], 0.045, 0.2, 'celesta', 1);
         break;
       case 'fire':
-        swell(300, 2600, 0.12, true);
-        for (let i = 0; i < 4; i++) this.noise(this.out(rand(-0.3, 0.3), 1), release + i * rand(0.02, 0.05), { type: 'highpass', freq: 2500, level: 0.06, decay: 0.008 });
-        this.whoosh(release, 0.25, 500, 1800, 0.12, 0);
+        flare(250, 3200, 0.55, true);
+        this.whoosh(t, 0.2, 400, 2200, 0.35, 0);
+        this.thump(t, 0.25, 70, 40, 0.15);
+        for (let i = 0; i < 6; i++) this.noise(this.out(rand(-0.3, 0.3), 1), t + rand(0.02, 0.3), { type: 'bandpass', freq: rand(1500, 4500), q: 1.5, level: 0.14, decay: 0.008 });
         break;
       case 'frost':
-        swell(3000, 7000, 0.06);
-        this.arpeggio(release, [7, 11, 14], 0.05, 0.08, 'celesta', 2);
+        flare(3500, 8000, 0.12);
+        this.ring(out(), t + 0.01, 3400, 1.5, 0.7, 0.05, 0.3);
+        this.arpeggio(t + 0.02, [7, 11, 14], 0.04, 0.12, 'celesta', 2);
         break;
       case 'storm':
-        swell(600, 3500, 0.08);
-        this.zap(release);
+        this.noise(out(), t, { type: 'highpass', freq: 1800, level: 0.45, decay: 0.014 });
+        this.zap(t + 0.01);
+        this.noise(out(), t + 0.03, { type: 'lowpass', freq: 600, to: 120, glide: 0.4, level: 0.4, decay: 0.22, brown: true });
         break;
       case 'earth':
-        swell(150, 500, 0.14, true);
-        this.thump(release, 0.4, 90, 35, 0.18);
+        this.thump(t, 0.6, 95, 32, 0.2);
+        flare(200, 700, 0.25, true);
         break;
       case 'shadow':
-        swell(200, 900, 0.08, true);
-        this.tone(this.out(0, 1), t, { type: 'sawtooth', freq: 110, to: 82, glide: 0.5, level: 0.04, attack: 0.25, decay: 0.15, detune: 25 });
-        this.arpeggio(release, [0, 1], 0.1, 0.06, 'bell', 0);
+        flare(300, 1100, 0.14, true);
+        this.tone(out(), t, { type: 'sawtooth', freq: 110, to: 73, glide: 0.4, level: 0.08, attack: 0.02, decay: 0.18, detune: 25 });
+        this.arpeggio(t + 0.02, [0, 1], 0.09, 0.12, 'bell', 0);
         break;
       case 'nature':
-        swell(1200, 2200, 0.06);
-        this.arpeggio(release, [0, 4, 7], 0.07, 0.09, 'harp', 1);
+        flare(1200, 2600, 0.1);
+        this.arpeggio(t, [0, 4, 7, 11], 0.05, 0.16, 'harp', 1);
         break;
       case 'holy':
-        swell(800, 2400, 0.05);
-        this.chord(release - 0.1, [0, 4, 7], 0.9, 0.35, 'choir', 1);
-        this.arpeggio(release, [7, 11], 0.08, 0.07, 'bell', 1);
+        flare(900, 3000, 0.18);
+        this.arpeggio(t, [7, 11, 14], 0.06, 0.2, 'bell', 1);
+        this.chord(t, [0, 4, 7], 0.9, 0.5, 'choir', 1);
         break;
       case 'mind':
-        swell(500, 1800, 0.06);
+        flare(500, 2000, 0.3);
         this.warble(t, 7);
+        this.tone(out(), t, { type: 'sine', freq: 600, to: 1400, glide: 0.2, level: 0.24, attack: 0.015, decay: 0.15, detune: 15 });
+        this.tone(out(), t + 0.03, { type: 'sine', freq: 900, to: 2100, glide: 0.2, level: 0.14, attack: 0.015, decay: 0.12, detune: -15 });
         break;
       case 'song':
-        this.arpeggio(t, [0, 2, 4, 7, 9], 0.06, 0.1, 'harp', 1);
+        this.arpeggio(t, [0, 2, 4, 7, 9], 0.05, 0.16, 'harp', 1);
         break;
     }
   }

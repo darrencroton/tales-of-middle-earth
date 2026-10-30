@@ -495,8 +495,19 @@ html.keyboard-open .sheet-layer {
 
 .hud-player .meta {
   display: flex;
-  flex-wrap: wrap;
   gap: 0.2rem 0.7rem;
+  white-space: nowrap;
+}
+
+.hud-player .meta > span {
+  flex: 0 0 auto;
+}
+
+.hud-player .meta .place {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .meta .good,
@@ -509,37 +520,43 @@ html.keyboard-open .sheet-layer {
   color: #e07a6a;
 }
 
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin-top: 0.3rem;
-}
-
-.chips:empty {
-  display: none;
-}
-
-.chip {
-  padding: 0 0.5em;
-  border-radius: 1em;
-  background: #3a1f1a;
-  color: #f0b8a8;
-  font-size: var(--fs-small);
-}
-
+/* The strip of ailments and what is in view keeps one height, full or empty, so the map never changes size. */
 .hud-entities {
+  --strip-height: max(calc(var(--touch) * 0.8), 2.75rem);
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
+  align-items: stretch;
   gap: 0.3rem;
+  flex: 0 0 var(--strip-height);
+  height: var(--strip-height);
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
 }
 
-.hud-entities:empty {
-  display: none;
+.hud-entities > li {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.hud-entities .chip {
+  align-self: center;
+  padding: 0.1em 0.6em;
+  border-radius: 1em;
+  background: #3a1f1a;
+  color: #f0b8a8;
+  font-size: var(--fs-small);
+  white-space: nowrap;
+}
+
+.hud-entities .quiet {
+  align-self: center;
+  padding-left: 0.2rem;
+  color: var(--faint);
+  font-size: var(--fs-small);
+  font-style: italic;
 }
 
 .entity {
@@ -624,6 +641,9 @@ html.keyboard-open .sheet-layer {
 }
 
 .action-label.longer {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: calc(var(--fs-small) * 0.74);
   white-space: normal;
   text-align: center;
@@ -643,10 +663,11 @@ html.keyboard-open .sheet-layer {
   scrollbar-width: none;
 }
 
+/* One height whatever the buttons say (an icon over up to two lines of label), so the map above never changes size. */
 #toolbar .action {
   flex: 1 1 0;
   min-width: 0;
-  min-height: var(--touch);
+  height: max(var(--touch), calc(0.5rem + 2px + var(--fs-large) * 1.1 + 0.05rem + var(--fs-small) * 1.6));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -789,6 +810,7 @@ html.keyboard-open .sheet-layer {
 
   #toolbar .action {
     flex: 1 1 0;
+    height: auto;
     max-height: calc(var(--touch) * 1.5);
     min-height: calc(var(--touch) * 0.9);
   }
@@ -814,8 +836,19 @@ html.keyboard-open .sheet-layer {
 
   #hud .hud-entities {
     flex: 0 1 auto;
+    height: auto;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  #hud .hud-entities .chip,
+  #hud .hud-entities .quiet {
+    align-self: flex-start;
+  }
+
+  #hud .hud-player .meta {
+    flex-wrap: wrap;
+    white-space: normal;
   }
 
   /* In the narrow sidebar, names wrap onto a second line rather than being cut. */
@@ -1176,11 +1209,11 @@ html.keyboard-open .tv-layer.panel {
   transition: transform 150ms ease;
 }
 
-.tv-option.on .switch {
+[role="switch"][aria-checked="true"] .switch {
   background: var(--accent);
 }
 
-.tv-option.on .switch::after {
+[role="switch"][aria-checked="true"] .switch::after {
   transform: translateX(1.2em);
 }
 
@@ -2346,6 +2379,48 @@ html.keyboard-tight .prompt-card.text .card-title {
 
 .birth-card.hero .stat-grid + .stat-grid {
   margin-top: 0.4rem;
+}
+
+/* The run's options under the hero on the last creation screen. */
+.birth-card.run h4:first-child {
+  margin-top: 0;
+}
+
+.run-quests {
+  margin-bottom: 0.5rem;
+}
+
+.run-quests .segmented {
+  margin: 0.2rem 0 0.4rem;
+}
+
+.run-option {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0.55rem 0.2rem;
+  border: 0;
+  border-top: 1px solid var(--panel-border);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.run-option-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.run-option-detail {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  line-height: 1.3;
 }
 
 @media (min-width: 720px), (orientation: landscape) {

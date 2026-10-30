@@ -6,7 +6,7 @@ import type { TerminalBuffer } from '../terminal.ts';
 import { moduleKey, type ModuleChoice, type SaveInfo, type TitleChoice, type TitleScreen } from '../title.ts';
 import { el } from '../ui/dom.ts';
 import { ListNav } from '../ui/listnav.ts';
-import { askText } from '../ui/menus.ts';
+import { askText, segmented } from '../ui/menus.ts';
 import type { Sheets } from '../ui/sheet.ts';
 import { bufferRows } from '../ui/termparse.ts';
 import {
@@ -22,6 +22,7 @@ import {
   type SaveRecord,
 } from './birth.ts';
 import { birthDetails, findBirthEntry, type BirthDetails } from './birthinfo.ts';
+import { DEFAULT_QUESTS, questChoices, questsText, RUN_OPTION_TEXT, type RunOptions } from './runoptions.ts';
 import type { BirthData } from '../render/snapshot.ts';
 
 export interface DirectorDeps {
@@ -53,6 +54,8 @@ const INTRO_SCREEN = /Art thou an adventurer|DarkGod|furiosity|\[Press any key t
 const BIRTH_SCREEN = /Choose a race|Please answer the following/;
 /* The rolled hero, shown after the last birth choice. */
 const HERO_SCREEN = /'r' to reroll|'S' to start over, or ESC to continue/;
+/* The last screen of character creation, where the run is set up. */
+const READY_SCREEN = /'S' to start over, or ESC to continue/;
 
 interface BirthPick {
   step: BirthStep;
@@ -103,6 +106,10 @@ export class Director {
   private returnKey: string | null = null;
   /** Races, modifiers and classes as the engine defines them (read once). */
   private birthData: BirthData | null = null;
+  /** The number of random quests the run has, drawn again each time the last screen shows (tome2's prompt takes one digit). */
+  private quests = DEFAULT_QUESTS;
+  /** The random quests have been drawn for the last screen showing now. */
+  private questsDrawn = false;
 
   constructor(deps: DirectorDeps) {
     this.deps = deps;
@@ -257,6 +264,8 @@ export class Director {
     this.replay = null;
     this.replayed = null;
     this.returnKey = null;
+    this.quests = DEFAULT_QUESTS;
+    this.questsDrawn = false;
     this.hide();
   }
 
@@ -356,7 +365,7 @@ export class Director {
     }
     if (answer(/modify the options\s*\[y\/n\]/, keyCodes('n'))) return;
     if (answer(/Use same character as last time/, keyCodes(this.anew ? 'y' : 'n'))) return;
-    if (answer(/Number of quests\?/, [ENTER])) return;
+    if (answer(/Number of quests\?/, [...keyCodes('0'), ENTER])) return;
     if (answer(/Enter minimum attribute for/, [ENTER])) return;
     if (/Enter your player's name above/.test(screen)) {
       const key = `name:${screen}`;
@@ -365,6 +374,9 @@ export class Director {
       this.deps.send([...keyCodes(this.heroName), ENTER]);
       return;
     }
+    const ready = READY_SCREEN.test(screen);
+    if (ready && !this.questsDrawn) this.questsDrawn = this.deps.engine.setRandomQuests(this.quests);
+    if (!ready) this.questsDrawn = false;
     const current = parseBirthChoice(bufferRows(this.deps.buffer, 0, this.deps.buffer.rows - 1), screen);
     if (current || HERO_SCREEN.test(screen)) this.track(current);
     if (current && this.continueReplay(current)) return;
@@ -463,7 +475,7 @@ export class Director {
       this.showHero('reroll');
       return true;
     }
-    if (/'S' to start over, or ESC to continue/.test(screen)) {
+    if (READY_SCREEN.test(screen)) {
       this.showHero('confirm');
       return true;
     }
@@ -505,7 +517,7 @@ export class Director {
         menu,
       ];
     }
-    if (/'S' to start over, or ESC to continue/.test(screen)) {
+    if (READY_SCREEN.test(screen)) {
       return [
         ...back,
         { id: 'restart', label: 'Start over', icon: '↺', effect: { kind: 'keys', keys: keyCodes('S') } },
@@ -516,11 +528,24 @@ export class Director {
     return [menu];
   }
 
-  handleKey(e: KeyboardEvent): boolean {
+  /** The last creation screen is showing, where any key but S and Q would begin the game in tome2. */
+  get readyShowing(): boolean {
+    return !this.view.hidden && this.phase === 'birth' && READY_SCREEN.test(this.screen());
+  }
+
+  /** Handles a key on the native screens: true when used, 'browser' when it is left to the browser, false for tome2. */
+  handleKey(e: KeyboardEvent): boolean | 'browser' {
     if (this.view.hidden) return false;
     const back = e.key === 'Backspace' || (e.key === 'Escape' && this.choice);
     if (back && this.phase === 'birth' && this.picks.length && !this.replay) {
       this.back();
+      return true;
+    }
+    /* On the last screen arrows and Enter move through the run, Escape begins, and other keys do nothing. */
+    if (this.readyShowing) {
+      if (e.key === 'Escape') return false;
+      if (e.key === 'Tab' || e.ctrlKey || e.metaKey || e.altKey || /^F\d{1,2}$/.test(e.key)) return 'browser';
+      this.nav.handleKey(e);
       return true;
     }
     if (!this.choice) return false;
@@ -660,7 +685,9 @@ export class Director {
       const m = new RegExp(`${escaped}\\s*:\\s*(\\S+(?: \\S+)?)`).exec(screen);
       return { label, value: m?.[1] ?? '' };
     });
-    const key = JSON.stringify([kind, stats, ratings, field('Race'), field('Class')]);
+    const run = kind === 'confirm' ? this.deps.engine.runOptions() : null;
+    const key = JSON.stringify([kind, stats, ratings, field('Race'), field('Class'), run, this.quests]);
+    const arriving = !this.renderedKey.startsWith('hero:');
     this.show(
       `hero:${key}`,
       () => {
@@ -704,15 +731,60 @@ export class Director {
             'muted',
             kind === 'reroll'
               ? 'Reroll for different attributes, or accept them.'
-              : 'Begin your adventure, or start over.',
+              : 'Set up your adventure below, then begin, or start over.',
           ),
         );
         const body = el('div', 'birth-body single');
         body.append(card);
+        if (run) body.append(this.runCard(run));
+        requestAnimationFrame(() => (arriving ? this.nav.setActive(-1) : this.nav.refresh()));
         return [header, body];
       },
       'birth hero',
     );
+  }
+
+  /** The run's options under the hero about to begin: random quests and tome2's birth options, set as they are tapped. */
+  private runCard(run: RunOptions): HTMLElement {
+    const card = el('article', 'birth-card run');
+    card.append(el('h3', undefined, 'Your adventure'));
+    const unusual = run.options.some((o) => o.name === 'unusualRooms' && o.on);
+    const quests = el('section', 'run-quests');
+    quests.append(el('h4', undefined, 'Random quests'));
+    if (unusual) {
+      quests.append(el('p', 'muted', RUN_OPTION_TEXT.unusualRooms.detail));
+    } else {
+      const choices = questChoices(run.maxQuests).map((n) => [String(n), n === 0 ? 'None' : String(n)] as [string, string]);
+      quests.append(
+        segmented('Random quests', choices, String(this.quests), (value) => {
+          this.quests = Number(value);
+          this.deps.engine.setRandomQuests(this.quests);
+          this.deps.requestRefresh();
+        }),
+        el('p', 'muted', questsText(this.quests)),
+      );
+    }
+    card.append(quests);
+    run.options.forEach((option, index) => {
+      const text = RUN_OPTION_TEXT[option.name];
+      if (!text) return;
+      const row = el('button', 'run-option');
+      row.type = 'button';
+      row.dataset.nav = '';
+      row.setAttribute('role', 'switch');
+      row.setAttribute('aria-checked', String(!!option.on));
+      const words = el('span', 'run-option-text');
+      words.append(el('span', 'run-option-label', text.label), el('span', 'run-option-detail', text.detail));
+      row.append(words, el('span', 'switch'));
+      row.addEventListener('click', () => {
+        const on = !!this.deps.engine.runOptions()?.options[index]?.on;
+        this.deps.engine.setRunOption(index, !on);
+        if (option.name === 'unusualRooms' && on) this.deps.engine.setRandomQuests(this.quests);
+        this.deps.requestRefresh();
+      });
+      card.append(row);
+    });
+    return card;
   }
 }
 

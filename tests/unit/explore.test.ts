@@ -54,11 +54,13 @@ describe('explore target', () => {
     assert.deepEqual(frontier(snap), { x: 5, y: 1, kind: 'frontier' });
   });
 
-  it('collects items only for a hero who picks things up, and skips visited places', () => {
+  it('collects only the items the plan names (all, or just money), and skips visited places', () => {
     const snap = level(['#######', '#@.$..?', '#######']);
     assert.deepEqual(frontier(snap), { x: 5, y: 1, kind: 'frontier' });
-    assert.deepEqual(frontier(snap, { collectItems: true }), { x: 3, y: 1, kind: 'item' });
-    assert.deepEqual(frontier(snap, { collectItems: true, skip: new Set([1 * 7 + 3]) }), { x: 5, y: 1, kind: 'frontier' });
+    assert.deepEqual(frontier(snap, { collect: (i) => i === 1 * 7 + 3 }), { x: 3, y: 1, kind: 'item' });
+    assert.deepEqual(frontier(snap, { collect: (i) => i === 1 * 7 + 4 }), { x: 5, y: 1, kind: 'frontier' });
+    assert.deepEqual(frontier(snap, { collect: () => true }), { x: 3, y: 1, kind: 'item' });
+    assert.deepEqual(frontier(snap, { collect: () => true, skip: new Set([1 * 7 + 3]) }), { x: 5, y: 1, kind: 'frontier' });
   });
 
   it('reports nothing when everything reachable is known', () => {
@@ -118,7 +120,7 @@ describe('explore', () => {
 
   it('walks over items to collect them without stopping', () => {
     const snap = level(['######', '#@$..?', '######']);
-    const explore = new Explore(plan(-1, { collectItems: true }));
+    const explore = new Explore(plan(-1, { collect: () => true }));
     const ctx = (px: number, floorObjects: number) => ({ snap: { ...snap, px, atCommand: true, icky: false, floorObjects }, materials, monsters: [], hp: 10 });
     assert.equal(explore.step(ctx(1, 0)).kind, 'keys');
     assert.equal(explore.step(ctx(2, 1)).kind, 'keys');

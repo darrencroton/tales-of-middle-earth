@@ -41,7 +41,8 @@ export function openMenu(sheets: Sheets, title: string, items: MenuItem[], subti
   sheets.open({ title, subtitle, body: list, kind: 'menu' });
 }
 
-function segmented<T extends string>(
+/** A row of mutually exclusive buttons, the current one selected; `onChange` gets the value tapped. */
+export function segmented<T extends string>(
   name: string,
   options: [T, string][],
   current: T,
@@ -123,7 +124,7 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
     section(
       'Exploring',
       segmented<ExplorePace>('Exploring', [['normal', 'Normal'], ['relaxed', 'Relaxed']], current.explorePace, (explorePace) => update({ explorePace })),
-      el('p', 'muted', 'How fast Explore and travel walk. Relaxed takes its time, to watch the way unfold; the pace button on the toolbar switches it while exploring.'),
+      el('p', 'muted', 'How fast Explore and travel walk. Relaxed takes its time, to watch the way unfold; Speed on the toolbar switches it while exploring.'),
     ),
   );
   body.append(

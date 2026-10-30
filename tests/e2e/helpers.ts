@@ -16,16 +16,32 @@ export async function waitForEngine(page: Page): Promise<void> {
 
 export async function waitForScreen(page: Page, pattern: RegExp, timeout = 30_000): Promise<string> {
   let last = '';
-  await expect
-    .poll(
-      async () => {
-        last = await screenText(page);
-        return pattern.test(last);
-      },
-      { timeout, message: `screen never matched ${pattern}` },
-    )
-    .toBe(true);
+  try {
+    await expect
+      .poll(
+        async () => {
+          last = await screenText(page);
+          return pattern.test(last);
+        },
+        { timeout },
+      )
+      .toBe(true);
+  } catch {
+    throw new Error(`screen never matched ${pattern}\n${await whatShows(page, last)}`);
+  }
   return last;
+}
+
+/** What the player sees, for a failure message: tome2's top rows, any toast, and the pop-up open. */
+async function whatShows(page: Page, screen: string): Promise<string> {
+  const seen = await page.evaluate(() => ({
+    mode: window.__tome?.mode() ?? '',
+    toast: document.querySelector('#toast')?.textContent ?? '',
+    sheet: document.querySelector('.sheet-layer:not([hidden]) .sheet-title')?.textContent ?? '',
+    card: document.querySelector('.prompt-card:not([hidden])')?.textContent?.slice(0, 120) ?? '',
+  }));
+  const rows = screen.split('\n').slice(0, 3).map((r) => r.trimEnd()).join('\n');
+  return `mode: ${seen.mode}; toast: ${seen.toast || '-'}; pop-up: ${seen.sheet || '-'}; card: ${seen.card || '-'}\nscreen:\n${rows}`;
 }
 
 /** Waits until the screen differs from `before` and then stays unchanged briefly. */
@@ -78,13 +94,22 @@ export async function beginNewCharacter(page: Page, name: string): Promise<void>
  * Creates a character through the native screens with default choices
  * until the town map is shown. Answers yes to tome2 questions (wizard mode).
  */
-export async function createCharacter(page: Page, name: string, picks: { race?: string; cls?: string } = {}): Promise<void> {
+export async function createCharacter(
+  page: Page,
+  name: string,
+  picks: { race?: string; cls?: string; beforeBegin?: () => Promise<void> } = {},
+): Promise<void> {
   await beginNewCharacter(page, name);
   await page.waitForTimeout(400);
   await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
   await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
 
+  let readied = false;
   for (let i = 0; i < 60 && !(await inDungeon(page)); i++) {
+    if (picks.beforeBegin && !readied && (await page.locator('#toolbar [data-action="begin"]').isVisible())) {
+      readied = true;
+      await picks.beforeBegin();
+    }
     const heading = (await page.locator('.director .birth-header h2').textContent().catch(() => '')) ?? '';
     const pick = /your race/.test(heading) ? picks.race : /your class/.test(heading) ? picks.cls : undefined;
     if (pick && (await page.locator('.director .birth-option.current').textContent()) !== pick) {
@@ -183,6 +208,59 @@ export async function jumpToLevel(page: Page, level: number): Promise<void> {
   await waitForSettle(page, text, 5_000);
   await dismissMore(page);
   await waitAtCommand(page);
+}
+
+/** Uses tome2's wizard commands (page loaded with ?wizard) to summon a creature (by r_info index, asleep) beside the hero. */
+export async function summonBeside(page: Page, raceIndex: number): Promise<void> {
+  const rowZero = async () => (await screenText(page)).split('\n')[0] ?? '';
+  let text = await screenText(page);
+  await sendText(page, `0${raceIndex}\u0001`);
+  text = await waitForSettle(page, text, 5_000);
+  for (let i = 0; i < 10 && !/Debug Command/.test(await rowZero()); i++) {
+    await sendText(page, /\[y\/n\]/.test(await rowZero()) ? 'y' : ' ');
+    text = await waitForSettle(page, text, 5_000);
+  }
+  await sendText(page, 'n');
+  await waitForSettle(page, text, 5_000);
+  await dismissMore(page);
+  await waitAtCommand(page);
+}
+
+/**
+ * Casts a spell from the Magic sheet until tome2 asks where to aim it: a
+ * new caster often fails to get a spell off, and tome2 says so before it
+ * would ask. `failed` runs after each failure, back at the command prompt.
+ */
+export async function castUntilAimed(page: Page, spell: string, failed?: () => Promise<void>): Promise<void> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const total = await page.evaluate(() => window.__tome!.engine.gameState()?.messageTotal ?? 0);
+    await page.locator('#toolbar [data-action="commands"]').click();
+    await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
+    await expect(page.locator('.sheet-title')).toHaveText('Magic');
+    await page.locator('.sheet .spell-row', { hasText: spell }).click();
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+    let outcome = '';
+    await expect
+      .poll(
+        async () => {
+          outcome = await page.evaluate((before) => {
+            const tome = window.__tome!;
+            if (/^Direction/.test(tome.screenText())) return 'aimed';
+            const state = tome.engine.gameState();
+            const fresh = (state?.messages ?? []).slice(0, Math.max(0, (state?.messageTotal ?? 0) - before));
+            return fresh.some((m) => /You failed to get the spell off/.test(m.text)) ? 'failed' : '';
+          }, total);
+          return outcome;
+        },
+        { timeout: 30_000, message: `${spell} was neither aimed nor failed` },
+      )
+      .not.toBe('');
+    if (outcome === 'aimed') return;
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await failed?.();
+  }
+  throw new Error(`${spell} failed six times in a row`);
 }
 
 /** Takes the toolbar's gear suggestions (wield, light) until none is left. */

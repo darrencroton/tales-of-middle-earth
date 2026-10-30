@@ -83,6 +83,7 @@ void web_scratch_term_end();
 
 /* Map memory (engine/memory.cc). */
 void web_memory_tick();
+void web_run_options_tick();
 
 namespace {
 
@@ -113,10 +114,11 @@ enum HeaderSlot {
 	H_AT_COMMAND,
 	H_TURN,
 	H_FLOOR_OBJECTS,
+	H_HERO_ACTING,
 	H_COUNT
 };
 
-constexpr int32_t SNAPSHOT_VERSION = 2;
+constexpr int32_t SNAPSHOT_VERSION = 3;
 
 enum Layer : uint8_t {
 	LAYER_UNKNOWN = 0,
@@ -152,6 +154,8 @@ bool level_ready()
 
 /* -1 leaves tome2's auto_more option alone; 0 or 1 overrides it on every snapshot. */
 int auto_more_override = -1;
+/* -1 leaves tome2's delay_factor alone; 0..9 overrides it on every snapshot. */
+int delay_override = -1;
 
 int32_t header[H_COUNT];
 std::vector<uint8_t> feat_buf(MAX_HGT * MAX_WID);
@@ -532,6 +536,17 @@ EMSCRIPTEN_KEEPALIVE void web_set_auto_more(int on)
 	if (auto_more_override >= 0 && options) options->auto_more = auto_more_override != 0;
 }
 
+/*
+ * How long tome2 shows each step of a bolt or blast (its delay_factor: the
+ * cube, in ms), so they are drawn and heard. Applied on every snapshot, so
+ * loading a savefile cannot undo it.
+ */
+EMSCRIPTEN_KEEPALIVE void web_set_effect_delay(int factor)
+{
+	delay_override = factor < 0 ? -1 : std::min(factor, 9);
+	if (delay_override >= 0 && options) options->delay_factor = delay_override;
+}
+
 EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 {
 	auto const &f_info = game->edit_data.f_info;
@@ -539,7 +554,9 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	bool const ready = level_ready();
 
 	if (auto_more_override >= 0 && options) options->auto_more = auto_more_override != 0;
+	if (delay_override >= 0 && options) options->delay_factor = delay_override;
 	web_memory_tick();
+	web_run_options_tick();
 
 	header[H_VERSION] = SNAPSHOT_VERSION;
 	header[H_IN_DUNGEON] = ready ? 1 : 0;
@@ -553,6 +570,8 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	header[H_PTR_LAYER] = ptr(layer_buf.data());
 	header[H_PTR_EFFECT] = ptr(effect_buf.data());
 	header[H_AT_COMMAND] = (inkey_flag && !character_icky) ? 1 : 0;
+	/* The hero's own command is under way (tome2 takes its energy once it is done). */
+	header[H_HERO_ACTING] = (character_generated && p_ptr->energy >= 100 && !inkey_flag) ? 1 : 0;
 	header[H_TURN] = static_cast<int32_t>(turn);
 	header[H_FLOOR_OBJECTS] = 0;
 
@@ -753,6 +772,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 		json_str(json, "name", name);
 		json_int(json, "ch", static_cast<unsigned char>(object_char(o_ptr)));
 		json_int(json, "attr", object_attr(o_ptr));
+		json_int(json, "gold", o_ptr->tval == TV_GOLD ? 1 : 0);
 		json_int(json, "y", o_ptr->iy);
 		json_int(json, "x", o_ptr->ix, false);
 		json += '}';

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
+  castUntilAimed,
   createCharacter,
   dismissMore,
   equipSuggested,
@@ -318,9 +319,10 @@ test('spells are cast from the Magic sheet, and recent ones are offered first', 
   };
   await openMagic();
   await expect(page.locator('.sheet .recent-button')).toHaveCount(0);
-  await page.locator('.sheet .spell-row', { hasText: 'Manathrust' }).click();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
-  await waitForScreen(page, /^Direction/);
+  await castUntilAimed(page, 'Manathrust');
   await page.keyboard.press('Escape');
   await dismissMore(page);
   await waitAtCommand(page);
@@ -506,6 +508,62 @@ test('explore reveals the level after the suggested weapon and light are equippe
     await pressExplore(page);
   }
   expect(await known()).toBeGreaterThan(before);
+});
+
+test('a tap that opens a pop-up leaves it open, and a press let go beside a button does nothing', async ({ page }) => {
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Tapper');
+
+  /* The click a browser sends after a touch would land on what the tap opened under the finger. */
+  for (const selector of ['#toolbar [data-action="menu"]', '#toolbar [data-action="inventory"]', '#hud .hud-player']) {
+    await page.locator(selector).tap();
+    await expect(page.locator('.sheet-layer')).toBeVisible();
+    await page.waitForTimeout(600);
+    await expect(page.locator('.sheet-layer'), selector).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+  }
+
+  /* A press let go beside the button, over its neighbour, does nothing. */
+  const items = (await page.locator('#toolbar [data-action="inventory"]').boundingBox())!;
+  await page.mouse.move(items.x + items.width - 2, items.y + items.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(items.x + items.width + 8, items.y + items.height / 2);
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+});
+
+test('while exploring, Speed switches the pace without stopping and Stop stops', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Pacer');
+  await jumpToLevel(page, 2);
+  await equipSuggested(page);
+
+  const travelling = () => page.evaluate(() => window.__tome!.travelling());
+  const pace = () => page.evaluate(() => window.__tome!.settings().explorePace);
+  let started = false;
+  for (let i = 0; i < 8 && !started; i++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    const explore = page.locator('#toolbar [data-action="explore"]');
+    if (!(await explore.count())) break;
+    await explore.tap();
+    started = await travelling();
+  }
+  test.skip(!started, 'exploring stopped at once each time');
+
+  await expect(page.locator('#toolbar button')).toHaveText([/Stop/, /Speed/, /Menu/]);
+  const before = await pace();
+  await page.locator('#toolbar [data-action="pace"]').tap();
+  expect(await pace()).not.toBe(before);
+  if (await travelling()) {
+    await page.locator('#toolbar [data-action="stop"]').tap();
+    expect(await travelling()).toBe(false);
+  }
 });
 
 test('a tap on unseen ground takes one step towards it', async ({ page }) => {

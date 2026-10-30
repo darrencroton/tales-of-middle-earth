@@ -23,8 +23,8 @@ export interface ExplorePlan {
   heading?: 'down' | 'up';
   /** Where exploring began: the map fills outwards from here. */
   anchor?: Point | null;
-  /** Walk over items not yet stood on (the hero picks things up as they go). */
-  collectItems?: boolean;
+  /** Items worth walking over, by cell: everything for a hero who picks things up as they go, money for everyone. */
+  collect?(index: number): boolean;
   /** Places that could not be reached during this exploration (a creature or a stuck door in the way). */
   avoid?: ReadonlySet<number>;
 }
@@ -122,7 +122,7 @@ export function nextStop(snap: LevelSnapshot, materials: readonly Material[], pl
   let bestAway = 0;
   for (let i = 0; i < depth.length; i++) {
     if (depth[i] <= 0 || plan.skip.has(i) || plan.avoid?.has(i)) continue;
-    const item = !!plan.collectItems && hasItem(snap, i);
+    const item = hasItem(snap, i) && !!plan.collect?.(i);
     if (!item && !isFrontier(snap, materials, i)) continue;
     const away = anchorGap < 0 ? 0 : Math.min(ANCHOR_REACH, fromAnchor[i] >= 0 ? fromAnchor[i] : depth[i] + anchorGap);
     const score = depth[i] + ANCHOR_WEIGHT * away - (item ? ITEM_GREED : 0);
@@ -154,7 +154,8 @@ export function nextStop(snap: LevelSnapshot, materials: readonly Material[], pl
 /**
  * Explores the level one step at a time, from one edge of unexplored space
  * to the next (see `nextStop`), collecting items on the way when the hero
- * picks things up, and choosing again as soon as its goal has been seen.
+ * picks things up (and money whatever they pick up), and choosing again as
+ * soon as its goal has been seen.
  * It stops as travel does (a creature, being hurt), and once the level is
  * explored it goes to the way on. Places reached, and those behind a door
  * that will not open, join the level's skip set; other places it could not

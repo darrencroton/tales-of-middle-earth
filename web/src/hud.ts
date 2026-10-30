@@ -1,6 +1,7 @@
 import type { Place } from './audio/places.ts';
 import { readableColour } from './render/colour.ts';
 import { bar, el, fraction } from './ui/dom.ts';
+import { onTap } from './ui/tap.ts';
 import { isAlly, isHostile, type GameState, type MessageState, type MonsterState, type ObjectState, type PlayerState } from './render/snapshot.ts';
 
 export interface TextSegment {
@@ -116,6 +117,9 @@ export class Hud {
   private readonly seenAt = new Map<string, number>();
   private health: { name: string; fill: number } | null = null;
   private trail: { from: number; at: number } | null = null;
+  /** The creatures and items in view as they are now, by id, for a tap on their chips. */
+  private monsters = new Map<number, MonsterState>();
+  private objects = new Map<number, ObjectState>();
 
   constructor(root: HTMLElement, messagesEl: HTMLElement, palette: () => readonly string[], callbacks: HudCallbacks) {
     this.root = root;
@@ -126,6 +130,7 @@ export class Hud {
       if ((e.target as HTMLElement).closest('.more')) this.callbacks.onMore();
       else this.callbacks.onHistory();
     });
+    onTap(root, 'button[data-hud]', (button) => this.tapped(button));
   }
 
   /** Forgets the last hero, for a new game in the same page. */
@@ -136,6 +141,8 @@ export class Hud {
     this.seenAt.clear();
     this.health = null;
     this.trail = null;
+    this.monsters.clear();
+    this.objects.clear();
     this.root.replaceChildren();
     this.messagesEl.replaceChildren();
   }
@@ -145,18 +152,56 @@ export class Hud {
     this.turn++;
   }
 
+  /** A HUD button was tapped: the hero, the skill points, or a creature or item (as it is now). */
+  private tapped(button: HTMLElement): void {
+    const id = Number(button.dataset.id);
+    switch (button.dataset.hud) {
+      case 'player':
+        return this.callbacks.onPlayer();
+      case 'skills':
+        return this.callbacks.onSkills();
+      case 'monster': {
+        const monster = this.monsters.get(id);
+        if (monster) this.callbacks.onEntity({ kind: 'monster', monster });
+        return;
+      }
+      case 'object': {
+        const object = this.objects.get(id);
+        if (object) this.callbacks.onEntity({ kind: 'object', object });
+        return;
+      }
+    }
+  }
+
+  /**
+   * Shows the hero and, in a strip of its own, their ailments and what is in
+   * view. The strip keeps its height whether or not anything is in it, so the
+   * map never changes size; the HUD is only redrawn when what it shows changes.
+   */
   update(state: GameState, py: number, px: number): void {
     if (!state.ready || !state.player) return;
-    const key = JSON.stringify([state.player, state.monsters, state.objects, py, px]);
+    const p = state.player;
+    this.monsters = new Map((state.monsters ?? []).map((m) => [m.id, m]));
+    this.objects = new Map((state.objects ?? []).map((o) => [o.id, o]));
+    const hallucinating = (p.status.hallucinating ?? 0) > 0;
+    const monsters = sortByDistance(hallucinating ? (state.monsters ?? []).map(disguiseMonster) : (state.monsters ?? []), px, py);
+    const objects = sortByDistance(hallucinating ? (state.objects ?? []).map(disguiseObject) : (state.objects ?? []), px, py);
+    const statuses = statusLabels(p);
+    const key = JSON.stringify([
+      [p.name, p.race, p.cls, p.lev, p.chp, p.mhp, p.csp, p.msp, p.csane, p.msane, depthLabel(p), p.au, p.speed, p.skillPoints ?? 0],
+      statuses,
+      monsters.map((m) => [m.id, m.name, m.ch, m.attr, m.hp, m.maxhp, m.asleep, m.afraid, m.unique, m.status]),
+      objects.map((o) => [o.id, o.name, o.ch, o.attr]),
+    ]);
     if (key === this.lastStateKey) return;
     this.lastStateKey = key;
 
-    const p = state.player;
     const palette = this.palette();
     const player = el('button', 'hud-player');
     player.type = 'button';
+    player.dataset.hud = 'player';
+    player.dataset.tap = 'player';
     player.setAttribute('aria-label', `${p.name}: character sheet`);
-    player.addEventListener('click', () => this.callbacks.onPlayer());
     const who = el('div', 'who');
     who.append(el('span', 'name', p.name), el('span', 'sub', `${p.race} ${p.cls} · Lv ${p.lev}`));
     const bars = el('div', 'bars');
@@ -164,30 +209,26 @@ export class Hud {
     if (p.msp > 0) bars.append(bar('sp', 'Mana', p.csp, p.msp));
     if (p.msane > 0) bars.append(bar('sn', 'Sanity', p.csane, p.msane));
     const meta = el('div', 'meta');
-    meta.append(el('span', undefined, depthLabel(p)), el('span', undefined, `${p.au} AU`));
+    meta.append(el('span', 'place', depthLabel(p)), el('span', undefined, `${p.au} AU`));
     if (p.speed !== 0) meta.append(el('span', p.speed > 0 ? 'good' : 'bad', `Speed ${p.speed > 0 ? '+' : ''}${p.speed}`));
-    const chips = el('div', 'chips');
-    for (const label of statusLabels(p)) chips.append(el('span', 'chip', label));
-    player.append(who, bars, meta, chips);
+    player.append(who, bars, meta);
 
-    const list = el('ul', 'hud-entities');
+    const strip = el('ul', 'hud-entities');
+    for (const label of statuses) strip.append(el('li', 'chip', label));
     if ((p.skillPoints ?? 0) > 0) {
       const item = el('li');
       const button = el('button', 'entity skills', `${p.skillPoints} skill point${p.skillPoints === 1 ? '' : 's'} to spend`);
       button.type = 'button';
-      button.addEventListener('click', () => this.callbacks.onSkills());
+      button.dataset.hud = 'skills';
+      button.dataset.tap = 'skills';
       item.append(button);
-      list.append(item);
+      strip.append(item);
     }
-    const hallucinating = (p.status.hallucinating ?? 0) > 0;
-    const monsters = hallucinating ? (state.monsters ?? []).map(disguiseMonster) : (state.monsters ?? []);
-    const objects = hallucinating ? (state.objects ?? []).map(disguiseObject) : (state.objects ?? []);
-    const real = new Map((state.monsters ?? []).map((m) => [m.id, m]));
-    const realObjects = new Map((state.objects ?? []).map((o) => [o.id, o]));
-    for (const m of sortByDistance(monsters, px, py)) list.append(this.monsterItem(m, real.get(m.id) ?? m, palette));
-    for (const o of sortByDistance(objects, px, py)) list.append(this.objectItem(o, realObjects.get(o.id) ?? o, palette));
+    for (const m of monsters) strip.append(this.monsterItem(m, palette));
+    for (const o of objects) strip.append(this.objectItem(o, palette));
+    if (!strip.childElementCount) strip.append(el('li', 'quiet', 'All quiet'));
 
-    this.root.replaceChildren(player, list, ...(this.messagesEl.parentElement === this.root ? [this.messagesEl] : []));
+    this.root.replaceChildren(player, strip, ...(this.messagesEl.parentElement === this.root ? [this.messagesEl] : []));
   }
 
   /** The health bar, with a pale band over health lost in the last moment. */
@@ -218,16 +259,18 @@ export class Hud {
     return g;
   }
 
-  private entityButton(entity: HudEntity): HTMLButtonElement {
+  private entityButton(kind: HudEntity['kind'], id: number): HTMLButtonElement {
     const button = el('button', 'entity');
     button.type = 'button';
-    button.addEventListener('click', () => this.callbacks.onEntity(entity));
+    button.dataset.hud = kind;
+    button.dataset.id = String(id);
+    button.dataset.tap = `${kind}:${id}`;
     return button;
   }
 
-  private monsterItem(m: MonsterState, real: MonsterState, palette: readonly string[]): HTMLElement {
+  private monsterItem(m: MonsterState, palette: readonly string[]): HTMLElement {
     const item = el('li');
-    const button = this.entityButton({ kind: 'monster', monster: real });
+    const button = this.entityButton('monster', m.id);
     const friendly = isAlly(m);
     const neutral = !friendly && !isHostile(m);
     button.classList.add(friendly ? 'ally' : neutral ? 'neutral' : 'foe');
@@ -245,9 +288,9 @@ export class Hud {
     return item;
   }
 
-  private objectItem(o: ObjectState, real: ObjectState, palette: readonly string[]): HTMLElement {
+  private objectItem(o: ObjectState, palette: readonly string[]): HTMLElement {
     const item = el('li');
-    const button = this.entityButton({ kind: 'object', object: real });
+    const button = this.entityButton('object', o.id);
     button.classList.add('item');
     const text = el('span', 'entity-text');
     text.append(el('span', 'label', o.name));

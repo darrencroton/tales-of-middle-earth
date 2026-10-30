@@ -13,6 +13,7 @@ import {
   type SkillTable,
   type SpellState,
 } from './render/snapshot.ts';
+import type { RunOptions } from './flow/runoptions.ts';
 import type { ScreenCopy, TerminalBuffer } from './terminal.ts';
 import { syncToStorage, type EmscriptenFS } from './saves.ts';
 
@@ -50,6 +51,10 @@ interface EmscriptenModule {
   _web_monster_desc(index: number): number;
   _web_character_json(): number;
   _web_set_auto_more(on: number): void;
+  _web_set_effect_delay(factor: number): void;
+  _web_run_options_json(): number;
+  _web_set_run_option(index: number, on: number): number;
+  _web_set_random_quests(count: number): number;
   _web_place_json(): number;
   _web_scores_json(): number;
   _web_birth_json(): number;
@@ -163,6 +168,26 @@ export class Engine {
     return json && Array.isArray(json.races) ? json : null;
   }
 
+  /** The run's birth options and random quests, while a character is being created. */
+  runOptions(): RunOptions | null {
+    const json = this.callJson<RunOptions>((mod) => mod._web_run_options_json());
+    return json && Array.isArray(json.options) ? json : null;
+  }
+
+  /** Turns a birth option (by its place in `runOptions`) on or off; false once the game has begun. */
+  setRunOption(index: number, on: boolean): boolean {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return false;
+    return mod._web_set_run_option(index, on ? 1 : 0) !== 0;
+  }
+
+  /** Draws the random quests again, this many; false once the game has begun. */
+  setRandomQuests(count: number): boolean {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return false;
+    return mod._web_set_random_quests(count) !== 0;
+  }
+
   /** Spells in the books carried, and the skills that can be used. */
   spells(): SpellState | null {
     const json = this.callJson<SpellState>((mod) => mod._web_spells_json());
@@ -241,6 +266,13 @@ export class Engine {
     const mod = this.module;
     if (!mod || this.state !== 'running') return;
     mod._web_set_auto_more(on ? 1 : 0);
+  }
+
+  /** How long each step of a bolt or blast is shown (tome2's delay_factor, 0..9: the cube in ms); 0 draws none. */
+  setEffectDelay(factor: number): void {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return;
+    mod._web_set_effect_delay(factor);
   }
 
   /** Keeps dungeon levels as the hero left them, or makes them anew on each visit (and forgets kept ones). */
