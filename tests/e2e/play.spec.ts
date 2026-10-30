@@ -181,7 +181,7 @@ test('tome2 menus show as tappable lists with a movable highlight', async ({ pag
   await dismissMore(page);
   await waitAtCommand(page);
 
-  await page.keyboard.press('?');
+  await page.keyboard.press('=');
   await expect.poll(() => viewMode(page)).toBe('overlay');
   await expect(page.locator('.termview .tv-close')).toBeVisible();
   const outside = await page.evaluate(() => {
