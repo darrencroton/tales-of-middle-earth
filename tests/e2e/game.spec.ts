@@ -418,7 +418,7 @@ test('the world map is entered from the commands and left from the toolbar', asy
   await expect(page.locator('#toolbar [data-action="inventory"]')).toBeVisible();
 });
 
-test('saved heroes: Continue plays the last, Adventurers lists them all, Abandon and Delete remove only that hero', async ({ page }) => {
+test('saved heroes: Continue plays the last, the Roster lists them all, Abandon and Delete remove only that hero', async ({ page }) => {
   test.setTimeout(300_000);
   const quit = async () => {
     await page.locator('#toolbar [data-action="menu"]').click();
@@ -454,7 +454,7 @@ test('saved heroes: Continue plays the last, Adventurers lists them all, Abandon
   const choices = page.locator('#title-screen .title-choice');
   await expect(choices.first()).toContainText('Continue as Young Sib');
   await expect(choices.first().locator('.title-choice-detail')).toContainText(/^Level 1 /);
-  await choices.filter({ hasText: 'Adventurers' }).click();
+  await choices.filter({ hasText: 'Roster' }).click();
   await expect(page.locator('.adventurer-row')).toHaveText([/Young Sib/, /Elder/]);
   await page.locator('.adventurer-row', { hasText: 'Elder' }).click();
   await expect(page.locator('.sheet-adventurer .sheet-title')).toHaveText('Elder');
@@ -471,12 +471,12 @@ test('saved heroes: Continue plays the last, Adventurers lists them all, Abandon
   await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
   await waitForEngine(page);
   await expect(choices.first()).toContainText('Continue as Elder');
-  await expect(choices.filter({ hasText: 'Adventurers' })).toContainText('1 saved hero');
+  await expect(choices.filter({ hasText: 'Roster' })).toContainText('1 saved hero');
   let files = await savedFiles();
   expect(files).toContain('Elder');
   expect(files.filter((f) => f.startsWith('Young_Sib'))).toEqual([]);
 
-  await choices.filter({ hasText: 'Adventurers' }).click();
+  await choices.filter({ hasText: 'Roster' }).click();
   await expect(page.locator('.adventurer-row')).toHaveCount(1);
   await page.locator('.adventurer-row', { hasText: 'Elder' }).click();
   await page.locator('.sheet-adventurer [data-action="delete"]').click();

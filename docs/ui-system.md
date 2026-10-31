@@ -61,8 +61,8 @@ Other buildings ─────────────── native panel: thei
 Death ──────────────────────── death card → end-of-game summary (full screen) → Hall of Fame (full screen)
                                 └── Fallen hero     panel, tabs Hero · Gear · Skills · Last moments
                                     └── Item / foe  card
-Title ──────────────────────── Continue as (last hero, straight into the game) · Adventurers · New character
-                                ├── Adventurers ─── panel, every saved hero
+Title ──────────────────────── Continue as (last hero, straight into the game) · Roster · New character
+                                ├── Roster ──────── panel, every saved hero
                                 │   └── a hero ──── card: where, last played, tale; Play · Delete (→ confirmation)
                                 Help (panel) · Settings (panel) · Backup (menu: Export · Import game data)
                                 · Soundtrack (panel) · Hall of Fame (panel → Fallen hero)
@@ -197,7 +197,7 @@ No key hints anywhere.
 | Map → creature chip → close | Tall pop-up | Card the size of the recall |
 | Menu → Saved games → Export | Two rows in Menu | On the title only, as Backup → Export game data: a backup of everything, not a way to save |
 | Shop → item | Paged tome2 list; a tap on an item could buy it, and a tap on a row of tome2's item prompt opened the wrong card (*Take 1* while storing) | Whole stock in one list; a tap opens the item's card; Buy (or Sell, Store, Take) with how many is the only way to trade |
-| Title with many heroes | A Continue row per hero | Continue as the last hero goes straight into the game; every hero in the Adventurers panel, each a card with Play and Delete |
+| Title with many heroes | A Continue row per hero | Continue as the last hero goes straight into the game; every hero in the Roster panel, each a card with Play and Delete |
 
 ## 7. Validation
 
