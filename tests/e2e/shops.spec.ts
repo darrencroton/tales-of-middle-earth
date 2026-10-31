@@ -96,10 +96,13 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
   await quest.click();
   await expect(page.locator('.sheet-service')).toContainText('Thieves!');
   await page.locator('.sheet-service .sheet-action.primary').click();
-  await quest.click();
-  await expect(page.locator('.sheet-service')).toContainText('You have not completed your current quest yet!');
-  await expect(page.locator('.sheet-service')).not.toContainText('CTRL');
-  await page.locator('.sheet-service .sheet-action.primary').click();
+  for (let i = 0; i < 2; i++) {
+    /* The same answer again is shown again. */
+    await quest.click();
+    await expect(page.locator('.sheet-service')).toContainText('You have not completed your current quest yet!');
+    await expect(page.locator('.sheet-service')).not.toContainText('CTRL');
+    await page.locator('.sheet-service .sheet-action.primary').click();
+  }
   await page.locator('.termview .row-button', { hasText: 'Race legends' }).click();
   await expect(page.locator('.sheet-service')).toContainText('You) Shopper the Human');
   await page.locator('.sheet-service .sheet-action.primary').click();

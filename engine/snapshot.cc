@@ -22,6 +22,7 @@
 #include "inventory.hpp"
 #include "levels.hpp"
 #include "lua_bind.hpp"
+#include "messages.hpp"
 #include "monster1.hpp"
 #include "monster2.hpp"
 #include "monster_race.hpp"
@@ -637,6 +638,23 @@ object_type one_of(object_type const *o_ptr)
 
 }
 
+/*
+ * Every message tome2 adds, counted: its log keeps only the last 2048, so its
+ * size stops growing there. Messages::add(std::string, byte), which the
+ * const char * form calls, is wrapped at link time (CMakeLists.txt); a
+ * message the same as the last only adds to its count, as in tome2.
+ */
+static long messages_added = 0;
+
+#define MESSAGES_ADD _ZN8Messages3addERKNSt3__212basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEEh
+extern "C" void BOOST_PP_CAT(__real_, MESSAGES_ADD)(Messages *self, std::string const &msg, byte color);
+
+extern "C" void BOOST_PP_CAT(__wrap_, MESSAGES_ADD)(Messages *self, std::string const &msg, byte color)
+{
+	if (self->size() == 0 || self->at(0).text != msg) messages_added++;
+	BOOST_PP_CAT(__real_, MESSAGES_ADD)(self, msg, color);
+}
+
 extern "C" {
 
 /*
@@ -898,7 +916,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	/* Recent messages, newest first */
 	auto const &messages = game->messages;
 	int const count = std::min<int>(messages.size(), std::max(0, max_messages));
-	json_int(json, "messageTotal", messages.size());
+	json_int(json, "messageTotal", messages_added);
 	json_key(json, "messages");
 	json += '[';
 	for (int age = 0; age < count; age++)

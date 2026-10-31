@@ -19,6 +19,7 @@
 #include <emscripten.h>
 #include <pwd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <ctime>
 #include <memory>
@@ -344,6 +345,19 @@ static int init_web(int argc, char *argv[])
 	angband_term[0] = t;
 
 	return 0;
+}
+
+/*
+ * Blanks screen rows first to last, so whatever tome2 draws there next (a
+ * building's answer to a service) can be told from what it drew before.
+ */
+extern "C" EMSCRIPTEN_KEEPALIVE void web_clear_rows(int first, int last)
+{
+	if (!Term) return;
+	int wid = 0, hgt = 0;
+	Term_get_size(&wid, &hgt);
+	for (int y = std::max(0, first); y <= last && y < hgt; y++) Term_erase(0, y, wid);
+	Term_fresh();
 }
 
 int main(int argc, char *argv[])

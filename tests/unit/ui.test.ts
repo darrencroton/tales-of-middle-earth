@@ -524,6 +524,17 @@ describe('a building service\'s reply', () => {
     assert.deepEqual(drawnBlocks(before, after), [['Quest Information (Danger level: 5)'], ['Thieves!', 'There are thieves robbing my people! They live in a small', 'burrow outside the city walls.']]);
   });
 
+  it('splits a block drawn as two columns, the left column first', () => {
+    const pad = (left: string, right: string) => `  ${left}`.padEnd(40) + right;
+    const after = screen({ 4: '  Based on your current abilities, here is what your weapons will do', 6: pad('Dagger (1d4)', 'Long Sword (2d5)'), 7: pad('To Hit: 0 To Dam: 0', 'To Hit: 3 To Dam: 4'), 8: pad('Attack: 1-4 damage', 'Attack: 5-14 damage') });
+    assert.deepEqual(drawnBlocks(screen({}), after), [
+      ['Based on your current abilities, here is what your weapons will do'],
+      ['Dagger (1d4)', 'To Hit: 0 To Dam: 0', 'Attack: 1-4 damage'],
+      ['Long Sword (2d5)', 'To Hit: 3 To Dam: 4', 'Attack: 5-14 damage'],
+    ]);
+    assert.deepEqual(drawnBlocks(screen({}), screen({ 7: '  1) Bilbo the Human (Level  7)' })), [['1) Bilbo the Human (Level 7)']]);
+  });
+
   it('joins wrapped lines, keeps lists, leaves out key hints and rewords', () => {
     const quest = [['Quest Information (Danger level: 5)'], ['Thieves!', 'There are thieves robbing my people! They live in a small', 'burrow outside the city walls.']];
     assert.deepEqual(serviceReply([quest], []), ['Quest Information (Danger level: 5)', 'Thieves!', 'There are thieves robbing my people! They live in a small burrow outside the city walls.']);
@@ -532,6 +543,8 @@ describe('a building service\'s reply', () => {
       'Your quests are listed in Menu → Knowledge.',
     ]);
     assert.deepEqual(serviceReply([], ['The barkeep gives you some gruel and a beer.', 'Hit any key to continue']), ['The barkeep gives you some gruel and a beer.']);
+    assert.deepEqual(serviceReply([], ['You need a healer, not a room.', "Sorry, but I don't want anyone dying in here."]), ['You need a healer, not a room.', "Sorry, but I don't want anyone dying in here."]);
+    assert.deepEqual(serviceReply([[['Long Sword (+5,+6)', 'Press the spacebar to continue']]], []), ['Long Sword (+5,+6)']);
   });
 
   it('leaves out pages with only their heading when there are several', () => {

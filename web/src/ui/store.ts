@@ -381,31 +381,48 @@ function shopItemAction(api: GameApi, action: ItemAction, item: ItemState, place
 
 /* A building's screen rows a service draws on: below the messages, above the shop's gold (row 19) and its commands. */
 const SERVICE_ROWS = { first: 1, last: 18 };
+/** Rows blanked before a service, so its answer is told from the last one's; row 5 holds a shop's "(Page n)" (`shelfPage`). */
+export const SERVICE_CLEAR = { first: 6, last: SERVICE_ROWS.last };
 
 /** Lines that are tome2's key hints, or reworded for this game. */
 const SERVICE_WORDING: [RegExp, string | null][] = [
-  [/\b(hit|press) any key\b/i, null],
+  [/\b(hit|press)\b.*\b(any key|spacebar)\b|\bto continue\b/i, null],
+  [/^Again\s*\(Y\/N\)\?$/i, null],
   [/^Use CTRL-Q to check the status of your quest\.?$/i, 'Your quests are listed in Menu → Knowledge.'],
 ];
 
-/** What a service drew on a building's screen: the rows changed since it began, as blocks of adjacent rows. */
+/** A block drawn as two columns (compare weapons: one weapon at column 2, the other at 40), as the left column's lines, then the right's. */
+function columns(rows: readonly string[]): string[][] {
+  const width = Math.max(...rows.map((row) => row.length));
+  for (let c = 20; c < width; c++) {
+    const starts = (row: string) => row.length > c && row[c] !== ' ' && row[c] !== ':' && row[c - 1] === ' ' && row[c - 2] === ' ';
+    if (rows.filter(starts).length < 2 || !rows.every((row) => row.length <= c || starts(row))) continue;
+    return [rows.map((row) => row.slice(0, c)), rows.map((row) => row.slice(c))]
+      .map((side) => side.map((line) => line.trim().replace(/\s+/g, ' ')).filter(Boolean))
+      .filter((side) => side.length);
+  }
+  return [rows.map((row) => row.trim().replace(/\s+/g, ' '))];
+}
+
+/** What a service drew on a building's screen: the rows changed since it began, as blocks of adjacent rows (a block of two columns as two). */
 export function drawnBlocks(before: readonly string[], after: readonly string[]): string[][] {
   const blocks: string[][] = [];
-  let block: string[] | null = null;
+  let rows: string[] = [];
+  const close = () => {
+    if (rows.length) blocks.push(...columns(rows));
+    rows = [];
+  };
   for (let r = SERVICE_ROWS.first; r <= SERVICE_ROWS.last && r < after.length; r++) {
     const line = after[r].trimEnd();
-    if (line === (before[r] ?? '').trimEnd() || !line.trim()) {
-      block = null;
-      continue;
-    }
-    if (!block) blocks.push((block = []));
-    block.push(line.trim());
+    if (line === (before[r] ?? '').trimEnd() || !line.trim()) close();
+    else rows.push(line);
   }
+  close();
   return blocks;
 }
 
 /**
- * A service's reply as paragraphs: what tome2 said, then each page it drew
+ * A service's reply as paragraphs: what tome2 said (oldest first), then each page it drew
  * (lines wrapped mid-sentence joined; of several pages, those with only
  * their heading left out; key hints left out).
  */

@@ -62,6 +62,7 @@ interface EmscriptenModule {
   _web_set_hero_name(): number;
   _web_mark_abandoned(): number;
   _web_remove_score(index: number): number;
+  _web_clear_rows(first: number, last: number): void;
   _web_place_json(): number;
   _web_scores_json(): number;
   _web_birth_json(): number;
@@ -176,6 +177,12 @@ export class Engine {
     const mod = this.module;
     if (!mod || this.state !== 'running') return false;
     return mod._web_remove_score(index) !== 0;
+  }
+
+  /** Blanks screen rows `first` to `last`, so what tome2 draws there next can be told from what it drew before. */
+  clearRows(first: number, last: number): void {
+    const mod = this.module;
+    if (mod && this.state === 'running') mod._web_clear_rows(first, last);
   }
 
   /** Records the run just quit through tome2's quit command as abandoned, so the Hall of Fame keeps it; false otherwise. */

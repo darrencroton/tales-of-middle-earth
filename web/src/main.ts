@@ -67,7 +67,7 @@ import { PromptCard, type CardKind } from './ui/promptcard.ts';
 import type { PopAction } from './ui/popup.ts';
 import { cleanPrompt, describableRange } from './ui/prompttext.ts';
 import { FilePages, parseHelpFile, viewerSource, viewerHeading, type HelpFile, type HelpLink, type ViewerHeading } from './ui/filepages.ts';
-import { drawnBlocks, entranceLabel, offerElements, serviceReply, shelfElements, shelfPage, shopModel, trades, type ShopHandlers, type ShopModel, type ShopTab } from './ui/store.ts';
+import { drawnBlocks, entranceLabel, offerElements, SERVICE_CLEAR, serviceReply, shelfElements, shelfPage, shopModel, trades, type ShopHandlers, type ShopModel, type ShopTab } from './ui/store.ts';
 import { parseAbilities, parseSkills } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
 import { hallOfFameElements, heroEntry, isHallOfFame, openFameCard, parseTomb, tombElements } from './ui/gameover.ts';
@@ -1519,10 +1519,13 @@ function currentShop(): StoreState | null {
   if (mode !== 'overlay') return null;
   const store = engine.store();
   if (!store) return null;
-  if (trade) return store;
+  return trade || atBuildingCommands() ? store : null;
+}
+
+/** tome2 waits at a building's own commands (row 21 "You may:"), asking nothing else. */
+function atBuildingCommands(): boolean {
   const prompt = currentPrompt();
-  if (prompt !== 'none' && prompt !== 'other') return null;
-  return /^You may:/.test(buffer.rowText(21)) ? store : null;
+  return (prompt === 'none' || prompt === 'other') && /^You may:/.test(buffer.rowText(21));
 }
 
 const shopHandlers: ShopHandlers = {
@@ -1611,9 +1614,9 @@ function servicesElement(model: ShopModel): HTMLElement {
 }
 
 /** What a service costs, or that the keeper will not do it for this hero. */
-function serviceHint(service: StoreCommand): string | undefined {
-  if (service.closed) return 'Not for you';
-  return service.cost > 0 ? `${service.cost} gold` : undefined;
+function serviceHint(command: StoreCommand): string | undefined {
+  if (command.closed) return 'Not for you';
+  return command.cost > 0 ? `${command.cost} gold` : undefined;
 }
 
 /**
@@ -1628,43 +1631,44 @@ function runService(command: StoreCommand): void {
   if (command.closed) refuse('The keeper will not do that for you.');
   else if (command.cost > (lastState?.player?.au ?? 0)) refuse(`That costs ${command.cost} gold, more than you have.`);
   else {
-    service = { name: command.name, before: buffer.screenText().split('\n'), state: engine.gameState(SERVICE_MESSAGES), pages: [] };
+    /* The rows a service draws on are blanked first, so an answer the same as the last one still shows. */
+    engine.clearRows(SERVICE_CLEAR.first, SERVICE_CLEAR.last);
+    service = { name: command.name, before: screenLines(), state: engine.gameState(SERVICE_MESSAGES), pages: [] };
     engine.setAutoMore(false);
     send([BACKSLASH, command.key.charCodeAt(0)]);
   }
+}
+
+function screenLines(): string[] {
+  return buffer.screenText().split('\n');
+}
+
+/** Keeps what a service has drawn so far, leaving out blocks kept from an earlier page. */
+function keepPage(run: NonNullable<typeof service>): void {
+  const kept = new Set(run.pages.flat().map((block) => block.join('\n')));
+  run.pages.push(drawnBlocks(run.before, screenLines()).filter((block) => !kept.has(block.join('\n'))));
 }
 
 /** Follows a service at each idle: keeps a page and turns it at -more-; once back at the building's commands (or out of it), shows what it said. True when a key was sent. */
 function followService(): boolean {
   const run = service;
   if (!run || macros.running || engine.pendingKeys > 0 || viewerHeading(rowZeroText())) return false;
-  const prompt = currentPrompt();
-  if (prompt === 'more') {
-    run.pages.push(drawnBlocks(run.before, buffer.screenText().split('\n')));
+  if (currentPrompt() === 'more') {
+    keepPage(run);
     engine.sendKeys([SPACE]);
     return true;
   }
-  const inside = !!engine.store() && /^You may:/.test(buffer.rowText(21)) && (prompt === 'none' || prompt === 'other');
+  const inside = !!engine.store() && atBuildingCommands();
   const snap = engine.snapshot();
-  const left = !snap?.inDungeon || (snap.atCommand && !snap.icky);
-  if (!inside && !left) return false;
+  if (!inside && snap?.inDungeon && !(snap.atCommand && !snap.icky)) return false;
   service = null;
   applyEngineSettings();
-  const paged = run.pages.length > 0;
-  if (inside) run.pages.push(drawnBlocks(run.before, buffer.screenText().split('\n')));
+  if (inside) keepPage(run);
   const state = engine.gameState(SERVICE_MESSAGES);
-  const said = run.state && state ? newMessages(run.state, state).map((m) => m.text) : [];
+  const said = run.state && state ? newMessages(run.state, state).map((m) => m.text).reverse() : [];
   const reply = serviceReply(run.pages.filter((page) => page.length), said);
-  if (reply.length) openServiceReply(run.name, reply);
-  else if (paged) showToast(`${run.name}: nothing to show yet.`, false);
+  if (reply.length) openMessage(sheets, run.name, reply, 'sheet-service');
   return false;
-}
-
-/** What a building's service said, as a card over the building. */
-function openServiceReply(title: string, paragraphs: readonly string[]): void {
-  const body = el('div', 'prose');
-  for (const text of paragraphs) body.append(el('p', undefined, text));
-  sheets.open({ title, body, kind: 'card', className: 'sheet-service', actions: [{ label: 'OK', primary: true, run: () => sheets.back() }] });
 }
 
 /** The toolbar while in a shop (beneath its panel). */
@@ -2707,10 +2711,16 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (shownShop) {
-    /* In a shop, arrows move through its list, Enter opens the highlighted item and Escape leaves. */
+    /* In a shop, arrows move through its list, Enter opens the highlighted item and Escape leaves; a service's letter asks for it as a tap does. */
     if (e.key === 'Escape' || termView.navigate(e)) {
       e.preventDefault();
       if (e.key === 'Escape') send([KEY_ESCAPE]);
+      return;
+    }
+    const extra = !e.ctrlKey && !e.metaKey && !e.altKey ? shopModel(shownShop).extras.find((a) => a.key === e.key) : undefined;
+    if (extra) {
+      e.preventDefault();
+      runService(extra);
       return;
     }
   }
