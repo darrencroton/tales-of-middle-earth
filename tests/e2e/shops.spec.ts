@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createCharacter, jumpToLevel, summonBeside, waitAtCommand, waitForEngine } from './helpers.ts';
+import { createCharacter, jumpToLevel, summonBeside, waitAtCommand, waitForEngine, wizardCommand } from './helpers.ts';
 
 /** Cells of the town's buildings (tome2 calls every shop, home and hall a building). */
 async function buildings(page: Page): Promise<{ x: number; y: number }[]> {
@@ -115,6 +115,8 @@ test('travel walks through a companion, pushing past it', async ({ page }) => {
   await waitForEngine(page);
   await createCharacter(page, 'Packleader');
   await jumpToLevel(page, 1);
+  /* Lit, so the way past the companion is known wherever the hero arrives. */
+  await wizardCommand(page, 'w');
   let pushed = false;
   for (let attempt = 0; attempt < 6 && !pushed; attempt++) {
     await summonBeside(page, 35, true);

@@ -122,6 +122,17 @@ void keep_level(std::size_t d, int depth, bool keep)
 	if (it != by_depth.end() && ours(it->second)) it->second.save_extension = boost::none;
 }
 
+/*
+ * Takes the save extension away from the quest level the hero is on, as
+ * loaded from a savefile or when levels have just been made kept: built
+ * levels are handled by level_begin_hook.
+ */
+void keep_off_quest_level()
+{
+	if (persistent_applied != 1 || !character_dungeon || !dun_level) return;
+	if (eligible_dungeon(dungeon_type) && eligible_depth(dungeon_type, dun_level) && quest_level_here()) keep_level(dungeon_type, dun_level, false);
+}
+
 void apply_persistence()
 {
 	if (persistent_wanted < 0 || persistent_wanted == persistent_applied || !game) return;
@@ -139,6 +150,7 @@ void apply_persistence()
 	}
 	persistent_applied = persistent_wanted;
 	forget_pending = !on;
+	keep_off_quest_level();
 }
 
 /* Deletes the kept levels of the hero being played, and lets the uniques kept on them appear again. */
@@ -180,6 +192,7 @@ void note_here()
 	here_dungeon = dungeon_type;
 	here_depth = dun_level;
 	here_known = true;
+	keep_off_quest_level();
 }
 
 /*
@@ -224,8 +237,11 @@ bool level_begin_hook(void *, void *, void *)
 	here_depth = dun_level;
 	here_known = true;
 	if (persistent_applied != 1) return false;
-	if (!eligible_dungeon(dungeon_type) || !eligible_depth(dungeon_type, dun_level)) return false;
-	keep_level(dungeon_type, dun_level, !quest_level_here());
+	if (!eligible_dungeon(dungeon_type)) return false;
+	if (eligible_depth(dungeon_type, dun_level)) keep_level(dungeon_type, dun_level, !quest_level_here());
+	/* A fixed quest's level is begun at depth 1 and moved to the quest's own depth as it is built (q_thief.cc and the others): that depth must not keep it either. */
+	int const q = p_ptr->inside_quest;
+	if (q > 0 && q < MAX_Q_IDX && eligible_depth(dungeon_type, quest[q].level)) keep_level(dungeon_type, quest[q].level, false);
 	return false;
 }
 

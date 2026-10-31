@@ -210,20 +210,43 @@ export async function jumpToLevel(page: Page, level: number): Promise<void> {
   await waitAtCommand(page);
 }
 
-/** Uses tome2's wizard commands (page loaded with ?wizard) to summon a creature (by r_info index, asleep) beside the hero; `friendly` makes it a pet. */
-export async function summonBeside(page: Page, raceIndex: number, friendly = false): Promise<void> {
+/** The kept levels written next to the savefiles (`Name.lvl<dungeon>_<depth>`). */
+export async function keptLevelFiles(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const fs = window.__tome!.engine.fs!;
+    const found: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of fs.readdir(dir)) {
+        if (name === '.' || name === '..') continue;
+        const path = `${dir}/${name}`;
+        if (fs.isDir(fs.stat(path).mode)) walk(path);
+        else if (/\.lvl\d+_\d+$/.test(name)) found.push(name);
+      }
+    };
+    walk('/home/web_user/.tome');
+    return found;
+  });
+}
+
+/** Runs one of tome2's wizard commands (page loaded with ?wizard), with a number before it when `arg` is given. */
+export async function wizardCommand(page: Page, key: string, arg?: number): Promise<void> {
   const rowZero = async () => (await screenText(page)).split('\n')[0] ?? '';
   let text = await screenText(page);
-  await sendText(page, `0${raceIndex}\u0001`);
+  await sendText(page, `${arg === undefined ? '' : `0${arg}`}\u0001`);
   text = await waitForSettle(page, text, 5_000);
   for (let i = 0; i < 10 && !/Debug Command/.test(await rowZero()); i++) {
     await sendText(page, /\[y\/n\]/.test(await rowZero()) ? 'y' : ' ');
     text = await waitForSettle(page, text, 5_000);
   }
-  await sendText(page, friendly ? 'N' : 'n');
+  await sendText(page, key);
   await waitForSettle(page, text, 5_000);
   await dismissMore(page);
   await waitAtCommand(page);
+}
+
+/** Uses tome2's wizard commands (page loaded with ?wizard) to summon a creature (by r_info index, asleep) beside the hero; `friendly` makes it a pet. */
+export async function summonBeside(page: Page, raceIndex: number, friendly = false): Promise<void> {
+  await wizardCommand(page, friendly ? 'N' : 'n', raceIndex);
 }
 
 /**

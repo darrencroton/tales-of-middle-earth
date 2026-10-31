@@ -1,10 +1,10 @@
 import { readableColour } from '../render/colour.ts';
 import type { MapPoint } from '../render/map.ts';
-import { CAVE_MARK, CAVE_SEEN, isAlly, isHostile, type MonsterState, type ObjectState } from '../render/snapshot.ts';
+import { CAVE_MARK, CAVE_SEEN, isAlly, isHostile, type LevelQuest, type MonsterState, type ObjectState } from '../render/snapshot.ts';
 import { capitalise, descriptionParagraphs, titleName, type GameApi } from './api.ts';
-import { el, glyph } from './dom.ts';
+import { el, glyph, iconText } from './dom.ts';
 import { openItem } from './inventory.ts';
-import type { SheetAction } from './sheet.ts';
+import type { SheetAction, Sheets } from './sheet.ts';
 
 
 export function healthWord(hp: number, maxhp: number): string {
@@ -171,4 +171,24 @@ export function describeCell(api: GameApi, point: MapPoint): CellDescription | n
   else text = `You see ${things.join(', ')}${terrain ? ` on ${terrain}` : ''}.`;
 
   return { point, text: capitalise(text), monsters, objects, terrain, known, player };
+}
+
+/** What a level's quest asks, as paragraphs: a fixed quest's description (tome2 wraps it at 80 columns), or a random quest in our words with the creatures slain. */
+export function questParagraphs(quest: LevelQuest): string[] {
+  const r = quest.random;
+  if (!r) return quest.lines?.length ? [quest.lines.join(' ')] : [];
+  const ask =
+    r.kind === 'sword'
+      ? `An adventurer's sword was taken by creatures roaming this level. Defeat them all to win it back: ${r.count} × ${r.foe}.`
+      : r.count === 1
+        ? `A princess is held captive on this level by ${r.foe}. Defeat her captor to set her free.`
+        : `A princess is held captive on this level. Defeat her guards to set her free: ${r.count} × ${r.foe}.`;
+  return [ask, `Slain: ${r.slain} of ${r.count}.`];
+}
+
+/** The quest of the level, as a card. */
+export function openQuest(sheets: Sheets, quest: LevelQuest): void {
+  const body = el('div', 'description');
+  for (const text of questParagraphs(quest)) body.append(el('p', undefined, text));
+  sheets.open({ title: quest.title, subtitle: 'Quest on this level', badge: el('span', 'glyph quest', iconText('⚑')), body, kind: 'card', className: 'sheet-quest' });
 }

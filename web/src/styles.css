@@ -299,6 +299,23 @@ html.keyboard-open .sheet-layer {
   line-height: 1.3;
 }
 
+/* What tome2 said just before it asked: above a card's question or a panel's choices. */
+.lead-in {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0 0 0.75rem;
+  padding-left: 0.7rem;
+  border-left: 2px solid rgb(217 164 65 / 0.6);
+  color: var(--muted);
+  font-size: var(--fs-small);
+  line-height: 1.35;
+}
+
+.lead-in p {
+  margin: 0;
+}
+
 /* The hero has died: the card over the map where it happened. */
 .prompt-card.death {
   border-color: rgb(208 96 79 / 0.75);
@@ -3595,6 +3612,16 @@ html.keyboard-tight .prompt-card.text .card-title {
   color: #ffd56a;
 }
 
+.entity.quest {
+  border-color: var(--accent);
+  border-left: 3px solid #ffd56a;
+  color: #ffd56a;
+}
+
+.glyph.quest {
+  color: #ffd56a;
+}
+
 .entity.skills {
   --fill: 100%;
   --bar: #4a3a12;
@@ -3685,6 +3712,17 @@ html.keyboard-tight .prompt-card.text .card-title {
   color: #ffd56a;
   font-family: var(--serif);
   text-shadow: 0 0 14px rgb(255 190 80 / 0.8);
+}
+
+.feel-banner.quest strong {
+  color: #ffd56a;
+  font-family: var(--serif);
+  text-shadow: 0 0 14px rgb(255 190 80 / 0.7);
+}
+
+.feel-banner.quest.failed strong {
+  color: var(--muted);
+  text-shadow: none;
 }
 
 .feel-deed {

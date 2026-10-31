@@ -13,10 +13,13 @@ export type FeelEvent =
   | { kind: 'hurt'; fraction: number }
   | { kind: 'levelup'; level: number; skillPoints: number }
   | { kind: 'depth'; place: string; feet: number; deeper: boolean; surface: Surface }
+  /** A level that holds a quest, arrived at (`place` is its dungeon, empty for a fixed quest's own level); or that level's quest ended there. */
+  | { kind: 'quest'; title: string; place: string; feet: number }
+  | { kind: 'questEnd'; title: string; failed: boolean }
   | { kind: 'gold'; amount: number }
   | { kind: 'exp'; amount: number };
 
-type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown'>;
+type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown' | 'quest'>;
 
 /** What changed for the player between two states, as feedback events. */
 export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
@@ -24,15 +27,24 @@ export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
   const events: FeelEvent[] = [];
   const level = next.depth !== prev.depth || next.dungeon !== prev.dungeon || next.wild !== prev.wild;
   const area = next.depth === 0 && !!prev.area && !!next.area && prev.area !== next.area;
+  /* A quest's banner comes last, so no other banner covers it. */
+  let quest: FeelEvent | null = null;
   if (level || area) {
-    const place = next.depth > 0 && !next.wild ? next.dungeon : depthLabel(next);
+    /* A fixed quest's level belongs to no dungeon, whatever tome2 keeps as the dungeon. */
+    const fixedQuest = next.depth > 0 && !!next.quest && !next.quest.random;
+    const place = fixedQuest ? next.quest!.title : next.depth > 0 && !next.wild ? next.dungeon : depthLabel(next);
     const surface: Surface = next.wild ? 'world' : next.inTown ? 'town' : 'land';
-    events.push({ kind: 'depth', place, feet: next.wild ? 0 : next.depth * 50, deeper: next.depth > prev.depth, surface });
+    const feet = next.wild ? 0 : next.depth * 50;
+    if (level && next.quest?.state === 'active') quest = { kind: 'quest', title: next.quest.title, place: fixedQuest ? '' : place, feet };
+    else events.push({ kind: 'depth', place, feet, deeper: next.depth > prev.depth, surface });
+  } else if (prev.quest?.state === 'active' && next.quest?.id === prev.quest.id && next.quest.state !== 'active') {
+    quest = { kind: 'questEnd', title: prev.quest.title, failed: next.quest.state === 'failed' };
   }
   if (next.lev > prev.lev) events.push({ kind: 'levelup', level: next.lev, skillPoints: next.skillPoints ?? 0 });
   else if (next.exp > prev.exp) events.push({ kind: 'exp', amount: next.exp - prev.exp });
   if (next.chp < prev.chp && next.mhp > 0) events.push({ kind: 'hurt', fraction: Math.min(1, (prev.chp - next.chp) / next.mhp) });
   if (next.au > prev.au) events.push({ kind: 'gold', amount: next.au - prev.au });
+  if (quest) events.push(quest);
   return events;
 }
 
@@ -41,6 +53,23 @@ export function isLowHealth(player: Pick<PlayerState, 'chp' | 'mhp'>): boolean {
 }
 
 const BANNER_MS = 2600;
+/* A quest's banner stays a little longer, to be read. */
+const QUEST_BANNER_MS = 4200;
+/* Between a banner going and one that waited for it. */
+const BANNER_GAP_MS = 400;
+/* The most banners kept waiting. */
+const MAX_WAITING = 2;
+
+interface Banner {
+  title: string;
+  subtitle: string;
+  kind: string;
+  ms: number;
+}
+
+function isQuest(banner: Banner): boolean {
+  return banner.kind.startsWith('quest');
+}
 const FLOAT_MS = 1400;
 /* Damage and kill floats over creatures (the CSS animation is 1600ms). */
 const FLOAT_AT_MS = 1650;
@@ -63,7 +92,8 @@ const FLOAT_OFFSETS: Readonly<Record<string, string>> = { gold: '42%', exp: '50%
 
 /**
  * Feedback layer over the map: a red flash when hurt, a pulse at low
- * health, a banner for a new level or depth and a float for gold found.
+ * health, a banner for a new level or depth (or the quest it holds) and a
+ * float for gold found.
  */
 export class GameFeel {
   private readonly layer: HTMLElement;
@@ -74,6 +104,11 @@ export class GameFeel {
   private readonly animation: () => AnimationLevel;
   private prev: Tracked | null = null;
   private bannerTimer = 0;
+  /** The banner showing (until when, and whether it is a quest's), and those waiting for a quest's banner to end. */
+  private shown: { banner: Banner; until: number } | null = null;
+  private readonly waiting: Banner[] = [];
+  /** A banner that waited, about to show once the last has gone. */
+  private next: Banner | null = null;
   private shakeTimer = 0;
   private deedTimer = 0;
   private readonly deeds: [string, string][] = [];
@@ -145,6 +180,11 @@ export class GameFeel {
   /** Forgets the last hero, for a new game in the same page. */
   reset(): void {
     this.prev = null;
+    this.shown = null;
+    this.waiting.length = 0;
+    this.next = null;
+    window.clearTimeout(this.bannerTimer);
+    this.banner.classList.remove('visible');
     this.layer.classList.remove('low');
   }
 
@@ -197,6 +237,14 @@ export class GameFeel {
         this.showBanner(event.place, where, 'depth');
         break;
       }
+      case 'quest':
+        this.showBanner(event.title, [event.place, event.feet ? `${event.feet} ft` : ''].filter(Boolean).join(' · '), 'quest', QUEST_BANNER_MS);
+        vibrate([20, 40, 20]);
+        break;
+      case 'questEnd':
+        this.showBanner(event.title, event.failed ? 'Quest failed' : 'Quest complete', event.failed ? 'quest failed' : 'quest', QUEST_BANNER_MS);
+        if (!event.failed) vibrate([30, 60, 30]);
+        break;
       case 'gold':
         this.float(`+${event.amount} gold`, 'gold');
         break;
@@ -211,13 +259,38 @@ export class GameFeel {
     this.vignette.classList.add(kind);
   }
 
-  private showBanner(title: string, subtitle: string, kind: string): void {
-    this.banner.className = `feel-banner ${kind}`;
-    this.banner.replaceChildren(el('strong', undefined, title), el('span', undefined, subtitle));
+  /** Shows a banner; while a quest's banner shows, others wait for it, and one shown just before it comes back after. */
+  private showBanner(title: string, subtitle: string, kind: string, ms = BANNER_MS): void {
+    const banner: Banner = { title, subtitle, kind, ms };
+    const now = performance.now();
+    const current = this.shown && now < this.shown.until ? this.shown : null;
+    if (current && isQuest(current.banner)) {
+      if (!isQuest(banner)) {
+        if (this.waiting.length < MAX_WAITING) this.waiting.push(banner);
+        return;
+      }
+    } else if (current && isQuest(banner)) {
+      this.waiting.unshift(current.banner);
+    }
+    this.display(banner);
+  }
+
+  private display(banner: Banner): void {
+    if (this.next && this.next !== banner) this.waiting.unshift(this.next);
+    this.next = null;
+    this.shown = { banner, until: performance.now() + banner.ms };
+    this.banner.className = `feel-banner ${banner.kind}`;
+    this.banner.replaceChildren(el('strong', undefined, banner.title), el('span', undefined, banner.subtitle));
     void this.banner.offsetWidth;
     this.banner.classList.add('visible');
     window.clearTimeout(this.bannerTimer);
-    this.bannerTimer = window.setTimeout(() => this.banner.classList.remove('visible'), BANNER_MS);
+    this.bannerTimer = window.setTimeout(() => {
+      this.banner.classList.remove('visible');
+      const next = this.waiting.shift();
+      if (!next) return;
+      this.next = next;
+      this.bannerTimer = window.setTimeout(() => this.display(next), BANNER_GAP_MS);
+    }, banner.ms);
   }
 
   private float(text: string, kind: string): void {

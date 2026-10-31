@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { canvasBrightness, createCharacter, dismissMore, equipSuggested, jumpToLevel, playerPos, pressExplore, waitAtCommand, waitForEngine, waitForScreen } from './helpers.ts';
+import { canvasBrightness, createCharacter, dismissMore, equipSuggested, jumpToLevel, keptLevelFiles, playerPos, pressExplore, sendText, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
 
 /** A fingerprint of the level's terrain, and how many grids the hero remembers. */
 function level(page: Page): Promise<{ terrain: number; known: number; depth: number }> {
@@ -50,6 +50,7 @@ test('kept levels stay as the hero left them, and the way back is known', async 
       return (snap.info[y * snap.width + x] & 0x11) !== 0;
     }, [start.x, start.y] as const);
     expect(remembered, 'the start is remembered').toBe(true);
+    await wizardCommand(page, 'z');
     await page.evaluate(([x, y]) => window.__tome!.tapCell(x, y), [start.x, start.y] as const);
     await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
     const cause = await page.evaluate(() => window.__tome!.lastStopCause());
@@ -175,4 +176,53 @@ test('at night the land is drawn at once on coming down from the world map', asy
   await dismissMore(page);
   await waitAtCommand(page);
   await expect.poll(() => canvasBrightness(page, '#map', whole), { timeout: 5_000 }).toBeGreaterThan(lit / 2);
+});
+
+test('a quest level is never kept as the dungeon level of its depth', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Warden');
+  /* The Thieves quest, taken; its entrance is in Bree. tome2 builds a quest's level at depth 1 and moves it to the quest's own depth. */
+  await wizardCommand(page, 'q', 4);
+  await wizardCommand(page, 'u');
+  const entrance = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const snap = tome.engine.snapshot()!;
+    const names = tome.engine.features().map((f) => f.name.toLowerCase());
+    const i = snap.feat.findIndex((f) => names[f] === 'quest entrance');
+    return i < 0 ? null : { x: i % snap.width, y: Math.floor(i / snap.width) };
+  });
+  expect(entrance).not.toBeNull();
+  for (let i = 0; i < 12; i++) {
+    const here = await playerPos(page);
+    if (here.x === entrance!.x && here.y === entrance!.y) break;
+    await page.evaluate(() => window.__tome!.sendText('\u0001z'));
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await page.evaluate(({ x, y }) => window.__tome!.tapCell(x, y), entrance!);
+    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+  }
+  await waitAtCommand(page);
+  await page.locator('#toolbar [data-action="enter"]').click();
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.gameState()?.player?.quest?.id ?? 0), { timeout: 30_000 }).toBe(4);
+  await waitAtCommand(page);
+  await expect(page.locator('#hud .entity.quest')).toBeVisible();
+  expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
+
+  /* Saved there, and saved again on leaving after the game is loaded there: no dungeon level keeps it. */
+  await sendText(page, '\u0013');
+  await dismissMore(page);
+  await waitAtCommand(page);
+  expect(await keptLevelFiles(page)).toEqual([]);
+  await page.locator('#toolbar [data-action="menu"]').click();
+  await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
+  await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
+  await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+  await waitForEngine(page);
+  await page.locator('#title-screen .title-choice', { hasText: 'Continue as Warden' }).click();
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
+  await waitAtCommand(page);
+  expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
+  await jumpToLevel(page, 0);
+  expect(await keptLevelFiles(page)).toEqual([]);
 });

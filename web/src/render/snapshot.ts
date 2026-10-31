@@ -155,11 +155,26 @@ export interface PlayerState {
   dead?: number;
   /** What killed the hero. */
   diedFrom?: string;
+  /** The quest of the level the hero is on, when it holds one. */
+  quest?: LevelQuest;
   /** Name of the town or land walked on the surface (set by the frontend from the place). */
   area?: string;
   /** The surface area is a town (set by the frontend from the place). */
   inTown?: boolean;
   status: Record<string, number>;
+}
+
+/** A quest a level holds. */
+export interface LevelQuest {
+  /** tome2's quest index (the random quests share one). */
+  id: number;
+  state: 'active' | 'done' | 'failed';
+  /** "Captured princess!", "Thieves!". */
+  title: string;
+  /** A fixed quest's description, as tome2's quest log wraps it. */
+  lines?: string[];
+  /** A random quest: who holds the princess or took the sword, how many, and how many are slain. */
+  random?: { kind: 'princess' | 'sword'; foe: string; count: number; slain: number };
 }
 
 /** One entry of the Hall of Fame (tome2's scores file). */

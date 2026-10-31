@@ -1,6 +1,6 @@
 import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, keyCodes as codes, typedAnswer } from '../input/keys.ts';
 import { bracketChoices, choiceQuestion, type PromptKind } from '../play/prompts.ts';
-import { el, iconText } from './dom.ts';
+import { el, iconText, leadIn } from './dom.ts';
 import { cleanPrompt } from './prompttext.ts';
 import type { MessageBox } from './msgbox.ts';
 
@@ -41,6 +41,8 @@ export class PromptCard {
   private readonly send: (keys: number[]) => void;
   private renderedKey = '';
   private showPad = false;
+  /** The card shows what tome2 said before its question. */
+  private leading = false;
 
   constructor(parent: HTMLElement, send: (keys: number[]) => void) {
     this.send = send;
@@ -54,16 +56,24 @@ export class PromptCard {
     return !this.root.hidden;
   }
 
+  /** Shown with what tome2 said just before asking, which the message log can leave to it. */
+  get hasLead(): boolean {
+    return this.visible && this.leading;
+  }
+
   hide(): void {
     if (this.root.hidden) return;
     this.root.hidden = true;
     this.renderedKey = '';
     this.showPad = false;
+    this.leading = false;
   }
 
-  show(kind: CardKind, raw: string, canTargetLast = false): void {
-    const key = `${kind}\u0000${raw}\u0000${this.showPad}`;
+  /** Shows a question; `lead` is what tome2 said just before asking it. */
+  show(kind: CardKind, raw: string, canTargetLast = false, lead: readonly string[] = []): void {
+    const key = `${kind}\u0000${raw}\u0000${this.showPad}\u0000${lead.join('\n')}`;
     this.root.hidden = false;
+    this.leading = lead.length > 0;
     if (key === this.renderedKey) return;
     this.renderedKey = key;
     this.root.className = `prompt-card ${kind}`;
@@ -87,12 +97,14 @@ export class PromptCard {
         this.aim(canTargetLast);
         break;
     }
+    if (lead.length) this.root.prepend(leadIn(lead));
   }
 
   /** A question or notice tome2 drew in a box over the screen. */
   showBox(box: MessageBox): void {
     const key = `box\u0000${box.kind}\u0000${box.text}`;
     this.root.hidden = false;
+    this.leading = false;
     if (key === this.renderedKey) return;
     this.renderedKey = key;
     this.root.className = `prompt-card ${box.kind}`;
@@ -120,6 +132,7 @@ export class PromptCard {
   showDeath(cause: string): void {
     const key = `death\u0000${cause}`;
     this.root.hidden = false;
+    this.leading = false;
     if (key === this.renderedKey) return;
     this.renderedKey = key;
     const retired = /^Quitting$/i.test(cause);

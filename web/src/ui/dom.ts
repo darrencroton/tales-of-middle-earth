@@ -40,6 +40,13 @@ export function glyph(ch: number, colour: string): HTMLElement {
   return g;
 }
 
+/** What tome2 said before a question, as a block above it. */
+export function leadIn(lines: readonly string[]): HTMLElement {
+  const node = el('div', 'lead-in');
+  for (const line of lines) node.append(el('p', undefined, line));
+  return node;
+}
+
 export function section(title: string, ...children: Node[]): HTMLElement {
   const node = el('section', 'sheet-section');
   node.append(el('h3', undefined, title), ...children);

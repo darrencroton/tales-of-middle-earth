@@ -1,8 +1,8 @@
 import type { Place } from './audio/places.ts';
 import { readableColour } from './render/colour.ts';
-import { bar, el, fraction } from './ui/dom.ts';
+import { bar, el, fraction, iconText } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
-import { isAlly, isHostile, isNotice, type GameState, type MessageState, type MonsterState, type ObjectState, type PlayerState } from './render/snapshot.ts';
+import { isAlly, isHostile, isNotice, type GameState, type LevelQuest, type MessageState, type MonsterState, type ObjectState, type PlayerState } from './render/snapshot.ts';
 
 export interface TextSegment {
   text: string;
@@ -16,6 +16,8 @@ export interface HudCallbacks {
   onPlayer(): void;
   /** The skill-points chip was tapped. */
   onSkills(): void;
+  /** The chip of the level's quest was tapped. */
+  onQuest(quest: LevelQuest): void;
   onMore(): void;
   onHistory(): void;
 }
@@ -43,11 +45,13 @@ const STATUS_LABELS: [string, string][] = [
   ['slow', 'Slowed'],
 ];
 
-export function depthLabel(player: Pick<PlayerState, 'depth' | 'dungeon' | 'wild' | 'area'>): string {
+export function depthLabel(player: Pick<PlayerState, 'depth' | 'dungeon' | 'wild' | 'area' | 'quest'>): string {
   if (player.depth === 0 && player.area) return player.area;
   if (player.wild) return 'World map';
   if (player.depth === 0) return 'Town';
-  return `${player.dungeon} · ${player.depth * 50} ft (L${player.depth})`;
+  /* A fixed quest's level belongs to no dungeon, whatever tome2 keeps as the dungeon. */
+  const place = player.quest && !player.quest.random ? player.quest.title : player.dungeon;
+  return `${place} · ${player.depth * 50} ft (L${player.depth})`;
 }
 
 /* Wilderness terrain (wf_info.txt names) as places. */
@@ -120,6 +124,8 @@ export class Hud {
   /** The creatures and items in view as they are now, by id, for a tap on their chips. */
   private monsters = new Map<number, MonsterState>();
   private objects = new Map<number, ObjectState>();
+  /** The quest of the level as it is now, for a tap on its chip. */
+  private quest: LevelQuest | null = null;
 
   constructor(root: HTMLElement, messagesEl: HTMLElement, palette: () => readonly string[], callbacks: HudCallbacks) {
     this.root = root;
@@ -143,6 +149,7 @@ export class Hud {
     this.trail = null;
     this.monsters.clear();
     this.objects.clear();
+    this.quest = null;
     this.root.replaceChildren();
     this.messagesEl.replaceChildren();
   }
@@ -160,6 +167,9 @@ export class Hud {
         return this.callbacks.onPlayer();
       case 'skills':
         return this.callbacks.onSkills();
+      case 'quest':
+        if (this.quest) this.callbacks.onQuest(this.quest);
+        return;
       case 'monster': {
         const monster = this.monsters.get(id);
         if (monster) this.callbacks.onEntity({ kind: 'monster', monster });
@@ -183,12 +193,14 @@ export class Hud {
     const p = state.player;
     this.monsters = new Map((state.monsters ?? []).map((m) => [m.id, m]));
     this.objects = new Map((state.objects ?? []).map((o) => [o.id, o]));
+    this.quest = p.quest?.state === 'active' ? p.quest : null;
     const hallucinating = (p.status.hallucinating ?? 0) > 0;
     const monsters = sortByDistance(hallucinating ? (state.monsters ?? []).map(disguiseMonster) : (state.monsters ?? []), px, py);
     const objects = sortByDistance(hallucinating ? (state.objects ?? []).map(disguiseObject) : (state.objects ?? []), px, py);
     const statuses = statusLabels(p);
     const key = JSON.stringify([
       [p.name, p.race, p.cls, p.lev, p.chp, p.mhp, p.csp, p.msp, p.csane, p.msane, depthLabel(p), p.au, p.speed, p.skillPoints ?? 0],
+      this.quest?.title ?? '',
       statuses,
       monsters.map((m) => [m.id, m.name, m.ch, m.attr, m.hp, m.maxhp, m.asleep, m.afraid, m.unique, m.status]),
       objects.map((o) => [o.id, o.name, o.ch, o.attr]),
@@ -214,6 +226,17 @@ export class Hud {
     player.append(who, bars, meta);
 
     const strip = el('ul', 'hud-entities');
+    if (this.quest) {
+      const item = el('li');
+      const button = el('button', 'entity quest');
+      button.type = 'button';
+      button.dataset.hud = 'quest';
+      button.dataset.tap = 'quest';
+      button.setAttribute('aria-label', `Quest: ${this.quest.title}`);
+      button.append(el('span', 'glyph', iconText('⚑')), el('span', 'label', this.quest.title));
+      item.append(button);
+      strip.append(item);
+    }
     for (const label of statuses) strip.append(el('li', 'chip', label));
     if ((p.skillPoints ?? 0) > 0) {
       const item = el('li');
