@@ -25,8 +25,11 @@ ToME 2 (Tales of Middle-earth roguelike) compiled to WebAssembly and played as a
 - Keep the code clean, with nothing stale: remove code, exports, tests, messages and docs that a change makes unused rather than leaving them around.
 - Fix the cause, not the case: when a bug comes from how a system works (layout, timing, input, mixing), improve that system so the whole class of bug goes, making it more robust, modular and generic, rather than patching the one place it was seen. Look for the other places the same cause shows up.
 - For game feel (auto-explore, travel, pacing, what interrupts the player), research how other roguelikes do it (DCSS, Brogue, Cogmind, Angband variants) and adopt what feels most fun and natural for a player on a phone; note the source of a design in this file.
-- Fresh-eyes review is a standing step for all non-trivial work unless the owner says otherwise: before opening a PR, have all changes reviewed by an independent agent (a fresh subagent reading the diff, not the session that wrote it) and iterate with it on serious findings, together with the PR's own review comments. Review again only when a review found a significant problem or significant code has changed since; small fixes to findings trust the process. Avoid bloat: fix what matters, and don't add low-value tests or code just to answer a review.
-- Verify gameplay changes in the real game (targeted Playwright runs with `?wizard`), not only unit tests.
+- **The usual workflow** ("follow our usual workflow"), for any change that goes to a PR, small ones included, unless the owner says otherwise:
+  1. Implement; run `npm test` and `npm run typecheck` as you go.
+  2. Verify in the real game: build the engine (in a fresh cloud container, install Emscripten 6.0.13 with emsdk first) and the app, then run targeted Playwright scripts (`?wizard` to jump levels) on phone portrait, phone landscape and tablet, looking at screenshots; run the existing e2e tests that touch the change.
+  3. Fresh-eyes review: a fresh subagent (not the session that wrote the code) reads the diff against this file and `docs/ui-system.md`: correctness in every state, fit for purpose, the game's design and style, docs and nothing stale. Iterate on serious findings; push back on bloat and over-testing, and leave optional nits. Review again only when a review found a significant problem or significant code has changed since; small fixes to findings trust the process.
+  4. Commit, push to the branch and open the PR (see Owner preferences), then watch it: CI and review comments, until it is green and clean.
 
 ## Owner preferences
 
