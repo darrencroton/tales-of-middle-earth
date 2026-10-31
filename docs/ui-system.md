@@ -58,6 +58,8 @@ Shop, home, museum (walk in, or Enter shop on the door)
                                 └── Item carried    card over the shop (what it fetches or why not, how many,
                                                     Sell/Store/Donate; wear, take off, inscribe, destroy)
 Other buildings ─────────────── native panel: their services as rows · Exit
+                                └── A service ───── its answer as a card (a quest, a rumour, the race legends);
+                                                    a service that opens a file opens the reader
 Death ──────────────────────── death card → end-of-game summary (full screen) → Hall of Fame (full screen)
                                 └── a hero ──────── card: how it ended, when, deepest, score; Begin anew · Look back
                                     └── Fallen hero panel, tabs Hero · Gear · Skills · Last moments

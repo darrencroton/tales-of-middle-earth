@@ -30,8 +30,8 @@ async function leave(page: Page): Promise<void> {
   await waitAtCommand(page);
 }
 
-test('shops show their whole stock natively, buy and sell from item cards, and the door offers going back in', async ({ page }) => {
-  test.setTimeout(300_000);
+test('shops show their whole stock natively, buy and sell from item cards, the door offers going back in, and a service\'s answer is shown', async ({ page }) => {
+  test.setTimeout(480_000);
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Shopper');
@@ -56,24 +56,25 @@ test('shops show their whole stock natively, buy and sell from item cards, and t
   await expect(page.locator('.termview .shop-row')).toHaveCount(stock);
   await expect(page.locator('.termview [data-action="nextpage"]')).toHaveCount(0);
 
-  const flasks = () => page.evaluate(() => window.__tome!.engine.inventory()!.pack.find((i) => /Flasks? of oil/.test(i.name))?.number ?? 0);
-  const before = await flasks();
+  /* Rations are always stocked (st_info.txt), so a run's random stock cannot leave them out. */
+  const rations = () => page.evaluate(() => window.__tome!.engine.inventory()!.pack.find((i) => /Rations? of Food/.test(i.name))?.number ?? 0);
+  const before = await rations();
   const gold = await page.evaluate(() => window.__tome!.engine.store()!.gold);
-  await page.locator('.termview .shop-row', { hasText: 'Flasks of oil' }).click();
+  await page.locator('.termview .shop-row', { hasText: 'Rations of Food' }).click();
   await expect(page.locator('.sheet-item [data-action="take"]')).toHaveText(/^Buy 1 for \d+ gold$/);
   await page.locator('.sheet-item .stepper-button', { hasText: '+' }).click();
   await expect(page.locator('.sheet-item [data-action="take"]')).toHaveText(/^Buy 2 for \d+ gold$/);
   await page.locator('.sheet-item [data-action="take"]').click();
-  await expect.poll(flasks).toBe(before + 2);
-  await expect(page.locator('#toast')).toContainText('Bought 2 × Flasks of oil');
+  await expect.poll(rations).toBe(before + 2);
+  await expect(page.locator('#toast')).toContainText('Bought 2 × Rations of Food');
   expect(await page.evaluate(() => window.__tome!.engine.store()!.gold)).toBeLessThan(gold);
 
   await page.locator('.termview [data-tab="offer"]').click();
   await expect(page.locator('.termview .shop-note')).toContainText('buys food');
-  await page.locator('.termview .shop-row', { hasText: 'Flasks of oil' }).click();
+  await page.locator('.termview .shop-row', { hasText: 'Rations of Food' }).click();
   await page.locator('.sheet-item [data-action="offer"]').click();
-  await expect.poll(flasks).toBe(before + 1);
-  await expect(page.locator('#toast')).toContainText('Sold Flasks of oil');
+  await expect.poll(rations).toBe(before + 1);
+  await expect(page.locator('#toast')).toContainText('Sold Rations of Food');
 
   await leave(page);
   const door = page.locator('#toolbar [data-action="shop"]');
@@ -82,6 +83,27 @@ test('shops show their whole stock natively, buy and sell from item cards, and t
   await expect(page.locator('.termview [data-tab="exit"]')).toBeVisible();
   await page.keyboard.press('Escape');
   await waitAtCommand(page);
+
+  /* tome2 draws a service's answer over the building's screen and pages long ones: it is shown in a card. */
+  for (const cell of await buildings(page)) {
+    if (names["Mayor's Office"]) break;
+    const name = await walkIn(page, cell);
+    if (name === "Mayor's Office") names[name] = cell;
+    else if (name) await leave(page);
+  }
+  if (!(await page.locator('.termview [data-tab="exit"]').isVisible())) await walkIn(page, names["Mayor's Office"]);
+  const quest = page.locator('.termview .row-button', { hasText: 'Get a quest' });
+  await quest.click();
+  await expect(page.locator('.sheet-service')).toContainText('Thieves!');
+  await page.locator('.sheet-service .sheet-action.primary').click();
+  await quest.click();
+  await expect(page.locator('.sheet-service')).toContainText('You have not completed your current quest yet!');
+  await expect(page.locator('.sheet-service')).not.toContainText('CTRL');
+  await page.locator('.sheet-service .sheet-action.primary').click();
+  await page.locator('.termview .row-button', { hasText: 'Race legends' }).click();
+  await expect(page.locator('.sheet-service')).toContainText('You) Shopper the Human');
+  await page.locator('.sheet-service .sheet-action.primary').click();
+  await leave(page);
 });
 
 test('travel walks through a companion, pushing past it', async ({ page }) => {

@@ -67,7 +67,7 @@ import { PromptCard, type CardKind } from './ui/promptcard.ts';
 import type { PopAction } from './ui/popup.ts';
 import { cleanPrompt, describableRange } from './ui/prompttext.ts';
 import { FilePages, parseHelpFile, viewerSource, viewerHeading, type HelpFile, type HelpLink, type ViewerHeading } from './ui/filepages.ts';
-import { entranceLabel, offerElements, shelfElements, shelfPage, shopModel, trades, type ShopHandlers, type ShopModel, type ShopTab } from './ui/store.ts';
+import { drawnBlocks, entranceLabel, offerElements, serviceReply, shelfElements, shelfPage, shopModel, trades, type ShopHandlers, type ShopModel, type ShopTab } from './ui/store.ts';
 import { parseAbilities, parseSkills } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
 import { hallOfFameElements, heroEntry, isHallOfFame, openFameCard, parseTomb, tombElements } from './ui/gameover.ts';
@@ -113,6 +113,8 @@ const PLACE_POLL_MS = 2000;
 const CTRL_S = 0x13;
 const CTRL_X = 0x18;
 const SPACE = 0x20;
+/* Messages read to tell what a building's service said. */
+const SERVICE_MESSAGES = 30;
 /* Visible height lost to an on-screen keyboard before the layout makes room for it. */
 const KEYBOARD_MIN_PX = 120;
 /* Below this visible height above the keyboard, text questions shrink to fit. */
@@ -1614,11 +1616,55 @@ function serviceHint(service: StoreCommand): string | undefined {
   return service.cost > 0 ? `${service.cost} gold` : undefined;
 }
 
+/**
+ * A building's service under way: tome2 answers it by drawing over the
+ * building's screen, which the native panel covers, and pages long answers
+ * with -more- (held while it runs), so each page is kept as it is shown.
+ */
+let service: { name: string; before: string[]; state: GameState | null; pages: string[][][] } | null = null;
+
 /** Asks for a service, or says why it cannot be had (no gold spent either way when it cannot). */
-function runService(service: StoreCommand): void {
-  if (service.closed) refuse('The keeper will not do that for you.');
-  else if (service.cost > (lastState?.player?.au ?? 0)) refuse(`That costs ${service.cost} gold, more than you have.`);
-  else send([BACKSLASH, service.key.charCodeAt(0)]);
+function runService(command: StoreCommand): void {
+  if (command.closed) refuse('The keeper will not do that for you.');
+  else if (command.cost > (lastState?.player?.au ?? 0)) refuse(`That costs ${command.cost} gold, more than you have.`);
+  else {
+    service = { name: command.name, before: buffer.screenText().split('\n'), state: engine.gameState(SERVICE_MESSAGES), pages: [] };
+    engine.setAutoMore(false);
+    send([BACKSLASH, command.key.charCodeAt(0)]);
+  }
+}
+
+/** Follows a service at each idle: keeps a page and turns it at -more-; once back at the building's commands (or out of it), shows what it said. True when a key was sent. */
+function followService(): boolean {
+  const run = service;
+  if (!run || macros.running || engine.pendingKeys > 0 || viewerHeading(rowZeroText())) return false;
+  const prompt = currentPrompt();
+  if (prompt === 'more') {
+    run.pages.push(drawnBlocks(run.before, buffer.screenText().split('\n')));
+    engine.sendKeys([SPACE]);
+    return true;
+  }
+  const inside = !!engine.store() && /^You may:/.test(buffer.rowText(21)) && (prompt === 'none' || prompt === 'other');
+  const snap = engine.snapshot();
+  const left = !snap?.inDungeon || (snap.atCommand && !snap.icky);
+  if (!inside && !left) return false;
+  service = null;
+  applyEngineSettings();
+  const paged = run.pages.length > 0;
+  if (inside) run.pages.push(drawnBlocks(run.before, buffer.screenText().split('\n')));
+  const state = engine.gameState(SERVICE_MESSAGES);
+  const said = run.state && state ? newMessages(run.state, state).map((m) => m.text) : [];
+  const reply = serviceReply(run.pages.filter((page) => page.length), said);
+  if (reply.length) openServiceReply(run.name, reply);
+  else if (paged) showToast(`${run.name}: nothing to show yet.`, false);
+  return false;
+}
+
+/** What a building's service said, as a card over the building. */
+function openServiceReply(title: string, paragraphs: readonly string[]): void {
+  const body = el('div', 'prose');
+  for (const text of paragraphs) body.append(el('p', undefined, text));
+  sheets.open({ title, body, kind: 'card', className: 'sheet-service', actions: [{ label: 'OK', primary: true, run: () => sheets.back() }] });
 }
 
 /** The toolbar while in a shop (beneath its panel). */
@@ -2388,6 +2434,7 @@ const engine = new Engine(buffer, {
     /* A run quit through tome2's quit command is kept in the Hall of Fame as abandoned. */
     engine.markAbandoned();
     if (!macros.running && readViewer()) return;
+    if (followService()) return;
     director.idle();
     dirty = false;
     refresh();
@@ -2843,6 +2890,7 @@ function returnToTitle(): void {
   shownShop = null;
   shopTab = null;
   trade = null;
+  service = null;
   ended = false;
   quitting = false;
   memorial = null;

@@ -378,3 +378,60 @@ function shopItemAction(api: GameApi, action: ItemAction, item: ItemState, place
     },
   };
 }
+
+/* A building's screen rows a service draws on: below the messages, above the shop's gold (row 19) and its commands. */
+const SERVICE_ROWS = { first: 1, last: 18 };
+
+/** Lines that are tome2's key hints, or reworded for this game. */
+const SERVICE_WORDING: [RegExp, string | null][] = [
+  [/\b(hit|press) any key\b/i, null],
+  [/^Use CTRL-Q to check the status of your quest\.?$/i, 'Your quests are listed in Menu → Knowledge.'],
+];
+
+/** What a service drew on a building's screen: the rows changed since it began, as blocks of adjacent rows. */
+export function drawnBlocks(before: readonly string[], after: readonly string[]): string[][] {
+  const blocks: string[][] = [];
+  let block: string[] | null = null;
+  for (let r = SERVICE_ROWS.first; r <= SERVICE_ROWS.last && r < after.length; r++) {
+    const line = after[r].trimEnd();
+    if (line === (before[r] ?? '').trimEnd() || !line.trim()) {
+      block = null;
+      continue;
+    }
+    if (!block) blocks.push((block = []));
+    block.push(line.trim());
+  }
+  return blocks;
+}
+
+/**
+ * A service's reply as paragraphs: what tome2 said, then each page it drew
+ * (lines wrapped mid-sentence joined; of several pages, those with only
+ * their heading left out; key hints left out).
+ */
+export function serviceReply(pages: readonly (readonly string[][])[], messages: readonly string[]): string[] {
+  const reword = (line: string): string | null => {
+    for (const [pattern, text] of SERVICE_WORDING) if (pattern.test(line)) return text;
+    return line;
+  };
+  const lines = (page: readonly string[][]) => page.reduce((n, block) => n + block.length, 0);
+  const paragraphs: string[] = [];
+  for (const message of messages) {
+    const text = reword(message.trim());
+    if (text && paragraphs[paragraphs.length - 1] !== text) paragraphs.push(text);
+  }
+  for (const page of pages) {
+    if (pages.length > 1 && lines(page) < 2) continue;
+    for (const block of page) {
+      let open = false;
+      for (const line of block) {
+        const text = reword(line);
+        if (!text) continue;
+        if (open && /^[a-z]/.test(text) && !/[.!?:)]$/.test(paragraphs[paragraphs.length - 1])) paragraphs[paragraphs.length - 1] += ` ${text}`;
+        else paragraphs.push(text);
+        open = true;
+      }
+    }
+  }
+  return paragraphs;
+}

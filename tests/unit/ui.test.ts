@@ -13,7 +13,7 @@ import { MacroRunner, type MacroScreen } from '../../web/src/play/macro.ts';
 import { readableColour } from '../../web/src/render/colour.ts';
 import { STORE_ACTION, type ItemState, type StoreState } from '../../web/src/render/snapshot.ts';
 import { descriptionParagraphs } from '../../web/src/ui/api.ts';
-import { affordable, offerMacro, refusal, shelfMacro, shelfPage, shopModel, trades } from '../../web/src/ui/store.ts';
+import { affordable, drawnBlocks, offerMacro, refusal, serviceReply, shelfMacro, shelfPage, shopModel, trades } from '../../web/src/ui/store.ts';
 import { abilityMoveKeys, cursorKeys, parseAbilities, parseSkills, selectedSkill, skillMoveKeys } from '../../web/src/ui/skills.ts';
 import { flagLabel, parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
 import { fateText, heroEntry } from '../../web/src/ui/gameover.ts';
@@ -512,5 +512,31 @@ describe('hall of fame', () => {
     assert.equal(heroEntry(scores, { name: 'Frodo', level: 3, turns: 95 }), -1);
     assert.equal(heroEntry(scores, { name: 'Sam', level: 3, turns: 90 }), -1);
     assert.equal(heroEntry(scores, null), -1);
+  });
+});
+
+describe('a building service\'s reply', () => {
+  const screen = (rows: Record<number, string>) => Array.from({ length: 24 }, (_, r) => rows[r] ?? '');
+
+  it('takes the rows a service drew, in blocks', () => {
+    const before = screen({ 3: 'Mayor\'s Office', 21: 'You may:' });
+    const after = screen({ 3: 'Mayor\'s Office', 5: 'Quest Information (Danger level: 5)', 7: 'Thieves!', 8: 'There are thieves robbing my people! They live in a small', 9: 'burrow outside the city walls.', 21: 'You may: q) Get a quest' });
+    assert.deepEqual(drawnBlocks(before, after), [['Quest Information (Danger level: 5)'], ['Thieves!', 'There are thieves robbing my people! They live in a small', 'burrow outside the city walls.']]);
+  });
+
+  it('joins wrapped lines, keeps lists, leaves out key hints and rewords', () => {
+    const quest = [['Quest Information (Danger level: 5)'], ['Thieves!', 'There are thieves robbing my people! They live in a small', 'burrow outside the city walls.']];
+    assert.deepEqual(serviceReply([quest], []), ['Quest Information (Danger level: 5)', 'Thieves!', 'There are thieves robbing my people! They live in a small burrow outside the city walls.']);
+    assert.deepEqual(serviceReply([[['You have not completed your current quest yet!', 'Use CTRL-Q to check the status of your quest.']]], []), [
+      'You have not completed your current quest yet!',
+      'Your quests are listed in Menu → Knowledge.',
+    ]);
+    assert.deepEqual(serviceReply([], ['The barkeep gives you some gruel and a beer.', 'Hit any key to continue']), ['The barkeep gives you some gruel and a beer.']);
+  });
+
+  it('leaves out pages with only their heading when there are several', () => {
+    const pages = [[['The Greatest of all the Human'], ['1) Bilbo the Human (Level 7)']], [['The Greatest of all the Elf']]];
+    assert.deepEqual(serviceReply(pages, []), ['The Greatest of all the Human', '1) Bilbo the Human (Level 7)']);
+    assert.deepEqual(serviceReply([[['The Greatest of all the Elf']], [['The Greatest of all the Dwarf']]], []), []);
   });
 });
