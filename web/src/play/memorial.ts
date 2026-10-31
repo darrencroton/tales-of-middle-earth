@@ -3,6 +3,8 @@ import { isNotice, type CharacterState, type InventoryState, type MessageState, 
 
 /** Game turns in a day of Middle-earth (tome2's DAY at ten game turns a player turn). */
 export const TURNS_PER_DAY = 115200;
+/** The end of a run the player abandoned, as tome2's Hall of Fame records it (engine `web_mark_abandoned`). */
+export const ABANDONED = 'Abandoned';
 /** Messages kept from the hero's last moments. */
 export const LAST_WORDS = 14;
 

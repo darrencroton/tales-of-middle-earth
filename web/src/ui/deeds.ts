@@ -134,6 +134,13 @@ export class ChronicleStore {
     return this.data.memorials[key] ?? null;
   }
 
+  /** Forgets a hero kept as they were at the end; false when none was. */
+  forgetMemorial(key: string): boolean {
+    if (!this.data.memorials[key]) return false;
+    delete this.data.memorials[key];
+    return true;
+  }
+
   save(): void {
     if (!this.fs || !this.path) return;
     try {

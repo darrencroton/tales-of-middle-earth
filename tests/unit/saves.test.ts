@@ -14,7 +14,7 @@ import {
   writeFiles,
   type EmscriptenFS,
 } from '../../web/src/saves.ts';
-import { deleteHeroSave, heroLine, placeLine, saveBase } from '../../web/src/play/adventurers.ts';
+import { deleteHeroSave, heroLine, nextRunName, placeLine, saveBase } from '../../web/src/play/adventurers.ts';
 
 class MemoryFS implements EmscriptenFS {
   readonly files = new Map<string, Uint8Array>();
@@ -153,6 +153,20 @@ describe('filesystem helpers', () => {
 describe('exportFilename', () => {
   it('is timestamped and uses the save extension', () => {
     assert.equal(exportFilename(new Date('2026-10-25T09:08:07Z')), 'tome2-saves-2026-10-25-09-08-07.tome2save');
+  });
+});
+
+describe('a hero begun anew', () => {
+  it('takes the next free numeral of the line', () => {
+    assert.equal(nextRunName('Elder', new Set(['elder'])), 'Elder II');
+    assert.equal(nextRunName('Elder II', new Set(['elder', 'elder_ii'])), 'Elder III');
+    assert.equal(nextRunName('Elder', new Set(['elder', 'elder_ii', 'elder_iii'])), 'Elder IV');
+    assert.equal(nextRunName('Elder VIII', new Set(['elder_ix'])), 'Elder X');
+  });
+
+  it('stays within fifteen characters', () => {
+    assert.equal(nextRunName('Thranduilionnn', new Set()), 'Thranduilion II');
+    assert.equal(nextRunName('Thranduilion II', new Set(['thranduilion_ii'])), 'Thranduilio III');
   });
 });
 

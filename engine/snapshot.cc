@@ -1477,6 +1477,46 @@ EMSCRIPTEN_KEEPALIVE char const *web_scores_json()
 }
 
 /*
+ * Records a run the player gave up through tome2's quit command as
+ * abandoned, so the Hall of Fame keeps it: tome2 registers no score for
+ * "Quitting". Only between that quit and the score being written (not for a
+ * winner retiring); false otherwise.
+ */
+EMSCRIPTEN_KEEPALIVE int web_mark_abandoned()
+{
+	if (!death || total_winner || game->died_from != "Quitting") return 0;
+	game->died_from = "Abandoned";
+	return 1;
+}
+
+/*
+ * Removes one entry (by its place in web_scores_json) from the Hall of
+ * Fame. False when there is no such entry or the file cannot be written.
+ */
+EMSCRIPTEN_KEEPALIVE int web_remove_score(int index)
+{
+	char buf[1024];
+	path_build(buf, sizeof(buf), ANGBAND_DIR_USER, "scores.raw");
+	int fd = fd_open(buf, O_RDONLY);
+	if (fd < 0) return 0;
+	std::vector<high_score> scores;
+	high_score score;
+	for (int i = 0; i < MAX_HISCORES; i++)
+	{
+		if (highscore_seek(fd, i) || highscore_read(fd, &score)) break;
+		scores.push_back(score);
+	}
+	fd_close(fd);
+	if (index < 0 || static_cast<std::size_t>(index) >= scores.size()) return 0;
+	scores.erase(scores.begin() + index);
+
+	FILE *out = fopen(buf, "wb");
+	if (!out) return 0;
+	bool const written = scores.empty() || fwrite(scores.data(), sizeof(high_score), scores.size(), out) == scores.size();
+	return (fclose(out) == 0 && written) ? 1 : 0;
+}
+
+/*
  * Returns what character creation offers: every race, race modifier and
  * class (with specialisations), with stat adjustments, skills, abilities
  * and intrinsics, for the native birth screens.

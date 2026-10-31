@@ -6,7 +6,7 @@ import type { TerminalBuffer } from '../terminal.ts';
 import { moduleKey, type ModuleChoice, type SaveInfo, type TitleChoice, type TitleScreen } from '../title.ts';
 import { birthCard } from '../ui/birthcard.ts';
 import { findSaveIndex } from '../saves.ts';
-import { saveBase } from '../play/adventurers.ts';
+import { nextRunName, saveBase } from '../play/adventurers.ts';
 import { el } from '../ui/dom.ts';
 import { ListNav } from '../ui/listnav.ts';
 import { askText } from '../ui/menus.ts';
@@ -94,6 +94,8 @@ export class Director {
   private fallen: { name: string; description: string }[] = [];
   /** The hero being created is a fallen one begun anew. */
   private anew = false;
+  /** The fallen hero's savefile a hero begun anew starts from. */
+  private template = '';
   private choice: BirthChoiceScreen | null = null;
   private pendingKey: string | null = null;
   private chooseWhenReady = false;
@@ -234,6 +236,7 @@ export class Director {
     this.saves = [];
     this.fallen = [];
     this.anew = false;
+    this.template = '';
     this.choice = null;
     this.pendingKey = null;
     this.chooseWhenReady = false;
@@ -249,19 +252,59 @@ export class Director {
     this.hide();
   }
 
+  /** A fallen hero's savefile, by the hero's name. */
+  private fallenSave(name: string): { name: string; description: string } | undefined {
+    const base = saveBase(name);
+    return this.fallen.find((f) => f.name === base);
+  }
+
   /** True when a fallen hero's savefile can start them again (same name, race and class, no living hero by that name). */
   canBeginAnew(hero: { name: string; race: string; cls: string }): boolean {
     if (this.phase !== 'title') return false;
-    const save = this.fallen.find((f) => f.name === hero.name);
-    if (!save) return false;
-    return describesHero(save.description, hero.race, hero.cls);
+    const save = this.fallenSave(hero.name);
+    return !!save && describesHero(save.description, hero.race, hero.cls);
   }
 
-  /** Starts a fallen hero again from their beginning; false when there is no savefile to start from. */
+  /**
+   * Starts a fallen hero again from their beginning, under a name of its own
+   * ("Elder II", asked first) so the run has its own savefile and the fallen
+   * one's stays to begin anew from; false when there is no savefile to start from.
+   */
   beginAnew(name: string): boolean {
-    if (this.phase !== 'title' || !this.fallen.some((f) => f.name === name)) return false;
-    this.heroName = name;
-    this.startCreating(true);
+    const save = this.fallenSave(name);
+    if (this.phase !== 'title' || !save) return false;
+    const taken = new Set([...this.saves, ...this.fallen].map((s) => s.name.toLowerCase()));
+    for (const entry of this.deps.engine.scores()) taken.add(saveBase(entry.name).toLowerCase());
+    this.title?.setBusy('');
+    this.askAnewName(save.name, name, nextRunName(name, taken));
+    return true;
+  }
+
+  private askAnewName(template: string, fallen: string, suggested: string, error = ''): void {
+    const living = new Set(this.saves.map((s) => s.name.toLowerCase()));
+    askText(this.deps.sheets, 'Begin anew', `${fallen}'s race, class and attributes in a new adventure. What shall this hero be called?`, suggested, 15, error).then(
+      (name) => {
+        if (name === null) {
+          this.title?.restoreChoices();
+          return;
+        }
+        const problem = validCharacterName(name) ?? (living.has(saveBase(name).toLowerCase()) ? `${name} already has a saved game.` : null);
+        if (problem) {
+          this.askAnewName(template, fallen, name, problem);
+          return;
+        }
+        this.template = template;
+        this.heroName = name;
+        this.startCreating(true);
+      },
+    );
+  }
+
+  /** Takes a fallen hero's savefile off the list (it is about to be deleted); false when there was none. */
+  forgetFallen(name: string): boolean {
+    const save = this.fallenSave(name);
+    if (!save) return false;
+    this.fallen = this.fallen.filter((f) => f !== save);
     return true;
   }
 
@@ -321,7 +364,7 @@ export class Director {
   private creating(screen: string, rowZero: string): void {
     if (/Enter the name of the savefile/.test(screen) && !this.nameSent) {
       this.nameSent = true;
-      this.deps.send([...keyCodes(this.heroName), ENTER]);
+      this.deps.send([...keyCodes(this.anew ? this.template : this.heroName), ENTER]);
     } else if (/already exists! Press any key to load/.test(screen)) {
       // A fallen hero's savefile: tome2 loads it and starts a new character.
       this.deps.send([SPACE]);
@@ -352,6 +395,9 @@ export class Director {
       return;
     }
     if (answer(/modify the options\s*\[y\/n\]/, keyCodes('n'))) return;
+    if (/Use same character as last time/.test(screen) && this.anew && !this.deps.engine.setHeroName(this.heroName)) {
+      console.warn(`${this.heroName} could not be named; the run keeps the fallen hero's savefile`);
+    }
     if (answer(/Use same character as last time/, keyCodes(this.anew ? 'y' : 'n'))) return;
     if (answer(/Number of quests\?/, [...keyCodes('0'), ENTER])) return;
     if (answer(/Enter minimum attribute for/, [ENTER])) return;

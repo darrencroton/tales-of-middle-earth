@@ -28,7 +28,7 @@ import {
   findSaveIndex,
   writeFiles,
 } from './saves.ts';
-import { adventurerOf, AdventurerStore, deleteHeroSave, heroLine } from './play/adventurers.ts';
+import { adventurerOf, AdventurerStore, deleteHeroSave, heroLine, saveBase } from './play/adventurers.ts';
 import { adventurerSummary, openAdventurers, type AdventurerDetails, type AdventurerHandlers } from './ui/adventurers.ts';
 import type { SaveInfo } from './title.ts';
 import { ANIMATION_FPS, applyTextSize, EFFECT_DELAY, loadSettings, saveSettings, type Settings } from './settings.ts';
@@ -52,7 +52,7 @@ import {
   type FightingStyle,
   type GearSuggestion,
 } from './play/items.ts';
-import { buildMemorial, entryKey, memorialKey, type Memorial } from './play/memorial.ts';
+import { ABANDONED, buildMemorial, entryKey, memorialKey, type Memorial } from './play/memorial.ts';
 import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
 import { el, iconText, navButton, section } from './ui/dom.ts';
@@ -70,7 +70,7 @@ import { FilePages, parseHelpFile, viewerSource, viewerHeading, type HelpFile, t
 import { entranceLabel, offerElements, shelfElements, shelfPage, shopModel, trades, type ShopHandlers, type ShopModel, type ShopTab } from './ui/store.ts';
 import { parseAbilities, parseSkills } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
-import { hallOfFameElements, heroEntry, isHallOfFame, parseTomb, tombElements } from './ui/gameover.ts';
+import { hallOfFameElements, heroEntry, isHallOfFame, openFameCard, parseTomb, tombElements } from './ui/gameover.ts';
 import { careerElements, ChronicleStore } from './ui/deeds.ts';
 import { extendStreak, newChronicle, newDeeds, nextTimeTip, record, slainMonsters, type Chronicle, type Slain, type Streak } from './play/chronicle.ts';
 import { parseFullSheet } from './ui/charsheet.ts';
@@ -220,7 +220,7 @@ let memorial: Memorial | null = null;
 let pendingAnew: string | null = null;
 let looking = false;
 let quitting = false;
-/** The hero whose adventure is being abandoned: once the game has closed, their save is deleted. */
+/** The hero whose adventure is being abandoned through tome2's quit: once the game has closed, what the frontend keeps of them is forgotten. */
 let abandoning: string | null = null;
 /** Sheets covered by a tome2 screen, reopened once it closes. */
 let returnTo: SheetTrail | null = null;
@@ -1248,11 +1248,14 @@ function refresh(): void {
     const screen = characterScreen();
     const characterView = !!(screen.skills || screen.abilities || screen.sheet);
     shownShop = currentShop();
-    const tomb = parseTomb(rows);
+    const tomb = abandoning ? null : parseTomb(rows);
     const fame = !tomb && ended && isHallOfFame(rows);
     if (tomb) ended = true;
     app.classList.toggle('ended', !!tomb || fame);
-    if (termView.visible && currentBox() && !character.hosting) {
+    if (abandoning) {
+      /* tome2's end-of-game screens are passed while the adventure is abandoned. */
+      termView.hide();
+    } else if (termView.visible && currentBox() && !character.hosting) {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
       if (chronicles.fall(tomb.name)) chronicles.save();
@@ -1367,7 +1370,7 @@ let chronicle: Chronicle | null = null;
 let streak: Streak = { count: 0, lastTurn: 0 };
 
 function chronicleUpdate(player: PlayerState, slain: readonly Slain[], turn: number, hurt: boolean): void {
-  app.classList.toggle('fallen', !!player.dead);
+  app.classList.toggle('fallen', !!player.dead && !abandoning);
   if (player.dead) return;
   if (chronicle?.name !== player.name) {
     chronicle = chronicles.hero(player.name);
@@ -1410,7 +1413,7 @@ function captureMemorial(player: PlayerState, state: GameState, snap: LevelSnaps
   }
   const palette = buffer.palette;
   const built = buildMemorial({
-    player,
+    player: player.diedFrom === 'Quitting' && engine.markAbandoned() ? { ...player, diedFrom: ABANDONED } : player,
     character: engine.character(),
     inventory: engine.inventory(),
     messages: engine.gameState(60)?.messages ?? state.messages ?? [],
@@ -1438,13 +1441,16 @@ function openFallenHero(tab: FallenTab = 'hero'): void {
   openFallen(sheets, { memorial, entry: scores.find((e) => entryKey(e) === memorialKey(memorial!)) ?? null }, tab);
 }
 
-/** A hero in the Hall of Fame; one who fell on this device can be looked back on in full, and some begun anew. */
+/**
+ * A hero in the Hall of Fame, as a card: one whose adventure ended on this
+ * device can be looked back on in full, some begun anew, and on the title
+ * screen any can be removed.
+ */
 function openFameHero(entry: ScoreEntry, inGame: boolean): void {
   const kept = chronicles.memorial(entryKey(entry));
   const anew = inGame ? fallenSaveFor(entry) : director.canBeginAnew(entry);
-  openFallen(sheets, {
-    memorial: kept,
-    entry,
+  openFameCard(sheets, { memorial: kept, entry }, {
+    lookBack: kept ? () => openFallen(sheets, { memorial: kept, entry }) : undefined,
     anew: anew
       ? () => {
           sheets.closeAll();
@@ -1456,7 +1462,34 @@ function openFameHero(entry: ScoreEntry, inGame: boolean): void {
           }
         }
       : undefined,
+    remove: inGame ? undefined : () => removeFameEntry(entry),
   });
+}
+
+/**
+ * Takes a hero out of the Hall of Fame with what was remembered of them;
+ * the last of a name also takes the fallen hero's savefile, which only
+ * Begin anew used.
+ */
+function removeFameEntry(entry: ScoreEntry): void {
+  sheets.closeAll();
+  const same = (e: ScoreEntry) => entryKey(e) === entryKey(entry) && e.points === entry.points && e.day === entry.day;
+  const index = engine.scores().findIndex(same);
+  if (index < 0 || !engine.removeScore(index)) {
+    showToast('The Hall of Fame could not be changed.', false);
+    openHallOfFame();
+    return;
+  }
+  if (chronicles.forgetMemorial(entryKey(entry))) chronicles.save();
+  if (!engine.scores().some((e) => saveBase(e.name) === saveBase(entry.name)) && director.forgetFallen(entry.name)) deleteSavefile(entry.name);
+  openHallOfFame();
+  engine.syncNow().then(
+    () => showToast(`${entry.name} was removed from the Hall of Fame.`, false),
+    (err) => {
+      console.error('Saving to browser storage failed', err);
+      showToast('Browser storage could not be updated.', false);
+    },
+  );
 }
 
 /** In the game the savefile list is not at hand; a fallen hero's own savefile is the one just written. */
@@ -2329,7 +2362,7 @@ const engine = new Engine(buffer, {
       heroMemory = null;
       heroMemoryId = '';
       landMemory = null;
-      deleteAdventurer(abandoned);
+      forgetAdventurer(abandoned);
       engine.syncNow().catch((err) => console.error('Saving to browser storage failed', err)).finally(() => returnToTitle());
       return;
     }
@@ -2349,6 +2382,8 @@ const engine = new Engine(buffer, {
     if (!chronicles.loaded) chronicles.load(engine.fs, engine.savePath);
     if (!mapMemory.loaded) mapMemory.load(engine.fs, engine.savePath);
     if (!adventurers.loaded) adventurers.load(engine.fs, engine.savePath);
+    /* A run quit through tome2's quit command is kept in the Hall of Fame as abandoned. */
+    engine.markAbandoned();
     if (!macros.running && readViewer()) return;
     director.idle();
     dirty = false;
@@ -2767,18 +2802,17 @@ function inGame(): boolean {
   return !!lastSnap?.inDungeon;
 }
 
-/** Saves, waits for the save to reach browser storage, then returns to the title screen; `abandon` names a hero whose save is then deleted. */
-function saveAndQuit(abandon: string | null = null): void {
+/** Saves, waits for the save to reach browser storage, then returns to the title screen. */
+function saveAndQuit(): void {
   sheets.closeAll();
   if (!inGame()) {
     location.reload();
     return;
   }
   quitting = true;
-  abandoning = abandon;
   stopAutomation(null, 'quit');
   persistMapMemory();
-  showToast(abandon ? 'Leaving…' : 'Saving…', false);
+  showToast('Saving…', false);
   runMacro(quitMacro());
 }
 
@@ -2869,6 +2903,18 @@ function* finishMacro(): Macro {
   }
 }
 
+function* abandonMacro(): Macro {
+  let s = yield [KEY_ESCAPE, KEY_ESCAPE, KEY_ESCAPE];
+  for (let i = 0; i < 6 && !s.atCommand; i++) s = yield [KEY_ESCAPE];
+  s = yield [BACKSLASH, ...keyCodes('Q')];
+  if (/really want to quit|want to retire/.test(s.prompt)) s = yield keyCodes('y');
+  if (/verify QUITTING/.test(s.prompt)) s = yield keyCodes('@');
+  for (let i = 0; i < 12; i++) {
+    if (s.atCommand) return;
+    s = yield [KEY_ESCAPE];
+  }
+}
+
 function* quitMacro(): Macro {
   let s = yield [KEY_ESCAPE, KEY_ESCAPE, KEY_ESCAPE];
   for (let i = 0; i < 6 && !s.atCommand; i++) s = yield [KEY_ESCAPE];
@@ -2894,7 +2940,7 @@ function startImport(): void {
 /** The Hall of Fame from the title screen. */
 function openHallOfFame(): void {
   const body = el('div', 'fame');
-  body.append(section('Fallen heroes', ...hallOfFameElements(engine.scores(), -1, (entry) => openFameHero(entry, false))), ...careerElements(chronicles));
+  body.append(section('Heroes remembered', ...hallOfFameElements(engine.scores(), -1, (entry) => openFameHero(entry, false))), ...careerElements(chronicles));
   sheets.open({ title: 'Hall of Fame', subtitle: 'Heroes of Middle-earth, remembered', body, className: 'sheet-fame' });
 }
 
@@ -2968,8 +3014,14 @@ const adventurerHandlers: AdventurerHandlers = {
   },
 };
 
-/** Deletes a hero's adventure: the savefile and kept levels, and what the frontend keeps of them (map memory, tale, title details, recents). */
+/** Deletes a hero's adventure: the savefile and kept levels, and what the frontend keeps of them. */
 function deleteAdventurer(name: string): void {
+  deleteSavefile(name);
+  forgetAdventurer(name);
+}
+
+/** Deletes a hero's savefile and kept levels, and their line in tome2's savefile index. */
+function deleteSavefile(name: string): void {
   const fs = engine.fs;
   const root = engine.savePath;
   const index = fs && root ? findSaveIndex(fs, root) : null;
@@ -2978,6 +3030,10 @@ function deleteAdventurer(name: string): void {
   } catch (err) {
     console.error(`Deleting ${name}'s save failed`, err);
   }
+}
+
+/** Forgets what the frontend keeps of a hero whose adventure is over: map memory, tale, title details, recents. */
+function forgetAdventurer(name: string): void {
   mapMemory.forgetNamed(name);
   mapMemory.save();
   chronicles.forget(name);
@@ -2987,10 +3043,20 @@ function deleteAdventurer(name: string): void {
   recents.forget(name);
 }
 
-/** Ends the hero's adventure for good: the game closes as Save and quit does, then the save is deleted. */
+/**
+ * Ends the hero's adventure for good through tome2's own quit: tome2 keeps
+ * the savefile as a fallen hero's (so they can be begun anew) and the run in
+ * the Hall of Fame (marked abandoned in `onIdle`); its end-of-game screens are passed.
+ */
 function abandonAdventure(): void {
   const name = lastState?.player?.name;
-  if (name) saveAndQuit(name);
+  if (!name || !inGame()) return;
+  sheets.closeAll();
+  quitting = true;
+  abandoning = name;
+  stopAutomation(null, 'quit');
+  showToast('Leaving…', false);
+  runMacro(abandonMacro());
 }
 
 function openGameMenu(): void {
@@ -3028,7 +3094,7 @@ function openGameMenu(): void {
       confirmSheet(
         sheets,
         'Abandon this adventure?',
-        `${name}'s adventure ends here and cannot be taken up again: the saved game is deleted. Your other heroes, the Hall of Fame and the deeds you have earned stay.`,
+        `${name}'s adventure ends here and cannot be taken up again. It is remembered in the Hall of Fame, where you can begin anew as ${name}.`,
         'Abandon',
         abandonAdventure,
         true,

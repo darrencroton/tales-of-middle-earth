@@ -59,13 +59,15 @@ Shop, home, museum (walk in, or Enter shop on the door)
                                                     Sell/Store/Donate; wear, take off, inscribe, destroy)
 Other buildings ─────────────── native panel: their services as rows · Exit
 Death ──────────────────────── death card → end-of-game summary (full screen) → Hall of Fame (full screen)
-                                └── Fallen hero     panel, tabs Hero · Gear · Skills · Last moments
-                                    └── Item / foe  card
+                                └── a hero ──────── card: how it ended, when, deepest, score; Look back · Begin anew
+                                    └── Fallen hero panel, tabs Hero · Gear · Skills · Last moments
+                                        └── Item / foe  card
 Title ──────────────────────── Continue as (last hero, straight into the game) · Roster · New character
                                 ├── Roster ──────── panel, every saved hero
                                 │   └── a hero ──── card: where, last played, tale; Play · Delete (→ confirmation)
                                 Help (panel) · Settings (panel) · Backup (menu: Export · Import game data)
-                                · Soundtrack (panel) · Hall of Fame (panel → Fallen hero)
+                                · Soundtrack (panel) · Hall of Fame (panel → a hero: card as after death,
+                                  with Remove (→ confirmation))
 Character creation ─────────── director screens (full screen, Back/Random/Choose), name card;
                                Ready to begin: the hero, then Your adventure (random quests, birth options)
 ```

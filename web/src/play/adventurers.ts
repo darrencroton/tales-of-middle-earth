@@ -42,6 +42,27 @@ export function saveBase(name: string): string {
   return base || 'PLAYER';
 }
 
+/** Roman numerals II to XXXIX, the runs of a line of heroes after the first. */
+const RUNS = Array.from({ length: 38 }, (_, i) => {
+  const n = i + 2;
+  return 'X'.repeat(Math.floor(n / 10)) + ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'][n % 10];
+});
+
+/**
+ * The name for a hero begun anew from a fallen one: the line's name with the
+ * next free numeral after its own ("Elder" → "Elder II", "Elder II" → "Elder III"), within
+ * tome2's 15 characters and not the savefile (`taken`, lower case) of another.
+ */
+export function nextRunName(name: string, taken: ReadonlySet<string>): string {
+  const numeral = RUNS.find((n) => name.endsWith(` ${n}`));
+  const line = numeral ? name.slice(0, -numeral.length - 1) : name;
+  for (const run of RUNS.slice(numeral ? RUNS.indexOf(numeral) + 1 : 0)) {
+    const candidate = `${line.slice(0, 15 - run.length - 1).trimEnd()} ${run}`;
+    if (!taken.has(saveBase(candidate).toLowerCase())) return candidate;
+  }
+  return line;
+}
+
 /** The files of a hero among those in the save directory: the savefile and the levels kept with it (`Base.lvl4_2`). */
 export function heroFiles(names: readonly string[], base: string): string[] {
   return names.filter((n) => n === base || n.startsWith(`${base}.`));

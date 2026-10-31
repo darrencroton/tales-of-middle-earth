@@ -502,6 +502,7 @@ describe('hall of fame', () => {
     assert.equal(fateText(entry('A', 1, 1)), 'Killed by a Cave spider at 150 ft');
     assert.equal(fateText(entry('A', 1, 1, 'Grip', 0)), 'Killed by Grip in the town');
     assert.equal(fateText({ how: 'Quitting', depth: 0, quest: 0 }), 'Retired in the town');
+    assert.equal(fateText({ how: 'Abandoned', depth: 3, quest: 0 }), 'Abandoned at 150 ft');
     assert.equal(fateText({ how: 'Orcs', depth: 4, quest: 1 }), 'Killed by Orcs on a quest');
   });
 
