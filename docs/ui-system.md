@@ -53,7 +53,7 @@ Map (toolbar, HUD, gestures)
 
 Shop, home, museum (walk in, or Enter shop on the door)
                 ─────────────── native panel: one scrolling list a tab — Buy · Sell · Exit (home: Stored ·
-                                Your items · Exit; museum: Collection · Donate · Exit); other services above
+                                Inventory · Exit; museum: Collection · Donate · Exit); services and their cost head the shelf
                                 ├── Shelf item      card over the shop (description, how many, Buy/Take)
                                 └── Item carried    card over the shop (what it fetches or why not, how many,
                                                     Sell/Store/Donate; wear, take off, inscribe, destroy)

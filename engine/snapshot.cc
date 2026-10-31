@@ -1070,8 +1070,9 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_object_desc(int index)
 
 /*
  * The shop (or home) on the player's grid as JSON, or {"here":0}: its name
- * and keeper, its commands (letter, tome2 action code, name), its whole stock
- * (price each to buy; none in the home), and for each item carried whether
+ * and keeper, its commands (letter, tome2 action code, gold it costs, closed
+ * to the hero, name), its whole stock (price of one to buy, as tome2 decides
+ * how many the hero can afford; none in the home), and for each item carried whether
  * the shop takes it and what it pays for one ("why" says why not: "kind",
  * "worthless", "cursed").
  */
@@ -1115,8 +1116,14 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 		if (!first) json += ',';
 		first = false;
 		json += '{';
+		bool const liked = is_state(st, STORE_LIKED);
+		int const state = liked ? STORE_LIKED : is_state(st, STORE_HATED) ? STORE_HATED : STORE_NORMAL;
+		/* As bldg.cc's bldg_process_command: the price for how the keeper sees the hero, and actions kept from them. */
+		bool const closed = (ba.action_restr == 1 && liked) || (ba.action_restr == 2 && !liked);
 		json_str(json, "key", std::string(1, ba.letter));
 		json_int(json, "action", ba.action);
+		json_int(json, "cost", ba.costs[state]);
+		json_int(json, "closed", closed ? 1 : 0);
 		json_str(json, "name", ba.name, false);
 		json += '}';
 	}
@@ -1139,7 +1146,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 		json_int(json, "weight", o_ptr->weight);
 		json_int(json, "ch", static_cast<unsigned char>(object_char(o_ptr)));
 		json_int(json, "attr", object_attr(o_ptr));
-		json_int(json, "price", home || museum ? 0 : shop_price(*st, owner, o_ptr, true), false);
+		auto const one = one_of(o_ptr);
+		json_int(json, "price", home || museum ? 0 : shop_price(*st, owner, &one, true), false);
 		json += '}';
 	}
 	json += "],";

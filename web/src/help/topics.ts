@@ -370,7 +370,7 @@ export const HELP: readonly HelpGroup[] = [
         body: [
           'Walk into a shop’s door to trade; standing at the door, *Enter shop* on the toolbar takes you back in. *Buy* lists everything for sale, *Sell* what you carry. Tap an item for its description, then *Buy* or *Sell*, choosing how many. Things you cannot afford, or the shop will not take, are dimmed and say why.',
           'Each shop buys only its own kind of goods, and some specialist shops buy nothing at all. Unless you chose *No selling* when you began, shops pay for what they take. With No selling they pay nothing, but gold found lying about is worth five times as much.',
-          'Your *Home* keeps anything you leave there safe: *Your items* to store things, *Stored* to take them back.',
+          'Your *Home* keeps anything you leave there safe: *Inventory* to store what you carry, *Stored* to take it back.',
           {
             terms: [
               ['General Store', 'Food, torches, lanterns, oil, cloaks, ammunition, digging tools.'],

@@ -70,7 +70,9 @@ export function deleteHeroSave(fs: Pick<EmscriptenFS, 'readdir' | 'readFile' | '
   const base = saveBase(name);
   const notes = `${base}.nte`;
   const removed = [
-    ...heroFiles(fs.readdir(dir), base).map((file) => `${dir}/${file}`),
+    ...heroFiles(fs.readdir(dir), base)
+      .map((file) => `${dir}/${file}`)
+      .filter((path) => path !== indexPath),
     ...fs.readdir(up).filter((file) => file === notes).map((file) => `${up}/${file}`),
   ];
   for (const path of removed) fs.unlink(path);

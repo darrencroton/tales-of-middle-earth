@@ -1863,6 +1863,10 @@ html.keyboard-open .tv-layer.panel {
   color: var(--muted);
 }
 
+.row-button.unavailable .row-label {
+  opacity: 0.5;
+}
+
 .shop-note {
   margin: 0 0 0.6rem;
   font-size: var(--fs-small);

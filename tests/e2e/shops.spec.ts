@@ -44,7 +44,7 @@ test('shops show their whole stock natively, buy and sell from item cards, and t
     if (name === 'The Mathom-house') {
       /* A museum that tome2 words differently from a shop is shown the same way, not as tome2's raw screen. */
       await expect(page.locator('.termview [data-tab="shelf"]')).toHaveText('Collection');
-      await expect(page.locator('.termview .empty')).toContainText('Nothing is on show');
+      await expect(page.locator('.termview .empty')).toContainText('display cases stand empty');
     }
     await leave(page);
     if (names['General Store'] && names['The Mathom-house']) break;
@@ -69,7 +69,7 @@ test('shops show their whole stock natively, buy and sell from item cards, and t
   expect(await page.evaluate(() => window.__tome!.engine.store()!.gold)).toBeLessThan(gold);
 
   await page.locator('.termview [data-tab="offer"]').click();
-  await expect(page.locator('.termview .shop-note')).toContainText('Buys food');
+  await expect(page.locator('.termview .shop-note')).toContainText('buys food');
   await page.locator('.termview .shop-row', { hasText: 'Flasks of oil' }).click();
   await page.locator('.sheet-item [data-action="offer"]').click();
   await expect.poll(flasks).toBe(before + 1);

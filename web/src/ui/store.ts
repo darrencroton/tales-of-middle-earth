@@ -1,7 +1,7 @@
 import { KEY_BACKSLASH as BACKSLASH, KEY_ENTER as ENTER, KEY_SPACE as SPACE } from '../input/keys.ts';
 import { itemActions, itemMacro, SLOT_NAMES, type ItemAction, type ItemPlace } from '../play/items.ts';
 import { keyCodes, type Macro, type MacroScreen } from '../play/macro.ts';
-import { STORE_ACTION, type InventoryState, type ItemState, type StockItem, type StoreOffer, type StoreState } from '../render/snapshot.ts';
+import { STORE_ACTION, type InventoryState, type ItemState, type StockItem, type StoreCommand, type StoreOffer, type StoreState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { capitalise, descriptionParagraphs, pounds, titleName } from './api.ts';
 import { el, glyph, section } from './dom.ts';
@@ -14,8 +14,8 @@ export type ShopTab = 'shelf' | 'offer';
 export interface ShopModel {
   shelf: { label: string; verb: string | null; key: string | null; empty: string };
   offer: { label: string; verb: string; key: string } | null;
-  /** The building's other services (a fortune told, a quest given), sent to tome2 as they are. */
-  extras: { key: string; name: string }[];
+  /** The building's other services (a fortune told, a night's rest), sent to tome2 as they are. */
+  extras: StoreCommand[];
 }
 
 const TRADE_ACTIONS: ReadonlySet<number> = new Set(Object.values(STORE_ACTION));
@@ -28,31 +28,30 @@ export function trades(store: Pick<StoreState, 'museum' | 'actions'>): boolean {
 /** The toolbar's button at a building's door. */
 export function entranceLabel(store: Pick<StoreState, 'home' | 'museum' | 'actions'>): string {
   if (store.home) return 'Enter home';
-  const services = store.actions.some((a) => !TRADE_ACTIONS.has(a.action));
-  return !store.museum && !services && trades(store) ? 'Enter shop' : 'Go inside';
+  return !store.museum && trades(store) ? 'Enter shop' : 'Go inside';
 }
 
 export function shopModel(store: StoreState): ShopModel {
   const key = (action: number) => store.actions.find((a) => a.action === action)?.key ?? null;
   const buy = key(STORE_ACTION.buy);
   const sell = key(STORE_ACTION.sell);
-  const extras = store.actions.filter((a) => !TRADE_ACTIONS.has(a.action)).map((a) => ({ key: a.key, name: a.name }));
+  const extras = store.actions.filter((a) => !TRADE_ACTIONS.has(a.action));
   if (store.home) {
     return {
-      shelf: { label: 'Stored', verb: buy ? 'Take' : null, key: buy, empty: 'Nothing is stored here yet. Items you store stay safe until you take them.' },
-      offer: sell ? { label: 'Your items', verb: 'Store', key: sell } : null,
+      shelf: { label: 'Stored', verb: buy ? 'Take' : null, key: buy, empty: 'Your home stands bare. Whatever you store here waits safely for your return.' },
+      offer: sell ? { label: 'Inventory', verb: 'Store', key: sell } : null,
       extras,
     };
   }
   if (store.museum) {
     return {
-      shelf: { label: 'Collection', verb: null, key: null, empty: 'Nothing is on show yet.' },
+      shelf: { label: 'Collection', verb: null, key: null, empty: 'The display cases stand empty, waiting for a worthy gift.' },
       offer: sell ? { label: 'Donate', verb: 'Donate', key: sell } : null,
       extras,
     };
   }
   return {
-    shelf: { label: 'Buy', verb: buy ? 'Buy' : null, key: buy, empty: 'Nothing for sale right now. Shops restock while you are away.' },
+    shelf: { label: 'Buy', verb: buy ? 'Buy' : null, key: buy, empty: 'The shelves are bare. Come back later: shops restock while you are away.' },
     offer: sell ? { label: 'Sell', verb: 'Sell', key: sell } : null,
     extras,
   };
@@ -60,7 +59,7 @@ export function shopModel(store: StoreState): ShopModel {
 
 /* What each kind of shop buys (engine/snapshot.cc `shop_buys`, after tome2's store_will_buy). */
 const SHOP_WANTS: Readonly<Record<string, string>> = {
-  'General Store': 'food, lights, flasks of oil, ammunition, diggers and cloaks',
+  'General Store': 'food, lights, flasks of oil, ammunition, spikes, diggers, cloaks and empty bottles',
   Armoury: 'armour, shields, helms, gloves, boots and cloaks',
   Weaponsmith: 'weapons, bows, ammunition, diggers and mage staffs',
   Temple: 'potions, scrolls, blunt weapons, blessed weapons and holy books',
@@ -73,6 +72,11 @@ const SHOP_WANTS: Readonly<Record<string, string>> = {
   'Construction Supply Store': 'lights and diggers',
   'Music Store': 'instruments',
 };
+
+/** Who keeps the shop, for its notes ("Lyar-el the Comely"); the shop's name when no keeper is named. */
+function keeper(store: Pick<StoreState, 'owner' | 'name'>): string {
+  return store.owner.replace(/\s*\(.*\)\s*$/, '').trim() || `The ${store.name}`;
+}
 
 /** Why the shop will not take something carried, in a few words. */
 export function refusal(why: StoreOffer['why']): string {
@@ -143,8 +147,8 @@ export function offerMacro(key: string, verb: string, item: ItemState, place: It
 const IN_SHOP = new Set(['wear', 'takeoff', 'inscribe', 'destroy']);
 
 export interface ShopHandlers {
-  /** Runs a trade; `done` is said once it has gone through. */
-  trade(macro: Macro, done: string): void;
+  /** Runs a trade or another command in the shop, keeping the shop on screen; `done` is said once it has gone through. */
+  trade(macro: Macro, done: string | null): void;
   /** Turns tome2's list to the page an item is on: the page shown now. */
   page(): number;
 }
@@ -177,7 +181,7 @@ export function shelfElements(api: GameApi, store: StoreState, model: ShopModel,
     list.append(row(api, `stock:${item.i}:${item.name}`, item, aside, short, () => openShelfItem(api, store, model, item, handlers)));
   }
   const elements: HTMLElement[] = [list];
-  if (store.home) elements.unshift(el('p', 'shop-note muted', `${store.stock.length} of ${store.capacity} spaces used.`));
+  if (store.home) elements.unshift(el('p', 'shop-note muted', `Room on the shelves for ${Math.max(0, store.capacity - store.stock.length)} more.`));
   return elements;
 }
 
@@ -189,8 +193,8 @@ export function offerElements(api: GameApi, store: StoreState, model: ShopModel,
   const elements: HTMLElement[] = [];
   const wants = SHOP_WANTS[store.name];
   if (!store.home && !store.museum) {
-    if (!store.buys) elements.push(el('p', 'shop-note', `The ${store.name} buys nothing from adventurers.`));
-    else if (wants) elements.push(el('p', 'shop-note muted', `Buys ${wants}.`));
+    if (!store.buys) elements.push(el('p', 'shop-note', `${keeper(store)} sells, but never buys.`));
+    else if (wants) elements.push(el('p', 'shop-note muted', `${keeper(store)} buys ${wants}.`));
     if (store.buys && store.noSelling) elements.push(el('p', 'shop-note muted', 'In this adventure shops pay nothing for what you bring them.'));
   }
   const listOf = (items: readonly ItemState[], place: ItemPlace) => {
@@ -205,16 +209,16 @@ export function offerElements(api: GameApi, store: StoreState, model: ShopModel,
   };
   const worn = inventory.equip.filter((slot): slot is ItemState & { part: number } => !slot.empty && !!slot.name);
   if (inventory.pack.length === 0 && worn.length === 0) {
-    elements.push(el('p', 'empty', 'You are carrying nothing.'));
+    elements.push(el('p', 'empty', 'You carry nothing at all. Travelling light!'));
     return elements;
   }
   const usable = [...inventory.pack, ...worn].some((item) => !offers.get(item.i)?.why);
   if (!usable && store.buys) {
-    elements.push(el('p', 'empty', store.home ? 'Nothing you carry can be stored.' : `Nothing you carry is wanted here.`));
+    elements.push(el('p', 'empty', store.home ? 'Nothing you carry can be stored.' : 'Nothing you carry catches the shopkeeper’s eye.'));
   }
-  if (inventory.pack.length) elements.push(section('In your pack', listOf(inventory.pack, 'pack')));
-  else elements.push(section('In your pack', el('p', 'empty', 'Your pack is empty.')));
-  if (worn.length) elements.push(section('Worn and wielded', listOf(worn, 'equip')));
+  if (inventory.pack.length) elements.push(section('Pack', listOf(inventory.pack, 'pack')));
+  else elements.push(section('Pack', el('p', 'empty', 'Your pack is empty.')));
+  if (worn.length) elements.push(section('Equipment', listOf(worn, 'equip')));
   return elements;
 }
 
@@ -283,7 +287,7 @@ export function openShelfItem(api: GameApi, store: StoreState, model: ShopModel,
       disabled: most === 0,
       run: () => {
         const name = traded(item.name, quantity);
-        const done = shop ? `Bought ${name} for ${quantity * item.price} gold.` : `Took ${name}.`;
+        const done = shop ? `Bought ${name} for ${quantity * item.price} gold.` : `Took ${name} from home.`;
         handlers.trade(shelfMacro(key, item.i, quantity, store.stock.length, handlers.page()), done);
       },
     });
@@ -324,16 +328,20 @@ export function openOfferItem(api: GameApi, store: StoreState, model: ShopModel,
       primary: true,
       run: () => {
         const name = traded(item.name, quantity);
-        const done = shop ? `Sold ${name} for ${quantity * (offer?.price ?? 0)} gold.` : store.home ? `Stored ${name}.` : `Donated ${name}.`;
+        const done = shop
+          ? `Sold ${name} for ${quantity * (offer?.price ?? 0)} gold.`
+          : store.home
+            ? `Stored ${name} safely at home.`
+            : `Donated ${name}. The curators are delighted.`;
         handlers.trade(offerMacro(key, verb, item, place, quantity), done);
       },
     });
   } else if (why) {
-    body.append(el('p', 'shop-short', why === 'kind' && !store.buys ? `The ${store.name} buys nothing from adventurers.` : `${refusal(why)}.`));
+    body.append(el('p', 'shop-short', why === 'kind' && !store.buys ? `${keeper(store)} sells, but never buys.` : `${refusal(why)}.`));
   }
   if (store.museum && !why) body.append(el('p', 'muted', 'A donation cannot be taken back.'));
   body.append(description(api.engine.objectDescription(item.i), 'You know nothing more about this item yet.'));
-  for (const action of itemActions(item, place).filter((a) => IN_SHOP.has(a.id))) actions.push(shopItemAction(api, action, item, place));
+  for (const action of itemActions(item, place).filter((a) => IN_SHOP.has(a.id))) actions.push(shopItemAction(api, action, item, place, handlers));
   const where = place === 'equip' ? (SLOT_NAMES[(item as ItemState & { part?: number }).part ?? 0] ?? 'Worn') : 'In your pack';
   const price = shop && !why ? `${offer?.price ?? 0} gold each` : '';
   api.sheets.open({
@@ -348,7 +356,7 @@ export function openOfferItem(api: GameApi, store: StoreState, model: ShopModel,
 }
 
 /** An item command the shop allows (wear, take off, inscribe, destroy), run as the inventory runs it. */
-function shopItemAction(api: GameApi, action: ItemAction, item: ItemState, place: ItemPlace): SheetAction {
+function shopItemAction(api: GameApi, action: ItemAction, item: ItemState, place: ItemPlace, handlers: ShopHandlers): SheetAction {
   return {
     id: action.id,
     label: action.label,
@@ -356,17 +364,17 @@ function shopItemAction(api: GameApi, action: ItemAction, item: ItemState, place
     run: () => {
       if (action.needsText) {
         api.askText('Inscribe', `Inscription for ${item.name}`, item.ins).then((text) => {
-          if (text !== null) api.runMacro(itemMacro(action, item, place, text));
+          if (text !== null) handlers.trade(itemMacro(action, item, place, text), null);
         });
         return;
       }
       if (action.quantity === 'ask') {
         api.askQuantity({ title: `${action.label} how many?`, label: capitalise(item.name), max: item.number, verb: action.label, danger: action.danger }).then((count) => {
-          if (count !== null) api.runMacro(itemMacro({ ...action, quantity: count }, item, place));
+          if (count !== null) handlers.trade(itemMacro({ ...action, quantity: count }, item, place), null);
         });
         return;
       }
-      api.runMacro(itemMacro(action, item, place));
+      handlers.trade(itemMacro(action, item, place), null);
     },
   };
 }

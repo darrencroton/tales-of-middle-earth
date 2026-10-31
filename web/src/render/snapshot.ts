@@ -299,6 +299,10 @@ export interface InventoryState {
 export interface StoreCommand {
   key: string;
   action: number;
+  /** Gold it costs (a night's rest, an enchantment); 0 for most. */
+  cost: number;
+  /** The keeper will not do it for this hero. */
+  closed: number;
   name: string;
 }
 

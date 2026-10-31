@@ -182,6 +182,15 @@ describe('deleting a saved hero', () => {
     assert.equal(text(fs, '/root/2.4/save/global.svg'), 'ToME@1Bobby@Bobby, the Ent Warrior is alive\nToME@0Sam@Sam, the Human Priest is dead\n');
   });
 
+  it('keeps the index whatever the hero is called', () => {
+    const fs = new MemoryFS();
+    fs.mkdirTree('/root/2.4/save');
+    write(fs, '/root/2.4/save/global', 'x');
+    write(fs, '/root/2.4/save/global.svg', 'ToME@1global@global, the Hobbit Rogue is alive\n');
+    assert.deepEqual(deleteHeroSave(fs, '/root/2.4/save/global.svg', 'global'), ['/root/2.4/save/global']);
+    assert.equal(text(fs, '/root/2.4/save/global.svg'), '');
+  });
+
   it('shows a hero in a line: level, race and class, and where they are', () => {
     assert.equal(heroLine({ level: 12, race: 'High-Elf', cls: 'Sorcerer' }), 'Level 12 High-Elf Sorcerer');
     assert.equal(placeLine({ depth: 8, dungeon: 'Barrow-downs', wild: 0, area: undefined }), 'Barrow-downs, level 8');

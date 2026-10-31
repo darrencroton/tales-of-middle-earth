@@ -18,7 +18,7 @@ import { TargetPicker } from './play/targeting.ts';
 import { approachTarget, isKnown, pushPast, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
-import { CAVE_MARK, isHostile, LAYER_MASK, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreState } from './render/snapshot.ts';
+import { CAVE_MARK, isHostile, LAYER_MASK, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -55,7 +55,7 @@ import {
 import { buildMemorial, entryKey, memorialKey, type Memorial } from './play/memorial.ts';
 import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
-import { el, iconText, section } from './ui/dom.ts';
+import { el, iconText, navButton, section } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
@@ -1239,7 +1239,7 @@ function refresh(): void {
   }
 
   /* tome2 clears its screen flag when an item prompt ends, though the shop is still open until the trade's last question. */
-  const trading = !!shopTab && macros.running && !!engine.store();
+  const trading = !!trade && !!engine.store();
   if (snap.icky || trading) {
     setMode('overlay');
     const under = engine.savedScreen() ?? base;
@@ -1256,6 +1256,8 @@ function refresh(): void {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
       if (chronicles.fall(tomb.name)) chronicles.save();
+      adventurers.forget(tomb.name);
+      adventurers.save();
       if (heroMemoryId) {
         mapMemory.forget(heroMemoryId);
         mapMemory.save();
@@ -1469,7 +1471,7 @@ function fallenSaveFor(entry: ScoreEntry): boolean {
 let shownShop: StoreState | null = null;
 let shopTab: { name: string; tab: ShopTab } | null = null;
 /** A trade under way: what is said once it has gone through, and how things stood before, to tell whether it did. */
-let trade: { done: string; before: string; state: GameState | null } | null = null;
+let trade: { done: string | null; before: string; state: GameState | null } | null = null;
 
 /**
  * The shop (or home, or museum) tome2 is in, shown natively from the
@@ -1480,7 +1482,7 @@ function currentShop(): StoreState | null {
   if (mode !== 'overlay') return null;
   const store = engine.store();
   if (!store) return null;
-  if (macros.running && shopTab) return store;
+  if (trade) return store;
   const prompt = currentPrompt();
   if (prompt !== 'none' && prompt !== 'other') return null;
   return /^You may:/.test(buffer.rowText(21)) ? store : null;
@@ -1490,6 +1492,7 @@ const shopHandlers: ShopHandlers = {
   trade(macro, done) {
     trade = { done, before: tradeState(), state: engine.gameState(20) };
     api.runMacro(macro);
+    if (!macros.running) settleTrade();
   },
   page: () => shelfPage(buffer.screenText()),
 };
@@ -1507,12 +1510,14 @@ function settleTrade(): void {
   const { done, before, state } = trade;
   trade = null;
   if (tradeState() !== before) {
-    showToast(done, false);
+    if (done) showToast(done, false);
     return;
   }
   const next = engine.gameState(20);
   const said = state && next ? newMessages(state, next)[0]?.text : undefined;
-  refuse(said ? said.replace(/\s*-more-\s*$/, '') : 'Nothing changed.');
+  if (!said && !done) return;
+  showToast(said ? said.replace(/\s*-more-\s*$/, '') : 'Nothing changed.', false);
+  audio.cue('deny');
 }
 
 function setShopTab(tab: ShopTab): void {
@@ -1522,7 +1527,7 @@ function setShopTab(tab: ShopTab): void {
   requestFrame();
 }
 
-/** The shop as a panel: its shelf and what the hero can offer it as tabs, Exit beside them, and its other services above; a building that does not trade lists its services. */
+/** The shop as a panel: its shelf (its services first) and what the hero can offer it as tabs, Exit beside them; a building that does not trade lists its services. */
 function renderShop(store: StoreState): void {
   const model = shopModel(store);
   if (shopTab?.name !== store.name) shopTab = { name: store.name, tab: 'shelf' };
@@ -1544,7 +1549,11 @@ function renderShop(store: StoreState): void {
   const key = JSON.stringify([tab, store, inventory?.pack, inventory?.equip]);
   const shop = !store.home && !store.museum;
   termView.renderCustom({ layout: 'panel', title: store.name, subtitle: store.owner.replace(/\s*\(/, ' (') || undefined, badge: shop ? `${store.gold} gold` : undefined, tabs }, key, () =>
-    tab === 'offer' && inventory ? offerElements(api, store, model, inventory, shopHandlers) : shelfElements(api, store, model, shopHandlers),
+    tab === 'offer' && inventory
+      ? offerElements(api, store, model, inventory, shopHandlers)
+      : model.extras.length
+        ? [section('Services', servicesElement(model)), section('For sale', ...shelfElements(api, store, model, shopHandlers))]
+        : shelfElements(api, store, model, shopHandlers),
   );
 }
 
@@ -1552,21 +1561,34 @@ function renderShop(store: StoreState): void {
 function servicesElement(model: ShopModel): HTMLElement {
   const list = el('div', 'menu-list');
   for (const extra of model.extras) {
-    const row = el('button', 'row-button', extra.name);
-    row.type = 'button';
-    row.dataset.nav = '';
+    const row = navButton(extra.name, {
+      hint: serviceHint(extra),
+      className: `row-button${extra.closed ? ' unavailable' : ''}`,
+      onClick: () => runService(extra),
+    });
     row.dataset.key = extra.key;
-    row.addEventListener('click', () => send([BACKSLASH, extra.key.charCodeAt(0)]));
     list.append(row);
   }
   if (!model.extras.length) list.append(el('p', 'empty', 'There is nothing to do here.'));
   return list;
 }
 
-/** The toolbar while in a shop: its other services (a fortune told, a quest given) sit above the panel's tabs. */
-function shopActions(store: StoreState): Action[] {
+/** What a service costs, or that the keeper will not do it for this hero. */
+function serviceHint(service: StoreCommand): string | undefined {
+  if (service.closed) return 'Not for you';
+  return service.cost > 0 ? `${service.cost} gold` : undefined;
+}
+
+/** Asks for a service, or says why it cannot be had (no gold spent either way when it cannot). */
+function runService(service: StoreCommand): void {
+  if (service.closed) refuse('The keeper will not do that for you.');
+  else if (service.cost > (lastState?.player?.au ?? 0)) refuse(`That costs ${service.cost} gold, more than you have.`);
+  else send([BACKSLASH, service.key.charCodeAt(0)]);
+}
+
+/** The toolbar while in a shop (beneath its panel). */
+function shopActions(): Action[] {
   return [
-    ...(trades(store) ? shopModel(store).extras : []).map((extra): Action => ({ id: `shop-${extra.key}`, label: extra.name, icon: '✦', effect: { kind: 'keys', keys: [BACKSLASH, extra.key.charCodeAt(0)] } })),
     { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } },
     { id: 'menu', label: 'Menu', icon: '☰', effect: { kind: 'menu' } },
   ];
@@ -1638,7 +1660,7 @@ function updateActionBar(force = false): void {
   map.setFoe(foe && mode === 'map' ? { x: foe.x, y: foe.y } : null);
   const actions =
     directed ??
-    (shownShop ? shopActions(shownShop) : null) ??
+    (shownShop ? shopActions() : null) ??
     contextActions({
       mode,
       prompt,
@@ -1707,7 +1729,7 @@ function drawAction(button: HTMLButtonElement, action: Action, settleMs: number)
 }
 
 /* Toolbar actions a pop-up's own frame already offers (its close button) or that belong to the map. */
-const FRAME_ACTIONS = new Set(['menu', 'escape', 'keyboard', 'leave']);
+const FRAME_ACTIONS = new Set(['menu', 'escape', 'keyboard']);
 
 /** What a tome2 panel offers at its foot: the toolbar's actions for the screen, less those its frame covers. */
 function panelActions(actions: readonly Action[]): PopAction[] {
@@ -2390,6 +2412,11 @@ const engine = new Engine(buffer, {
     }
     settleAttempt();
     settleTrade();
+    /* tome2 never comes back to the command prompt after saving to quit: back at it, the quit stopped short, and nothing is left to delete. */
+    if (quitting && !macros.running && lastSnap?.inDungeon && lastSnap.atCommand && !lastSnap.icky) {
+      quitting = false;
+      abandoning = null;
+    }
     requestFrame();
   },
   onKey(code) {

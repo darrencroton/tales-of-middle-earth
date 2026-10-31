@@ -206,10 +206,10 @@ describe('shops', () => {
     gold: 100,
     capacity: 24,
     actions: [
-      { key: 's', action: STORE_ACTION.sell, name: 'Sell an item' },
-      { key: 'p', action: STORE_ACTION.buy, name: 'Purchase an item' },
-      { key: 'x', action: STORE_ACTION.examine, name: 'Examine an item' },
-      { key: 'Z', action: STORE_ACTION.steal, name: 'Steal an item' },
+      { key: 's', action: STORE_ACTION.sell, cost: 0, closed: 0, name: 'Sell an item' },
+      { key: 'p', action: STORE_ACTION.buy, cost: 0, closed: 0, name: 'Purchase an item' },
+      { key: 'x', action: STORE_ACTION.examine, cost: 0, closed: 0, name: 'Examine an item' },
+      { key: 'Z', action: STORE_ACTION.steal, cost: 0, closed: 0, name: 'Steal an item' },
     ],
     stock: [],
     sell: [],
@@ -220,14 +220,14 @@ describe('shops', () => {
     const shop = shopModel(store());
     assert.deepEqual([shop.shelf.label, shop.shelf.verb, shop.shelf.key, shop.offer?.label, shop.offer?.key], ['Buy', 'Buy', 'p', 'Sell', 's']);
     assert.deepEqual(shop.extras, []);
-    const home = shopModel(store({ home: 1, actions: [{ key: 'd', action: STORE_ACTION.sell, name: 'Drop an item' }, { key: 'g', action: STORE_ACTION.buy, name: 'Get an item' }] }));
-    assert.deepEqual([home.shelf.label, home.shelf.verb, home.offer?.label, home.offer?.verb], ['Stored', 'Take', 'Your items', 'Store']);
-    const museum = shopModel(store({ museum: 1, actions: [{ key: 'd', action: STORE_ACTION.sell, name: 'Donate an item' }] }));
+    const home = shopModel(store({ home: 1, actions: [{ key: 'd', action: STORE_ACTION.sell, cost: 0, closed: 0, name: 'Drop an item' }, { key: 'g', action: STORE_ACTION.buy, cost: 0, closed: 0, name: 'Get an item' }] }));
+    assert.deepEqual([home.shelf.label, home.shelf.verb, home.offer?.label, home.offer?.verb], ['Stored', 'Take', 'Inventory', 'Store']);
+    const museum = shopModel(store({ museum: 1, actions: [{ key: 'd', action: STORE_ACTION.sell, cost: 0, closed: 0, name: 'Donate an item' }] }));
     assert.deepEqual([museum.shelf.verb, museum.offer?.verb], [null, 'Donate']);
-    const seer = shopModel(store({ actions: [{ key: 'p', action: STORE_ACTION.buy, name: 'Purchase an item' }, { key: 'l', action: 42, name: 'Presage fate' }] }));
+    const seer = shopModel(store({ actions: [{ key: 'p', action: STORE_ACTION.buy, cost: 0, closed: 0, name: 'Purchase an item' }, { key: 'l', action: 42, cost: 0, closed: 0, name: 'Presage fate' }] }));
     assert.equal(seer.offer, null);
-    assert.deepEqual(seer.extras, [{ key: 'l', name: 'Presage fate' }]);
-    assert.equal(trades(store({ actions: [{ key: 'r', action: 17, name: 'Rest for the night' }] })), false);
+    assert.deepEqual(seer.extras.map((e) => e.name), ['Presage fate']);
+    assert.equal(trades(store({ actions: [{ key: 'r', action: 17, cost: 0, closed: 0, name: 'Rest for the night' }] })), false);
     assert.equal(trades(store()), true);
   });
 
