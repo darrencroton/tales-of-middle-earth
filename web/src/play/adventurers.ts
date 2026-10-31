@@ -113,8 +113,11 @@ export class AdventurerStore {
     return !old || heroLine(old) !== heroLine(adventurer) || old.place !== adventurer.place;
   }
 
-  forget(name: string): void {
+  /** Forgets a hero; true when there was one to forget. */
+  forget(name: string): boolean {
+    if (!this.heroes[name]) return false;
     delete this.heroes[name];
+    return true;
   }
 
   save(): void {

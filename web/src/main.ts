@@ -1256,8 +1256,7 @@ function refresh(): void {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
       if (chronicles.fall(tomb.name)) chronicles.save();
-      adventurers.forget(tomb.name);
-      adventurers.save();
+      if (adventurers.forget(tomb.name)) adventurers.save();
       if (heroMemoryId) {
         mapMemory.forget(heroMemoryId);
         mapMemory.save();
