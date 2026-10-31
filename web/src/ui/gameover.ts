@@ -126,7 +126,7 @@ export function tombElements(tomb: Tomb, extras: TombExtras): HTMLElement[] {
 }
 
 /** "31 October 2026" from tome2's mm/dd/yy, or the text as given. */
-export function scoreDate(day: string): string {
+function scoreDate(day: string): string {
   const m = /^(\d\d)\/(\d\d)\/(\d\d)$/.exec(day.trim());
   if (!m) return day;
   return new Date(2000 + Number(m[3]), Number(m[1]) - 1, Number(m[2])).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -139,6 +139,8 @@ export interface FameCardActions {
   anew?(): void;
   /** Takes the hero out of the Hall of Fame, after a warning. */
   remove?(): void;
+  /** Removing takes Begin anew with it (the last entry of a hero who can be begun anew). */
+  removeEndsAnew?: boolean;
 }
 
 /** A hero in the Hall of Fame: how their adventure ended, with Look back, Begin anew and Remove where they apply. */
@@ -168,7 +170,7 @@ export function openFameCard(sheets: Sheets, hero: FallenHero & { entry: ScoreEn
         confirmSheet(
           sheets,
           `Remove ${e.name}?`,
-          `${e.name} leaves the Hall of Fame for good, with what was remembered of their adventure. Your other heroes and the deeds you have earned stay.`,
+          `${e.name} leaves the Hall of Fame for good, with what was remembered of their adventure${actions.removeEndsAnew ? ', and can no longer be begun anew' : ''}. Your other heroes and the deeds you have earned stay.`,
           'Remove',
           remove,
           true,

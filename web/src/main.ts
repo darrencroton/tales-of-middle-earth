@@ -60,7 +60,7 @@ import { onTap } from './ui/tap.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
 import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate, type AdventureRules } from './ui/menus.ts';
-import { Sheets, type SheetTrail } from './ui/sheet.ts';
+import { Sheets, type SheetContent, type SheetTrail } from './ui/sheet.ts';
 import { bufferRows, type OptionBlock } from './ui/termparse.ts';
 import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.ts';
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
@@ -1258,7 +1258,7 @@ function refresh(): void {
     } else if (termView.visible && currentBox() && !character.hosting) {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
-      if (chronicles.fall(tomb.name)) chronicles.save();
+      if (chronicles.fall(tomb.name, engine.gameState(0)?.player?.diedFrom === ABANDONED)) chronicles.save();
       if (adventurers.forget(tomb.name)) adventurers.save();
       if (heroMemoryId) {
         mapMemory.forget(heroMemoryId);
@@ -1282,7 +1282,7 @@ function refresh(): void {
       const player = lastState?.player;
       const scores = engine.scores();
       const hero = player ? heroEntry(scores, { name: player.name, level: player.lev, turns: snap.turn }) : -1;
-      termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero to look back on them' }, `fame:${scores.length}:${hero}`, () =>
+      termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero for their tale' }, `fame:${scores.length}:${hero}`, () =>
         hallOfFameElements(scores, hero, (entry) => openFameHero(entry, true)),
       );
     } else if (shownShop) {
@@ -1413,7 +1413,7 @@ function captureMemorial(player: PlayerState, state: GameState, snap: LevelSnaps
   }
   const palette = buffer.palette;
   const built = buildMemorial({
-    player: player.diedFrom === 'Quitting' && engine.markAbandoned() ? { ...player, diedFrom: ABANDONED } : player,
+    player,
     character: engine.character(),
     inventory: engine.inventory(),
     messages: engine.gameState(60)?.messages ?? state.messages ?? [],
@@ -1463,6 +1463,7 @@ function openFameHero(entry: ScoreEntry, inGame: boolean): void {
         }
       : undefined,
     remove: inGame ? undefined : () => removeFameEntry(entry),
+    removeEndsAnew: anew && engine.scores().filter((e) => saveBase(e.name) === saveBase(entry.name)).length === 1,
   });
 }
 
@@ -1472,17 +1473,19 @@ function openFameHero(entry: ScoreEntry, inGame: boolean): void {
  * Begin anew used.
  */
 function removeFameEntry(entry: ScoreEntry): void {
-  sheets.closeAll();
+  /* The confirmation and the hero's card close back to the Hall of Fame. */
+  sheets.back();
+  sheets.back();
   const same = (e: ScoreEntry) => entryKey(e) === entryKey(entry) && e.points === entry.points && e.day === entry.day;
   const index = engine.scores().findIndex(same);
   if (index < 0 || !engine.removeScore(index)) {
     showToast('The Hall of Fame could not be changed.', false);
-    openHallOfFame();
     return;
   }
   if (chronicles.forgetMemorial(entryKey(entry))) chronicles.save();
   if (!engine.scores().some((e) => saveBase(e.name) === saveBase(entry.name)) && director.forgetFallen(entry.name)) deleteSavefile(entry.name);
-  openHallOfFame();
+  const shown = fameSheet;
+  if (shown) sheets.update(hallOfFameSheet(), shown);
   engine.syncNow().then(
     () => showToast(`${entry.name} was removed from the Hall of Fame.`, false),
     (err) => {
@@ -2939,9 +2942,17 @@ function startImport(): void {
 
 /** The Hall of Fame from the title screen. */
 function openHallOfFame(): void {
+  sheets.open(hallOfFameSheet());
+}
+
+/** The title screen's Hall of Fame sheet, built afresh (and kept to be updated in place when a hero is removed). */
+let fameSheet: SheetContent | null = null;
+
+function hallOfFameSheet(): SheetContent {
   const body = el('div', 'fame');
   body.append(section('Heroes remembered', ...hallOfFameElements(engine.scores(), -1, (entry) => openFameHero(entry, false))), ...careerElements(chronicles));
-  sheets.open({ title: 'Hall of Fame', subtitle: 'Heroes of Middle-earth, remembered', body, className: 'sheet-fame' });
+  fameSheet = { title: 'Hall of Fame', subtitle: 'Heroes of Middle-earth, remembered', body, className: 'sheet-fame' };
+  return fameSheet;
 }
 
 /** Help, with the original ToME manual during a game (Help reopens when it closes). */
@@ -3094,7 +3105,7 @@ function openGameMenu(): void {
       confirmSheet(
         sheets,
         'Abandon this adventure?',
-        `${name}'s adventure ends here and cannot be taken up again. It is remembered in the Hall of Fame, where you can begin anew as ${name}.`,
+        `${name}'s adventure ends here and cannot be taken up again. It is remembered in the Hall of Fame, where you can begin anew with the same hero.`,
         'Abandon',
         abandonAdventure,
         true,

@@ -280,17 +280,21 @@ export class Director {
     return true;
   }
 
-  private askAnewName(template: string, fallen: string, suggested: string, error = ''): void {
+  private askAnewName(template: string, hero: string, suggested: string, error = ''): void {
     const living = new Set(this.saves.map((s) => s.name.toLowerCase()));
-    askText(this.deps.sheets, 'Begin anew', `${fallen}'s race, class and attributes in a new adventure. What shall this hero be called?`, suggested, 15, error).then(
+    const fallen = new Set(this.fallen.map((s) => s.name.toLowerCase()));
+    askText(this.deps.sheets, 'Begin anew', `${hero}'s race, class and attributes in a new adventure. What shall this hero be called?`, suggested, 15, error).then(
       (name) => {
         if (name === null) {
           this.title?.restoreChoices();
           return;
         }
-        const problem = validCharacterName(name) ?? (living.has(saveBase(name).toLowerCase()) ? `${name} already has a saved game.` : null);
+        const base = saveBase(name).toLowerCase();
+        const problem =
+          validCharacterName(name) ??
+          (living.has(base) ? `${name} already has a saved game.` : fallen.has(base) ? `${name} is a hero of the Hall of Fame. Choose another name.` : null);
         if (problem) {
-          this.askAnewName(template, fallen, name, problem);
+          this.askAnewName(template, hero, name, problem);
           return;
         }
         this.template = template;

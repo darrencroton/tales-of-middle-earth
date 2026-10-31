@@ -109,12 +109,12 @@ export class ChronicleStore {
     }
   }
 
-  /** Counts a fallen hero once; true when this is the first time. */
-  fall(name: string): boolean {
+  /** Closes a hero's chronicle once, counting them among the fallen unless their adventure was abandoned; true when this is the first time. */
+  fall(name: string, abandoned = false): boolean {
     const chronicle = this.data.heroes[name];
     if (!chronicle || chronicle.fallen) return false;
     chronicle.fallen = true;
-    this.data.career.fallen++;
+    if (!abandoned) this.data.career.fallen++;
     return true;
   }
 
