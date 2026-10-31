@@ -1,10 +1,10 @@
 import { DEEDS, type Chronicle, type Deed } from '../play/chronicle.ts';
-import { dayOf, skillValue, type Memorial, type MemorialFoe, type MemorialItem, type MemorialLine } from '../play/memorial.ts';
+import { ABANDONED, dayOf, skillValue, type Memorial, type MemorialFoe, type MemorialItem, type MemorialLine } from '../play/memorial.ts';
 import { readableColour } from '../render/colour.ts';
 import type { ScoreEntry } from '../render/snapshot.ts';
 import { titleName } from './api.ts';
 import { el, glyph, iconText, section } from './dom.ts';
-import type { SheetAction, SheetContent, Sheets, SheetTab } from './sheet.ts';
+import type { SheetContent, Sheets, SheetTab } from './sheet.ts';
 
 /** Where a hero fell, in words: "in the town", "on a quest", "at 250 ft". */
 export function fellWhere(entry: Pick<ScoreEntry, 'depth' | 'quest'>): string {
@@ -12,8 +12,9 @@ export function fellWhere(entry: Pick<ScoreEntry, 'depth' | 'quest'>): string {
   return entry.depth > 0 ? `at ${entry.depth * 50} ft` : 'in the town';
 }
 
-/** "Killed by a Cave spider at 250 ft", or "Retired" for a hero who chose to stop. */
+/** "Killed by a Cave spider at 250 ft", "Abandoned in the town", or "Retired" for a winner who chose to stop. */
 export function fateText(entry: Pick<ScoreEntry, 'how' | 'depth' | 'quest'>): string {
+  if (entry.how === ABANDONED) return `Abandoned ${fellWhere(entry)}`;
   if (/^Quitting$/i.test(entry.how)) return `Retired ${fellWhere(entry)}`;
   if (/^Ripe Old Age$/i.test(entry.how)) return 'Lived to a ripe old age';
   return `Killed by ${entry.how || 'something unknown'} ${fellWhere(entry)}`;
@@ -21,12 +22,10 @@ export function fateText(entry: Pick<ScoreEntry, 'how' | 'depth' | 'quest'>): st
 
 export type FallenTab = 'hero' | 'gear' | 'skills' | 'end';
 
-/** A hero in the Hall of Fame: what tome2 recorded and, for heroes who fell here, what was remembered. */
+/** A hero in the Hall of Fame: what tome2 recorded and, for heroes whose adventure ended here, what was remembered. */
 export interface FallenHero {
   memorial: Memorial | null;
   entry: ScoreEntry | null;
-  /** Starts the same hero again from the beginning, when tome2 can. */
-  anew?: () => void;
 }
 
 const TABS: [FallenTab, string][] = [
@@ -50,8 +49,9 @@ function number(n: number): string {
   return n.toLocaleString('en-GB');
 }
 
-/** "Killed by Smaug the Golden", "Retired", "Starved to death". */
+/** "Killed by Smaug the Golden", "Adventure abandoned", "Retired", "Starved to death". */
 export function fateLine(cause: string): string {
+  if (cause === ABANDONED) return 'Adventure abandoned';
   if (/^Quitting$/i.test(cause)) return 'Retired from adventuring';
   if (/^Ripe Old Age$/i.test(cause)) return 'Lived to a ripe old age';
   if (/^starvation$/i.test(cause)) return 'Starved to death';
@@ -249,13 +249,10 @@ export function openFallen(sheets: Sheets, hero: FallenHero, tab: FallenTab = 'h
   const race = m?.race ?? e?.race ?? '';
   const cls = m?.cls ?? e?.cls ?? '';
   const level = m?.level ?? e?.level ?? 0;
-  const actions: SheetAction[] = [];
-  if (hero.anew) actions.push({ label: `Begin anew as ${name}`, primary: true, run: hero.anew });
   const content: SheetContent = {
     title: name,
     subtitle: [`${race} ${cls}`.trim(), m?.title ?? '', level ? `Level ${level}` : ''].filter(Boolean).join(' · '),
     body,
-    actions: actions.length ? actions : undefined,
     tabs: tabs.length > 1 ? tabBar(tab, (next) => openFallen(sheets, hero, next, true), tabs) : undefined,
     className: 'sheet-fallen',
   };

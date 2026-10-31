@@ -35,7 +35,7 @@ function when(iso: string | undefined): string | null {
   return date.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-/** Every saved hero but the one Continue offers, to pick from: a row each, opening the hero's card. */
+/** Every saved hero, the one played last first: a row each, opening the hero's card. */
 export function openAdventurers(sheets: Sheets, saves: readonly SaveInfo[], handlers: AdventurerHandlers): void {
   const list = el('div', 'adventurer-list');
   for (const save of saves) {
@@ -50,11 +50,11 @@ export function openAdventurers(sheets: Sheets, saves: readonly SaveInfo[], hand
     row.addEventListener('click', () => openAdventurer(sheets, save, handlers));
     list.append(row);
   }
-  sheets.open({ title: 'More adventurers', subtitle: 'Your other saved heroes', body: list, className: 'sheet-adventurers' });
+  sheets.open({ title: 'Roster', subtitle: 'Your saved heroes', body: list, className: 'sheet-adventurers' });
 }
 
 /** A saved hero: who and where they are, with Play, and Delete after a warning. */
-export function openAdventurer(sheets: Sheets, save: SaveInfo, handlers: AdventurerHandlers): void {
+function openAdventurer(sheets: Sheets, save: SaveInfo, handlers: AdventurerHandlers): void {
   const details = handlers.details(save);
   const facts = el('dl', 'hero-facts');
   const fact = (label: string, value: string | null | undefined) => {

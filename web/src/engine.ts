@@ -58,6 +58,11 @@ interface EmscriptenModule {
   _web_run_options_json(): number;
   _web_set_run_option(index: number, on: number): number;
   _web_set_random_quests(count: number): number;
+  _web_name_buffer(bytes: number): number;
+  _web_set_hero_name(): number;
+  _web_mark_abandoned(): number;
+  _web_remove_score(index: number): number;
+  _web_clear_rows(first: number, last: number): void;
   _web_place_json(): number;
   _web_scores_json(): number;
   _web_birth_json(): number;
@@ -167,6 +172,26 @@ export class Engine {
     return Array.isArray(json) ? json : [];
   }
 
+  /** Removes an entry (by its place in `scores`) from the Hall of Fame; false when it could not be. */
+  removeScore(index: number): boolean {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return false;
+    return mod._web_remove_score(index) !== 0;
+  }
+
+  /** Blanks screen rows `first` to `last`, so what tome2 draws there next can be told from what it drew before. */
+  clearRows(first: number, last: number): void {
+    const mod = this.module;
+    if (mod && this.state === 'running') mod._web_clear_rows(first, last);
+  }
+
+  /** Records the run just quit through tome2's quit command as abandoned, so the Hall of Fame keeps it; false otherwise. */
+  markAbandoned(): boolean {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return false;
+    return mod._web_mark_abandoned() !== 0;
+  }
+
   /** Races, race modifiers and classes with their details, for character creation. */
   birthData(): BirthData | null {
     const json = this.callJson<BirthData>((mod) => mod._web_birth_json());
@@ -191,6 +216,17 @@ export class Engine {
     const mod = this.module;
     if (!mod || this.state !== 'running') return false;
     return mod._web_set_random_quests(count) !== 0;
+  }
+
+  /** Names the hero being created, and their savefile; false once the game has begun or for a name tome2 refuses. */
+  setHeroName(name: string): boolean {
+    const mod = this.module;
+    if (!mod || this.state !== 'running' || !name) return false;
+    const bytes = Uint8Array.from(keyCodes(name));
+    if (bytes.length !== name.length) return false;
+    const ptr = mod._web_name_buffer(bytes.length);
+    mod.HEAPU8.set(bytes, ptr);
+    return mod._web_set_hero_name() !== 0;
   }
 
   /** Spells in the books carried, and the skills that can be used. */

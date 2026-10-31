@@ -109,12 +109,12 @@ export class ChronicleStore {
     }
   }
 
-  /** Counts a fallen hero once; true when this is the first time. */
-  fall(name: string): boolean {
+  /** Closes a hero's chronicle once, counting them among the fallen unless their adventure was abandoned; true when this is the first time. */
+  fall(name: string, abandoned = false): boolean {
     const chronicle = this.data.heroes[name];
     if (!chronicle || chronicle.fallen) return false;
     chronicle.fallen = true;
-    this.data.career.fallen++;
+    if (!abandoned) this.data.career.fallen++;
     return true;
   }
 
@@ -132,6 +132,13 @@ export class ChronicleStore {
 
   memorial(key: string): Memorial | null {
     return this.data.memorials[key] ?? null;
+  }
+
+  /** Forgets a hero kept as they were at the end; false when none was. */
+  forgetMemorial(key: string): boolean {
+    if (!this.data.memorials[key]) return false;
+    delete this.data.memorials[key];
+    return true;
   }
 
   save(): void {

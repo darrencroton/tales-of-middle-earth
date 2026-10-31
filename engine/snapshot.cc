@@ -22,6 +22,7 @@
 #include "inventory.hpp"
 #include "levels.hpp"
 #include "lua_bind.hpp"
+#include "messages.hpp"
 #include "monster1.hpp"
 #include "monster2.hpp"
 #include "monster_race.hpp"
@@ -637,6 +638,23 @@ object_type one_of(object_type const *o_ptr)
 
 }
 
+/*
+ * Every message tome2 adds, counted: its log keeps only the last 2048, so its
+ * size stops growing there. Messages::add(std::string, byte), which the
+ * const char * form calls, is wrapped at link time (CMakeLists.txt); a
+ * message the same as the last only adds to its count, as in tome2.
+ */
+static long messages_added = 0;
+
+#define MESSAGES_ADD _ZN8Messages3addERKNSt3__212basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEEh
+extern "C" void BOOST_PP_CAT(__real_, MESSAGES_ADD)(Messages *self, std::string const &msg, byte color);
+
+extern "C" void BOOST_PP_CAT(__wrap_, MESSAGES_ADD)(Messages *self, std::string const &msg, byte color)
+{
+	if (self->size() == 0 || self->at(0).text != msg) messages_added++;
+	BOOST_PP_CAT(__real_, MESSAGES_ADD)(self, msg, color);
+}
+
 extern "C" {
 
 /*
@@ -898,7 +916,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	/* Recent messages, newest first */
 	auto const &messages = game->messages;
 	int const count = std::min<int>(messages.size(), std::max(0, max_messages));
-	json_int(json, "messageTotal", messages.size());
+	json_int(json, "messageTotal", messages_added);
 	json_key(json, "messages");
 	json += '[';
 	for (int age = 0; age < count; age++)
@@ -1474,6 +1492,46 @@ EMSCRIPTEN_KEEPALIVE char const *web_scores_json()
 
 	json += ']';
 	return json.c_str();
+}
+
+/*
+ * Records a run the player gave up through tome2's quit command as
+ * abandoned, so the Hall of Fame keeps it: tome2 registers no score for
+ * "Quitting". Only between that quit and the score being written (not for a
+ * winner retiring); false otherwise.
+ */
+EMSCRIPTEN_KEEPALIVE int web_mark_abandoned()
+{
+	if (!death || total_winner || game->died_from != "Quitting") return 0;
+	game->died_from = "Abandoned";
+	return 1;
+}
+
+/*
+ * Removes one entry (by its place in web_scores_json) from the Hall of
+ * Fame. False when there is no such entry or the file cannot be written.
+ */
+EMSCRIPTEN_KEEPALIVE int web_remove_score(int index)
+{
+	char buf[1024];
+	path_build(buf, sizeof(buf), ANGBAND_DIR_USER, "scores.raw");
+	int fd = fd_open(buf, O_RDONLY);
+	if (fd < 0) return 0;
+	std::vector<high_score> scores;
+	high_score score;
+	for (int i = 0; i < MAX_HISCORES; i++)
+	{
+		if (highscore_seek(fd, i) || highscore_read(fd, &score)) break;
+		scores.push_back(score);
+	}
+	fd_close(fd);
+	if (index < 0 || static_cast<std::size_t>(index) >= scores.size()) return 0;
+	scores.erase(scores.begin() + index);
+
+	FILE *out = fopen(buf, "wb");
+	if (!out) return 0;
+	bool const written = scores.empty() || fwrite(scores.data(), sizeof(high_score), scores.size(), out) == scores.size();
+	return (fclose(out) == 0 && written) ? 1 : 0;
 }
 
 /*

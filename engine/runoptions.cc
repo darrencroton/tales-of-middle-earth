@@ -11,6 +11,7 @@
  */
 
 #include "defines.hpp"
+#include "files.hpp"
 #include "game.hpp"
 #include "monster2.hpp"
 #include "monster_race.hpp"
@@ -25,6 +26,7 @@
 #include <emscripten.h>
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 
 namespace {
@@ -139,6 +141,33 @@ EMSCRIPTEN_KEEPALIVE int web_set_random_quests(int n)
 {
 	if (character_generated || !options) return 0;
 	draw_random_quests(n);
+	return 1;
+}
+
+static std::string hero_name;
+
+EMSCRIPTEN_KEEPALIVE char *web_name_buffer(int bytes)
+{
+	hero_name.assign(static_cast<std::size_t>(std::max(0, bytes)), '\0');
+	return hero_name.data();
+}
+
+/*
+ * Names the hero being created (written to the buffer web_name_buffer
+ * returns), and the savefile with it, so a hero begun anew from a fallen
+ * one's savefile is kept in a savefile of its own. Only while a character is
+ * being created, and only a name tome2 accepts (1 to 15 characters, none a
+ * control character); false otherwise.
+ */
+EMSCRIPTEN_KEEPALIVE int web_set_hero_name()
+{
+	if (character_generated || hero_name.empty() || hero_name.size() > 15) return 0;
+	for (auto c : hero_name)
+	{
+		if (iscntrl(static_cast<unsigned char>(c))) return 0;
+	}
+	game->player_name = hero_name;
+	set_player_base(hero_name);
 	return 1;
 }
 

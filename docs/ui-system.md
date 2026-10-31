@@ -58,13 +58,18 @@ Shop, home, museum (walk in, or Enter shop on the door)
                                 └── Item carried    card over the shop (what it fetches or why not, how many,
                                                     Sell/Store/Donate; wear, take off, inscribe, destroy)
 Other buildings ─────────────── native panel: their services as rows · Exit
+                                └── A service ───── its answer as a card (a quest, a rumour, the race legends);
+                                                    a service that opens a file opens the reader
 Death ──────────────────────── death card → end-of-game summary (full screen) → Hall of Fame (full screen)
-                                └── Fallen hero     panel, tabs Hero · Gear · Skills · Last moments
-                                    └── Item / foe  card
-Title ──────────────────────── Continue as (last hero) · More adventurers (panel) · New character
-                                ├── a hero ──────── card: where, last played, tale; Play · Delete (→ confirmation)
+                                └── a hero ──────── card: how it ended, when, deepest, score; Begin anew · Look back
+                                    └── Fallen hero panel, tabs Hero · Gear · Skills · Last moments
+                                        └── Item / foe  card
+Title ──────────────────────── Continue as (last hero, straight into the game) · Roster · New character
+                                ├── Roster ──────── panel, every saved hero
+                                │   └── a hero ──── card: where, last played, tale; Play · Delete (→ confirmation)
                                 Help (panel) · Settings (panel) · Backup (menu: Export · Import game data)
-                                · Soundtrack (panel) · Hall of Fame (panel → Fallen hero)
+                                · Soundtrack (panel) · Hall of Fame (panel → a hero: card as after death,
+                                  with Remove (→ confirmation))
 Character creation ─────────── director screens (full screen, Back/Random/Choose), name card;
                                Ready to begin: the hero, then Your adventure (random quests, birth options)
 ```
@@ -94,7 +99,7 @@ where the code comes from.
 |---|---|---|---|---|
 | **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, Help and its topics; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
 | **Menu** | A short list of places to go | Menu, Knowledge, Backup | its rows, capped at `--popup-height` | bottom sheet |
-| **Card** | Details of one thing, or a question | Item, spell, creature, shop item, memorial item/foe, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
+| **Card** | Details of one thing, or a question | Item, spell, creature, shop item, memorial item/foe, a saved hero (Roster), a hero of the Hall of Fame, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
 | **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card, death card | its content | bottom of the map, no backdrop |
 | **Full screen** | A screen that replaces the game | title, character creation, end of game, Hall of Fame after death | whole screen | — |
 
@@ -196,7 +201,7 @@ No key hints anywhere.
 | Map → creature chip → close | Tall pop-up | Card the size of the recall |
 | Menu → Saved games → Export | Two rows in Menu | On the title only, as Backup → Export game data: a backup of everything, not a way to save |
 | Shop → item | Paged tome2 list; a tap on an item could buy it, and a tap on a row of tome2's item prompt opened the wrong card (*Take 1* while storing) | Whole stock in one list; a tap opens the item's card; Buy (or Sell, Store, Take) with how many is the only way to trade |
-| Title with many heroes | A Continue row per hero | Continue as the last hero; the others in a panel; each hero a card with Play and Delete |
+| Title with many heroes | A Continue row per hero | Continue as the last hero goes straight into the game; every hero in the Roster panel, each a card with Play and Delete |
 
 ## 7. Validation
 

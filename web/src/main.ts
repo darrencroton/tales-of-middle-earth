@@ -28,8 +28,8 @@ import {
   findSaveIndex,
   writeFiles,
 } from './saves.ts';
-import { adventurerOf, AdventurerStore, deleteHeroSave, heroLine } from './play/adventurers.ts';
-import { adventurerSummary, openAdventurer, openAdventurers, type AdventurerDetails, type AdventurerHandlers } from './ui/adventurers.ts';
+import { adventurerOf, AdventurerStore, deleteHeroSave, heroLine, saveBase } from './play/adventurers.ts';
+import { adventurerSummary, openAdventurers, type AdventurerDetails, type AdventurerHandlers } from './ui/adventurers.ts';
 import type { SaveInfo } from './title.ts';
 import { ANIMATION_FPS, applyTextSize, EFFECT_DELAY, loadSettings, saveSettings, type Settings } from './settings.ts';
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
@@ -52,7 +52,7 @@ import {
   type FightingStyle,
   type GearSuggestion,
 } from './play/items.ts';
-import { buildMemorial, entryKey, memorialKey, type Memorial } from './play/memorial.ts';
+import { ABANDONED, buildMemorial, entryKey, memorialKey, type Memorial } from './play/memorial.ts';
 import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
 import { el, iconText, navButton, section } from './ui/dom.ts';
@@ -60,17 +60,17 @@ import { onTap } from './ui/tap.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
 import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate, type AdventureRules } from './ui/menus.ts';
-import { Sheets, type SheetTrail } from './ui/sheet.ts';
+import { Sheets, type SheetContent, type SheetTrail } from './ui/sheet.ts';
 import { bufferRows, type OptionBlock } from './ui/termparse.ts';
 import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.ts';
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
 import type { PopAction } from './ui/popup.ts';
 import { cleanPrompt, describableRange } from './ui/prompttext.ts';
 import { FilePages, parseHelpFile, viewerSource, viewerHeading, type HelpFile, type HelpLink, type ViewerHeading } from './ui/filepages.ts';
-import { entranceLabel, offerElements, shelfElements, shelfPage, shopModel, trades, type ShopHandlers, type ShopModel, type ShopTab } from './ui/store.ts';
+import { drawnBlocks, entranceLabel, offerElements, SERVICE_CLEAR, serviceReply, shelfElements, shelfPage, shopModel, trades, type ShopHandlers, type ShopModel, type ShopTab } from './ui/store.ts';
 import { parseAbilities, parseSkills } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
-import { hallOfFameElements, heroEntry, isHallOfFame, parseTomb, tombElements } from './ui/gameover.ts';
+import { hallOfFameElements, heroEntry, isHallOfFame, openFameCard, parseTomb, tombElements } from './ui/gameover.ts';
 import { careerElements, ChronicleStore } from './ui/deeds.ts';
 import { extendStreak, newChronicle, newDeeds, nextTimeTip, record, slainMonsters, type Chronicle, type Slain, type Streak } from './play/chronicle.ts';
 import { parseFullSheet } from './ui/charsheet.ts';
@@ -113,6 +113,8 @@ const PLACE_POLL_MS = 2000;
 const CTRL_S = 0x13;
 const CTRL_X = 0x18;
 const SPACE = 0x20;
+/* Messages read to tell what a building's service said. */
+const SERVICE_MESSAGES = 30;
 /* Visible height lost to an on-screen keyboard before the layout makes room for it. */
 const KEYBOARD_MIN_PX = 120;
 /* Below this visible height above the keyboard, text questions shrink to fit. */
@@ -220,7 +222,7 @@ let memorial: Memorial | null = null;
 let pendingAnew: string | null = null;
 let looking = false;
 let quitting = false;
-/** The hero whose adventure is being abandoned: once the game has closed, their save is deleted. */
+/** The hero whose adventure is being abandoned through tome2's quit: once the game has closed, what the frontend keeps of them is forgotten. */
 let abandoning: string | null = null;
 /** Sheets covered by a tome2 screen, reopened once it closes. */
 let returnTo: SheetTrail | null = null;
@@ -1248,14 +1250,17 @@ function refresh(): void {
     const screen = characterScreen();
     const characterView = !!(screen.skills || screen.abilities || screen.sheet);
     shownShop = currentShop();
-    const tomb = parseTomb(rows);
+    const tomb = abandoning ? null : parseTomb(rows);
     const fame = !tomb && ended && isHallOfFame(rows);
     if (tomb) ended = true;
     app.classList.toggle('ended', !!tomb || fame);
-    if (termView.visible && currentBox() && !character.hosting) {
+    if (abandoning) {
+      /* tome2's end-of-game screens are passed while the adventure is abandoned. */
+      termView.hide();
+    } else if (termView.visible && currentBox() && !character.hosting) {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
-      if (chronicles.fall(tomb.name)) chronicles.save();
+      if (chronicles.fall(tomb.name, engine.gameState(0)?.player?.diedFrom === ABANDONED)) chronicles.save();
       if (adventurers.forget(tomb.name)) adventurers.save();
       if (heroMemoryId) {
         mapMemory.forget(heroMemoryId);
@@ -1279,7 +1284,7 @@ function refresh(): void {
       const player = lastState?.player;
       const scores = engine.scores();
       const hero = player ? heroEntry(scores, { name: player.name, level: player.lev, turns: snap.turn }) : -1;
-      termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero to look back on them' }, `fame:${scores.length}:${hero}`, () =>
+      termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero for their tale' }, `fame:${scores.length}:${hero}`, () =>
         hallOfFameElements(scores, hero, (entry) => openFameHero(entry, true)),
       );
     } else if (shownShop) {
@@ -1367,7 +1372,7 @@ let chronicle: Chronicle | null = null;
 let streak: Streak = { count: 0, lastTurn: 0 };
 
 function chronicleUpdate(player: PlayerState, slain: readonly Slain[], turn: number, hurt: boolean): void {
-  app.classList.toggle('fallen', !!player.dead);
+  app.classList.toggle('fallen', !!player.dead && !abandoning);
   if (player.dead) return;
   if (chronicle?.name !== player.name) {
     chronicle = chronicles.hero(player.name);
@@ -1438,13 +1443,16 @@ function openFallenHero(tab: FallenTab = 'hero'): void {
   openFallen(sheets, { memorial, entry: scores.find((e) => entryKey(e) === memorialKey(memorial!)) ?? null }, tab);
 }
 
-/** A hero in the Hall of Fame; one who fell on this device can be looked back on in full, and some begun anew. */
+/**
+ * A hero in the Hall of Fame, as a card: one whose adventure ended on this
+ * device can be looked back on in full, some begun anew, and on the title
+ * screen any can be removed.
+ */
 function openFameHero(entry: ScoreEntry, inGame: boolean): void {
   const kept = chronicles.memorial(entryKey(entry));
   const anew = inGame ? fallenSaveFor(entry) : director.canBeginAnew(entry);
-  openFallen(sheets, {
-    memorial: kept,
-    entry,
+  openFameCard(sheets, { memorial: kept, entry }, {
+    lookBack: kept ? () => openFallen(sheets, { memorial: kept, entry }) : undefined,
     anew: anew
       ? () => {
           sheets.closeAll();
@@ -1456,7 +1464,37 @@ function openFameHero(entry: ScoreEntry, inGame: boolean): void {
           }
         }
       : undefined,
+    remove: inGame ? undefined : () => removeFameEntry(entry),
+    removeEndsAnew: anew && engine.scores().filter((e) => saveBase(e.name) === saveBase(entry.name)).length === 1,
   });
+}
+
+/**
+ * Takes a hero out of the Hall of Fame with what was remembered of them;
+ * the last of a name also takes the fallen hero's savefile, which only
+ * Begin anew used.
+ */
+function removeFameEntry(entry: ScoreEntry): void {
+  /* The confirmation and the hero's card close back to the Hall of Fame. */
+  sheets.back();
+  sheets.back();
+  const same = (e: ScoreEntry) => entryKey(e) === entryKey(entry) && e.points === entry.points && e.day === entry.day;
+  const index = engine.scores().findIndex(same);
+  if (index < 0 || !engine.removeScore(index)) {
+    showToast('The Hall of Fame could not be changed.', false);
+    return;
+  }
+  if (chronicles.forgetMemorial(entryKey(entry))) chronicles.save();
+  if (!engine.scores().some((e) => saveBase(e.name) === saveBase(entry.name)) && director.forgetFallen(entry.name)) deleteSavefile(entry.name);
+  const shown = fameSheet;
+  if (shown) sheets.update(hallOfFameSheet(), shown);
+  engine.syncNow().then(
+    () => showToast(`${entry.name} was removed from the Hall of Fame.`, false),
+    (err) => {
+      console.error('Saving to browser storage failed', err);
+      showToast('Browser storage could not be updated.', false);
+    },
+  );
 }
 
 /** In the game the savefile list is not at hand; a fallen hero's own savefile is the one just written. */
@@ -1481,10 +1519,13 @@ function currentShop(): StoreState | null {
   if (mode !== 'overlay') return null;
   const store = engine.store();
   if (!store) return null;
-  if (trade) return store;
+  return trade || atBuildingCommands() ? store : null;
+}
+
+/** tome2 waits at a building's own commands (row 21 "You may:"), asking nothing else. */
+function atBuildingCommands(): boolean {
   const prompt = currentPrompt();
-  if (prompt !== 'none' && prompt !== 'other') return null;
-  return /^You may:/.test(buffer.rowText(21)) ? store : null;
+  return (prompt === 'none' || prompt === 'other') && /^You may:/.test(buffer.rowText(21));
 }
 
 const shopHandlers: ShopHandlers = {
@@ -1573,16 +1614,63 @@ function servicesElement(model: ShopModel): HTMLElement {
 }
 
 /** What a service costs, or that the keeper will not do it for this hero. */
-function serviceHint(service: StoreCommand): string | undefined {
-  if (service.closed) return 'Not for you';
-  return service.cost > 0 ? `${service.cost} gold` : undefined;
+function serviceHint(command: StoreCommand): string | undefined {
+  if (command.closed) return 'Not for you';
+  return command.cost > 0 ? `${command.cost} gold` : undefined;
 }
 
-/** Asks for a service, or says why it cannot be had (no gold spent either way when it cannot). */
-function runService(service: StoreCommand): void {
-  if (service.closed) refuse('The keeper will not do that for you.');
-  else if (service.cost > (lastState?.player?.au ?? 0)) refuse(`That costs ${service.cost} gold, more than you have.`);
-  else send([BACKSLASH, service.key.charCodeAt(0)]);
+/**
+ * A building's service under way: tome2 answers it by drawing over the
+ * building's screen, which the native panel covers, and pages long answers
+ * with -more- (held while it runs), so each page is kept as it is shown.
+ */
+let service: { name: string; before: string[]; state: GameState | null; pages: string[][][] } | null = null;
+
+/** Asks for a service, or says why it cannot be had (no gold spent either way when it cannot); only while tome2 waits at the building's commands. */
+function runService(command: StoreCommand): void {
+  if (service || trade || macros.running || engine.pendingKeys > 0 || !atBuildingCommands()) return;
+  if (command.closed) refuse('The keeper will not do that for you.');
+  else if (command.cost > (lastState?.player?.au ?? 0)) refuse(`That costs ${command.cost} gold, more than you have.`);
+  else {
+    /* The rows a service draws on are blanked first, so an answer the same as the last one still shows. */
+    engine.clearRows(SERVICE_CLEAR.first, SERVICE_CLEAR.last);
+    service = { name: command.name, before: screenLines(), state: engine.gameState(SERVICE_MESSAGES), pages: [] };
+    engine.setAutoMore(false);
+    send([BACKSLASH, command.key.charCodeAt(0)]);
+  }
+}
+
+function screenLines(): string[] {
+  return buffer.screenText().split('\n');
+}
+
+/** Keeps what a service has drawn so far, leaving out blocks kept from an earlier page. */
+function keepPage(run: NonNullable<typeof service>): void {
+  const kept = new Set(run.pages.flat().map((block) => block.join('\n')));
+  run.pages.push(drawnBlocks(run.before, screenLines()).filter((block) => !kept.has(block.join('\n'))));
+}
+
+/** Follows a service at each idle: keeps a page and turns it at -more-; once back at the building's commands (or out of it), shows what it said. True when a key was sent. */
+function followService(): boolean {
+  const run = service;
+  if (!run || macros.running || engine.pendingKeys > 0 || viewerHeading(rowZeroText())) return false;
+  if (currentPrompt() === 'more') {
+    keepPage(run);
+    engine.sendKeys([SPACE]);
+    return true;
+  }
+  const inside = !!engine.store() && atBuildingCommands();
+  const snap = engine.snapshot();
+  if (!inside && snap?.inDungeon && !(snap.atCommand && !snap.icky)) return false;
+  service = null;
+  applyEngineSettings();
+  if (inside) keepPage(run);
+  const state = engine.gameState(SERVICE_MESSAGES);
+  /* Oldest first, without tome2's count of a repeated message ("… <2x>"). */
+  const said = run.state && state ? newMessages(run.state, state).map((m) => m.text.replace(/\s*<\d+x>$/, '')).reverse() : [];
+  const reply = serviceReply(run.pages.filter((page) => page.length), said);
+  if (reply.length) openMessage(sheets, run.name, reply, 'sheet-service');
+  return false;
 }
 
 /** The toolbar while in a shop (beneath its panel). */
@@ -2329,7 +2417,7 @@ const engine = new Engine(buffer, {
       heroMemory = null;
       heroMemoryId = '';
       landMemory = null;
-      deleteAdventurer(abandoned);
+      forgetAdventurer(abandoned);
       engine.syncNow().catch((err) => console.error('Saving to browser storage failed', err)).finally(() => returnToTitle());
       return;
     }
@@ -2349,7 +2437,10 @@ const engine = new Engine(buffer, {
     if (!chronicles.loaded) chronicles.load(engine.fs, engine.savePath);
     if (!mapMemory.loaded) mapMemory.load(engine.fs, engine.savePath);
     if (!adventurers.loaded) adventurers.load(engine.fs, engine.savePath);
+    /* A run quit through tome2's quit command is kept in the Hall of Fame as abandoned. */
+    engine.markAbandoned();
     if (!macros.running && readViewer()) return;
+    if (followService()) return;
     director.idle();
     dirty = false;
     refresh();
@@ -2468,7 +2559,6 @@ const adventurers = new AdventurerStore();
 const coach = new Coach(byId<HTMLElement>('stage'));
 const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
   onChoose: (choice) => director.choose(choice),
-  onAdventurer: (save) => openAdventurer(sheets, save, adventurerHandlers),
   onAdventurers: (saves) => openAdventurers(sheets, saves, adventurerHandlers),
   describe: (save) => {
     const details = adventurerDetails(save);
@@ -2623,10 +2713,16 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (shownShop) {
-    /* In a shop, arrows move through its list, Enter opens the highlighted item and Escape leaves. */
+    /* In a shop, arrows move through its list, Enter opens the highlighted item and Escape leaves; a service's letter asks for it as a tap does. */
     if (e.key === 'Escape' || termView.navigate(e)) {
       e.preventDefault();
       if (e.key === 'Escape') send([KEY_ESCAPE]);
+      return;
+    }
+    const extra = !e.ctrlKey && !e.metaKey && !e.altKey ? shopModel(shownShop).extras.find((a) => a.key === e.key) : undefined;
+    if (extra) {
+      e.preventDefault();
+      if (!e.repeat) runService(extra);
       return;
     }
   }
@@ -2768,18 +2864,17 @@ function inGame(): boolean {
   return !!lastSnap?.inDungeon;
 }
 
-/** Saves, waits for the save to reach browser storage, then returns to the title screen; `abandon` names a hero whose save is then deleted. */
-function saveAndQuit(abandon: string | null = null): void {
+/** Saves, waits for the save to reach browser storage, then returns to the title screen. */
+function saveAndQuit(): void {
   sheets.closeAll();
   if (!inGame()) {
     location.reload();
     return;
   }
   quitting = true;
-  abandoning = abandon;
   stopAutomation(null, 'quit');
   persistMapMemory();
-  showToast(abandon ? 'Leaving…' : 'Saving…', false);
+  showToast('Saving…', false);
   runMacro(quitMacro());
 }
 
@@ -2807,6 +2902,7 @@ function returnToTitle(): void {
   shownShop = null;
   shopTab = null;
   trade = null;
+  service = null;
   ended = false;
   quitting = false;
   memorial = null;
@@ -2870,6 +2966,18 @@ function* finishMacro(): Macro {
   }
 }
 
+function* abandonMacro(): Macro {
+  let s = yield [KEY_ESCAPE, KEY_ESCAPE, KEY_ESCAPE];
+  for (let i = 0; i < 6 && !s.atCommand; i++) s = yield [KEY_ESCAPE];
+  s = yield [BACKSLASH, ...keyCodes('Q')];
+  if (/really want to quit|want to retire/.test(s.prompt)) s = yield keyCodes('y');
+  if (/verify QUITTING/.test(s.prompt)) s = yield keyCodes('@');
+  for (let i = 0; i < 12; i++) {
+    if (s.atCommand) return;
+    s = yield [KEY_ESCAPE];
+  }
+}
+
 function* quitMacro(): Macro {
   let s = yield [KEY_ESCAPE, KEY_ESCAPE, KEY_ESCAPE];
   for (let i = 0; i < 6 && !s.atCommand; i++) s = yield [KEY_ESCAPE];
@@ -2894,9 +3002,17 @@ function startImport(): void {
 
 /** The Hall of Fame from the title screen. */
 function openHallOfFame(): void {
+  sheets.open(hallOfFameSheet());
+}
+
+/** The title screen's Hall of Fame sheet, built afresh (and kept to be updated in place when a hero is removed). */
+let fameSheet: SheetContent | null = null;
+
+function hallOfFameSheet(): SheetContent {
   const body = el('div', 'fame');
-  body.append(section('Fallen heroes', ...hallOfFameElements(engine.scores(), -1, (entry) => openFameHero(entry, false))), ...careerElements(chronicles));
-  sheets.open({ title: 'Hall of Fame', subtitle: 'Heroes of Middle-earth, remembered', body, className: 'sheet-fame' });
+  body.append(section('Heroes remembered', ...hallOfFameElements(engine.scores(), -1, (entry) => openFameHero(entry, false))), ...careerElements(chronicles));
+  fameSheet = { title: 'Hall of Fame', subtitle: 'Heroes of Middle-earth, remembered', body, className: 'sheet-fame' };
+  return fameSheet;
 }
 
 /** Help, with the original ToME manual during a game (Help reopens when it closes). */
@@ -2969,8 +3085,14 @@ const adventurerHandlers: AdventurerHandlers = {
   },
 };
 
-/** Deletes a hero's adventure: the savefile and kept levels, and what the frontend keeps of them (map memory, tale, title details, recents). */
+/** Deletes a hero's adventure: the savefile and kept levels, and what the frontend keeps of them. */
 function deleteAdventurer(name: string): void {
+  deleteSavefile(name);
+  forgetAdventurer(name);
+}
+
+/** Deletes a hero's savefile and kept levels, and their line in tome2's savefile index. */
+function deleteSavefile(name: string): void {
   const fs = engine.fs;
   const root = engine.savePath;
   const index = fs && root ? findSaveIndex(fs, root) : null;
@@ -2979,6 +3101,10 @@ function deleteAdventurer(name: string): void {
   } catch (err) {
     console.error(`Deleting ${name}'s save failed`, err);
   }
+}
+
+/** Forgets what the frontend keeps of a hero whose adventure is over: map memory, tale, title details, recents. */
+function forgetAdventurer(name: string): void {
   mapMemory.forgetNamed(name);
   mapMemory.save();
   chronicles.forget(name);
@@ -2988,10 +3114,20 @@ function deleteAdventurer(name: string): void {
   recents.forget(name);
 }
 
-/** Ends the hero's adventure for good: the game closes as Save and quit does, then the save is deleted. */
+/**
+ * Ends the hero's adventure for good through tome2's own quit: tome2 keeps
+ * the savefile as a fallen hero's (so they can be begun anew) and the run in
+ * the Hall of Fame (marked abandoned in `onIdle`); its end-of-game screens are passed.
+ */
 function abandonAdventure(): void {
   const name = lastState?.player?.name;
-  if (name) saveAndQuit(name);
+  if (!name || !inGame()) return;
+  sheets.closeAll();
+  quitting = true;
+  abandoning = name;
+  stopAutomation(null, 'quit');
+  showToast('Leaving…', false);
+  runMacro(abandonMacro());
 }
 
 function openGameMenu(): void {
@@ -3029,7 +3165,7 @@ function openGameMenu(): void {
       confirmSheet(
         sheets,
         'Abandon this adventure?',
-        `${name}'s adventure ends here and cannot be taken up again: the saved game is deleted. Your other heroes, the Hall of Fame and the deeds you have earned stay.`,
+        `${name}'s adventure ends here and cannot be taken up again. It is remembered in the Hall of Fame, where you can begin anew with the same hero.`,
         'Abandon',
         abandonAdventure,
         true,

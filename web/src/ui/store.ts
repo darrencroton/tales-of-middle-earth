@@ -378,3 +378,114 @@ function shopItemAction(api: GameApi, action: ItemAction, item: ItemState, place
     },
   };
 }
+
+/* A building's screen rows a service draws on: below the messages, above the shop's gold (row 19) and its commands. */
+const SERVICE_ROWS = { first: 1, last: 18 };
+/** Rows blanked before a service, so its answer is told from the last one's; row 5 holds a shop's "(Page n)" (`shelfPage`). */
+export const SERVICE_CLEAR = { first: 6, last: SERVICE_ROWS.last };
+
+/** Lines that are tome2's key hints, or reworded for this game. */
+const SERVICE_WORDING: [RegExp, string | null][] = [
+  [/\b(hit|press)\b.*\b(any key|spacebar)\b|\bto continue\b/i, null],
+  [/^Again\s*\(Y\/N\)\?$/i, null],
+  [/^Use CTRL-Q to check the status of your quest\.?$/i, 'Your quests are listed in Menu → Knowledge.'],
+];
+
+/** True when every bracket a line opens it also closes ("1) Bilbo (Level" is cut mid-way). */
+function balanced(text: string): boolean {
+  let depth = 0;
+  for (const ch of text) {
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
+}
+
+/** A row divides at column c: a gap of two spaces before it, text after it, and no bracket left open on either side. */
+function dividesAt(row: string, c: number): boolean {
+  const right = row.slice(c).trim();
+  return row[c - 1] === ' ' && row[c - 2] === ' ' && !!right && !right.startsWith(':') && balanced(row.slice(0, c)) && balanced(right);
+}
+
+/**
+ * The column where a page drawn as two columns divides (compare weapons: one
+ * weapon from column 2, the other from about 40), where the most rows divide
+ * and at least three; null for a page of one column.
+ */
+function columnSplit(rows: readonly string[]): number | null {
+  const width = Math.max(0, ...rows.map((row) => row.length));
+  let best: number | null = null;
+  let most = 2;
+  for (let c = 20; c < width; c++) {
+    const count = rows.filter((row) => dividesAt(row, c)).length;
+    if (count > most) {
+      best = c;
+      most = count;
+    }
+  }
+  return best;
+}
+
+/**
+ * What a service drew on a building's screen: the rows changed since it
+ * began, as blocks of adjacent rows; a page drawn as two columns gives the
+ * left column's blocks (with the rows that span the page), then the right's.
+ */
+export function drawnBlocks(before: readonly string[], after: readonly string[]): string[][] {
+  const changed: { row: number; text: string }[] = [];
+  for (let r = SERVICE_ROWS.first; r <= SERVICE_ROWS.last && r < after.length; r++) {
+    const text = after[r].trimEnd();
+    if (text.trim() && text !== (before[r] ?? '').trimEnd()) changed.push({ row: r, text });
+  }
+  const split = columnSplit(changed.map((line) => line.text));
+  const divides = (text: string) => split !== null && dividesAt(text, split);
+  const sides = [
+    (text: string) => (divides(text) ? text.slice(0, split!) : text),
+    ...(split === null ? [] : [(text: string) => (divides(text) ? text.slice(split) : '')]),
+  ];
+  const blocks: string[][] = [];
+  for (const side of sides) {
+    let last = -2;
+    for (const line of changed) {
+      const text = side(line.text).trim().replace(/\s+/g, ' ');
+      if (!text) continue;
+      if (line.row !== last + 1 || !blocks.length) blocks.push([]);
+      blocks[blocks.length - 1].push(text);
+      last = line.row;
+    }
+  }
+  return blocks;
+}
+
+/**
+ * A service's reply as paragraphs: what tome2 said (oldest first), then each page it drew
+ * (lines wrapped mid-sentence joined; of several pages, those with only
+ * their heading left out; key hints left out).
+ */
+export function serviceReply(pages: readonly (readonly string[][])[], messages: readonly string[]): string[] {
+  const reword = (line: string): string | null => {
+    for (const [pattern, text] of SERVICE_WORDING) if (pattern.test(line)) return text;
+    return line;
+  };
+  const lines = (page: readonly string[][]) => page.reduce((n, block) => n + block.length, 0);
+  const paragraphs: string[] = [];
+  for (const message of messages) {
+    const text = reword(message.trim());
+    if (text && paragraphs[paragraphs.length - 1] !== text) paragraphs.push(text);
+  }
+  for (const page of pages) {
+    if (pages.length > 1 && lines(page) < 2) continue;
+    for (const block of page) {
+      let open = false;
+      for (const line of block) {
+        const text = reword(line);
+        if (!text) continue;
+        if (open && /^[a-z]/.test(text) && !/[.!?:)]$/.test(paragraphs[paragraphs.length - 1])) paragraphs[paragraphs.length - 1] += ` ${text}`;
+        else paragraphs.push(text);
+        open = true;
+      }
+    }
+  }
+  return paragraphs;
+}

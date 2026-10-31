@@ -17,9 +17,7 @@ export type TitleChoice = { kind: 'continue'; save: SaveInfo } | { kind: 'new' }
 
 export interface TitleCallbacks {
   onChoose(choice: TitleChoice): void;
-  /** A saved hero was picked: their card offers Play and Delete. */
-  onAdventurer(save: SaveInfo): void;
-  /** The other saved heroes, to pick from. */
+  /** Every saved hero, to pick from: each one's card offers Play and Delete. */
   onAdventurers(saves: SaveInfo[]): void;
   /** A saved hero's name, and a line about them under Continue: level, race, class and where they are. */
   describe(save: SaveInfo): { name: string; line: string };
@@ -211,8 +209,8 @@ export class TitleScreen {
   }
 
   /**
-   * Shows Continue for the hero played last, More adventurers when there are
-   * others, and New character; picking a hero opens their card.
+   * Shows Continue for the hero played last (straight into the game),
+   * Roster (every saved hero, each with Play and Delete) and New character.
    */
   setChoices(saves: SaveInfo[]): void {
     this.ready = true;
@@ -237,15 +235,11 @@ export class TitleScreen {
       button.addEventListener('click', run);
       buttons.push(button);
     };
-    const [last, ...others] = saves;
+    const last = saves[0];
     if (last) {
       const hero = this.callbacks.describe(last);
-      make(`Continue as ${hero.name}`, hero.line, true, () => this.callbacks.onAdventurer(last));
-    }
-    if (others.length) {
-      make('More adventurers', others.length === 1 ? `${this.callbacks.describe(others[0]).name} is waiting` : `${others.length} other heroes are waiting`, false, () =>
-        this.callbacks.onAdventurers(others),
-      );
+      make(`Continue as ${hero.name}`, hero.line, true, () => this.callbacks.onChoose({ kind: 'continue', save: last }));
+      make('Roster', saves.length === 1 ? '1 saved hero' : `${saves.length} saved heroes`, false, () => this.callbacks.onAdventurers(saves));
     }
     make(saves.length ? 'New character' : 'Enter Middle-earth', saves.length ? '' : 'Create your hero', saves.length === 0, () =>
       this.callbacks.onChoose({ kind: 'new' }),

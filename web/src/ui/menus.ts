@@ -202,10 +202,10 @@ export function openTemplate(sheets: Sheets, title: string, templateId: string):
   sheets.open({ title, body, className: 'sheet-prose' });
 }
 
-export function openMessage(sheets: Sheets, title: string, message: string): void {
+export function openMessage(sheets: Sheets, title: string, message: string | readonly string[], className?: string): void {
   const body = el('div', 'prose');
-  body.append(el('p', undefined, message));
-  sheets.open({ title, body, kind: 'card', actions: [{ label: 'OK', primary: true, run: () => sheets.back() }] });
+  for (const text of typeof message === 'string' ? [message] : message) body.append(el('p', undefined, text));
+  sheets.open({ title, body, kind: 'card', className, actions: [{ label: 'OK', primary: true, run: () => sheets.back() }] });
 }
 
 /**

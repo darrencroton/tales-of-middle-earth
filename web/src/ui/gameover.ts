@@ -3,7 +3,9 @@ import { dayOf, type Memorial, type MemorialFoe } from '../play/memorial.ts';
 import type { ScoreEntry } from '../render/snapshot.ts';
 import { titleName } from './api.ts';
 import { el, navButton, section } from './dom.ts';
-import { deedChips, fateLine, fateText, fellWhereWhen, foeChip, gearStrip, lastWordsList, type FallenTab } from './memorial.ts';
+import { confirmSheet } from './menus.ts';
+import type { SheetAction, Sheets } from './sheet.ts';
+import { deedChips, fateLine, fateText, fellWhereWhen, foeChip, gearStrip, lastWordsList, type FallenHero, type FallenTab } from './memorial.ts';
 import { rowText, type TermRow } from './termparse.ts';
 
 export { fateText, fellWhere } from './memorial.ts';
@@ -123,6 +125,70 @@ export function tombElements(tomb: Tomb, extras: TombExtras): HTMLElement[] {
   return parts;
 }
 
+/** "31 October 2026" from tome2's mm/dd/yy, or the text as given. */
+function scoreDate(day: string): string {
+  const m = /^(\d\d)\/(\d\d)\/(\d\d)$/.exec(day.trim());
+  if (!m) return day;
+  return new Date(2000 + Number(m[3]), Number(m[1]) - 1, Number(m[2])).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+export interface FameCardActions {
+  /** Opens the hero as they were at the end (only when that was kept). */
+  lookBack?(): void;
+  /** Starts the same race, class and attributes again (only when tome2 can). */
+  anew?(): void;
+  /** Takes the hero out of the Hall of Fame, after a warning. */
+  remove?(): void;
+  /** Removing takes Begin anew with it (the last entry of a hero who can be begun anew). */
+  removeEndsAnew?: boolean;
+}
+
+/** A hero in the Hall of Fame: how their adventure ended, with Look back, Begin anew and Remove where they apply. */
+export function openFameCard(sheets: Sheets, hero: FallenHero & { entry: ScoreEntry }, actions: FameCardActions): void {
+  const e = hero.entry;
+  const m = hero.memorial;
+  const facts = el('dl', 'hero-facts');
+  const fact = (label: string, value: string | null | undefined) => {
+    if (value) facts.append(el('dt', undefined, label), el('dd', undefined, value));
+  };
+  fact('The end', fateText(e));
+  fact('When', m ? longDate(m.date) : scoreDate(e.day));
+  if (m) fact('Days', String(dayOf(m.turn)));
+  fact('Deepest', e.maxDepth > 0 ? `${(e.maxDepth * 50).toLocaleString('en-GB')} ft` : 'The surface');
+  if (m?.tale) fact('Foes slain', m.tale.kills.toLocaleString('en-GB'));
+  fact('Score', e.points.toLocaleString('en-GB'));
+  const body = el('div', 'adventurer-detail');
+  body.append(facts);
+  const buttons: SheetAction[] = [];
+  if (actions.anew) buttons.push({ id: 'anew', label: 'Begin anew', primary: true, run: actions.anew });
+  if (actions.lookBack) buttons.push({ id: 'look', label: 'Look back', primary: !actions.anew, run: actions.lookBack });
+  const remove = actions.remove;
+  if (remove) {
+    buttons.push({
+      id: 'remove',
+      label: 'Remove',
+      danger: true,
+      run: () =>
+        confirmSheet(
+          sheets,
+          `Remove ${e.name}?`,
+          `${e.name} leaves the Hall of Fame for good, with what was remembered of their adventure${actions.removeEndsAnew ? ', and can no longer be begun anew' : ''}. Your other heroes and the deeds you have earned stay.`,
+          'Remove',
+          remove,
+          true,
+        ),
+    });
+  }
+  sheets.open({
+    title: e.name,
+    subtitle: [`${e.race} ${e.cls}`.trim(), `Level ${e.level}`].filter(Boolean).join(' · '),
+    body,
+    kind: 'card',
+    className: 'sheet-fame-hero',
+    actions: buttons.length ? buttons : undefined,
+  });
+}
+
 /** tome2's Hall of Fame screen, shown after the summary when a hero dies. */
 export function isHallOfFame(rows: readonly TermRow[]): boolean {
   return rows.length > 0 && /Hall of Fame/.test(rowText(rows[0])) && rows.some((r) => /Press ESC to quit/.test(rowText(r)));
@@ -141,7 +207,7 @@ export function hallOfFameElements(
   onOpen: (entry: ScoreEntry, index: number) => void,
 ): HTMLElement[] {
   if (entries.length === 0) {
-    return [el('p', 'fame-empty', 'No heroes have fallen yet. Those who do are remembered here.')];
+    return [el('p', 'fame-empty', 'No adventure has ended yet. Heroes who fall, and adventures abandoned, are remembered here.')];
   }
   const list = el('ol', 'fame-list');
   entries.forEach((entry, i) => {
