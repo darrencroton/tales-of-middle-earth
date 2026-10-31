@@ -210,8 +210,8 @@ export async function jumpToLevel(page: Page, level: number): Promise<void> {
   await waitAtCommand(page);
 }
 
-/** Uses tome2's wizard commands (page loaded with ?wizard) to summon a creature (by r_info index, asleep) beside the hero. */
-export async function summonBeside(page: Page, raceIndex: number): Promise<void> {
+/** Uses tome2's wizard commands (page loaded with ?wizard) to summon a creature (by r_info index, asleep) beside the hero; `friendly` makes it a pet. */
+export async function summonBeside(page: Page, raceIndex: number, friendly = false): Promise<void> {
   const rowZero = async () => (await screenText(page)).split('\n')[0] ?? '';
   let text = await screenText(page);
   await sendText(page, `0${raceIndex}\u0001`);
@@ -220,7 +220,7 @@ export async function summonBeside(page: Page, raceIndex: number): Promise<void>
     await sendText(page, /\[y\/n\]/.test(await rowZero()) ? 'y' : ' ');
     text = await waitForSettle(page, text, 5_000);
   }
-  await sendText(page, 'n');
+  await sendText(page, friendly ? 'N' : 'n');
   await waitForSettle(page, text, 5_000);
   await dismissMore(page);
   await waitAtCommand(page);

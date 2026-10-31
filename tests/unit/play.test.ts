@@ -4,7 +4,7 @@ import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, contextualA
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
-import { approachTarget, isKnown, stepTowards, Travel, travelGrid, type TravelContext } from '../../web/src/play/travel.ts';
+import { approachTarget, isKnown, pushPast, stepTowards, Travel, travelGrid, type TravelContext } from '../../web/src/play/travel.ts';
 import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials } from '../../web/src/render/materials.ts';
 import { CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, NO_EFFECT, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
 
@@ -277,6 +277,31 @@ describe('travel', () => {
     assert.deepEqual(travel.step(ctx(snap, [monster(1, 3, 0)])), { kind: 'stop', reason: 'monster', creature: 'kobold', asleep: false });
   });
 
+  it('walks through a companion in a corridor, pushing past it as tome2 does', () => {
+    const snap = level(['..k..'], { x: 0, y: 0 });
+    const friend = [monster(1, 2, 0, { status: 3, name: 'dog' })];
+    const steady = { confused: false, stunned: false, hallucinating: false, stormbringer: false };
+    const passing = pushPast(snap, MATERIALS, friend, steady);
+    assert.deepEqual([...passing], [2]);
+    assert.equal(travelGrid(snap, MATERIALS, passing).passable(2, 0), true);
+    const travel = new Travel({ x: 4, y: 0 }, { ...ctx(snap, friend), passing });
+    assert.equal(travel.step({ ...ctx(snap, friend), passing }).kind, 'keys');
+    assert.equal(new Travel({ x: 4, y: 0 }, ctx(snap, friend)).step(ctx(snap, friend)).kind, 'stop');
+  });
+
+  it('does not push past a hostile or neutral creature, nor while unsteady or off the floor', () => {
+    const snap = level(['..k..'], { x: 0, y: 0 });
+    const steady = { confused: false, stunned: false, hallucinating: false, stormbringer: false };
+    assert.equal(pushPast(snap, MATERIALS, [monster(1, 2, 0)], steady).size, 0);
+    assert.equal(pushPast(snap, MATERIALS, [monster(1, 2, 0, { status: 0 })], steady).size, 0);
+    const friend = [monster(1, 2, 0, { status: 4 })];
+    assert.equal(pushPast(snap, MATERIALS, friend, { ...steady, confused: true }).size, 0);
+    assert.equal(pushPast(snap, MATERIALS, friend, { ...steady, stormbringer: true }).size, 0);
+    const doorway = level(['+k...'], { x: 0, y: 0 });
+    assert.equal(pushPast(doorway, MATERIALS, [monster(1, 1, 0, { status: 4 })], steady).size, 0);
+    assert.equal(pushPast(doorway, MATERIALS, [monster(1, 3, 0, { status: 4 })], steady).size, 1);
+  });
+
   it('stops when the engine is no longer waiting for a command', () => {
     const snap = level(['...'], { x: 0, y: 0 });
     const travel = new Travel({ x: 2, y: 0 }, ctx(snap));
@@ -418,6 +443,14 @@ describe('actions', () => {
     assert.equal(first({ underfoot: 'down staircase', exploreNext: 'worldMap' }), 'Descend');
     assert.equal(first({ underfoot: 'path to the next area', exploreNext: 'here' }), 'Descend');
     assert.equal(first({ underfoot: 'open floor', exploreNext: 'down' }), 'Way down');
+  });
+
+  it('is the way into a building the hero stands at, over Explore or the world map', () => {
+    const base = { mode: 'map' as const, atCommand: true, underfoot: 'building', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const shop = contextualAction({ ...base, entrance: 'Enter shop', exploreNext: 'worldMap', foe: '6' });
+    assert.equal(shop.label, 'Enter shop');
+    assert.deepEqual(shop.effect, { kind: 'keys', keys: [92, ...keys('_')] });
+    assert.equal(contextualAction({ ...base, underfoot: 'open floor', exploreNext: 'worldMap' }).label, 'World map');
   });
 
   it('shows Stop, Speed and Menu while exploring, between steps too; Speed leaves it running', () => {

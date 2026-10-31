@@ -5,9 +5,11 @@ import { keyCodes } from '../play/macro.ts';
 import type { TerminalBuffer } from '../terminal.ts';
 import { moduleKey, type ModuleChoice, type SaveInfo, type TitleChoice, type TitleScreen } from '../title.ts';
 import { birthCard } from '../ui/birthcard.ts';
+import { findSaveIndex } from '../saves.ts';
+import { saveBase } from '../play/adventurers.ts';
 import { el } from '../ui/dom.ts';
 import { ListNav } from '../ui/listnav.ts';
-import { askText, segmented } from '../ui/menus.ts';
+import { askText } from '../ui/menus.ts';
 import type { Sheets } from '../ui/sheet.ts';
 import { bufferRows } from '../ui/termparse.ts';
 import {
@@ -23,7 +25,8 @@ import {
   type SaveRecord,
 } from './birth.ts';
 import { birthDetails, findBirthEntry, type BirthDetails } from './birthinfo.ts';
-import { DEFAULT_QUESTS, questChoices, questsText, RUN_OPTION_TEXT, type RunOptions } from './runoptions.ts';
+import { DEFAULT_QUESTS, type RunOptions } from './runoptions.ts';
+import { runElements } from '../ui/adventure.ts';
 import type { BirthData } from '../render/snapshot.ts';
 
 export interface DirectorDeps {
@@ -215,32 +218,8 @@ export class Director {
   private readSaveIndex(): SaveRecord[] {
     const fs = this.deps.engine.fs;
     const root = this.deps.engine.savePath;
-    if (!fs || !root) return [];
-    const find = (dir: string, depth: number): string | null => {
-      if (depth > 4) return null;
-      let names: string[];
-      try {
-        names = fs.readdir(dir);
-      } catch {
-        return null;
-      }
-      for (const name of names) {
-        if (name === '.' || name === '..') continue;
-        const path = `${dir}/${name}`;
-        if (name === 'global.svg') return path;
-        try {
-          if (fs.isDir(fs.stat(path).mode)) {
-            const found = find(path, depth + 1);
-            if (found) return found;
-          }
-        } catch {
-          // Unreadable entry: skip it.
-        }
-      }
-      return null;
-    };
-    const path = find(root, 0);
-    if (!path) return [];
+    const path = fs && root ? findSaveIndex(fs, root) : null;
+    if (!fs || !path) return [];
     try {
       return parseSaveIndex(new TextDecoder().decode(fs.readFile(path)));
     } catch {
@@ -286,12 +265,19 @@ export class Director {
     return true;
   }
 
+  /** Takes a deleted hero off the title screen; tome2's own list still holds them, so the other heroes' letters stay right. */
+  forgetSave(name: string): void {
+    if (this.phase !== 'title') return;
+    this.saves = this.saves.filter((s) => s.name !== name);
+    this.title?.setChoices(this.saves);
+  }
+
   /** The player chose on the title screen. */
   choose(choice: TitleChoice): void {
     if (this.phase !== 'title') return;
     if (choice.kind === 'continue') {
       this.phase = 'loading';
-      this.title?.setBusy(`Loading ${choice.save.name}…`);
+      this.title?.setBusy(`Loading ${choice.save.description.split(', the ')[0] || choice.save.name}…`);
       this.deps.send(keyCodes(choice.save.letter));
       return;
     }
@@ -301,12 +287,13 @@ export class Director {
   private askName(error = ''): void {
     this.title?.setBusy('');
     const taken = new Set(this.saves.map((s) => s.name.toLowerCase()));
+    /* The list holds savefile names, which several hero names can share ("Old Tom" and "Old_Tom"). */
     askText(this.deps.sheets, 'Name your hero', 'What shall you be called?', this.heroName, 15, error).then((name) => {
       if (name === null) {
         this.title?.restoreChoices();
         return;
       }
-      const problem = validCharacterName(name) ?? (taken.has(name.toLowerCase()) ? `${name} already has a saved game.` : null);
+      const problem = validCharacterName(name) ?? (taken.has(saveBase(name).toLowerCase()) ? `${name} already has a saved game.` : null);
       if (problem) {
         this.heroName = name;
         this.askName(problem);
@@ -753,43 +740,21 @@ export class Director {
   /** The run's options under the hero about to begin: random quests and tome2's birth options, set as they are tapped. */
   private runCard(run: RunOptions): HTMLElement {
     const card = el('article', 'birth-card run');
-    card.append(el('h3', undefined, 'Your adventure'));
-    const unusual = run.options.some((o) => o.name === 'unusualRooms' && o.on);
-    const quests = el('section', 'run-quests');
-    quests.append(el('h4', undefined, 'Random quests'));
-    if (unusual) {
-      quests.append(el('p', 'muted', RUN_OPTION_TEXT.unusualRooms.detail));
-    } else {
-      const choices = questChoices(run.maxQuests).map((n) => [String(n), n === 0 ? 'None' : String(n)] as [string, string]);
-      quests.append(
-        segmented('Random quests', choices, String(this.quests), (value) => {
-          this.quests = Number(value);
-          this.deps.engine.setRandomQuests(this.quests);
+    card.append(
+      el('h3', undefined, 'Your adventure'),
+      ...runElements(run, this.quests, {
+        quests: (count) => {
+          this.quests = count;
+          this.deps.engine.setRandomQuests(count);
           this.deps.requestRefresh();
-        }),
-        el('p', 'muted', questsText(this.quests)),
-      );
-    }
-    card.append(quests);
-    run.options.forEach((option, index) => {
-      const text = RUN_OPTION_TEXT[option.name];
-      if (!text) return;
-      const row = el('button', 'run-option');
-      row.type = 'button';
-      row.dataset.nav = '';
-      row.setAttribute('role', 'switch');
-      row.setAttribute('aria-checked', String(!!option.on));
-      const words = el('span', 'run-option-text');
-      words.append(el('span', 'run-option-label', text.label), el('span', 'run-option-detail', text.detail));
-      row.append(words, el('span', 'switch'));
-      row.addEventListener('click', () => {
-        const on = !!this.deps.engine.runOptions()?.options[index]?.on;
-        this.deps.engine.setRunOption(index, !on);
-        if (option.name === 'unusualRooms' && on) this.deps.engine.setRandomQuests(this.quests);
-        this.deps.requestRefresh();
-      });
-      card.append(row);
-    });
+        },
+        option: (index, on) => {
+          this.deps.engine.setRunOption(index, on);
+          if (run.options[index]?.name === 'unusualRooms' && !on) this.deps.engine.setRandomQuests(this.quests);
+          this.deps.requestRefresh();
+        },
+      }),
+    );
     return card;
   }
 }

@@ -13,6 +13,8 @@ import {
 import type { GlyphMode } from '../render/appearance.ts';
 import { MAX_ZOOM, MIN_ZOOM } from '../render/map.ts';
 import { el, navButton, section } from './dom.ts';
+import { runElements } from './adventure.ts';
+import type { RunOptions } from '../flow/runoptions.ts';
 import type { Sheets } from './sheet.ts';
 
 export interface MenuItem {
@@ -69,8 +71,14 @@ export function segmented<T extends string>(
   return group;
 }
 
-/** Display settings, applied as they change. */
-export function openSettings(sheets: Sheets, settings: Settings, apply: (next: Settings) => void): void {
+/** The rules a hero's adventure was begun with, shown at the foot of Settings during a game. */
+export interface AdventureRules {
+  hero: string;
+  run: RunOptions;
+}
+
+/** Display settings, applied as they change; during a game, the adventure's own rules below them, which cannot change. */
+export function openSettings(sheets: Sheets, settings: Settings, apply: (next: Settings) => void, rules?: AdventureRules | null): void {
   let current = { ...settings };
   const update = (patch: Partial<Settings>) => {
     current = { ...current, ...patch };
@@ -158,6 +166,16 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
   zoom.setAttribute('aria-label', 'Map zoom');
   zoom.addEventListener('input', () => update({ zoom: Number(zoom.value) }));
   body.append(section('Map zoom', zoom, el('p', 'muted', 'You can also pinch the map to zoom.')));
+
+  if (rules) {
+    const fixed = section(
+      'Your adventure',
+      el('p', 'muted', `Chosen when ${rules.hero} was created, these rules hold for the whole adventure.`),
+      ...runElements(rules.run, rules.run.drawn),
+    );
+    fixed.classList.add('adventure-rules');
+    body.append(fixed);
+  }
 
   sheets.open({ title: 'Settings', body, className: 'sheet-settings', initial: body.querySelector<HTMLElement>('.segment.selected') });
 }

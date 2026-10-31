@@ -34,6 +34,8 @@ export interface TermViewRegion {
 }
 
 export interface TermViewTab {
+  /** Stable name for tests and styling (data-tab); `tab<n>` by default. */
+  id?: string;
   label: string;
   active: boolean;
   run(): void;
@@ -216,7 +218,7 @@ export class TermView {
   private renderFooter(): void {
     const panel = this.root.classList.contains('panel');
     const actions = panel ? this.actions : [];
-    const tabs = this.tabs.map((t, i) => ({ id: `tab${i}`, label: t.label, active: t.active, run: () => t.run() }));
+    const tabs = this.tabs.map((t, i) => ({ id: t.id ?? `tab${i}`, label: t.label, active: t.active, run: () => t.run() }));
     const key = JSON.stringify([actions.map((a) => [a.id, a.label, a.primary]), tabs.map((t) => [t.label, t.active])]);
     if (key === this.footerKey) return;
     this.footerKey = key;

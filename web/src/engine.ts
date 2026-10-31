@@ -12,6 +12,7 @@ import {
   type ScoreEntry,
   type SkillTable,
   type SpellState,
+  type StoreState,
 } from './render/snapshot.ts';
 import type { RunOptions } from './flow/runoptions.ts';
 import type { ScreenCopy, TerminalBuffer } from './terminal.ts';
@@ -49,6 +50,7 @@ interface EmscriptenModule {
   _web_inventory_json(): number;
   _web_object_desc(item: number): number;
   _web_store_object_desc(index: number): number;
+  _web_store_json(): number;
   _web_monster_desc(index: number): number;
   _web_character_json(): number;
   _web_set_auto_more(on: number): void;
@@ -246,6 +248,12 @@ export class Engine {
     const mod = this.module;
     if (!mod || this.state !== 'running') return '';
     return mod.UTF8ToString(mod._web_store_object_desc(index));
+  }
+
+  /** The shop (or home) the player stands in or at: its stock, commands and what it takes of what they carry; null elsewhere. */
+  store(): StoreState | null {
+    const json = this.callJson<StoreState>((mod) => mod._web_store_json());
+    return json && json.here ? json : null;
   }
 
   monsterRecall(index: number): MonsterRecall | null {

@@ -1,7 +1,7 @@
 import type { Material } from '../render/materials.ts';
 import { CAVE_MARK, CAVE_SEEN, LAYER_MASK, LAYER_OBJECT, type LevelSnapshot } from '../render/snapshot.ts';
 import type { Point } from './pathfinding.ts';
-import { hostilesInSight, lightWentOut, robbed, Travel, travelGrid, type TravelContext, type TravelStep } from './travel.ts';
+import { hostilesInSight, lightWentOut, robbed, Travel, travelGrid, type Passing, type TravelContext, type TravelStep } from './travel.ts';
 
 const MAX_TARGETS = 500;
 const MAX_RETRIES = 6;
@@ -66,9 +66,9 @@ export function isFrontier(snap: LevelSnapshot, materials: readonly Material[], 
 }
 
 /** Steps from `start` to every cell a known way reaches (-1 elsewhere). */
-function reach(snap: LevelSnapshot, materials: readonly Material[], start: number, throughCreatures: boolean): Int32Array {
+function reach(snap: LevelSnapshot, materials: readonly Material[], start: number, passing: Passing): Int32Array {
   const { width, height } = snap;
-  const grid = travelGrid(snap, materials, throughCreatures);
+  const grid = travelGrid(snap, materials, passing);
   const depth = new Int32Array(width * height).fill(-1);
   const queue = new Int32Array(width * height);
   let head = 0;
@@ -105,15 +105,15 @@ function stopAt(snap: LevelSnapshot, cell: number, kind: StopKind, mark = cell):
  * where exploring began are seen before the far end of a corridor. Once
  * none are left, the nearest way on (which may be where the hero stands),
  * or the nearest way back on a level with no known way on.
- * Null when nothing is left within reach. With `throughCreatures`
- * creatures in view do not block the way.
+ * Null when nothing is left within reach. Creatures in view block the way,
+ * but for those `passing` lets through (see `travelGrid`).
  */
-export function nextStop(snap: LevelSnapshot, materials: readonly Material[], plan: ExplorePlan, throughCreatures = false): ExploreStop | null {
+export function nextStop(snap: LevelSnapshot, materials: readonly Material[], plan: ExplorePlan, passing: Passing = new Set()): ExploreStop | null {
   const { width } = snap;
   const start = snap.py * width + snap.px;
-  const depth = reach(snap, materials, start, throughCreatures);
+  const depth = reach(snap, materials, start, passing);
   const anchor = plan.anchor ? plan.anchor.y * width + plan.anchor.x : start;
-  const fromAnchor = anchor === start ? depth : reach(snap, materials, anchor, throughCreatures);
+  const fromAnchor = anchor === start ? depth : reach(snap, materials, anchor, passing);
   const anchorGap = fromAnchor[start];
 
   let best = -1;
@@ -197,10 +197,10 @@ export class Explore {
   }
 
   /** Why no place is left: none at all, creatures in view stand in the way, or the way to one failed (a creature not yet seen, a stuck door). */
-  private whyNothingLeft(snap: LevelSnapshot, materials: readonly Material[]): 'explored' | 'creatureInWay' | 'blocked' {
+  private whyNothingLeft(snap: LevelSnapshot, materials: readonly Material[], passing: Passing | undefined): 'explored' | 'creatureInWay' | 'blocked' {
     const all = { ...this.plan, avoid: undefined };
-    if (!nextStop(snap, materials, all, true)) return 'explored';
-    return nextStop(snap, materials, all) ? 'blocked' : 'creatureInWay';
+    if (!nextStop(snap, materials, all, 'all')) return 'explored';
+    return nextStop(snap, materials, all, passing) ? 'blocked' : 'creatureInWay';
   }
 
   step(ctx: TravelContext): TravelStep {
@@ -216,12 +216,12 @@ export class Explore {
       if (this.travel && !this.worthReaching(snap, ctx.materials)) this.travel = null;
       if (!this.travel) {
         if (this.targets >= MAX_TARGETS) return { kind: 'stop', reason: 'limit' };
-        let stop = nextStop(snap, ctx.materials, this.plan);
+        let stop = nextStop(snap, ctx.materials, this.plan, ctx.passing);
         if (stop?.far && this.plan.anchor) {
           this.plan.anchor = { x: snap.px, y: snap.py };
-          stop = nextStop(snap, ctx.materials, this.plan);
+          stop = nextStop(snap, ctx.materials, this.plan, ctx.passing);
         }
-        if (!stop) return { kind: 'stop', reason: this.whyNothingLeft(snap, ctx.materials) };
+        if (!stop) return { kind: 'stop', reason: this.whyNothingLeft(snap, ctx.materials, ctx.passing) };
         if (stop.kind === 'exit' && stop.x === snap.px && stop.y === snap.py) return { kind: 'stop', reason: this.exitReason(stop) };
         this.stop = stop;
         this.targets++;

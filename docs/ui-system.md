@@ -11,7 +11,7 @@ taps from the map. **Type** refers to the taxonomy in section 2.
 
 ```
 Map (toolbar, HUD, gestures)
-├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Descend/Ascend/Enter rift,
+├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Descend/Ascend/Enter rift, Enter shop/home,
 │   Attack, Pick up, Drink, Wield/Light/Eat, Explore/Way down/Way up/World map — then the hero's
 │   own buttons in fixed places: quick spell or aimed item, Cast/Powers, Fire, Items, Rest, More,
 │   Menu; while exploring: Stop, Speed, Menu)
@@ -34,12 +34,13 @@ Map (toolbar, HUD, gestures)
 │       │                     └── list ─────────── reader (TermView panel); Knowledge reopens after
 │       ├── Save game (toast)
 │       ├── Settings ──────── Settings             panel                                    depth 2
+│       ├── Settings ──────── (in a game: Your adventure, the rules fixed at birth, read-only)
 │       ├── Help ──────────── Help                 panel: search, topics by group           depth 2
 │       │                     ├── topic ────────── panel (See also → topic, ‹ returns)       depth 3
 │       │                     │   └── race/class ─ card                                      depth 4
 │       │                     └── ToME manual ──── reader (TermView panel); Help reopens after
 │       ├── About                                  panel (prose)
-│       ├── Saved games ───── Saved games          menu: Export · Import                    depth 2
+│       ├── Abandon adventure ─ confirmation       card (red)
 │       └── Save and quit ─── confirmation         card
 ├── HUD (one height always: the strip of ailments and chips keeps its place when empty)
 │   ├── hero name ─────────── Character (or Fallen hero after death)
@@ -50,12 +51,19 @@ Map (toolbar, HUD, gestures)
                                aim, lettered choice, message box) or a TermView panel
                                (item prompts, spell lists, shops, options, other menus)
 
-Shop (walk in) ─────────────── TermView panel (store list; Sell/Store/More in its footer)
-                                └── Shop item       card over the shop (Buy with quantity)
+Shop, home, museum (walk in, or Enter shop on the door)
+                ─────────────── native panel: one scrolling list a tab — Buy · Sell · Exit (home: Stored ·
+                                Your items · Exit; museum: Collection · Donate · Exit); other services above
+                                ├── Shelf item      card over the shop (description, how many, Buy/Take)
+                                └── Item carried    card over the shop (what it fetches or why not, how many,
+                                                    Sell/Store/Donate; wear, take off, inscribe, destroy)
+Other buildings ─────────────── native panel: their services as rows · Exit
 Death ──────────────────────── death card → end-of-game summary (full screen) → Hall of Fame (full screen)
                                 └── Fallen hero     panel, tabs Hero · Gear · Skills · Last moments
                                     └── Item / foe  card
-Title ──────────────────────── Continue/New · Help (panel) · Settings (panel) · Saved games (menu)
+Title ──────────────────────── Continue as (last hero) · More adventurers (panel) · New character
+                                ├── a hero ──────── card: where, last played, tale; Play · Delete (→ confirmation)
+                                Help (panel) · Settings (panel) · Backup (menu: Export · Import game data)
                                 · Soundtrack (panel) · Hall of Fame (panel → Fallen hero)
 Character creation ─────────── director screens (full screen, Back/Random/Choose), name card;
                                Ready to begin: the hero, then Your adventure (random quests, birth options)
@@ -85,7 +93,7 @@ where the code comes from.
 | Type | Purpose | Examples | Size | Where |
 |---|---|---|---|---|
 | **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, Help and its topics; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
-| **Menu** | A short list of places to go | Menu, Knowledge, Saved games | its rows, capped at `--popup-height` | bottom sheet |
+| **Menu** | A short list of places to go | Menu, Knowledge, Backup | its rows, capped at `--popup-height` | bottom sheet |
 | **Card** | Details of one thing, or a question | Item, spell, creature, shop item, memorial item/foe, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
 | **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card, death card | its content | bottom of the map, no backdrop |
 | **Full screen** | A screen that replaces the game | title, character creation, end of game, Hall of Fame after death | whole screen | — |
@@ -184,7 +192,9 @@ No key hints anywhere.
 | Help | tome2's 80×24 help files under More, How to play under Menu; none on the title | One Help (Menu, title): search or browse our own topics; ‹ returns with the search kept; the original manual from Help, which reopens after |
 | Cast → spell ⓘ → Cast | Spell description filled the pop-up | Spell card over Magic; Cast casts, ✕ returns to Magic |
 | Map → creature chip → close | Tall pop-up | Card the size of the recall |
-| Menu → Saved games → Export | Two rows in Menu | One row, same menu as the title screen |
+| Menu → Saved games → Export | Two rows in Menu | On the title only, as Backup → Export game data: a backup of everything, not a way to save |
+| Shop → item | Paged tome2 list; a tap on an item could buy it, and a tap on a row of tome2's item prompt opened the wrong card (*Take 1* while storing) | Whole stock in one list; a tap opens the item's card; Buy (or Sell, Store, Take) with how many is the only way to trade |
+| Title with many heroes | A Continue row per hero | Continue as the last hero; the others in a panel; each hero a card with Play and Delete |
 
 ## 7. Validation
 
@@ -202,9 +212,9 @@ the top in landscape. A new e2e test covers the reader, help links and cards
 
 ## 8. Exceptions and next refinements
 
-- **Shops** still page tome2's list (twelve items a page, *More* in the
-  footer): buying needs tome2 to be on the item's page. A gathered shop list
-  would need to page tome2 to an item before buying it.
+- **Shops** are native panels built from the engine's data (`web_store_json`);
+  tome2 still pages its own list underneath, and a trade turns it to the
+  item's page first.
 - **Character → Full sheet** keeps tome2's pages as labelled buttons (they are
   different views, not pagination).
 - The **original ToME manual** (reached from Help) is tome2's own text, keys

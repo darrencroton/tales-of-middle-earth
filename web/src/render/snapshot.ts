@@ -295,6 +295,58 @@ export interface InventoryState {
   floor: ItemState[];
 }
 
+/** One of a shop's (or the home's) commands: the key tome2 takes and what it does (`STORE_ACTION`). */
+export interface StoreCommand {
+  key: string;
+  action: number;
+  name: string;
+}
+
+/** tome2's building action codes (BACT_*) for trading. */
+export const STORE_ACTION = { sell: 43, buy: 44, examine: 45, steal: 46 } as const;
+
+/** An item on a shop's shelf (or in the home), by its place in the stock. */
+export interface StockItem {
+  i: number;
+  name: string;
+  tval: number;
+  number: number;
+  /** Weight of one, in tenths of a pound. */
+  weight: number;
+  ch: number;
+  attr: number;
+  /** Price of one; 0 in the home. */
+  price: number;
+}
+
+/** Whether the shop takes something carried (by inventory index) and what it pays for one. */
+export interface StoreOffer {
+  i: number;
+  /** Why it does not: not the kind of thing it deals in, worthless, or cursed (worn, or stuck to the hand). */
+  why: '' | 'kind' | 'worthless' | 'cursed';
+  price: number;
+}
+
+/** The shop or home on the hero's grid (`web_store_json`). */
+export interface StoreState {
+  here: number;
+  name: string;
+  /** The shopkeeper; empty in the home and in museums. */
+  owner: string;
+  home: number;
+  museum: number;
+  /** It buys something (shops of some kinds buy nothing at all). */
+  buys: number;
+  /** The no-selling birth option: shops pay nothing. */
+  noSelling: number;
+  gold: number;
+  /** How many different items it can hold. */
+  capacity: number;
+  actions: StoreCommand[];
+  stock: StockItem[];
+  sell: StoreOffer[];
+}
+
 export interface StatState {
   name: string;
   use: string;

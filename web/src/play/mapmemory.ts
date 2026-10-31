@@ -202,6 +202,11 @@ export class MapMemoryStore {
     this.dirty = true;
   }
 
+  /** Forgets every hero of this name (their ids are the name and a birth seed). */
+  forgetNamed(name: string): void {
+    for (const id of Object.keys(this.data.heroes)) if (id.startsWith(`${name}#`)) this.forget(id);
+  }
+
   save(): void {
     if (!this.dirty || !this.fs || !this.path) return;
     try {

@@ -17,11 +17,17 @@ export type TitleChoice = { kind: 'continue'; save: SaveInfo } | { kind: 'new' }
 
 export interface TitleCallbacks {
   onChoose(choice: TitleChoice): void;
+  /** A saved hero was picked: their card offers Play and Delete. */
+  onAdventurer(save: SaveInfo): void;
+  /** The other saved heroes, to pick from. */
+  onAdventurers(saves: SaveInfo[]): void;
+  /** A saved hero's name, and a line about them under Continue: level, race, class and where they are. */
+  describe(save: SaveInfo): { name: string; line: string };
   /** The choices are shown and nothing is in progress. */
   onReady(): void;
   onSettings(): void;
-  /** Export or import saved games. */
-  onSaves(): void;
+  /** Back up or restore the game's data. */
+  onBackup(): void;
   /** Listen to the soundtrack. */
   onMusic(): void;
   /** Show the Hall of Fame. */
@@ -170,7 +176,7 @@ export class TitleScreen {
     this.nav = new ListNav(this.choices);
 
     find<HTMLButtonElement>('[data-link="settings"]').addEventListener('click', () => this.callbacks.onSettings());
-    find<HTMLButtonElement>('[data-link="saves"]').addEventListener('click', () => this.callbacks.onSaves());
+    find<HTMLButtonElement>('[data-link="backup"]').addEventListener('click', () => this.callbacks.onBackup());
     find<HTMLButtonElement>('[data-link="music"]').addEventListener('click', () => this.callbacks.onMusic());
     find<HTMLButtonElement>('[data-link="fame"]').addEventListener('click', () => this.callbacks.onFame());
     find<HTMLButtonElement>('[data-link="help"]').addEventListener('click', () => this.callbacks.onHelp());
@@ -204,7 +210,10 @@ export class TitleScreen {
     this.root.classList.toggle('indeterminate', fraction === null);
   }
 
-  /** Shows Continue (for each saved hero) and New character. */
+  /**
+   * Shows Continue for the hero played last, More adventurers when there are
+   * others, and New character; picking a hero opens their card.
+   */
   setChoices(saves: SaveInfo[]): void {
     this.ready = true;
     this.root.classList.add('ready');
@@ -228,11 +237,16 @@ export class TitleScreen {
       button.addEventListener('click', run);
       buttons.push(button);
     };
-    saves.forEach((save, i) => {
-      make(i === 0 ? 'Continue' : `Play as ${save.name}`, i === 0 ? save.description || save.name : save.description, i === 0, () =>
-        this.callbacks.onChoose({ kind: 'continue', save }),
+    const [last, ...others] = saves;
+    if (last) {
+      const hero = this.callbacks.describe(last);
+      make(`Continue as ${hero.name}`, hero.line, true, () => this.callbacks.onAdventurer(last));
+    }
+    if (others.length) {
+      make('More adventurers', others.length === 1 ? `${this.callbacks.describe(others[0]).name} is waiting` : `${others.length} other heroes are waiting`, false, () =>
+        this.callbacks.onAdventurers(others),
       );
-    });
+    }
     make(saves.length ? 'New character' : 'Enter Middle-earth', saves.length ? '' : 'Create your hero', saves.length === 0, () =>
       this.callbacks.onChoose({ kind: 'new' }),
     );

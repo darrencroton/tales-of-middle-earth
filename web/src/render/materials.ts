@@ -37,6 +37,8 @@ export interface Material {
   walkable: boolean;
   /** A door (open or closed). */
   door: boolean;
+  /** Floor, where the hero can push past a companion (tome2's cave_floor_bold). */
+  floor: boolean;
 }
 
 const FLOOR_BG: RGB = [0.11, 0.1, 0.09];
@@ -50,6 +52,7 @@ function material(partial: Partial<Material> & Pick<Material, 'bg'>): Material {
     dance: 0,
     emit: null,
     walkable: true,
+    floor: false,
     door: false,
     ...partial,
   };
@@ -137,7 +140,7 @@ export function classifyFeature(f: FeatureInfo): Material {
   const name = f.name.toLowerCase();
   const rule = RULES.find(([pattern]) => pattern.test(name));
   const m = rule ? rule[1](f) : fallback(f);
-  return { ...m, walkable: (f.flags & FB_NO_WALK) === 0, door: (f.flags & FB_DOOR) !== 0 };
+  return { ...m, walkable: (f.flags & FB_NO_WALK) === 0, door: (f.flags & FB_DOOR) !== 0, floor: (f.flags & FB_FLOOR) !== 0 };
 }
 
 export function buildMaterials(features: readonly FeatureInfo[]): Material[] {

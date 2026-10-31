@@ -9,10 +9,12 @@ import {
   decodeBundle,
   encodeBundle,
   exportFilename,
+  findSaveIndex,
   isSafeRelativePath,
   writeFiles,
   type EmscriptenFS,
 } from '../../web/src/saves.ts';
+import { deleteHeroSave, heroLine, placeLine, saveBase } from '../../web/src/play/adventurers.ts';
 
 class MemoryFS implements EmscriptenFS {
   readonly files = new Map<string, Uint8Array>();
@@ -45,6 +47,10 @@ class MemoryFS implements EmscriptenFS {
 
   writeFile(path: string, data: Uint8Array): void {
     this.files.set(path, data);
+  }
+
+  unlink(path: string): void {
+    if (!this.files.delete(path)) throw new Error(`ENOENT ${path}`);
   }
 
   mkdirTree(path: string): void {
@@ -147,5 +153,39 @@ describe('filesystem helpers', () => {
 describe('exportFilename', () => {
   it('is timestamped and uses the save extension', () => {
     assert.equal(exportFilename(new Date('2026-10-25T09:08:07Z')), 'tome2-saves-2026-10-25-09-08-07.tome2save');
+  });
+});
+
+describe('deleting a saved hero', () => {
+  const text = (fs: MemoryFS, path: string) => new TextDecoder().decode(fs.readFile(path));
+  const write = (fs: MemoryFS, path: string, value: string) => fs.writeFile(path, new TextEncoder().encode(value));
+
+  it('names savefiles as tome2 does', () => {
+    assert.equal(saveBase('Bilbo'), 'Bilbo');
+    assert.equal(saveBase('Old Tom'), 'Old_Tom');
+    assert.equal(saveBase("Fili-Kili's"), 'FiliKilis');
+    assert.equal(saveBase('--'), 'PLAYER');
+  });
+
+  it('removes only that hero: savefile, kept levels and index line', () => {
+    const fs = new MemoryFS();
+    fs.mkdirTree('/root/2.4/save');
+    for (const file of ['Bob', 'Bob.lvl4_2', 'Bob.lvl1_1', 'Bobby', 'Bobby.lvl4_2', 'global.svg', 'chronicle.json']) write(fs, `/root/2.4/save/${file}`, 'x');
+    write(fs, '/root/2.4/Bob.nte', 'x');
+    write(fs, '/root/2.4/Bobby.nte', 'x');
+    write(fs, '/root/2.4/save/global.svg', 'ToME@1Bob@Bob, the Hobbit Rogue is alive\nToME@1Bobby@Bobby, the Ent Warrior is alive\nToME@0Sam@Sam, the Human Priest is dead\n');
+    assert.equal(findSaveIndex(fs, '/root'), '/root/2.4/save/global.svg');
+    const removed = deleteHeroSave(fs, '/root/2.4/save/global.svg', 'Bob');
+    assert.deepEqual(removed.sort(), ['/root/2.4/Bob.nte', '/root/2.4/save/Bob', '/root/2.4/save/Bob.lvl1_1', '/root/2.4/save/Bob.lvl4_2']);
+    assert.deepEqual(fs.readdir('/root/2.4').filter((n) => n.endsWith('.nte')), ['Bobby.nte']);
+    assert.deepEqual(fs.readdir('/root/2.4/save').filter((n) => !n.startsWith('.')).sort(), ['Bobby', 'Bobby.lvl4_2', 'chronicle.json', 'global.svg']);
+    assert.equal(text(fs, '/root/2.4/save/global.svg'), 'ToME@1Bobby@Bobby, the Ent Warrior is alive\nToME@0Sam@Sam, the Human Priest is dead\n');
+  });
+
+  it('shows a hero in a line: level, race and class, and where they are', () => {
+    assert.equal(heroLine({ level: 12, race: 'High-Elf', cls: 'Sorcerer' }), 'Level 12 High-Elf Sorcerer');
+    assert.equal(placeLine({ depth: 8, dungeon: 'Barrow-downs', wild: 0, area: undefined }), 'Barrow-downs, level 8');
+    assert.equal(placeLine({ depth: 0, dungeon: '', wild: 0, area: 'Bree' }), 'Bree');
+    assert.equal(placeLine({ depth: 0, dungeon: '', wild: 1, area: undefined }), 'World map');
   });
 });

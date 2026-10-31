@@ -52,6 +52,11 @@
 #include "spells4.hpp"
 #include "spells5.hpp"
 #include "spells6.hpp"
+#include "stats.hpp"
+#include "store_action_type.hpp"
+#include "store_flag.hpp"
+#include "owner_type.hpp"
+#include "bldg.hpp"
 #include "store_info_type.hpp"
 #include "store_type.hpp"
 #include "tables.hpp"
@@ -520,6 +525,116 @@ std::string spell_schools(spell_type *spell)
 	return out;
 }
 
+/* tome2's store number of the home (store.cc's cur_store_num 7). */
+constexpr int HOME_STORE = 7;
+
+/* The shop (or home) on the player's grid, as do_cmd_store finds it; null elsewhere. */
+store_type *store_here(int *which = nullptr)
+{
+	if (!(level_ready() && town_info) || p_ptr->wild_mode) return nullptr;
+	auto const &c_ptr = cave[p_ptr->py][p_ptr->px];
+	if (c_ptr.feat != FEAT_SHOP) return nullptr;
+	auto &stores = town_info[p_ptr->town_num].store;
+	if (c_ptr.special < 0 || static_cast<std::size_t>(c_ptr.special) >= stores.size()) return nullptr;
+	if (which) *which = c_ptr.special;
+	return &stores[c_ptr.special];
+}
+
+/* store.cc's store names, which decide what each kind of shop buys. */
+bool blessed(object_type const *o_ptr)
+{
+	return bool(object_flags_known(o_ptr) & TR_BLESSED);
+}
+
+bool random_book_of(object_type const *o_ptr, s16b skill)
+{
+	return o_ptr->tval == TV_BOOK && o_ptr->sval == BOOK_RANDOM && spell_type_random_type(spell_at(o_ptr->pval)) == skill;
+}
+
+/*
+ * Whether a shop of this name buys anything at all, and whether it buys this
+ * object: store.cc's store_will_buy (static there), by the same rules. The
+ * home and museums take anything; shops not named below buy nothing.
+ */
+bool shop_buys(std::string const &name, object_type const *o_ptr)
+{
+	auto const tval = o_ptr->tval;
+	auto any = [tval](std::initializer_list<int> tvals) {
+		return std::find(tvals.begin(), tvals.end(), tval) != tvals.end();
+	};
+	if (name == "General Store")
+		return any({ TV_CORPSE, TV_FOOD, TV_LITE, TV_FLASK, TV_SPIKE, TV_SHOT, TV_ARROW, TV_BOLT, TV_DIGGING, TV_CLOAK, TV_BOTTLE });
+	if (name == "Armoury")
+		return any({ TV_BOOTS, TV_GLOVES, TV_CROWN, TV_HELM, TV_SHIELD, TV_CLOAK, TV_SOFT_ARMOR, TV_HARD_ARMOR, TV_DRAG_ARMOR });
+	if (name == "Weaponsmith")
+		return any({ TV_SHOT, TV_BOLT, TV_ARROW, TV_BOOMERANG, TV_BOW, TV_DIGGING, TV_HAFTED, TV_POLEARM, TV_SWORD, TV_AXE, TV_MSTAFF });
+	if (name == "Temple")
+		return any({ TV_DRUID_BOOK, TV_SCROLL, TV_POTION2, TV_POTION, TV_HAFTED }) || random_book_of(o_ptr, SKILL_SPIRITUALITY) ||
+			(any({ TV_POLEARM, TV_SWORD, TV_AXE, TV_BOOMERANG }) && blessed(o_ptr));
+	if (name == "Alchemy shop")
+		return any({ TV_SCROLL, TV_POTION2, TV_POTION, TV_BOTTLE });
+	if (name == "Magic shop")
+		return any({ TV_SYMBIOTIC_BOOK, TV_AMULET, TV_RING, TV_STAFF, TV_WAND, TV_ROD, TV_ROD_MAIN, TV_SCROLL, TV_POTION2, TV_POTION, TV_MSTAFF, TV_RANDART }) ||
+			random_book_of(o_ptr, SKILL_MAGIC) || (tval == TV_BOOK && o_ptr->sval != BOOK_RANDOM);
+	if (name == "Black Market") return true;
+	if (name == "Book Store") return any({ TV_BOOK, TV_SYMBIOTIC_BOOK, TV_MUSIC_BOOK, TV_DAEMON_BOOK, TV_DRUID_BOOK });
+	if (name == "Pet Shop") return tval == TV_EGG;
+	if (name == "Hunting Supply Store") return any({ TV_BOOMERANG, TV_SHOT, TV_BOLT, TV_ARROW, TV_BOW, TV_POTION2 });
+	if (name == "Construction Supply Store") return any({ TV_LITE, TV_DIGGING });
+	if (name == "Music Store") return tval == TV_INSTRUMENT;
+	return false;
+}
+
+/* The names store.cc gives the shops it buys for. */
+bool shop_buys_anything(std::string const &name)
+{
+	static char const *const names[] = {
+		"General Store", "Armoury", "Weaponsmith", "Temple", "Alchemy shop", "Magic shop", "Black Market",
+		"Book Store", "Pet Shop", "Hunting Supply Store", "Construction Supply Store", "Music Store",
+	};
+	return std::find(std::begin(names), std::end(names), name) != std::end(names);
+}
+
+/*
+ * The price of one of an object, as store.cc's price_item (static there):
+ * `selling` is the shop selling to the player, otherwise the shop buying.
+ */
+long shop_price(store_type const &st, owner_type const &owner, object_type const *o_ptr, bool selling)
+{
+	auto const &st_info = game->edit_data.st_info;
+	long price = object_value(o_ptr);
+	if (price <= 0) return 0;
+	int factor = is_state(&st, STORE_LIKED) ? owner.costs[STORE_LIKED] : is_state(&st, STORE_HATED) ? owner.costs[STORE_HATED] : owner.costs[STORE_NORMAL];
+	factor += adj_chr_gold[p_ptr->stat_ind[A_CHR]];
+	bool const black_market = bool(st_info[st.st_idx].flags & STF_ALL_ITEM);
+	int const greed = owner.inflation;
+	int adjust;
+	if (!selling)
+	{
+		if (o_ptr->tval == TV_SHOT || o_ptr->tval == TV_ARROW || o_ptr->tval == TV_BOLT) price /= 5;
+		adjust = std::min(100, 100 + (300 - (greed + factor)));
+		if (black_market) price /= 2;
+		if (options->no_selling) price = 0;
+	}
+	else
+	{
+		adjust = std::max(100, 100 + ((greed + factor) - 300));
+		if (black_market) price *= 2;
+		if (price <= 0) price = 1;
+	}
+	return (price * adjust + 50) / 100;
+}
+
+/* One of a stack, with a wand's charges shared out as store.cc does. */
+object_type one_of(object_type const *o_ptr)
+{
+	object_type one;
+	object_copy(&one, const_cast<object_type *>(o_ptr));
+	one.number = 1;
+	if (o_ptr->tval == TV_WAND && o_ptr->number > 0) one.pval = o_ptr->pval / o_ptr->number;
+	return one;
+}
+
 }
 
 extern "C" {
@@ -951,6 +1066,113 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_object_desc(int index)
 	if (index < 0 || index >= static_cast<int>(stock.size())) return json.c_str();
 
 	return describe_object(&stock[index]);
+}
+
+/*
+ * The shop (or home) on the player's grid as JSON, or {"here":0}: its name
+ * and keeper, its commands (letter, tome2 action code, name), its whole stock
+ * (price each to buy; none in the home), and for each item carried whether
+ * the shop takes it and what it pays for one ("why" says why not: "kind",
+ * "worthless", "cursed").
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_store_json()
+{
+	auto const &st_info = game->edit_data.st_info;
+	auto const &ow_info = game->edit_data.ow_info;
+	auto const &ba_info = game->edit_data.ba_info;
+
+	json.clear();
+	int which = 0;
+	store_type *st = store_here(&which);
+	if (!st || st->st_idx >= st_info.size() || st->owner >= ow_info.size())
+	{
+		json = "{\"here\":0}";
+		return json.c_str();
+	}
+	auto const &info = st_info[st->st_idx];
+	auto const &owner = ow_info[st->owner];
+	bool const home = which == HOME_STORE;
+	bool const museum = bool(info.flags & STF_MUSEUM);
+
+	json += '{';
+	json_int(json, "here", 1);
+	json_str(json, "name", home ? "Your home" : info.name);
+	json_str(json, "owner", home || museum ? "" : owner.name);
+	json_int(json, "home", home ? 1 : 0);
+	json_int(json, "museum", museum ? 1 : 0);
+	json_int(json, "buys", home || museum || shop_buys_anything(info.name) ? 1 : 0);
+	json_int(json, "noSelling", options->no_selling ? 1 : 0);
+	json_int(json, "gold", p_ptr->au);
+	json_int(json, "capacity", st->stock_size);
+
+	json_key(json, "actions");
+	json += '[';
+	bool first = true;
+	for (auto const idx : info.actions)
+	{
+		if (idx >= ba_info.size() || !ba_info[idx].letter) continue;
+		auto const &ba = ba_info[idx];
+		if (!first) json += ',';
+		first = false;
+		json += '{';
+		json_str(json, "key", std::string(1, ba.letter));
+		json_int(json, "action", ba.action);
+		json_str(json, "name", ba.name, false);
+		json += '}';
+	}
+	json += "],";
+
+	json_key(json, "stock");
+	json += '[';
+	for (std::size_t i = 0; i < st->stock.size(); i++)
+	{
+		auto *o_ptr = &st->stock[i];
+		char name[160];
+		if (home || museum) object_desc(name, o_ptr, true, 3);
+		else object_desc_store(name, o_ptr, true, 3);
+		if (i) json += ',';
+		json += '{';
+		json_int(json, "i", i);
+		json_str(json, "name", name);
+		json_int(json, "tval", o_ptr->tval);
+		json_int(json, "number", o_ptr->number);
+		json_int(json, "weight", o_ptr->weight);
+		json_int(json, "ch", static_cast<unsigned char>(object_char(o_ptr)));
+		json_int(json, "attr", object_attr(o_ptr));
+		json_int(json, "price", home || museum ? 0 : shop_price(*st, owner, o_ptr, true), false);
+		json += '}';
+	}
+	json += "],";
+
+	json_key(json, "sell");
+	json += '[';
+	first = true;
+	for (int i = 0; i < INVEN_TOTAL; i++)
+	{
+		if (i == INVEN_PACK) i = INVEN_WIELD;
+		object_type const *o_ptr = &p_ptr->inventory[i];
+		if (!o_ptr->k_ptr) continue;
+		char const *why = "";
+		bool const takes = home || museum || shop_buys(info.name, o_ptr);
+		if (!takes) why = "kind";
+		else if (!home && !museum && object_value(o_ptr) <= 0) why = "worthless";
+		else if (cursed_p(o_ptr) && (i >= INVEN_WIELD || (object_flags(o_ptr) & TR_CURSE_NO_DROP))) why = "cursed";
+		long price = 0;
+		if (!*why && !home && !museum)
+		{
+			auto const one = one_of(o_ptr);
+			price = std::min<long>(shop_price(*st, owner, &one, false), owner.max_cost);
+		}
+		if (!first) json += ',';
+		first = false;
+		json += '{';
+		json_int(json, "i", i);
+		json_str(json, "why", why);
+		json_int(json, "price", price, false);
+		json += '}';
+	}
+	json += "]}";
+	return json.c_str();
 }
 
 /*
