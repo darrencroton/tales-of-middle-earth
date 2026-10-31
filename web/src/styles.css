@@ -2974,7 +2974,7 @@ html.keyboard-tight .prompt-card.text .card-title {
 
 .title-choice-label {
   max-width: 100%;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .title-choice-detail {
@@ -3064,6 +3064,16 @@ html.keyboard-tight .prompt-card.text .card-title {
 
   .title-choice {
     flex: 1 1 10rem;
+  }
+
+  /* Continue keeps a row of its own, so the hero's line stays on one line. */
+  .title-choice.primary {
+    flex-basis: 100%;
+    min-height: var(--touch);
+  }
+
+  .title-choice-detail {
+    -webkit-line-clamp: 1;
   }
 
 }
