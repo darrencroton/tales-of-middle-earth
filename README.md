@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://darrencroton.github.io/tales-of-middle-earth/">
-    <img src="docs/images/title.jpg" alt="ToME — Tales of Middle-earth: the title screen, a mosaic logo lit by rising flames, with Continue as Elwen, a level 41 High-Elf Mage on Mount Doom" width="100%" />
+    <img src="docs/images/title.jpg" alt="ToME — Tales of Middle-earth: the opening screen, a mosaic logo lit by the flames rising beneath it, embers drifting up past the Ring verse, and Enter Middle-earth" width="100%" />
   </a>
 </p>
 
