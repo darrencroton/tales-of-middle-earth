@@ -524,15 +524,32 @@ describe('a building service\'s reply', () => {
     assert.deepEqual(drawnBlocks(before, after), [['Quest Information (Danger level: 5)'], ['Thieves!', 'There are thieves robbing my people! They live in a small', 'burrow outside the city walls.']]);
   });
 
-  it('splits a block drawn as two columns, the left column first', () => {
-    const pad = (left: string, right: string) => `  ${left}`.padEnd(40) + right;
-    const after = screen({ 4: '  Based on your current abilities, here is what your weapons will do', 6: pad('Dagger (1d4)', 'Long Sword (2d5)'), 7: pad('To Hit: 0 To Dam: 0', 'To Hit: 3 To Dam: 4'), 8: pad('Attack: 1-4 damage', 'Attack: 5-14 damage') });
-    assert.deepEqual(drawnBlocks(screen({}), after), [
+  it('splits a page drawn as two columns (compare weapons), the left column first', () => {
+    const rows: Record<number, string> = { 4: '  Based on your current abilities, here is what your weapons will do' };
+    const put = (row: number, col: number, text: string) => {
+      rows[row] = (rows[row] ?? '').padEnd(col) + text;
+    };
+    for (const [col, name, hit, low, high] of [[2, 'a Dagger (1d4) (+0,+0)', 0, 1, 4], [40, 'a Long Sword (2d5) (+3,+4)', 3, 5, 14]] as const) {
+      put(6, col, name);
+      put(7, col, `To Hit: ${hit}   To Damage: ${hit}`);
+      put(11, col, 'Possible Damage:');
+      put(12, col + 1, `One Strike: ${low}-${high} damage`);
+      put(14, col, 'Animals:');
+    }
+    assert.deepEqual(drawnBlocks(screen({}), screen(rows)), [
       ['Based on your current abilities, here is what your weapons will do'],
-      ['Dagger (1d4)', 'To Hit: 0 To Dam: 0', 'Attack: 1-4 damage'],
-      ['Long Sword (2d5)', 'To Hit: 3 To Dam: 4', 'Attack: 5-14 damage'],
+      ['a Dagger (1d4) (+0,+0)', 'To Hit: 0 To Damage: 0'],
+      ['Possible Damage:', 'One Strike: 1-4 damage'],
+      ['Animals:'],
+      ['a Long Sword (2d5) (+3,+4)', 'To Hit: 3 To Damage: 3'],
+      ['Possible Damage:', 'One Strike: 5-14 damage'],
+      ['Animals:'],
     ]);
-    assert.deepEqual(drawnBlocks(screen({}), screen({ 7: '  1) Bilbo the Human (Level  7)' })), [['1) Bilbo the Human (Level 7)']]);
+  });
+
+  it('keeps one column when names line up (race legends)', () => {
+    const legends = screen({ 5: '   The Greatest of all the Human', 7: '  1) Elder II the Human (Level  7)', 8: '  2) Elder IV the Human (Level  5)', 9: '  3) Elder VI the Human (Level  3)' });
+    assert.deepEqual(drawnBlocks(screen({}), legends), [['The Greatest of all the Human'], ['1) Elder II the Human (Level 7)', '2) Elder IV the Human (Level 5)', '3) Elder VI the Human (Level 3)']]);
   });
 
   it('joins wrapped lines, keeps lists, leaves out key hints and rewords', () => {

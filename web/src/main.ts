@@ -1626,8 +1626,9 @@ function serviceHint(command: StoreCommand): string | undefined {
  */
 let service: { name: string; before: string[]; state: GameState | null; pages: string[][][] } | null = null;
 
-/** Asks for a service, or says why it cannot be had (no gold spent either way when it cannot). */
+/** Asks for a service, or says why it cannot be had (no gold spent either way when it cannot); only while tome2 waits at the building's commands. */
 function runService(command: StoreCommand): void {
+  if (service || trade || macros.running || engine.pendingKeys > 0 || !atBuildingCommands()) return;
   if (command.closed) refuse('The keeper will not do that for you.');
   else if (command.cost > (lastState?.player?.au ?? 0)) refuse(`That costs ${command.cost} gold, more than you have.`);
   else {
@@ -1665,7 +1666,8 @@ function followService(): boolean {
   applyEngineSettings();
   if (inside) keepPage(run);
   const state = engine.gameState(SERVICE_MESSAGES);
-  const said = run.state && state ? newMessages(run.state, state).map((m) => m.text).reverse() : [];
+  /* Oldest first, without tome2's count of a repeated message ("… <2x>"). */
+  const said = run.state && state ? newMessages(run.state, state).map((m) => m.text.replace(/\s*<\d+x>$/, '')).reverse() : [];
   const reply = serviceReply(run.pages.filter((page) => page.length), said);
   if (reply.length) openMessage(sheets, run.name, reply, 'sheet-service');
   return false;
@@ -2720,7 +2722,7 @@ window.addEventListener('keydown', (e) => {
     const extra = !e.ctrlKey && !e.metaKey && !e.altKey ? shopModel(shownShop).extras.find((a) => a.key === e.key) : undefined;
     if (extra) {
       e.preventDefault();
-      runService(extra);
+      if (!e.repeat) runService(extra);
       return;
     }
   }

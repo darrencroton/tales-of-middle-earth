@@ -391,33 +391,70 @@ const SERVICE_WORDING: [RegExp, string | null][] = [
   [/^Use CTRL-Q to check the status of your quest\.?$/i, 'Your quests are listed in Menu → Knowledge.'],
 ];
 
-/** A block drawn as two columns (compare weapons: one weapon at column 2, the other at 40), as the left column's lines, then the right's. */
-function columns(rows: readonly string[]): string[][] {
-  const width = Math.max(...rows.map((row) => row.length));
-  for (let c = 20; c < width; c++) {
-    const starts = (row: string) => row.length > c && row[c] !== ' ' && row[c] !== ':' && row[c - 1] === ' ' && row[c - 2] === ' ';
-    if (rows.filter(starts).length < 2 || !rows.every((row) => row.length <= c || starts(row))) continue;
-    return [rows.map((row) => row.slice(0, c)), rows.map((row) => row.slice(c))]
-      .map((side) => side.map((line) => line.trim().replace(/\s+/g, ' ')).filter(Boolean))
-      .filter((side) => side.length);
+/** True when every bracket a line opens it also closes ("1) Bilbo (Level" is cut mid-way). */
+function balanced(text: string): boolean {
+  let depth = 0;
+  for (const ch of text) {
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    if (depth < 0) return false;
   }
-  return [rows.map((row) => row.trim().replace(/\s+/g, ' '))];
+  return depth === 0;
 }
 
-/** What a service drew on a building's screen: the rows changed since it began, as blocks of adjacent rows (a block of two columns as two). */
-export function drawnBlocks(before: readonly string[], after: readonly string[]): string[][] {
-  const blocks: string[][] = [];
-  let rows: string[] = [];
-  const close = () => {
-    if (rows.length) blocks.push(...columns(rows));
-    rows = [];
-  };
-  for (let r = SERVICE_ROWS.first; r <= SERVICE_ROWS.last && r < after.length; r++) {
-    const line = after[r].trimEnd();
-    if (line === (before[r] ?? '').trimEnd() || !line.trim()) close();
-    else rows.push(line);
+/** A row divides at column c: a gap of two spaces before it, text after it, and no bracket left open on either side. */
+function dividesAt(row: string, c: number): boolean {
+  const right = row.slice(c).trim();
+  return row[c - 1] === ' ' && row[c - 2] === ' ' && !!right && !right.startsWith(':') && balanced(row.slice(0, c)) && balanced(right);
+}
+
+/**
+ * The column where a page drawn as two columns divides (compare weapons: one
+ * weapon from column 2, the other from about 40), where the most rows divide
+ * and at least three; null for a page of one column.
+ */
+function columnSplit(rows: readonly string[]): number | null {
+  const width = Math.max(0, ...rows.map((row) => row.length));
+  let best: number | null = null;
+  let most = 2;
+  for (let c = 20; c < width; c++) {
+    const count = rows.filter((row) => dividesAt(row, c)).length;
+    if (count > most) {
+      best = c;
+      most = count;
+    }
   }
-  close();
+  return best;
+}
+
+/**
+ * What a service drew on a building's screen: the rows changed since it
+ * began, as blocks of adjacent rows; a page drawn as two columns gives the
+ * left column's blocks (with the rows that span the page), then the right's.
+ */
+export function drawnBlocks(before: readonly string[], after: readonly string[]): string[][] {
+  const changed: { row: number; text: string }[] = [];
+  for (let r = SERVICE_ROWS.first; r <= SERVICE_ROWS.last && r < after.length; r++) {
+    const text = after[r].trimEnd();
+    if (text.trim() && text !== (before[r] ?? '').trimEnd()) changed.push({ row: r, text });
+  }
+  const split = columnSplit(changed.map((line) => line.text));
+  const divides = (text: string) => split !== null && dividesAt(text, split);
+  const sides = [
+    (text: string) => (divides(text) ? text.slice(0, split!) : text),
+    ...(split === null ? [] : [(text: string) => (divides(text) ? text.slice(split) : '')]),
+  ];
+  const blocks: string[][] = [];
+  for (const side of sides) {
+    let last = -2;
+    for (const line of changed) {
+      const text = side(line.text).trim().replace(/\s+/g, ' ');
+      if (!text) continue;
+      if (line.row !== last + 1 || !blocks.length) blocks.push([]);
+      blocks[blocks.length - 1].push(text);
+      last = line.row;
+    }
+  }
   return blocks;
 }
 
