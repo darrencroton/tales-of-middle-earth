@@ -471,7 +471,7 @@ test('saved heroes: Continue plays the last, Adventurers lists them all, Abandon
   await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
   await waitForEngine(page);
   await expect(choices.first()).toContainText('Continue as Elder');
-  await expect(choices.filter({ hasText: 'Adventurers' })).toContainText('Your saved hero');
+  await expect(choices.filter({ hasText: 'Adventurers' })).toContainText('1 saved hero');
   let files = await savedFiles();
   expect(files).toContain('Elder');
   expect(files.filter((f) => f.startsWith('Young_Sib'))).toEqual([]);

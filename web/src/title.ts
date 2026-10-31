@@ -239,7 +239,7 @@ export class TitleScreen {
     if (last) {
       const hero = this.callbacks.describe(last);
       make(`Continue as ${hero.name}`, hero.line, true, () => this.callbacks.onChoose({ kind: 'continue', save: last }));
-      make('Adventurers', saves.length === 1 ? 'Your saved hero' : `Your ${saves.length} saved heroes`, false, () => this.callbacks.onAdventurers(saves));
+      make('Adventurers', saves.length === 1 ? '1 saved hero' : `${saves.length} saved heroes`, false, () => this.callbacks.onAdventurers(saves));
     }
     make(saves.length ? 'New character' : 'Enter Middle-earth', saves.length ? '' : 'Create your hero', saves.length === 0, () =>
       this.callbacks.onChoose({ kind: 'new' }),
