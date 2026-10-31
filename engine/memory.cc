@@ -10,7 +10,6 @@
  * are included in all such copies.
  */
 
-#include "cave.hpp"
 #include "cave_type.hpp"
 #include "defines.hpp"
 #include "dungeon_flag.hpp"
@@ -41,8 +40,8 @@ constexpr std::size_t DUNGEON_LOST_TEMPLE = 30;
 /*
  * The quest of the level the hero is on, done or not, or 0: the fixed quest
  * whose own level this is, the random quest of this depth in a main dungeon
- * (QUEST_RANDOM), Merton's level of the Maze, Thráin's level of Dol Guldur,
- * or a god's lost temple.
+ * (QUEST_RANDOM), Merton's level of the Maze, Thráin's level of Dol Guldur
+ * once his cell is built there, or a god's lost temple.
  */
 int level_quest()
 {
@@ -51,9 +50,9 @@ int level_quest()
 	if (dun_level < MAX_RANDOM_QUEST && (game->dungeon_flags & DF_PRINCIPAL) && random_quests[dun_level].type) return QUEST_RANDOM;
 	auto const &hobbit = quest[QUEST_HOBBIT];
 	if (dungeon_type == DUNGEON_MAZE && dun_level == hobbit.data[0] && hobbit.status >= QUEST_STATUS_TAKEN) return QUEST_HOBBIT;
-	/* tome2 takes Thráin's quest on the first arrival, after the level (and his hidden cell) is built. */
+	/* Thráin's cell is built only once his quest is taken, which tome2 does on the first arrival: he is there from the next visit (data[1]: built on this level). */
 	auto const &thrain = quest[QUEST_THRAIN];
-	if (dungeon_type == DUNGEON_DOL_GULDUR && dun_level == thrain.data[0] && thrain.status >= QUEST_STATUS_UNTAKEN) return QUEST_THRAIN;
+	if (dungeon_type == DUNGEON_DOL_GULDUR && dun_level == thrain.data[0] && thrain.data[1]) return QUEST_THRAIN;
 	if (dungeon_type == DUNGEON_LOST_TEMPLE && quest[QUEST_GOD].status >= QUEST_STATUS_TAKEN) return QUEST_GOD;
 	return 0;
 }
@@ -66,7 +65,6 @@ bool level_quest_open()
 	{
 	case 0: return false;
 	case QUEST_RANDOM: return !random_quests[dun_level].done;
-	case QUEST_THRAIN: return quest[q].status < QUEST_STATUS_FINISHED;
 	default: return quest[q].status == QUEST_STATUS_TAKEN;
 	}
 }
@@ -75,7 +73,6 @@ namespace {
 
 /* Prefix of the save extensions this frontend gives to levels (tome2's own special levels keep theirs). */
 constexpr char const *LEVEL_EXT_PREFIX = "lvl";
-
 
 /* Angband depths of the final quests. */
 constexpr int ANGBAND_FINAL_DEPTH = 99;
@@ -128,7 +125,10 @@ bool eligible_depth(std::size_t d, int depth)
 /* Levels tome2 must make afresh: quests place their monsters or vaults each time a level is built. */
 bool quest_level_here()
 {
-	return p_ptr->inside_quest || level_quest_open();
+	if (p_ptr->inside_quest || level_quest_open()) return true;
+	/* Thráin's level from the first arrival: tome2 takes his quest then, and builds his cell on the next visit. */
+	auto const &thrain = quest[QUEST_THRAIN];
+	return dungeon_type == DUNGEON_DOL_GULDUR && dun_level == thrain.data[0] && thrain.status < QUEST_STATUS_FINISHED;
 }
 
 /* Gives a level this frontend's save extension, or takes it away. */

@@ -3732,6 +3732,12 @@ html.keyboard-tight .prompt-card.text .card-title {
   animation: none;
 }
 
+/* The red edge of low health shows through. */
+.feel-layer.low.quest::after {
+  opacity: 0.3;
+  animation: none;
+}
+
 .feel-float.quest {
   color: var(--quest);
   text-shadow:

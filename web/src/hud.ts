@@ -49,8 +49,8 @@ export function depthLabel(player: Pick<PlayerState, 'depth' | 'dungeon' | 'wild
   if (player.depth === 0 && player.area) return player.area;
   if (player.wild) return 'World map';
   if (player.depth === 0) return 'Town';
-  /* A fixed quest's level belongs to no dungeon, whatever tome2 keeps as the dungeon. */
-  const place = player.quest && !player.quest.random ? player.quest.title : player.dungeon;
+  /* A quest's own level belongs to no dungeon, whatever tome2 keeps as the dungeon. */
+  const place = player.quest?.own ? player.quest.title : player.dungeon;
   return `${place} · ${player.depth * 50} ft (L${player.depth})`;
 }
 
@@ -94,7 +94,7 @@ const STRANGE_GLYPHS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 /** Hides a creature's identity while the player is hallucinating. */
 export function disguiseMonster(m: MonsterState): MonsterState {
   const seed = (m.id * 2654435761) >>> 0;
-  return { ...m, name: 'Something strange', ch: STRANGE_GLYPHS.charCodeAt(seed % STRANGE_GLYPHS.length), attr: 1 + (seed % 15), unique: 0 };
+  return { ...m, name: 'Something strange', ch: STRANGE_GLYPHS.charCodeAt(seed % STRANGE_GLYPHS.length), attr: 1 + (seed % 15), unique: 0, quest: 0 };
 }
 
 /** Hides an item's identity while the player is hallucinating. */

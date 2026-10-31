@@ -1326,7 +1326,7 @@ const THEMES: Theme[] = [
     id: 'captive',
     name: 'A Cry in the Dark',
     group: 'Quests',
-    mood: 'A random quest: someone cries out somewhere on the level. The Tale theme in minor over a heartbeat, the danger rising as the captors close in.',
+    mood: 'A random quest: a captive cries out somewhere on the level, or an adventurer wants his sword back. The Tale theme in minor over a heartbeat, the danger rising as its creatures close in.',
     root: 43,
     scale: 'aeolian',
     bpm: 96,

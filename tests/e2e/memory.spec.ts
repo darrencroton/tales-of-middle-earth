@@ -227,7 +227,7 @@ test('a quest level is never kept as the dungeon level of its depth', async ({ p
   expect(await keptLevelFiles(page)).toEqual([]);
 });
 
-test("Thráin's level is a quest level from the first arrival, so it is never kept", async ({ page }) => {
+test("Thráin's level is never kept, from the first arrival on which tome2 takes his quest; he is there from the next", async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Rescuer');
@@ -236,7 +236,15 @@ test("Thráin's level is a quest level from the first arrival, so it is never ke
   const depth = Number(/Thrain lvl (\d+)/.exec(messages)?.[1]);
   expect(depth).toBeGreaterThan(0);
   await wizardCommand(page, 'D', 23);
+  const quest = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.quest?.id ?? 0);
   await jumpToLevel(page, depth);
-  expect(await page.evaluate(() => window.__tome!.engine.gameState()?.player?.quest?.id)).toBe(19);
+  expect(await quest()).toBe(0);
   expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
+  /* His cell has one try to fit as each level is made. */
+  for (let visit = 0; visit < 4 && (await quest()) !== 19; visit++) {
+    await jumpToLevel(page, depth - 1);
+    await jumpToLevel(page, depth);
+    expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
+  }
+  expect(await quest()).toBe(19);
 });

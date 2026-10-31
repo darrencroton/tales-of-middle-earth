@@ -168,6 +168,8 @@ export interface PlayerState {
 export interface LevelQuest {
   /** tome2's quest index (the random quests share one). */
   id: number;
+  /** 1 when the level is the quest's own (reached through a quest entrance), in no dungeon. */
+  own?: number;
   state: 'active' | 'done' | 'failed';
   /** "Captured princess!", "Thieves!". */
   title: string;

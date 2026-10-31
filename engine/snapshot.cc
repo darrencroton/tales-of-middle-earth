@@ -231,8 +231,9 @@ void json_str(std::string &out, char const *key, std::string_view value, bool co
 /*
  * The quest of the level the hero is on (memory.cc level_quest), and whether
  * it is active, done or failed: for a random quest its kind, the creature to
- * defeat, how many, and how many are slain;
- * for the others their name and description as tome2's quest log tells it.
+ * defeat, how many, and how many are slain; for the others their name and
+ * description as tome2's quest log tells it, and whether the level is the
+ * quest's own (reached through a quest entrance, in no dungeon).
  */
 void json_level_quest(std::string &out)
 {
@@ -293,6 +294,7 @@ void json_level_quest(std::string &out)
 	json_key(out, "quest");
 	out += '{';
 	json_int(out, "id", q);
+	json_int(out, "own", q == p_ptr->inside_quest ? 1 : 0);
 	json_str(out, "state", state);
 	json_str(out, "title", qt.name);
 	json_key(out, "lines");
@@ -1377,7 +1379,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_place_json()
 	}
 	json_int(json, "town", town);
 	json_int(json, "townDestroyed", (town > 0 && town_info && town_info[town].destroyed) ? 1 : 0);
-	json_int(json, "quest", p_ptr->inside_quest ? p_ptr->inside_quest : level_quest_open() ? level_quest() : 0);
+	json_int(json, "quest", p_ptr->inside_quest);
+	json_int(json, "levelQuest", level_quest_open() ? level_quest() : 0);
 
 	auto const level_name = get_dungeon_name();
 	json_str(json, "levelName", level_name ? *level_name : std::string());

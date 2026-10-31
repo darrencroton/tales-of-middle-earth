@@ -13,7 +13,7 @@ export type FeelEvent =
   | { kind: 'hurt'; fraction: number }
   | { kind: 'levelup'; level: number; skillPoints: number }
   | { kind: 'depth'; place: string; feet: number; deeper: boolean; surface: Surface }
-  /** A level that holds a quest, arrived at (`place` is its dungeon, empty for a fixed quest's own level); or that level's quest ended there. */
+  /** A level that holds a quest, arrived at (`place` is its dungeon, empty on a quest's own level); or that level's quest ended there. */
   | { kind: 'quest'; title: string; place: string; feet: number }
   | { kind: 'questEnd'; title: string; failed: boolean }
   /** One more of a random quest's creatures slain, the quest not yet done. */
@@ -32,15 +32,18 @@ export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
   /* A quest's banner comes last, so no other banner covers it. */
   let quest: FeelEvent | null = null;
   if (level || area) {
-    /* A fixed quest's level belongs to no dungeon, whatever tome2 keeps as the dungeon. */
-    const fixedQuest = next.depth > 0 && !!next.quest && !next.quest.random;
-    const place = fixedQuest ? next.quest!.title : next.depth > 0 && !next.wild ? next.dungeon : depthLabel(next);
+    /* A quest's own level belongs to no dungeon, whatever tome2 keeps as the dungeon. */
+    const ownLevel = next.depth > 0 && !!next.quest?.own;
+    const place = ownLevel ? next.quest!.title : next.depth > 0 && !next.wild ? next.dungeon : depthLabel(next);
     const surface: Surface = next.wild ? 'world' : next.inTown ? 'town' : 'land';
     const feet = next.wild ? 0 : next.depth * 50;
-    if (level && next.quest?.state === 'active') quest = { kind: 'quest', title: next.quest.title, place: fixedQuest ? '' : place, feet };
+    if (level && next.quest?.state === 'active') quest = { kind: 'quest', title: next.quest.title, place: ownLevel ? '' : place, feet };
     else events.push({ kind: 'depth', place, feet, deeper: next.depth > prev.depth, surface });
-  } else if (prev.quest?.state === 'active' && next.quest?.id === prev.quest.id && next.quest.state !== 'active') {
-    quest = { kind: 'questEnd', title: prev.quest.title, failed: next.quest.state === 'failed' };
+    /* A quest can fail as the next level is made (a god's temple made twice). */
+    if (prev.quest?.state === 'active' && next.quest?.id === prev.quest.id && next.quest.state === 'failed') quest = { kind: 'questEnd', title: prev.quest.title, failed: true };
+  } else if (prev.quest?.state === 'active' && (!next.quest || next.quest.id === prev.quest.id) && next.quest?.state !== 'active') {
+    /* Done or failed, or gone from the level it was on (tome2 hands a god's quest back once the relic is found). */
+    quest = { kind: 'questEnd', title: prev.quest.title, failed: next.quest?.state === 'failed' };
   } else if (next.quest?.state === 'active' && next.quest.random && prev.quest?.random && next.quest.random.slain > prev.quest.random.slain) {
     quest = { kind: 'questProgress', slain: next.quest.random.slain, count: next.quest.random.count };
   }

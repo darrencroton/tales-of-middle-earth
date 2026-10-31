@@ -693,7 +693,7 @@ test('a random quest is named on arrival, its chip tells what it asks, it surviv
     expect(here?.title).toMatch(/Captured princess!|Lost sword!/);
     expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
     /* Its own music, whichever kind it is, and the map's edge in the quest's colour. */
-    expect(await page.evaluate(() => window.__tome!.engine.place()?.quest)).toBe(5);
+    expect(await page.evaluate(() => window.__tome!.engine.place()?.levelQuest)).toBe(5);
     await expect(page.locator('.feel-layer')).toHaveClass(/\bquest\b/);
     await expect(page.locator('.feel-banner.quest strong')).toHaveText(here!.title);
     await expect(page.locator('.feel-banner.quest span')).toHaveText('Barrow-Downs · 150 ft');

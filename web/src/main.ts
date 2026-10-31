@@ -1339,7 +1339,10 @@ function refresh(): void {
     hud.update(state, snap.py, snap.px);
     if (state.player) {
       feel.update(state.player);
-      feel.setQuest(state.player.quest?.state === 'active' && !state.player.dead, (state.monsters ?? []).some((m) => m.quest && m.view && isHostile(m)));
+      feel.setQuest(
+        state.player.quest?.state === 'active' && !state.player.dead,
+        !state.player.status.hallucinating && (state.monsters ?? []).some((m) => m.quest && m.view && isHostile(m)),
+      );
     }
     const sameHero = !!previous && previous.player?.name === state.player?.name;
     const slain = sameHero ? slainMonsters(previous.monsters ?? [], state.monsters ?? [], newMessages(previous, state)) : [];

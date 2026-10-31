@@ -13,10 +13,12 @@ describe('HUD helpers', () => {
     assert.equal(depthLabel({ depth: 0, dungeon: '', wild: 1 }), 'World map');
     assert.equal(depthLabel({ depth: 0, dungeon: '', wild: 0, area: 'Bree' }), 'Bree');
     assert.equal(depthLabel({ depth: 2, dungeon: 'Mirkwood', wild: 0, area: 'Forest' }), 'Mirkwood · 100 ft (L2)');
-    const thieves = { id: 4, state: 'active' as const, title: 'Thieves!', lines: [] };
+    const thieves = { id: 4, own: 1, state: 'active' as const, title: 'Thieves!', lines: [] };
     assert.equal(depthLabel({ depth: 5, dungeon: 'Barrow-Downs', wild: 0, quest: thieves }), 'Thieves! · 250 ft (L5)');
     const princess = { id: 5, state: 'active' as const, title: 'Captured princess!', random: { kind: 'princess' as const, foe: 'Cave orc', count: 5, slain: 0 } };
     assert.equal(depthLabel({ depth: 3, dungeon: 'Barrow-Downs', wild: 0, quest: princess }), 'Barrow-Downs · 150 ft (L3)');
+    const hobbit = { id: 6, own: 0, state: 'done' as const, title: 'Lost Hobbit', lines: [] };
+    assert.equal(depthLabel({ depth: 30, dungeon: 'Maze', wild: 0, quest: hobbit }), 'Maze · 1500 ft (L30)');
   });
 
   it('names surface places from the engine place', () => {

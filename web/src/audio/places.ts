@@ -18,7 +18,10 @@ export interface Place {
   kept?: number;
   town: number;
   townDestroyed: number;
+  /** The quest whose own level this is (reached through a quest entrance), or 0. */
   quest: number;
+  /** The quest still to be done on this level, its own or not (a random quest, Merton, Thráin, a god's temple), or 0. */
+  levelQuest: number;
   levelName: string;
   terrain: string;
   terrainIdx: number;
@@ -135,7 +138,8 @@ export function sceneFor(view: View, place: Place | null): Scene {
   scene.night = place.night === 1;
   scene.depth = place.depth;
   if (place.wild) return { ...scene, base: 'overworld', night: false };
-  if (place.quest > 0 && QUEST_THEMES[place.quest]) return { ...scene, base: QUEST_THEMES[place.quest] };
+  const quest = place.quest || place.levelQuest;
+  if (quest > 0 && QUEST_THEMES[quest]) return { ...scene, base: QUEST_THEMES[quest] };
   if (place.depth === 0) {
     if (place.town > 0) {
       return { ...scene, base: TOWN_THEMES[place.town] ?? 'haven', ruined: place.townDestroyed === 1 };
