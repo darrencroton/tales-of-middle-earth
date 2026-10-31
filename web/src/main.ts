@@ -3005,20 +3005,6 @@ function openGameMenu(): void {
       sheets.closeAll();
       if (!saveGame('toast')) showToast('Finish what you are doing first.');
     } },
-    { label: 'Settings', icon: '⚙', hint: 'Text size, animation, map', run: () => openSettingsSheet() },
-    { label: 'Help', icon: '?', hint: 'How to play, with a search', run: () => openHelpSheet() },
-    { label: 'About', icon: 'ℹ', run: () => openTemplate(sheets, 'About', 'about-template') },
-    { label: 'Abandon adventure', icon: '✕', hint: 'End it for good', danger: true, hidden: !playing || fallen, run: () => {
-      const name = lastState?.player?.name ?? 'This hero';
-      confirmSheet(
-        sheets,
-        'Abandon this adventure?',
-        `${name}'s adventure ends here and cannot be taken up again: the saved game is deleted. Your other heroes, the Hall of Fame and the deeds you have earned stay.`,
-        'Abandon',
-        abandonAdventure,
-        true,
-      );
-    } },
     { label: playing ? 'Save and quit' : 'Quit to title', icon: '⏻', hint: 'Back to the title screen', hidden: fallen, run: () => {
       if (!playing) {
         saveAndQuit();
@@ -3034,6 +3020,20 @@ function openGameMenu(): void {
       } else {
         confirmSheet(sheets, 'Save and quit?', 'Your game is saved and you return to the title screen.', 'Save and quit', () => saveAndQuit());
       }
+    } },
+    { label: 'Settings', icon: '⚙', hint: 'Text size, animation, map', run: () => openSettingsSheet() },
+    { label: 'Help', icon: '?', hint: 'How to play, with a search', run: () => openHelpSheet() },
+    { label: 'About', icon: 'ℹ', run: () => openTemplate(sheets, 'About', 'about-template') },
+    { label: 'Abandon adventure', icon: '✕', hint: 'End it for good', danger: true, hidden: !playing || fallen, run: () => {
+      const name = lastState?.player?.name ?? 'This hero';
+      confirmSheet(
+        sheets,
+        'Abandon this adventure?',
+        `${name}'s adventure ends here and cannot be taken up again: the saved game is deleted. Your other heroes, the Hall of Fame and the deeds you have earned stay.`,
+        'Abandon',
+        abandonAdventure,
+        true,
+      );
     } },
   ]);
 }

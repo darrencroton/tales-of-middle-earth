@@ -33,6 +33,7 @@ Map (toolbar, HUD, gestures)
 │       ├── Knowledge ─────── Knowledge            menu                                     depth 2
 │       │                     └── list ─────────── reader (TermView panel); Knowledge reopens after
 │       ├── Save game (toast)
+│       ├── Save and quit ─── confirmation         card
 │       ├── Settings ──────── Settings             panel                                    depth 2
 │       ├── Settings ──────── (in a game: Your adventure, the rules fixed at birth, read-only)
 │       ├── Help ──────────── Help                 panel: search, topics by group           depth 2
@@ -40,8 +41,7 @@ Map (toolbar, HUD, gestures)
 │       │                     │   └── race/class ─ card                                      depth 4
 │       │                     └── ToME manual ──── reader (TermView panel); Help reopens after
 │       ├── About                                  panel (prose)
-│       ├── Abandon adventure ─ confirmation       card (red)
-│       └── Save and quit ─── confirmation         card
+│       └── Abandon adventure ─ confirmation       card (red), set apart at the foot
 ├── HUD (one height always: the strip of ailments and chips keeps its place when empty)
 │   ├── hero name ─────────── Character (or Fallen hero after death)
 │   ├── creature / item chip ─ Creature / Item     card
@@ -125,6 +125,8 @@ No key hints anywhere.
 
 - As tall as its rows. A menu opened from a menu (Menu → Knowledge) takes its
   place, with ‹.
+- Rows are grouped by kind; a destructive row (red) comes last, set apart by a
+  gap.
 
 ### Card
 

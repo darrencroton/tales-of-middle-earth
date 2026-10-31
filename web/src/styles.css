@@ -1649,6 +1649,10 @@ html.keyboard-open .tv-layer.panel {
   gap: 0.35rem;
 }
 
+.menu-list > .danger:not(:first-child) {
+  margin-top: 1.2rem;
+}
+
 .row-button {
   display: flex;
   align-items: center;
