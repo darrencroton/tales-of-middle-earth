@@ -4,6 +4,7 @@ import {
   CAVE_SEEN,
   LAYER_MASK,
   LAYER_MONSTER,
+  isAlly,
   isHostile,
   type LevelSnapshot,
   type MonsterState,
@@ -53,6 +54,8 @@ export interface TravelContext {
   hp: number;
   /** Gold carried, to stop when a thief takes some. */
   gold?: number;
+  /** Cells of companions the hero can push past (`pushPast`). */
+  passing?: ReadonlySet<number>;
 }
 
 export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
@@ -97,14 +100,19 @@ export function inferredFloor(snap: LevelSnapshot, materials: readonly Material[
   return (barrier(0, -1) && barrier(0, 1)) || (barrier(-1, 0) && barrier(1, 0));
 }
 
-/** Walkable cells the player knows of; visible monsters block (except at the goal) unless `throughCreatures`. */
-export function travelGrid(snap: LevelSnapshot, materials: readonly Material[], throughCreatures = false): TravelGrid {
+/** Creatures a way may lead through: those at these cells (companions the hero pushes past), or all of them ('all', to ask whether creatures alone stand in the way). */
+export type Passing = ReadonlySet<number> | 'all';
+
+const NOBODY: ReadonlySet<number> = new Set();
+
+/** Walkable cells the player knows of; creatures in view block, but for those `passing` lets through. */
+export function travelGrid(snap: LevelSnapshot, materials: readonly Material[], passing: Passing = NOBODY): TravelGrid {
   return {
     width: snap.width,
     height: snap.height,
     passable(x, y) {
       const i = y * snap.width + x;
-      if (!throughCreatures && (snap.layer[i] & LAYER_MASK) === LAYER_MONSTER) return false;
+      if (passing !== 'all' && !passing.has(i) && (snap.layer[i] & LAYER_MASK) === LAYER_MONSTER) return false;
       if (!isKnownIndex(snap, i)) return inferredFloor(snap, materials, x, y);
       const m = materials[snap.feat[i]];
       return !!m && (m.walkable || m.door);
@@ -130,9 +138,9 @@ export interface Approach {
  * cell nearest to it, as far as the known way goes. Null when nowhere
  * reachable is closer to the goal than the player already is.
  */
-export function approachTarget(snap: LevelSnapshot, materials: readonly Material[], goal: Point): Approach | null {
+export function approachTarget(snap: LevelSnapshot, materials: readonly Material[], goal: Point, passing: Passing = NOBODY): Approach | null {
   const { width, height } = snap;
-  const grid = travelGrid(snap, materials);
+  const grid = travelGrid(snap, materials, passing);
   const start = snap.py * width + snap.px;
   const goalIndex = goal.y * width + goal.x;
   const inside = goal.x >= 0 && goal.y >= 0 && goal.x < width && goal.y < height;
@@ -203,6 +211,32 @@ export function stepTowards(snap: LevelSnapshot, materials: readonly Material[],
 export function isKnown(snap: LevelSnapshot, point: Point): boolean {
   if (point.x < 0 || point.y < 0 || point.x >= snap.width || point.y >= snap.height) return false;
   return (snap.info[point.y * snap.width + point.x] & (CAVE_MARK | CAVE_SEEN)) !== 0;
+}
+
+/** What keeps the hero from pushing past a companion: tome2 makes them stop, or strike, while confused, stunned or seeing things. */
+export interface Steadiness {
+  confused: boolean;
+  stunned: boolean;
+  hallucinating: boolean;
+  /** Stormbringer sometimes strikes whoever is in the way. */
+  stormbringer: boolean;
+}
+
+/**
+ * Cells of the companions the hero can walk through: tome2 swaps places with
+ * a creature fighting for the hero that they can see (move_player's "You
+ * push past"), unless the hero is unsteady; and only from floor, so a hero
+ * on stairs or in a doorway cannot push past one beside them.
+ */
+export function pushPast(snap: LevelSnapshot, materials: readonly Material[], monsters: readonly MonsterState[], hero: Steadiness): Set<number> {
+  const cells = new Set<number>();
+  if (hero.confused || hero.stunned || hero.hallucinating || hero.stormbringer) return cells;
+  const onFloor = !!materials[snap.feat[snap.py * snap.width + snap.px]]?.floor;
+  for (const m of monsters) {
+    if (!isAlly(m) || (!onFloor && Math.max(Math.abs(m.x - snap.px), Math.abs(m.y - snap.py)) <= 1)) continue;
+    cells.add(m.y * snap.width + m.x);
+  }
+  return cells;
 }
 
 /** Hostile creatures in the hero's line of sight (not those only sensed, by telepathy or detection). */
@@ -304,7 +338,7 @@ export class Travel {
     for (const m of hostiles) this.inSight.add(m.id);
     if (arrival && !this.single) return { kind: 'stop', reason: 'monster', creature: arrival.name, asleep: !!arrival.asleep };
 
-    const path = findPath(travelGrid(snap, ctx.materials), pos, this.goal);
+    const path = findPath(travelGrid(snap, ctx.materials, ctx.passing), pos, this.goal);
     if (!path || path.length === 0) return { kind: 'stop', reason: 'unreachable' };
 
     const next = path[0];

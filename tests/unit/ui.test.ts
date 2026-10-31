@@ -11,15 +11,15 @@ import {
 import { findListedItem, itemActions, itemLetter, itemMacro, quantityAnswer } from '../../web/src/play/items.ts';
 import { MacroRunner, type MacroScreen } from '../../web/src/play/macro.ts';
 import { readableColour } from '../../web/src/render/colour.ts';
-import type { ItemState } from '../../web/src/render/snapshot.ts';
+import { STORE_ACTION, type ItemState, type StoreState } from '../../web/src/render/snapshot.ts';
 import { descriptionParagraphs } from '../../web/src/ui/api.ts';
-import { parseStore, stackSize, storeMacro } from '../../web/src/ui/store.ts';
+import { affordable, offerMacro, refusal, shelfMacro, shelfPage, shopModel, trades } from '../../web/src/ui/store.ts';
 import { abilityMoveKeys, cursorKeys, parseAbilities, parseSkills, selectedSkill, skillMoveKeys } from '../../web/src/ui/skills.ts';
 import { flagLabel, parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
 import { fateText, heroEntry } from '../../web/src/ui/gameover.ts';
 import { findMessageBox } from '../../web/src/ui/msgbox.ts';
 import { cleanPrompt } from '../../web/src/ui/prompttext.ts';
-import { parseRows, type ChoiceBlock, type TermRow } from '../../web/src/ui/termparse.ts';
+import { type TermRow } from '../../web/src/ui/termparse.ts';
 
 const codes = (s: string) => [...s].map((c) => c.charCodeAt(0));
 const screen = (prompt: string, atCommand = false, text = prompt): MacroScreen => ({ prompt, screen: text, atCommand });
@@ -195,47 +195,90 @@ describe('character creation screens', () => {
 });
 
 describe('shops', () => {
-  const lines = [
-    '',
-    '',
-    '          Raistlin the Chicken(Human)             General Store (20000)',
-    '',
-    '   Item Description (Page 1)                                Weight      Price',
-    'a) , 28 Strips of Venison                                      0.2          3',
-    'b) ~ a Brass Lantern (with 7500 turns of light)                5.0         46',
-    '',
-    'You may:          s) Sell an item               p) Purchase an item',
-    ' ESC) Exit.       x) Examine an item            Z) Steal an item',
-    ' SPACE) Next page',
-  ];
-  const choices = parseRows(rows(lines), 0, 0, 79).filter((b): b is ChoiceBlock => b.kind === 'choice');
-
-  it('recognises the shop and its commands', () => {
-    const store = parseStore(lines.join('\n'), choices)!;
-    assert.equal(store.commandsRow, 8);
-    assert.deepEqual(store.commands.map((c) => [c.key, c.kind]), [
-      ['s', 'other'],
-      ['p', 'buy'],
-      ['x', 'examine'],
-      ['Z', 'steal'],
-    ]);
-    assert.equal(store.hasNextPage, true);
-    assert.equal(store.home, false);
-    assert.equal(store.page, 1);
-    assert.equal(parseStore('just a map', choices), null);
+  const store = (over: Partial<StoreState> = {}): StoreState => ({
+    here: 1,
+    name: 'General Store',
+    owner: 'Raistlin the Chicken(Human)',
+    home: 0,
+    museum: 0,
+    buys: 1,
+    noSelling: 0,
+    gold: 100,
+    capacity: 24,
+    actions: [
+      { key: 's', action: STORE_ACTION.sell, cost: 0, closed: 0, name: 'Sell an item' },
+      { key: 'p', action: STORE_ACTION.buy, cost: 0, closed: 0, name: 'Purchase an item' },
+      { key: 'x', action: STORE_ACTION.examine, cost: 0, closed: 0, name: 'Examine an item' },
+      { key: 'Z', action: STORE_ACTION.steal, cost: 0, closed: 0, name: 'Steal an item' },
+    ],
+    stock: [],
+    sell: [],
+    ...over,
   });
 
-  it('reads stack sizes', () => {
-    assert.equal(stackSize('28 Strips of Venison'), 28);
-    assert.equal(stackSize('a Brass Lantern'), 1);
+  it('names what each kind of shop lets the hero do', () => {
+    const shop = shopModel(store());
+    assert.deepEqual([shop.shelf.label, shop.shelf.verb, shop.shelf.key, shop.offer?.label, shop.offer?.key], ['Buy', 'Buy', 'p', 'Sell', 's']);
+    assert.deepEqual(shop.extras, []);
+    const home = shopModel(store({ home: 1, actions: [{ key: 'd', action: STORE_ACTION.sell, cost: 0, closed: 0, name: 'Drop an item' }, { key: 'g', action: STORE_ACTION.buy, cost: 0, closed: 0, name: 'Get an item' }] }));
+    assert.deepEqual([home.shelf.label, home.shelf.verb, home.offer?.label, home.offer?.verb], ['Stored', 'Take', 'Inventory', 'Store']);
+    const museum = shopModel(store({ museum: 1, actions: [{ key: 'd', action: STORE_ACTION.sell, cost: 0, closed: 0, name: 'Donate an item' }] }));
+    assert.deepEqual([museum.shelf.verb, museum.offer?.verb], [null, 'Donate']);
+    const seer = shopModel(store({ actions: [{ key: 'p', action: STORE_ACTION.buy, cost: 0, closed: 0, name: 'Purchase an item' }, { key: 'l', action: 42, cost: 0, closed: 0, name: 'Presage fate' }] }));
+    assert.equal(seer.offer, null);
+    assert.deepEqual(seer.extras.map((e) => e.name), ['Presage fate']);
+    assert.equal(trades(store({ actions: [{ key: 'r', action: 17, cost: 0, closed: 0, name: 'Rest for the night' }] })), false);
+    assert.equal(trades(store()), true);
   });
 
-  it('buys with the chosen quantity and confirms', () => {
+  it('counts what the hero can afford', () => {
+    assert.equal(affordable(store({ gold: 100 }), { number: 28, price: 3 }), 28);
+    assert.equal(affordable(store({ gold: 10 }), { number: 28, price: 3 }), 3);
+    assert.equal(affordable(store({ gold: 2 }), { number: 28, price: 3 }), 0);
+    assert.equal(affordable(store({ gold: 0, home: 1 }), { number: 5, price: 0 }), 5);
+    assert.equal(affordable(store({ gold: 1000 }), { number: 150, price: 1 }), 99);
+  });
+
+  it('says why something carried is not taken', () => {
+    assert.equal(refusal(''), '');
+    assert.match(refusal('kind'), /Not wanted/);
+    assert.match(refusal('cursed'), /Cursed/);
+  });
+
+  it('reads the page of the list tome2 shows', () => {
+    assert.equal(shelfPage('   Item Description (Page 2)    Weight   Price'), 2);
+    assert.equal(shelfPage('   Item Description    Weight   Price'), 1);
+  });
+
+  it('buys from the page the item is on, with the quantity chosen, and confirms', () => {
     const runner = new MacroRunner();
-    assert.deepEqual(runner.start(storeMacro('p', 'a', 3)), [92, ...codes('p')]);
-    assert.deepEqual(runner.step(screen('Which item are you interested in? ')), codes('a'));
+    assert.deepEqual(runner.start(shelfMacro('p', 2, 3, 13, 1)), [92, ...codes('p')]);
+    assert.deepEqual(runner.step(screen('(Items a-l, ESC to exit) Which item are you interested in? ')), codes('c'));
     assert.deepEqual(runner.step(screen('Quantity (1-28): 1')), [...codes('3'), 13]);
     assert.deepEqual(runner.step(screen('Buy 3 Strips of Venison? [y/n/RET/ESC]')), codes('y'));
+    assert.deepEqual(runner.step(screen('You bought 3 Strips of Venison for 9 gold.')), []);
+    assert.equal(runner.running, false);
+  });
+
+  it('turns the list to the item\'s page first, round past the last page', () => {
+    const runner = new MacroRunner();
+    assert.deepEqual(runner.start(shelfMacro('p', 13, 1, 30, 1)), [32]);
+    assert.deepEqual(runner.step(screen('', false, '   Item Description (Page 2)')), [92, ...codes('p')]);
+    assert.deepEqual(runner.step(screen('(Items a-l, ESC to exit) Which item are you interested in? ')), codes('b'));
+    const back = new MacroRunner();
+    assert.deepEqual(back.start(shelfMacro('g', 0, 1, 30, 3)), [32]);
+    assert.deepEqual(back.step(screen('', false, '   Item Description (Page 2)')), []);
+    assert.equal(back.running, false);
+  });
+
+  it('sells with the quantity chosen, reading on past messages, and confirms', () => {
+    const runner = new MacroRunner();
+    const item = { i: 1, name: '3 Flasks of oil', tval: 77, number: 3, weight: 10, ch: 33, attr: 1, wear: 0, activate: 0, ins: '' };
+    assert.deepEqual(runner.start(offerMacro('s', 'Sell', item, 'pack', 2)), [92, ...codes('s')]);
+    assert.deepEqual(runner.step(screen('(Inven: b-c, / for Equip, ESC) Sell which item? ')), codes('b'));
+    assert.deepEqual(runner.step(screen('Quantity (1-3): 1')), [...codes('2'), 13]);
+    assert.deepEqual(runner.step(screen('Okay. -more-')), [32]);
+    assert.deepEqual(runner.step(screen('Sell 2 Flasks of oil? [y/n/RET/ESC]')), codes('y'));
   });
 });
 

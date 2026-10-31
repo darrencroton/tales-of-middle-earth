@@ -30,6 +30,15 @@ export class RecentStore {
   remember(hero: string, entry: RecentAction): void {
     if (!hero) return;
     this.all[hero] = rememberRecent(this.list(hero), entry);
+    this.store();
+  }
+
+  forget(hero: string): void {
+    delete this.all[hero];
+    this.store();
+  }
+
+  private store(): void {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.all));
     } catch {

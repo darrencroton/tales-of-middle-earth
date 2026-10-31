@@ -213,6 +213,8 @@ export interface ActionContext {
   exploreNext?: ExploreNext;
   /** Gear the hero needs to go on: a light below the town, a weapon for a fighter, food when hungry. */
   gear?: 'weapon' | 'light' | 'eat' | null;
+  /** The hero stands at a building's door: the button that goes in ('Enter shop', 'Enter home'…). */
+  entrance?: string | null;
   /** Direction digit of the weakest hostile creature next to the player. */
   foe?: string | null;
   /** The hero's one-tap repeat: their last (or first) spell or power, or the last aimed thing they used. */
@@ -295,13 +297,14 @@ const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {
 /**
  * The toolbar's one changing button, the first of these that applies: the
  * world map's Walk here; the way on underfoot (a staircase is always what it
- * does); Attack a foe alongside; what lies underfoot to pick up or use; gear
+ * does); the door of a shop or other building underfoot; Attack a foe alongside; what lies underfoot to pick up or use; gear
  * the hero needs to go on; and Explore, named for what it will do.
  */
 export function contextualAction(ctx: ActionContext): Action {
   if (ctx.worldMap) return command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true);
   const transition = transitionUnderfoot(ctx.underfoot);
   if (transition) return command(transition.id, transition.label, transition.icon, { command: transition.command }, true);
+  if (ctx.entrance) return command('shop', ctx.entrance, '⌂', { command: '_' }, true);
   if (ctx.foe) return { id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true };
   if (ctx.floorObjects > 0) return command('pickup', 'Pick up', '⇡', { command: pickupCommand(ctx.alwaysPickup) }, true);
   if (/fountain/.test(ctx.underfoot)) return command('drink', 'Drink', '⌂', { command: 'H' }, true);

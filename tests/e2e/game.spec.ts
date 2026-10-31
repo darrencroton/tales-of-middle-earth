@@ -55,9 +55,11 @@ test('creates a character, saves and quits to the title, then continues', async 
   expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1);
 
   const resume = page.locator('#title-screen .title-choice').first();
-  await expect(resume).toContainText('Continue');
-  await expect(resume).toContainText(name);
+  await expect(resume).toContainText(`Continue as ${name}`);
+  await expect(resume.locator('.title-choice-detail')).toContainText(/^Level 1 \S+ \S+ · \S/);
   await resume.click();
+  await expect(page.locator('.sheet-adventurer .sheet-title')).toHaveText(name);
+  await page.locator('.sheet-adventurer [data-action="play"]').click();
   await expect.poll(() => inDungeon(page), { timeout: 30_000 }).toBe(true);
   await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
   await waitAtCommand(page);
@@ -102,8 +104,19 @@ test('the run is set up under the hero on the last creation screen, and the game
   expect(run?.drawn).toBeLessThanOrEqual(10);
   expect(run?.options.find((o) => o.name === 'smallLevels')?.on).toBe(1);
   expect(run?.options.find((o) => o.name === 'unusualRooms')?.on).toBe(0);
-  /* Once the game has begun the run is fixed. */
+  /* Once the game has begun the run is fixed, and Settings shows it read-only. */
   expect(await page.evaluate(() => window.__tome!.engine.setRandomQuests(5))).toBe(false);
+  await page.locator('#toolbar [data-action="menu"]').click();
+  await page.locator('.sheet .row-button', { hasText: 'Settings' }).click();
+  const rules = page.locator('.adventure-rules');
+  await expect(rules).toContainText('Chosen when Planner was created');
+  await expect(rules.locator('.segment.selected')).toHaveText(String(run?.drawn));
+  await expect(rules.locator('.segment:not([disabled])')).toHaveCount(0);
+  const small = rules.locator('.run-option', { hasText: 'Small levels' });
+  await expect(small).toHaveAttribute('aria-checked', 'true');
+  await expect(small).toBeDisabled();
+  await small.click({ force: true });
+  expect((await page.evaluate(() => window.__tome!.engine.runOptions()))?.options.find((o) => o.name === 'smallLevels')?.on).toBe(1);
 });
 
 test('help opens from the title screen, with races and classes from the game itself', async ({ page }) => {
@@ -142,7 +155,7 @@ test('help opens from the title screen, with races and classes from the game its
   await expect(page.locator('.sheet-layer')).toBeHidden();
 });
 
-test('exports saves from the title screen as a downloadable bundle', async ({ page }) => {
+test('exports game data from the title screen as a downloadable bundle', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await page.evaluate(() => {
@@ -152,9 +165,9 @@ test('exports saves from the title screen as a downloadable bundle', async ({ pa
     fs.writeFile(`${engine.savePath}/2.4/save/Exported`, new Uint8Array([1, 2, 3]));
   });
 
-  await page.locator('#title-screen [data-link="saves"]').click();
+  await page.locator('#title-screen [data-link="backup"]').click();
   const downloadPromise = page.waitForEvent('download');
-  await page.locator('.sheet .row-button', { hasText: 'Export saves' }).click();
+  await page.locator('.sheet .row-button', { hasText: 'Export game data' }).click();
   const download = await downloadPromise;
 
   expect(download.suggestedFilename()).toMatch(/^tome2-saves-.*\.tome2save$/);
@@ -405,4 +418,75 @@ test('the world map is entered from the commands and left from the toolbar', asy
   await expect.poll(wild).toBe(false);
   await expect(page.locator('#toolbar [data-action="walkhere"]')).toHaveCount(0);
   await expect(page.locator('#toolbar [data-action="inventory"]')).toBeVisible();
+});
+
+test('saved heroes: Continue as the last, the others under More adventurers, Abandon and Delete remove only that hero', async ({ page }) => {
+  test.setTimeout(300_000);
+  const quit = async () => {
+    await page.locator('#toolbar [data-action="menu"]').click();
+    await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
+    await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
+    await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+    await waitForEngine(page);
+  };
+  const savedFiles = () =>
+    page.evaluate(() => {
+      const engine = window.__tome!.engine;
+      const out: string[] = [];
+      const walk = (dir: string) => {
+        for (const n of engine.fs!.readdir(dir)) {
+          if (n === '.' || n === '..') continue;
+          const path = `${dir}/${n}`;
+          if (engine.fs!.isDir(engine.fs!.stat(path).mode)) walk(path);
+          else out.push(n);
+        }
+      };
+      walk(engine.savePath!);
+      return out;
+    });
+
+  await page.goto('./');
+  await waitForEngine(page);
+  await createCharacter(page, 'Elder');
+  await quit();
+  await createCharacter(page, 'Young Sib');
+  await quit();
+  expect(await savedFiles()).toEqual(expect.arrayContaining(['Elder', 'Young_Sib', 'Young_Sib.nte']));
+
+  const choices = page.locator('#title-screen .title-choice');
+  await expect(choices.first()).toContainText('Continue as Young Sib');
+  await expect(choices.first().locator('.title-choice-detail')).toContainText(/^Level 1 /);
+  await choices.filter({ hasText: 'More adventurers' }).click();
+  await expect(page.locator('.adventurer-row')).toHaveCount(1);
+  await page.locator('.adventurer-row', { hasText: 'Elder' }).click();
+  await expect(page.locator('.sheet-adventurer .sheet-title')).toHaveText('Elder');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+
+  await choices.first().click();
+  await page.locator('.sheet-adventurer [data-action="play"]').click();
+  await expect.poll(() => inDungeon(page), { timeout: 30_000 }).toBe(true);
+  await waitAtCommand(page);
+  await page.locator('#toolbar [data-action="menu"]').click();
+  await expect(page.locator('.sheet .row-button', { hasText: 'Saved games' })).toHaveCount(0);
+  await page.locator('.sheet .row-button', { hasText: 'Abandon adventure' }).click();
+  await page.locator('.sheet-action.danger', { hasText: 'Abandon' }).click();
+  await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+  await waitForEngine(page);
+  await expect(choices.first()).toContainText('Continue as Elder');
+  await expect(choices.filter({ hasText: 'More adventurers' })).toHaveCount(0);
+  let files = await savedFiles();
+  expect(files).toContain('Elder');
+  expect(files.filter((f) => f.startsWith('Young_Sib'))).toEqual([]);
+
+  await choices.first().click();
+  await page.locator('.sheet-adventurer [data-action="delete"]').click();
+  await page.locator('.sheet', { hasText: 'Delete Elder?' }).locator('.sheet-action.danger').click();
+  await expect(page.locator('#toast')).toHaveText("Elder's adventure was deleted.", { timeout: 15_000 });
+  await expect(choices.first()).toContainText(/Enter Middle-earth/i);
+  files = await savedFiles();
+  expect(files.filter((f) => f.startsWith('Elder'))).toEqual([]);
+  await page.reload();
+  await waitForEngine(page);
+  await expect(choices.first()).toContainText(/Enter Middle-earth/i);
 });

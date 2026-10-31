@@ -52,6 +52,7 @@ const UNKNOWN_MATERIAL: Material = {
   emit: null,
   walkable: false,
   door: false,
+  floor: false,
 };
 
 export function rememberedColour(c: RGB, brightness: number): RGB {

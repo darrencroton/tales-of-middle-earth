@@ -93,6 +93,11 @@ export class ChronicleStore {
     return chronicle;
   }
 
+  /** Forgets a living hero's chronicle (their adventure was deleted); the career and the fallen stay. */
+  forget(name: string): void {
+    if (this.data.heroes[name] && !this.data.heroes[name].fallen) delete this.data.heroes[name];
+  }
+
   peek(name: string): Chronicle | null {
     return this.data.heroes[name] ?? null;
   }

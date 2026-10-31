@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://darrencroton.github.io/tales-of-middle-earth/">
-    <img src="docs/images/title.jpg" alt="ToME — Tales of Middle-earth: the title screen, a mosaic logo lit by rising flames" width="100%" />
+    <img src="docs/images/title.jpg" alt="ToME — Tales of Middle-earth: the opening screen, a mosaic logo lit by the flames rising beneath it, embers drifting up past the Ring verse, and Enter Middle-earth" width="100%" />
   </a>
 </p>
 
@@ -23,7 +23,7 @@ Leave the comfort of Bree and walk out into a wide, dangerous Middle-earth. Expl
 Every level is generated fresh, every hero is different, and death is permanent. That is what makes each victory count.
 
 - **22 races** — Hobbits, Dwarves, Ents, Beornings, Maiar, High-Elves and more, with optional twists such as Vampire or Spectre.
-- **Around 30 classes** — from Warrior and Ranger to Necromancer, Geomancer, Possessor, Symbiant and Bard.
+- **30 classes** — from Warrior and Ranger to Necromancer, Geomancer, Possessor, Symbiant and Bard.
 - **A free-form skill system** — spend points where you like and shape your hero your way.
 - **Gods to follow** — pledge yourself to Eru, Manwë, Tulkas, Varda, Ulmo… or Melkor.
 - **Nearly 900 creatures** and **almost 200 legendary artifacts** to find, wield and lose.
@@ -31,14 +31,24 @@ Every level is generated fresh, every hero is different, and death is permanent.
 
 <table>
   <tr>
-    <td width="33%"><img src="docs/images/creation.jpg" alt="Character creation: choosing a High-Elf from a grid of races, with a description card" /></td>
-    <td width="33%"><img src="docs/images/town.jpg" alt="Bree by day: shaded tiles, townsfolk, the HUD with health, mana and sanity bars, and the smart toolbar" /></td>
-    <td width="33%"><img src="docs/images/dungeon.jpg" alt="Mount Doom: rivers of lava glow in the dark while a pack of hounds and a golem close in" /></td>
+    <td width="33%"><img src="docs/images/creation.jpg" alt="Character creation: choosing a High-Elf from the grid of races, with their attributes, traits and skills" /></td>
+    <td width="33%"><img src="docs/images/inventory.jpg" alt="The inventory of a level 34 Dwarf Warrior: the Phial of Galadriel, the Chain Mail of Arvedui, the Shield of Celegorm and a Katana of Aman" /></td>
+    <td width="33%"><img src="docs/images/soundtrack.jpg" alt="The soundtrack: The Crack of Doom playing, with every theme and the story it tells" /></td>
   </tr>
   <tr>
-    <td width="33%"><img src="docs/images/character.jpg" alt="The character sheet: attributes, combat and progress at a glance" /></td>
-    <td width="33%"><img src="docs/images/inventory.jpg" alt="The inventory: pack and equipment tabs, weight carried, tappable items" /></td>
-    <td width="33%"><img src="docs/images/soundtrack.jpg" alt="The soundtrack: every theme grouped by where it plays, with Play all" /></td>
+    <td align="center"><sub><b>Choose your hero</b> from 22 races and 30 classes</sub></td>
+    <td align="center"><sub><b>Gather legendary gear</b> and tap anything to read about it</sub></td>
+    <td align="center"><sub><b>Music composed live</b> for every place you go</sub></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="docs/images/mirkwood.jpg" alt="Mirkwood: a level 12 Hobbit Warrior fights off a nest of giant spiders among the trees — Unstoppable, 8 foes in quick succession" /></td>
+    <td width="33%"><img src="docs/images/moria.jpg" alt="Moria: a level 34 Dwarf Warrior surrounded by an army of orcs in the dungeon's corridors slays Bolg, Son of Azog — a legend falls" /></td>
+    <td width="33%"><img src="docs/images/doom-death.jpg" alt="Mount Doom: a level 41 High-Elf Mage, ringed by a pack of fire hounds on the lava, is enveloped in flames — You have died, killed by a Fire hound" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Mirkwood</b> · a Hobbit at level 12 cuts through a spider nest</sub></td>
+    <td align="center"><sub><b>Moria</b> · a Dwarf at level 34 fells Bolg amid an orc army</sub></td>
+    <td align="center"><sub><b>Mount Doom</b> · and every tale ends somewhere</sub></td>
   </tr>
 </table>
 
@@ -51,10 +61,12 @@ This is the full ToME 2 game, with an interface designed from scratch for phones
 | **Tap** | Walk to any place you have seen — doors open on the way. A tap into the dark takes one step towards it. Tap a creature beside you to fight it. |
 | **Press and hold** | Look at anything on the map: *"a Village idiot (awake, unhurt) on grass"*. |
 | **Drag** · **Pinch** | Look around the level without moving · zoom in and out. |
-| **Explore** | One button walks you to the next unexplored room or item, stops when danger appears, and heads for the stairs once the level is done. |
-| **Toolbar** | One button changes with the moment — *Attack*, *Pick up*, *Descend*, *Eat* when hungry, *Light* in the dark, else *Explore* — and your own buttons (your quick spell, Cast, Fire, Items, Rest) stay where they are. |
+| **Explore** | One button maps the level for you, room by room, picking up gold, walking past your companions and stopping the moment danger appears; once the level is done it heads for the stairs. |
+| **Toolbar** | One button changes with the moment — *Attack*, *Pick up*, *Descend*, *Enter shop*, *Eat* when hungry, *Light* in the dark, else *Explore* — and your own buttons (your quick spell, Cast, Fire, Items, Rest) stay where they are. |
 
 **Everything is a tap away.** Your pack, equipment, character sheet, skills, abilities and knowledge are proper mobile screens, not text menus. Tap any item to read about it and use it; tap your name for your character; tap a creature for what you know about it. Questions — *how many?*, *which direction?*, *which target?* — appear as simple cards.
+
+**Shops and your home.** Browse a shop's whole stock in one list, tap anything to inspect it, then buy as many as you can afford. Sell from the same screen: each shop says what it buys and what it will pay. Store your treasures at home and take them back whenever you like.
 
 **A dungeon that glows.** Torchlight flickers and fades into darkness, lava casts a molten glow, water shimmers, and spells light up the walls as they fly. Places you've seen linger in a dim, blue memory.
 
@@ -64,20 +76,22 @@ This is the full ToME 2 game, with an interface designed from scratch for phones
 
 **Music for every place.** The soundtrack is composed live as you play, so it is never quite the same twice. Its leitmotifs — the hero's horn call, the Bree jig, the Dwarf march, the Shadow's theme — are recast for each place you visit and swell when danger is near, while sound effects bring every swing, door and spell to life. Hear every theme from **Soundtrack** on the title screen.
 
-**Your way.** Portrait or landscape, phone, tablet or desktop. Four text sizes, adjustable animation, separate music and sound volumes, classic ASCII symbols if you prefer them, and full keyboard support with all the original ToME keys.
+**Your way.** Portrait or landscape, phone, tablet or desktop. Four text sizes, adjustable animation, separate music and sound volumes, classic ASCII symbols if you prefer them, dungeon levels that stay as you left them (or are new each visit), and full keyboard support with all the original ToME keys. Settings also reminds you of the rules you chose for each adventure.
 
 ## New to roguelikes?
 
 - **Take it slowly.** Nothing moves until you do — the game is turn-based, so there is always time to think.
 - **Read before you fight.** Press and hold a creature to see how dangerous it is.
 - **Use Explore and Rest.** Let the game do the walking, and rest to recover before going deeper.
-- **Check *How to play*** in the game menu (☰) any time for a quick guide to the controls.
+- **Open Help** from the game menu (☰) or the title screen any time: a searchable guide to the controls, the dungeons, every race and class, and much more.
 
-## Your saves
+## Your adventures
 
 - The game **saves automatically** when you leave the app, and **☰ → Save and quit** returns you to the title screen.
-- Saves live in your browser on this device. Use **Export saves** (in the ☰ menu or on the title screen) to keep a backup or move your hero to another device, and **Import saves** to bring it back.
-- Clearing your browser's site data deletes your saves, so export a backup first.
+- The title screen offers **Continue** for your last hero, with their level, class and where they stand. **More adventurers** lists the rest; tap any hero to play on, or to delete them.
+- **☰ → Abandon adventure** ends the current adventure for good. Your other heroes, the Hall of Fame and your deeds stay.
+- Everything lives in your browser on this device. **Backup** on the title screen exports all of it as one file, to keep it safe or move it to another device, and imports it again.
+- Clearing your browser's site data deletes your adventures, so export a backup first.
 
 ## Install it on your device
 

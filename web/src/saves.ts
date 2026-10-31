@@ -8,6 +8,7 @@ export interface EmscriptenFS {
   isDir(mode: number): boolean;
   readFile(path: string): Uint8Array;
   writeFile(path: string, data: Uint8Array): void;
+  unlink(path: string): void;
   mkdirTree(path: string): void;
   syncfs(populate: boolean, callback: (err: unknown) => void): void;
 }
@@ -153,6 +154,34 @@ export function writeFiles(fs: EmscriptenFS, root: string, files: SaveFile[]): v
     fs.mkdirTree(dir);
     fs.writeFile(absolute, file.data);
   }
+}
+
+/** tome2's savefile index (global.svg) under the storage root, searched a few directories deep; null when there is none yet. */
+export function findSaveIndex(fs: Pick<EmscriptenFS, 'readdir' | 'stat' | 'isDir'>, root: string): string | null {
+  const find = (dir: string, depth: number): string | null => {
+    if (depth > 4) return null;
+    let names: string[];
+    try {
+      names = fs.readdir(dir);
+    } catch {
+      return null;
+    }
+    for (const name of names) {
+      if (name === '.' || name === '..') continue;
+      const path = `${dir}/${name}`;
+      if (name === 'global.svg') return path;
+      try {
+        if (fs.isDir(fs.stat(path).mode)) {
+          const found = find(path, depth + 1);
+          if (found) return found;
+        }
+      } catch {
+        /* Unreadable entry: skip it. */
+      }
+    }
+    return null;
+  };
+  return find(root, 0);
 }
 
 export function syncToStorage(fs: EmscriptenFS): Promise<void> {

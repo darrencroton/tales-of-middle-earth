@@ -177,10 +177,10 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Explore and travel',
         icon: '⇢',
         summary: 'Let your hero walk, and stop when it matters.',
-        keywords: 'auto explore automatic travel walk stop speed pace relaxed gold spotted',
+        keywords: 'auto explore automatic travel walk stop speed pace relaxed gold spotted companion pet push past swap',
         body: [
           '*Explore* walks to the places you have not seen yet, filling in the map around where you started before heading further out. It picks up gold on the way, and tells you about any items it passes.',
-          'It stops when a creature comes into sight, when you are hurt or robbed, when your light goes out or it is too dark to see, and when a creature blocks the only way. A creature already in view will not stop it again.',
+          'It stops when a creature comes into sight, when you are hurt or robbed, when your light goes out or it is too dark to see, and when a creature blocks the only way. A creature already in view will not stop it again. Your companions do not block it: you push past them, swapping places, unless you are confused, stunned or seeing things.',
           'Once a dungeon level is explored, Explore goes straight to the way on: down while you are heading down, up once you have turned back.',
           '*Speed* switches between a normal and a relaxed pace while you explore, without stopping. Settings → Exploring sets the pace for good.',
           { heading: 'Travel' },
@@ -366,11 +366,11 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Shops and money',
         icon: '$',
         summary: 'Buying, selling and your home.',
-        keywords: 'shop store buy sell gold money price home general store armoury weaponsmith temple alchemist magic black market',
+        keywords: 'shop store buy sell gold money price home stash keep museum donate general store armoury weaponsmith temple alchemist magic black market',
         body: [
-          'Walk into a shop’s door to trade. Tap an item for its description and *Buy*; your own things can be sold from the same screen.',
-          'Unless you chose *No selling* when you began, shops buy what you bring. With No selling they pay nothing, but gold found lying about is worth five times as much.',
-          'Your *Home* keeps anything you leave there safe.',
+          'Walk into a shop’s door to trade; standing at the door, *Enter shop* on the toolbar takes you back in. *Buy* lists everything for sale, *Sell* what you carry. Tap an item for its description, then *Buy* or *Sell*, choosing how many. Things you cannot afford, or the shop will not take, are dimmed and say why.',
+          'Each shop buys only its own kind of goods, and some specialist shops buy nothing at all. Unless you chose *No selling* when you began, shops pay for what they take. With No selling they pay nothing, but gold found lying about is worth five times as much.',
+          'Your *Home* keeps anything you leave there safe: *Inventory* to store what you carry, *Stored* to take it back.',
           {
             terms: [
               ['General Store', 'Food, torches, lanterns, oil, cloaks, ammunition, digging tools.'],
@@ -546,10 +546,12 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Saving and backups',
         icon: '⇩',
         summary: 'Saving, backups and moving to another device.',
-        keywords: 'save saving load continue export import backup device browser quit',
+        keywords: 'save saving load continue export import backup device browser quit delete abandon heroes adventurers',
         body: [
           'The game saves when you leave the app. Menu → *Save game* saves now; *Save and quit* saves and returns to the title.',
-          'Your games are kept in this browser. *Saved games → Export* (*Saves* on the title screen) downloads a backup (with your chronicle and map memory); *Import* restores one, here or on another device.',
+          'On the title screen *Continue* takes up your last hero; *More adventurers* lists the others. Tap a hero for *Play* or *Delete*.',
+          'Menu → *Abandon adventure* ends the current adventure for good and deletes its saved game; your other heroes, the Hall of Fame and your deeds stay.',
+          'Everything is kept in this browser. *Backup* on the title screen exports all of it (every hero, the Hall of Fame, your deeds) as one file, and imports it again, here or on another device.',
           'Clearing this site’s data in your browser deletes your games: export them first.',
           'Add the game to your home screen to play full screen, even offline.',
         ],

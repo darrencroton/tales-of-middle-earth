@@ -1,4 +1,4 @@
-import { KEY_BACKSLASH as BACKSLASH, KEY_ENTER as ENTER, keyCodes, typedAnswer } from '../input/keys.ts';
+import { KEY_BACKSLASH as BACKSLASH, KEY_ENTER as ENTER, KEY_SPACE as SPACE, keyCodes, typedAnswer } from '../input/keys.ts';
 import type { InventoryState, ItemState } from '../render/snapshot.ts';
 import { pickupCommand } from './actions.ts';
 import type { Macro, MacroScreen } from './macro.ts';
@@ -18,6 +18,8 @@ export interface ItemAction {
   danger?: boolean;
   /** Shows a tome2 screen to read; the item sheet reopens when it closes. */
   reading?: boolean;
+  /** Answers yes to tome2's question that follows (a shop's price). */
+  confirm?: boolean;
 }
 
 export const INVEN_WIELD = 24;
@@ -195,9 +197,13 @@ export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace
     break;
   }
 
-  for (let follow = 0; follow < 3; follow++) {
+  for (let follow = 0; follow < 6; follow++) {
     if (/Quantity/i.test(s.prompt)) {
       s = yield [...keyCodes(String(quantityAnswer(action.quantity, item.number))), ENTER];
+    } else if (action.confirm && /-more-/.test(s.prompt)) {
+      s = yield [SPACE];
+    } else if (action.confirm && /\[y\/n/.test(s.prompt)) {
+      s = yield keyCodes('y');
     } else if (action.needsText && /Inscri/i.test(s.prompt)) {
       s = yield typedAnswer(text, item.ins);
     } else {

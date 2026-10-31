@@ -15,18 +15,22 @@ import { commandGroups, commandKeys, contextActions, contextualAction, transitio
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { approachTarget, isKnown, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
+import { approachTarget, isKnown, pushPast, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
-import { CAVE_MARK, isHostile, LAYER_MASK, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState } from './render/snapshot.ts';
+import { CAVE_MARK, isHostile, LAYER_MASK, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
   downloadText,
   encodeBundle,
   exportFilename,
+  findSaveIndex,
   writeFiles,
 } from './saves.ts';
+import { adventurerOf, AdventurerStore, deleteHeroSave, heroLine } from './play/adventurers.ts';
+import { adventurerSummary, openAdventurer, openAdventurers, type AdventurerDetails, type AdventurerHandlers } from './ui/adventurers.ts';
+import type { SaveInfo } from './title.ts';
 import { ANIMATION_FPS, applyTextSize, EFFECT_DELAY, loadSettings, saveSettings, type Settings } from './settings.ts';
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
 import { TitleScreen } from './title.ts';
@@ -51,19 +55,19 @@ import {
 import { buildMemorial, entryKey, memorialKey, type Memorial } from './play/memorial.ts';
 import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
-import { el, iconText, section } from './ui/dom.ts';
+import { el, iconText, navButton, section } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
 import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
-import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate } from './ui/menus.ts';
+import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate, type AdventureRules } from './ui/menus.ts';
 import { Sheets, type SheetTrail } from './ui/sheet.ts';
-import { bufferRows, parseRows, type ChoiceBlock, type OptionBlock } from './ui/termparse.ts';
+import { bufferRows, type OptionBlock } from './ui/termparse.ts';
 import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.ts';
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
 import type { PopAction } from './ui/popup.ts';
 import { cleanPrompt, describableRange } from './ui/prompttext.ts';
 import { FilePages, parseHelpFile, viewerSource, viewerHeading, type HelpFile, type HelpLink, type ViewerHeading } from './ui/filepages.ts';
-import { openStoreItem, parseStore, type StoreScreen } from './ui/store.ts';
+import { entranceLabel, offerElements, shelfElements, shelfPage, shopModel, trades, type ShopHandlers, type ShopModel, type ShopTab } from './ui/store.ts';
 import { parseAbilities, parseSkills } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
 import { hallOfFameElements, heroEntry, isHallOfFame, parseTomb, tombElements } from './ui/gameover.ts';
@@ -216,6 +220,8 @@ let memorial: Memorial | null = null;
 let pendingAnew: string | null = null;
 let looking = false;
 let quitting = false;
+/** The hero whose adventure is being abandoned: once the game has closed, their save is deleted. */
+let abandoning: string | null = null;
 /** Sheets covered by a tome2 screen, reopened once it closes. */
 let returnTo: SheetTrail | null = null;
 const macros = new MacroRunner();
@@ -229,12 +235,7 @@ const sheets = new Sheets(document.body, () => {
 });
 
 const termView = new TermView(stage, () => buffer.palette, {
-  onChoice(key, choice) {
-    const store = currentStore();
-    if (store && choice.row < store.commandsRow) {
-      openStoreItem(api, store, choice);
-      return;
-    }
+  onChoice(key) {
     const link = viewerFile()?.help?.links.find((l) => l.key === key);
     if (link) {
       followLink(link.index);
@@ -791,24 +792,6 @@ function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
   const prompt = rowZeroText();
   const kind = currentPrompt();
   const options: TermViewOptions = { layout, describe: describableRange(prompt), cursorRow: buffer.cursorY };
-  const store = currentStore();
-  if (store) {
-    const lines = buffer.screenText().split('\n');
-    const goldRow = lines.findIndex((l) => /Gold Remaining/.test(l));
-    const headerRow = lines.findIndex((l) => /Item Description|Weight\s+Price/.test(l));
-    const heading = lines.slice(0, 5).find((l) => /\(\d+\)\s*$/.test(l));
-    const parts = heading?.trim().split(/\s{2,}/) ?? [];
-    const name = parts.at(-1)?.replace(/\s*\(\d+\)$/, '');
-    const keeper = parts.length > 1 ? parts[0].replace(/\s*\(/, ' (') : undefined;
-    const gold = goldRow >= 0 ? /Gold Remaining:\s*(\d+)/.exec(lines[goldRow])?.[1] : undefined;
-    options.title = name ?? (store.home ? 'Your home' : 'Shop');
-    if (keeper) options.subtitle = keeper;
-    if (gold) options.badge = `${gold} gold`;
-    const firstShown = headerRow >= 0 ? headerRow : 1;
-    const lastShown = goldRow >= 0 ? goldRow : store.commandsRow;
-    options.hideRow = (row) => row < firstShown || row >= lastShown;
-    return options;
-  }
   if (prompt && kind !== 'more' && !CARD_KINDS.has(kind)) options.title = cleanPrompt(prompt) || undefined;
   if (kind === 'item') options.tabs = itemTabs(prompt);
   if (viewerHeading(prompt)?.size === 0) options.empty = 'Nothing here yet.';
@@ -1062,8 +1045,13 @@ function memoryHeroId(): string | null {
   return `${player.name}#${(place.heroId >>> 0).toString(36)}`;
 }
 
-/** Puts what the hero remembers of the current level into the store, and the store into storage. */
+/** Puts what the hero remembers of the current level into the store, and the store into storage; notes where the hero is for the title screen. */
 function persistMapMemory(): void {
+  const player = lastState?.player;
+  if (player?.name && !player.dead && adventurers.loaded) {
+    adventurers.note(adventurerOf(player));
+    adventurers.save();
+  }
   if (heroMemory) {
     if (landMemory?.changed) {
       mapMemory.setArea(heroMemory, landMemory.key, landMemory.width, landMemory.height, landMemory.mask);
@@ -1200,8 +1188,8 @@ function exploreNext(snap: LevelSnapshot | null): ExploreNext {
 
 function exploreNextFrom(snap: LevelSnapshot): ExploreNext {
   const plan = explorePlan();
-  const stop = nextStop(snap, materials, plan);
-  if (!stop && nextStop(snap, materials, plan, true)) return 'explore';
+  const stop = nextStop(snap, materials, plan, companionCells(snap));
+  if (!stop && nextStop(snap, materials, plan, 'all')) return 'explore';
   if (!stop) return snap.depth === 0 ? 'worldMap' : 'none';
   if (stop.kind !== 'exit') return 'explore';
   if (stop.x === snap.px && stop.y === snap.py) return 'here';
@@ -1250,13 +1238,16 @@ function refresh(): void {
     hasEffects = false;
   }
 
-  if (snap.icky) {
+  /* tome2 clears its screen flag when an item prompt ends, though the shop is still open until the trade's last question. */
+  const trading = !!trade && !!engine.store();
+  if (snap.icky || trading) {
     setMode('overlay');
     const under = engine.savedScreen() ?? base;
     const region = (under ? buffer.diffBounds(under, 1) : null) ?? { x0: 0, y0: 1, x1: buffer.cols - 1, y1: buffer.rows - 1 };
     const rows = bufferRows(buffer, 0, buffer.rows - 1);
     const screen = characterScreen();
     const characterView = !!(screen.skills || screen.abilities || screen.sheet);
+    shownShop = currentShop();
     const tomb = parseTomb(rows);
     const fame = !tomb && ended && isHallOfFame(rows);
     if (tomb) ended = true;
@@ -1265,6 +1256,7 @@ function refresh(): void {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
       if (chronicles.fall(tomb.name)) chronicles.save();
+      if (adventurers.forget(tomb.name)) adventurers.save();
       if (heroMemoryId) {
         mapMemory.forget(heroMemoryId);
         mapMemory.save();
@@ -1290,6 +1282,8 @@ function refresh(): void {
       termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero to look back on them' }, `fame:${scores.length}:${hero}`, () =>
         hallOfFameElements(scores, hero, (entry) => openFameHero(entry, true)),
       );
+    } else if (shownShop) {
+      renderShop(shownShop);
     } else if (character.render(screen) || characterView) {
       /* The character sheet shows these screens; one typed on the map opens it at the next idle. */
       termView.hide();
@@ -1299,6 +1293,8 @@ function refresh(): void {
     map.setReticle(null);
   } else {
     setMode('map');
+    shownShop = null;
+    shopTab = null;
     termView.hide();
     const cursor = rowZeroText() ? terminalToDungeon(snap, buffer.cursorX, buffer.cursorY) : null;
     map.setReticle(cursor && (cursor.x !== snap.px || cursor.y !== snap.py) ? cursor : null);
@@ -1321,9 +1317,8 @@ function refresh(): void {
     if (sameHero) showHits(previous, state, slain);
     if (state.player) chronicleUpdate(state.player, slain, snap.turn, sameHero && (previous.player?.chp ?? 0) > state.player.chp);
     if (state.player?.dead) captureMemorial(state.player, state, snap);
-    const store = currentStore();
-    if (store && !inStore) audio.cue('shop');
-    inStore = !!store;
+    if (shownShop && !inStore) audio.cue('shop');
+    inStore = !!shownShop;
     audio.setView(ended ? 'gameover' : 'game');
     hearGear(snap.turn);
     audio.update(snap, state, inStore);
@@ -1471,35 +1466,144 @@ function fallenSaveFor(entry: ScoreEntry): boolean {
 
 /* Shops */
 
-function currentStore(): StoreScreen | null {
+/** The shop or home shown in the native panel, and which of its lists is open (kept while the hero stays inside). */
+let shownShop: StoreState | null = null;
+let shopTab: { name: string; tab: ShopTab } | null = null;
+/** A trade under way: what is said once it has gone through, and how things stood before, to tell whether it did. */
+let trade: { done: string | null; before: string; state: GameState | null } | null = null;
+
+/**
+ * The shop (or home, or museum) tome2 is in, shown natively from the
+ * engine's data whatever its kind: while tome2 waits at the shop's own
+ * commands, or while a trade answers its questions.
+ */
+function currentShop(): StoreState | null {
   if (mode !== 'overlay') return null;
-  const screen = buffer.screenText();
-  if (!/You may:/.test(screen)) return null;
-  const choices = parseRows(bufferRows(buffer, 0, buffer.rows - 1), 0, 0, buffer.cols - 1).filter(
-    (b): b is ChoiceBlock => b.kind === 'choice',
-  );
-  return parseStore(screen, choices);
+  const store = engine.store();
+  if (!store) return null;
+  if (trade) return store;
+  const prompt = currentPrompt();
+  if (prompt !== 'none' && prompt !== 'other') return null;
+  return /^You may:/.test(buffer.rowText(21)) ? store : null;
 }
 
-function storeActions(store: StoreScreen): Action[] {
-  const actions: Action[] = [{ id: 'leave', label: 'Leave', icon: '‹', effect: { kind: 'keys', keys: [KEY_ESCAPE] } }];
-  for (const command of store.commands) {
-    if (!/^(Sell|Drop) an item/i.test(command.label)) continue;
-    const label = /^Sell/i.test(command.label) ? 'Sell' : 'Store';
-    actions.push({ id: `store-${command.key}`, label, icon: '⇣', effect: { kind: 'keys', keys: [BACKSLASH, command.key.charCodeAt(0)] } });
+const shopHandlers: ShopHandlers = {
+  trade(macro, done) {
+    trade = { done, before: tradeState(), state: engine.gameState(20) };
+    api.runMacro(macro);
+    if (!macros.running) settleTrade();
+  },
+  page: () => shelfPage(buffer.screenText()),
+};
+
+/** Gold, stock and what the hero carries, to tell whether a trade went through. */
+function tradeState(): string {
+  const store = engine.store();
+  const inventory = engine.inventory();
+  return JSON.stringify([store?.gold, store?.stock.map((i) => [i.name, i.number]), inventory?.pack.map((i) => [i.name, i.number]), inventory?.equip.map((i) => i.name)]);
+}
+
+/** Once a trade's questions are answered: says it went through, or what tome2 said instead (no room, not enough gold). */
+function settleTrade(): void {
+  if (!trade || macros.running) return;
+  const { done, before, state } = trade;
+  trade = null;
+  if (tradeState() !== before) {
+    if (done) showToast(done, false);
+    return;
   }
-  if (store.hasNextPage) actions.push({ id: 'nextpage', label: 'More', icon: '»', effect: { kind: 'keys', keys: [SPACE] } });
-  actions.push(
+  const next = engine.gameState(20);
+  const said = state && next ? newMessages(state, next)[0]?.text : undefined;
+  if (!said && !done) return;
+  showToast(said ? said.replace(/\s*-more-\s*$/, '') : 'Nothing changed.', false);
+  audio.cue('deny');
+}
+
+function setShopTab(tab: ShopTab): void {
+  if (!shopTab) return;
+  shopTab.tab = tab;
+  dirty = true;
+  requestFrame();
+}
+
+/** The shop as a panel: its shelf (its services first) and what the hero can offer it as tabs, Exit beside them; a building that does not trade lists its services. */
+function renderShop(store: StoreState): void {
+  const model = shopModel(store);
+  if (shopTab?.name !== store.name) shopTab = { name: store.name, tab: 'shelf' };
+  if (!trades(store)) {
+    termView.renderCustom(
+      { layout: 'panel', title: store.name, subtitle: store.owner.replace(/\s*\(/, ' (') || undefined, tabs: [{ id: 'exit', label: 'Exit', active: false, run: () => send([KEY_ESCAPE]) }] },
+      JSON.stringify(model.extras),
+      () => [servicesElement(model)],
+    );
+    return;
+  }
+  const tab = model.offer ? shopTab.tab : 'shelf';
+  const inventory = engine.inventory();
+  const tabs: TermViewTab[] = [
+    { id: 'shelf', label: model.shelf.label, active: tab === 'shelf', run: () => setShopTab('shelf') },
+    ...(model.offer ? [{ id: 'offer', label: model.offer.label, active: tab === 'offer', run: () => setShopTab('offer') }] : []),
+    { id: 'exit', label: 'Exit', active: false, run: () => send([KEY_ESCAPE]) },
+  ];
+  const key = JSON.stringify([tab, store, inventory?.pack, inventory?.equip]);
+  const shop = !store.home && !store.museum;
+  termView.renderCustom({ layout: 'panel', title: store.name, subtitle: store.owner.replace(/\s*\(/, ' (') || undefined, badge: shop ? `${store.gold} gold` : undefined, tabs }, key, () =>
+    tab === 'offer' && inventory
+      ? offerElements(api, store, model, inventory, shopHandlers)
+      : model.extras.length
+        ? [section('Services', servicesElement(model)), section('For sale', ...shelfElements(api, store, model, shopHandlers))]
+        : shelfElements(api, store, model, shopHandlers),
+  );
+}
+
+/** A building's services (a quest to take, the town's history), each sent to tome2 as its own command. */
+function servicesElement(model: ShopModel): HTMLElement {
+  const list = el('div', 'menu-list');
+  for (const extra of model.extras) {
+    const row = navButton(extra.name, {
+      hint: serviceHint(extra),
+      className: `row-button${extra.closed ? ' unavailable' : ''}`,
+      onClick: () => runService(extra),
+    });
+    row.dataset.key = extra.key;
+    list.append(row);
+  }
+  if (!model.extras.length) list.append(el('p', 'empty', 'There is nothing to do here.'));
+  return list;
+}
+
+/** What a service costs, or that the keeper will not do it for this hero. */
+function serviceHint(service: StoreCommand): string | undefined {
+  if (service.closed) return 'Not for you';
+  return service.cost > 0 ? `${service.cost} gold` : undefined;
+}
+
+/** Asks for a service, or says why it cannot be had (no gold spent either way when it cannot). */
+function runService(service: StoreCommand): void {
+  if (service.closed) refuse('The keeper will not do that for you.');
+  else if (service.cost > (lastState?.player?.au ?? 0)) refuse(`That costs ${service.cost} gold, more than you have.`);
+  else send([BACKSLASH, service.key.charCodeAt(0)]);
+}
+
+/** The toolbar while in a shop (beneath its panel). */
+function shopActions(): Action[] {
+  return [
     { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } },
     { id: 'menu', label: 'Menu', icon: '☰', effect: { kind: 'menu' } },
-  );
-  return actions;
+  ];
 }
 
 /* Action bar */
 
 function underfootName(snap: LevelSnapshot): string {
   return features[snap.feat[snap.py * snap.width + snap.px]]?.name.toLowerCase() ?? '';
+}
+
+/** The button for the door of a shop, the home or another building the hero stands at (tome2 calls them all buildings). */
+function entranceHere(snap: LevelSnapshot): string | null {
+  if (snap.wild || underfootName(snap) !== 'building') return null;
+  const store = engine.store();
+  return store ? entranceLabel(store) : null;
 }
 
 /** A weapon or light worth equipping from the pack. */
@@ -1537,6 +1641,7 @@ function mapSituation(snap: LevelSnapshot): Partial<ActionContext> {
   const quick = quickEntry();
   return {
     exploreNext: exploreNext(snap),
+    entrance: entranceHere(snap),
     gear: gearSuggestion()?.kind ?? null,
     quick: quick ? { label: recentLabel(quick), unavailable: recentUnavailable(quick, true) } : null,
     magic: magicLabel(),
@@ -1550,12 +1655,11 @@ function updateActionBar(force = false): void {
   const snap = lastSnap;
   const directed = mode === 'screen' ? director.actions() : null;
   const prompt = currentPrompt();
-  const store = prompt === 'none' || prompt === 'other' ? currentStore() : null;
   const foe = adjacentFoe();
   map.setFoe(foe && mode === 'map' ? { x: foe.x, y: foe.y } : null);
   const actions =
     directed ??
-    (store ? storeActions(store) : null) ??
+    (shownShop ? shopActions() : null) ??
     contextActions({
       mode,
       prompt,
@@ -1624,7 +1728,7 @@ function drawAction(button: HTMLButtonElement, action: Action, settleMs: number)
 }
 
 /* Toolbar actions a pop-up's own frame already offers (its close button) or that belong to the map. */
-const FRAME_ACTIONS = new Set(['menu', 'escape', 'keyboard', 'leave']);
+const FRAME_ACTIONS = new Set(['menu', 'escape', 'keyboard']);
 
 /** What a tome2 panel offers at its foot: the toolbar's actions for the screen, less those its frame covers. */
 function panelActions(actions: readonly Action[]): PopAction[] {
@@ -1749,7 +1853,21 @@ function openCommands(): void {
 
 function travelContext(): TravelContext | null {
   if (!lastSnap || !lastState?.player) return null;
-  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au };
+  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au, passing: companionCells(lastSnap) };
+}
+
+/** Cells of the companions travel and exploring walk through, swapping places as tome2 lets the hero (`pushPast`). */
+function companionCells(snap: LevelSnapshot): Set<number> {
+  const player = lastState?.player;
+  const monsters = lastState?.monsters ?? [];
+  if (!player || !monsters.some((m) => m.status > 0)) return new Set();
+  const weapon = engine.inventory()?.equip.find((slot) => slot.i === INVEN_WIELD)?.name ?? '';
+  return pushPast(snap, materials, monsters, {
+    confused: (player.status.confused ?? 0) > 0,
+    stunned: (player.status.stun ?? 0) > 0,
+    hallucinating: (player.status.hallucinating ?? 0) > 0,
+    stormbringer: /Stormbringer/.test(weapon),
+  });
 }
 
 function stopAutomation(message: string | null, cause: string): void {
@@ -1798,6 +1916,7 @@ function changingButton(snap: LevelSnapshot): Action {
     floorObjects: snap.floorObjects,
     alwaysPickup: alwaysPickup(),
     exploreNext: exploreNext(snap),
+    entrance: entranceHere(snap),
     gear: gearSuggestion()?.kind ?? null,
     foe: foe ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
     worldMap: snap.depth === 0 && snap.wild,
@@ -1827,7 +1946,7 @@ function startTravel(goal: MapPoint): void {
   hideToast();
   recentreMap();
   const snap = ctx.snap;
-  const approach = approachTarget(snap, materials, goal);
+  const approach = approachTarget(snap, materials, goal, ctx.passing);
   if (!approach && !isAdjacent(snap.px, snap.py, goal.x, goal.y)) {
     showToast(STOP_MESSAGES.unreachable ?? '');
     return;
@@ -2194,13 +2313,24 @@ const engine = new Engine(buffer, {
       openMessage(
         sheets,
         'Saves unavailable',
-        `Saved games could not be loaded from this browser's storage (${storageError}). Saving to the browser is switched off for this session so existing saves are not overwritten. You can still play and use Export saves to keep a copy.`,
+        `Saved games could not be loaded from this browser's storage (${storageError}). Saving to the browser is switched off for this session so existing saves are not overwritten. You can still play, but this game cannot be kept.`,
       );
     }
   },
   onExit(message) {
     if (quitting) {
-      returnToTitle();
+      const abandoned = abandoning;
+      abandoning = null;
+      if (!abandoned) {
+        returnToTitle();
+        return;
+      }
+      lastState = null;
+      heroMemory = null;
+      heroMemoryId = '';
+      landMemory = null;
+      deleteAdventurer(abandoned);
+      engine.syncNow().catch((err) => console.error('Saving to browser storage failed', err)).finally(() => returnToTitle());
       return;
     }
     title.showEnd(message ?? 'The game has ended. Your progress is saved in this browser.', false, [
@@ -2218,6 +2348,7 @@ const engine = new Engine(buffer, {
     /* Storage has been read from the browser by the time the engine first waits for a key. */
     if (!chronicles.loaded) chronicles.load(engine.fs, engine.savePath);
     if (!mapMemory.loaded) mapMemory.load(engine.fs, engine.savePath);
+    if (!adventurers.loaded) adventurers.load(engine.fs, engine.savePath);
     if (!macros.running && readViewer()) return;
     director.idle();
     dirty = false;
@@ -2279,6 +2410,12 @@ const engine = new Engine(buffer, {
       stepTargeting();
     }
     settleAttempt();
+    settleTrade();
+    /* tome2 never comes back to the command prompt after saving to quit: back at it, the quit stopped short, and nothing is left to delete. */
+    if (quitting && !macros.running && lastSnap?.inDungeon && lastSnap.atCommand && !lastSnap.icky) {
+      quitting = false;
+      abandoning = null;
+    }
     requestFrame();
   },
   onKey(code) {
@@ -2327,9 +2464,16 @@ const director = new Director({
 
 const feel = new GameFeel(byId<HTMLElement>('stage'), () => settings.animation);
 const chronicles = new ChronicleStore();
+const adventurers = new AdventurerStore();
 const coach = new Coach(byId<HTMLElement>('stage'));
 const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
   onChoose: (choice) => director.choose(choice),
+  onAdventurer: (save) => openAdventurer(sheets, save, adventurerHandlers),
+  onAdventurers: (saves) => openAdventurers(sheets, saves, adventurerHandlers),
+  describe: (save) => {
+    const details = adventurerDetails(save);
+    return { name: details.name, line: adventurerSummary(details) };
+  },
   onReady: () => {
     const name = pendingAnew;
     pendingAnew = null;
@@ -2337,7 +2481,7 @@ const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.
     adoptUpdate?.();
   },
   onSettings: () => openSettingsSheet(),
-  onSaves: () => openSavesMenu(),
+  onBackup: () => openBackupMenu(),
   onMusic: () => openSoundtrack(sheets, audio),
   onFame: () => openHallOfFame(),
   onHelp: () => openHelpSheet(),
@@ -2478,6 +2622,14 @@ window.addEventListener('keydown', (e) => {
     if ((e.key === 'Escape' || e.key === 'Enter') && !macros.running) finishGame();
     return;
   }
+  if (shownShop) {
+    /* In a shop, arrows move through its list, Enter opens the highlighted item and Escape leaves. */
+    if (e.key === 'Escape' || termView.navigate(e)) {
+      e.preventDefault();
+      if (e.key === 'Escape') send([KEY_ESCAPE]);
+      return;
+    }
+  }
   if (viewerHeading(rowZeroText())) {
     /* Escape leaves the whole viewer; tome2's search and go-to keys would open questions the reader does not show. */
     if (e.key === 'Escape' || /^[=/#%]$/.test(e.key)) {
@@ -2589,7 +2741,14 @@ function openSettingsSheet(): void {
     dirty = true;
     requestFrame();
     title.animationChanged();
-  });
+  }, adventureRules());
+}
+
+/** The rules the hero's adventure was begun with, during a game. */
+function adventureRules(): AdventureRules | null {
+  const hero = lastState?.player?.name;
+  const run = inGame() ? engine.runOptions() : null;
+  return hero && run ? { hero, run } : null;
 }
 
 /** Applies the settings that live in CSS: text size and animation. */
@@ -2609,17 +2768,18 @@ function inGame(): boolean {
   return !!lastSnap?.inDungeon;
 }
 
-/** Saves, waits for the save to reach browser storage, then returns to the title screen. */
-function saveAndQuit(): void {
+/** Saves, waits for the save to reach browser storage, then returns to the title screen; `abandon` names a hero whose save is then deleted. */
+function saveAndQuit(abandon: string | null = null): void {
   sheets.closeAll();
   if (!inGame()) {
     location.reload();
     return;
   }
   quitting = true;
+  abandoning = abandon;
   stopAutomation(null, 'quit');
   persistMapMemory();
-  showToast('Saving…', false);
+  showToast(abandon ? 'Leaving…' : 'Saving…', false);
   runMacro(quitMacro());
 }
 
@@ -2644,6 +2804,9 @@ function returnToTitle(): void {
   pendingSync = null;
   lastSavedTurn = -1;
   inStore = false;
+  shownShop = null;
+  shopTab = null;
+  trade = null;
   ended = false;
   quitting = false;
   memorial = null;
@@ -2676,6 +2839,7 @@ function returnToTitle(): void {
   hud.reset();
   feel.reset();
   chronicles.loaded = false;
+  adventurers.loaded = false;
   director.reset();
   title.reset();
   setMode('title');
@@ -2752,16 +2916,82 @@ function openHelpSheet(topic?: string): void {
   );
 }
 
-function openSavesMenu(): void {
+/** Backup of everything the game keeps in this browser, on the title screen only: every adventure, the Hall of Fame and the deeds earned. */
+function openBackupMenu(): void {
   openMenu(
     sheets,
-    'Saved games',
+    'Backup',
     [
-      { label: 'Export saves', icon: '⤒', hint: 'Download a backup', run: startExport },
-      { label: 'Import saves', icon: '⤓', hint: 'Restore a backup', run: startImport },
+      { label: 'Export game data', icon: '⤒', hint: 'Download a backup file', run: startExport },
+      { label: 'Import game data', icon: '⤓', hint: 'Restore from a backup file', run: startImport },
     ],
-    'Saves are kept in this browser. Export them to keep a backup or move them to another device.',
+    'Your adventures, the Hall of Fame and your deeds live in this browser. A backup keeps them safe or moves them to another device.',
   );
+}
+
+/* Saved heroes on the title screen */
+
+/** A saved hero's own name: tome2's list gives the savefile's ("Old_Tom"), its index the hero's ("Old Tom, the Hobbit Rogue"). */
+function heroName(save: SaveInfo): string {
+  return save.description.split(', the ')[0] || save.name;
+}
+
+/** What is known of a saved hero: the details noted when they were last saved, their tale so far, else tome2's own description. */
+function adventurerDetails(save: SaveInfo): AdventurerDetails {
+  const name = heroName(save);
+  const noted = adventurers.get(name);
+  const tale = chronicles.peek(name);
+  const alive = tale && !tale.fallen ? tale : null;
+  return {
+    name,
+    line: noted ? heroLine(noted) : save.description.replace(/^.*?, the /, ''),
+    place: noted?.place,
+    saved: noted?.saved,
+    kills: alive?.kills,
+    deepestFeet: alive?.deepestFeet,
+  };
+}
+
+const adventurerHandlers: AdventurerHandlers = {
+  details: adventurerDetails,
+  play: (save) => director.choose({ kind: 'continue', save }),
+  remove: (save) => {
+    const name = heroName(save);
+    deleteAdventurer(name);
+    director.forgetSave(save.name);
+    engine.syncNow().then(
+      () => showToast(`${name}'s adventure was deleted.`, false),
+      (err) => {
+        console.error('Saving to browser storage failed', err);
+        showToast('Browser storage could not be updated.', false);
+      },
+    );
+  },
+};
+
+/** Deletes a hero's adventure: the savefile and kept levels, and what the frontend keeps of them (map memory, tale, title details, recents). */
+function deleteAdventurer(name: string): void {
+  const fs = engine.fs;
+  const root = engine.savePath;
+  const index = fs && root ? findSaveIndex(fs, root) : null;
+  try {
+    if (fs && index) deleteHeroSave(fs, index, name);
+  } catch (err) {
+    console.error(`Deleting ${name}'s save failed`, err);
+  }
+  mapMemory.forgetNamed(name);
+  mapMemory.save();
+  chronicles.forget(name);
+  chronicles.save();
+  adventurers.forget(name);
+  adventurers.save();
+  recents.forget(name);
+}
+
+/** Ends the hero's adventure for good: the game closes as Save and quit does, then the save is deleted. */
+function abandonAdventure(): void {
+  const name = lastState?.player?.name;
+  if (name) saveAndQuit(name);
 }
 
 function openGameMenu(): void {
@@ -2777,8 +3007,18 @@ function openGameMenu(): void {
     } },
     { label: 'Settings', icon: '⚙', hint: 'Text size, animation, map', run: () => openSettingsSheet() },
     { label: 'Help', icon: '?', hint: 'How to play, with a search', run: () => openHelpSheet() },
-    { label: 'Saved games', icon: '⇅', hint: 'Export or import', run: openSavesMenu },
     { label: 'About', icon: 'ℹ', run: () => openTemplate(sheets, 'About', 'about-template') },
+    { label: 'Abandon adventure', icon: '✕', hint: 'End it for good', danger: true, hidden: !playing || fallen, run: () => {
+      const name = lastState?.player?.name ?? 'This hero';
+      confirmSheet(
+        sheets,
+        'Abandon this adventure?',
+        `${name}'s adventure ends here and cannot be taken up again: the saved game is deleted. Your other heroes, the Hall of Fame and the deeds you have earned stay.`,
+        'Abandon',
+        abandonAdventure,
+        true,
+      );
+    } },
     { label: playing ? 'Save and quit' : 'Quit to title', icon: '⏻', hint: 'Back to the title screen', hidden: fallen, run: () => {
       if (!playing) {
         saveAndQuit();
@@ -2786,13 +3026,13 @@ function openGameMenu(): void {
         confirmSheet(
           sheets,
           'Quit without keeping this game?',
-          'Browser storage is unavailable this session, so this game cannot be kept. Export saves first if you want to keep it.',
+          'Browser storage is unavailable this session, so this game cannot be kept.',
           'Quit anyway',
-          saveAndQuit,
+          () => saveAndQuit(),
           true,
         );
       } else {
-        confirmSheet(sheets, 'Save and quit?', 'Your game is saved and you return to the title screen.', 'Save and quit', saveAndQuit);
+        confirmSheet(sheets, 'Save and quit?', 'Your game is saved and you return to the title screen.', 'Save and quit', () => saveAndQuit());
       }
     } },
   ]);
@@ -2802,13 +3042,13 @@ async function exportSaves(): Promise<void> {
   const fs = engine.fs;
   const root = engine.savePath;
   if (!fs || !root) {
-    openMessage(sheets, 'Export saves', 'The game is still loading. Try again in a moment.');
+    openMessage(sheets, 'Export game data', 'The game is still loading. Try again in a moment.');
     return;
   }
   await engine.syncNow().catch((err) => console.warn('Sync before export failed; exporting from memory', err));
   const files = collectFiles(fs, root);
   if (files.length === 0) {
-    openMessage(sheets, 'Export saves', 'There are no saved games yet. Save from the menu first.');
+    openMessage(sheets, 'Export game data', 'There is nothing to back up yet.');
     return;
   }
   downloadText(exportFilename(), encodeBundle(files));
@@ -2818,18 +3058,18 @@ async function importSaves(file: File): Promise<void> {
   const fs = engine.fs;
   const root = engine.savePath;
   if (!fs || !root) {
-    openMessage(sheets, 'Import saves', 'The game is still loading. Try again in a moment.');
+    openMessage(sheets, 'Import game data', 'The game is still loading. Try again in a moment.');
     return;
   }
   if (engine.storageError) {
-    openMessage(sheets, 'Import saves', 'Browser storage is unavailable this session, so imported saves would be lost on restart.');
+    openMessage(sheets, 'Import game data', 'Browser storage is unavailable this session, so imported data would be lost on restart.');
     return;
   }
   const files = decodeBundle(await file.text());
   confirmSheet(
     sheets,
-    'Import saves?',
-    `Import ${files.length} file(s)? Saves with the same names are replaced and the game restarts. Unsaved progress in the current game is lost.`,
+    'Import game data?',
+    `Restore ${files.length} file(s) from this backup? Adventures with the same names are replaced, and the game restarts.`,
     'Import',
     () => {
       sheets.closeAll();
@@ -2872,7 +3112,7 @@ window.__tome = {
   exploreStop: () => {
     if (!lastSnap) return null;
     const plan = explorePlan();
-    const stop = nextStop(lastSnap, materials, plan);
+    const stop = nextStop(lastSnap, materials, plan, companionCells(lastSnap));
     return { kind: stop?.kind ?? 'none', x: stop?.x ?? -1, y: stop?.y ?? -1, heading: plan.heading ?? 'down' };
   },
   macroRunning: () => macros.running,
