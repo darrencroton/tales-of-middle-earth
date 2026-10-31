@@ -537,7 +537,7 @@ export const HELP: readonly HelpGroup[] = [
         keywords: 'deeds achievements chronicle hall of fame score death fallen tale abandoned begin anew remove',
         body: [
           'Great moments earn *deeds*, shown as they happen. Your chronicle keeps your kills, the legends you have slain, your deepest descent and your closest calls.',
-          'When a hero falls, or you abandon their adventure, their tale goes into the *Hall of Fame* (also on the title screen), with their gear, skills and last moments. Tap a hero there for *Look back*, *Begin anew* and, on the title screen, *Remove*.',
+          'When a hero falls, or you abandon their adventure, their tale goes into the *Hall of Fame* (also on the title screen), with their gear, skills and last moments. Tap a hero there for *Begin anew*, *Look back* and, on the title screen, *Remove*.',
           '*Begin anew* starts a new adventure with the same race, class and attributes, under a name of its own: *Elder* begun anew is *Elder II*, then *Elder III*. Each run is a hero of its own, with its own saved game and place in the Hall of Fame.',
         ],
         see: ['survival'],

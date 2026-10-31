@@ -385,7 +385,7 @@ test('a hero whose adventure ended can be looked back on and begun anew from the
   await page.locator('.termview .fame-row').first().click();
   await expect(page.locator('.sheet-fame-hero .sheet-title')).toHaveText('Anew');
   await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText('Abandoned in the town');
-  await expect(page.locator('.sheet-fame-hero .sheet-action')).toHaveText(['Look back', 'Begin anew']);
+  await expect(page.locator('.sheet-fame-hero .sheet-action')).toHaveText(['Begin anew', 'Look back']);
   await page.locator('.sheet-fame-hero [data-action="look"]').click();
   await expect(page.locator('.sheet-fallen .fallen-cause')).toHaveText('Adventure abandoned');
   await page.keyboard.press('Escape');
@@ -503,7 +503,7 @@ test('saved heroes: Continue plays the last, the Roster lists them all, an aband
   await page.locator('.sheet .fame-row').first().click();
   await expect(page.locator('.sheet-fame-hero .sheet-title')).toHaveText('Young Sib');
   await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText('Abandoned in the town');
-  await expect(page.locator('.sheet-fame-hero .sheet-action')).toHaveText(['Remove', 'Look back', 'Begin anew']);
+  await expect(page.locator('.sheet-fame-hero .sheet-action')).toHaveText(['Begin anew', 'Look back', 'Remove']);
   await page.locator('.sheet-fame-hero [data-action="remove"]').click();
   await page.locator('.sheet', { hasText: 'Remove Young Sib?' }).locator('.sheet-action.danger').click();
   await expect(page.locator('#toast')).toHaveText('Young Sib was removed from the Hall of Fame.', { timeout: 15_000 });

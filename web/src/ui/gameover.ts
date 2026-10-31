@@ -160,6 +160,8 @@ export function openFameCard(sheets: Sheets, hero: FallenHero & { entry: ScoreEn
   const body = el('div', 'adventurer-detail');
   body.append(facts);
   const buttons: SheetAction[] = [];
+  if (actions.anew) buttons.push({ id: 'anew', label: 'Begin anew', primary: true, run: actions.anew });
+  if (actions.lookBack) buttons.push({ id: 'look', label: 'Look back', primary: !actions.anew, run: actions.lookBack });
   const remove = actions.remove;
   if (remove) {
     buttons.push({
@@ -177,8 +179,6 @@ export function openFameCard(sheets: Sheets, hero: FallenHero & { entry: ScoreEn
         ),
     });
   }
-  if (actions.lookBack) buttons.push({ id: 'look', label: 'Look back', primary: !actions.anew, run: actions.lookBack });
-  if (actions.anew) buttons.push({ id: 'anew', label: 'Begin anew', primary: true, run: actions.anew });
   sheets.open({
     title: e.name,
     subtitle: [`${e.race} ${e.cls}`.trim(), `Level ${e.level}`].filter(Boolean).join(' · '),

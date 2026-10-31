@@ -59,7 +59,7 @@ Shop, home, museum (walk in, or Enter shop on the door)
                                                     Sell/Store/Donate; wear, take off, inscribe, destroy)
 Other buildings ─────────────── native panel: their services as rows · Exit
 Death ──────────────────────── death card → end-of-game summary (full screen) → Hall of Fame (full screen)
-                                └── a hero ──────── card: how it ended, when, deepest, score; Look back · Begin anew
+                                └── a hero ──────── card: how it ended, when, deepest, score; Begin anew · Look back
                                     └── Fallen hero panel, tabs Hero · Gear · Skills · Last moments
                                         └── Item / foe  card
 Title ──────────────────────── Continue as (last hero, straight into the game) · Roster · New character
