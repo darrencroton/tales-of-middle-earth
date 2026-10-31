@@ -226,3 +226,17 @@ test('a quest level is never kept as the dungeon level of its depth', async ({ p
   await jumpToLevel(page, 0);
   expect(await keptLevelFiles(page)).toEqual([]);
 });
+
+test("Thráin's level is a quest level from the first arrival, so it is never kept", async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Rescuer');
+  /* In wizard mode tome2 says at birth where Thráin is held in Dol Guldur (dungeon 23). */
+  const messages = await page.evaluate(() => (window.__tome!.engine.gameState(200)?.messages ?? []).map((m) => m.text).join('\n'));
+  const depth = Number(/Thrain lvl (\d+)/.exec(messages)?.[1]);
+  expect(depth).toBeGreaterThan(0);
+  await wizardCommand(page, 'D', 23);
+  await jumpToLevel(page, depth);
+  expect(await page.evaluate(() => window.__tome!.engine.gameState()?.player?.quest?.id)).toBe(19);
+  expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
+});

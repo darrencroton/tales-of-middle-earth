@@ -16,6 +16,8 @@ export type FeelEvent =
   /** A level that holds a quest, arrived at (`place` is its dungeon, empty for a fixed quest's own level); or that level's quest ended there. */
   | { kind: 'quest'; title: string; place: string; feet: number }
   | { kind: 'questEnd'; title: string; failed: boolean }
+  /** One more of a random quest's creatures slain, the quest not yet done. */
+  | { kind: 'questProgress'; slain: number; count: number }
   | { kind: 'gold'; amount: number }
   | { kind: 'exp'; amount: number };
 
@@ -39,6 +41,8 @@ export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
     else events.push({ kind: 'depth', place, feet, deeper: next.depth > prev.depth, surface });
   } else if (prev.quest?.state === 'active' && next.quest?.id === prev.quest.id && next.quest.state !== 'active') {
     quest = { kind: 'questEnd', title: prev.quest.title, failed: next.quest.state === 'failed' };
+  } else if (next.quest?.state === 'active' && next.quest.random && prev.quest?.random && next.quest.random.slain > prev.quest.random.slain) {
+    quest = { kind: 'questProgress', slain: next.quest.random.slain, count: next.quest.random.count };
   }
   if (next.lev > prev.lev) events.push({ kind: 'levelup', level: next.lev, skillPoints: next.skillPoints ?? 0 });
   else if (next.exp > prev.exp) events.push({ kind: 'exp', amount: next.exp - prev.exp });
@@ -132,6 +136,15 @@ export class GameFeel {
     this.showBanner(title, subtitle, kind);
   }
 
+  /**
+   * Edges the map in the quest's colour while the level's quest is active,
+   * glowing stronger while a creature it is after is in view.
+   */
+  setQuest(active: boolean, foeInView: boolean): void {
+    this.layer.classList.toggle('quest', active);
+    this.layer.classList.toggle('quest-near', active && foeInView);
+  }
+
   /** Shakes the map; `strength` 0..1. */
   shake(strength: number): void {
     if (this.animation() !== 'full') return;
@@ -182,6 +195,7 @@ export class GameFeel {
     this.prev = null;
     this.shown = null;
     this.waiting.length = 0;
+    this.layer.classList.remove('quest', 'quest-near');
     this.next = null;
     window.clearTimeout(this.bannerTimer);
     this.banner.classList.remove('visible');
@@ -240,6 +254,9 @@ export class GameFeel {
       case 'quest':
         this.showBanner(event.title, [event.place, event.feet ? `${event.feet} ft` : ''].filter(Boolean).join(' · '), 'quest', QUEST_BANNER_MS);
         vibrate([20, 40, 20]);
+        break;
+      case 'questProgress':
+        this.float(`${iconText('⚑')} ${event.slain} of ${event.count}`, 'quest');
         break;
       case 'questEnd':
         this.showBanner(event.title, event.failed ? 'Quest failed' : 'Quest complete', event.failed ? 'quest failed' : 'quest', QUEST_BANNER_MS);

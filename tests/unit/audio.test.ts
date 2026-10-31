@@ -196,6 +196,7 @@ describe('places', () => {
     assert.equal(sceneFor('game', place({ dungeon: 22, depth: 5 })).base, 'moria');
     assert.equal(sceneFor('game', place({ dungeon: 99, depth: 5 })).base, 'depths');
     assert.equal(sceneFor('game', place({ dungeon: 4, depth: 3, quest: 9 })).base, 'wight');
+    assert.equal(sceneFor('game', place({ dungeon: 4, depth: 3, quest: 5 })).base, 'captive');
     assert.equal(sceneFor('game', place({ dungeon: 22, depth: 5, town: 7 })).base, 'haven');
   });
 

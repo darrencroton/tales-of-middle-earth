@@ -216,6 +216,8 @@ export interface MonsterState {
   ridx?: number;
   ego?: number;
   level?: number;
+  /** 1 for a creature a quest is after (a random quest's foes, a quest's own monsters). */
+  quest?: number;
 }
 
 /** tome2 monster status: below 0 attacks the player, 0 is neutral, above 0 fights for the player. */

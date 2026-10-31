@@ -35,13 +35,47 @@
 #include <string>
 #include <vector>
 
+/* q_god.cc: the Lost Temple, whose quest fails when a level is generated twice. */
+constexpr std::size_t DUNGEON_LOST_TEMPLE = 30;
+
+/*
+ * The quest of the level the hero is on, done or not, or 0: the fixed quest
+ * whose own level this is, the random quest of this depth in a main dungeon
+ * (QUEST_RANDOM), Merton's level of the Maze, Thráin's level of Dol Guldur,
+ * or a god's lost temple.
+ */
+int level_quest()
+{
+	if (p_ptr->inside_quest) return p_ptr->inside_quest;
+	if (dun_level < 1) return 0;
+	if (dun_level < MAX_RANDOM_QUEST && (game->dungeon_flags & DF_PRINCIPAL) && random_quests[dun_level].type) return QUEST_RANDOM;
+	auto const &hobbit = quest[QUEST_HOBBIT];
+	if (dungeon_type == DUNGEON_MAZE && dun_level == hobbit.data[0] && hobbit.status >= QUEST_STATUS_TAKEN) return QUEST_HOBBIT;
+	/* tome2 takes Thráin's quest on the first arrival, after the level (and his hidden cell) is built. */
+	auto const &thrain = quest[QUEST_THRAIN];
+	if (dungeon_type == DUNGEON_DOL_GULDUR && dun_level == thrain.data[0] && thrain.status >= QUEST_STATUS_UNTAKEN) return QUEST_THRAIN;
+	if (dungeon_type == DUNGEON_LOST_TEMPLE && quest[QUEST_GOD].status >= QUEST_STATUS_TAKEN) return QUEST_GOD;
+	return 0;
+}
+
+/* Whether the quest of this level is still to be done here. */
+bool level_quest_open()
+{
+	int const q = level_quest();
+	switch (q)
+	{
+	case 0: return false;
+	case QUEST_RANDOM: return !random_quests[dun_level].done;
+	case QUEST_THRAIN: return quest[q].status < QUEST_STATUS_FINISHED;
+	default: return quest[q].status == QUEST_STATUS_TAKEN;
+	}
+}
+
 namespace {
 
 /* Prefix of the save extensions this frontend gives to levels (tome2's own special levels keep theirs). */
 constexpr char const *LEVEL_EXT_PREFIX = "lvl";
 
-/* q_god.cc: the Lost Temple, whose quest fails when a level is generated twice. */
-constexpr std::size_t DUNGEON_LOST_TEMPLE = 30;
 
 /* Angband depths of the final quests. */
 constexpr int ANGBAND_FINAL_DEPTH = 99;
@@ -94,18 +128,7 @@ bool eligible_depth(std::size_t d, int depth)
 /* Levels tome2 must make afresh: quests place their monsters or vaults each time a level is built. */
 bool quest_level_here()
 {
-	if (p_ptr->inside_quest || is_quest(dun_level)) return true;
-
-	auto const &hobbit = quest[QUEST_HOBBIT];
-	if (dungeon_type == DUNGEON_MAZE && hobbit.status == QUEST_STATUS_TAKEN && dun_level == hobbit.data[0]) return true;
-
-	auto const &thrain = quest[QUEST_THRAIN];
-	if (dungeon_type == DUNGEON_DOL_GULDUR && dun_level == thrain.data[0] && !thrain.data[1] &&
-	    thrain.status >= QUEST_STATUS_TAKEN && thrain.status < QUEST_STATUS_FINISHED) return true;
-
-	if (dun_level < 1 || dun_level >= MAX_RANDOM_QUEST) return false;
-	auto const &q = random_quests[dun_level];
-	return (game->dungeon_flags & DF_PRINCIPAL) && q.type && !q.done;
+	return p_ptr->inside_quest || level_quest_open();
 }
 
 /* Gives a level this frontend's save extension, or takes it away. */

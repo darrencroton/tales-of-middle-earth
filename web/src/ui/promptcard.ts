@@ -97,7 +97,11 @@ export class PromptCard {
         this.aim(canTargetLast);
         break;
     }
-    if (lead.length) this.root.prepend(leadIn(lead));
+    if (lead.length) {
+      const said = leadIn(lead);
+      this.root.prepend(said);
+      said.scrollTop = said.scrollHeight;
+    }
   }
 
   /** A question or notice tome2 drew in a box over the screen. */

@@ -1322,6 +1322,34 @@ const THEMES: Theme[] = [
     ambience: [['wind', 0.3]],
     floor: 0.4,
   },
+  {
+    id: 'captive',
+    name: 'A Cry in the Dark',
+    group: 'Quests',
+    mood: 'A random quest: someone cries out somewhere on the level. The Tale theme in minor over a heartbeat, the danger rising as the captors close in.',
+    root: 43,
+    scale: 'aeolian',
+    bpm: 96,
+    meter: 4,
+    chords: TALE_CHORDS,
+    voicing: 'open',
+    motif: TALE,
+    answer: TALE_ANSWER,
+    layers: [
+      { role: 'drone', inst: 'drone', vol: 0.4 },
+      { role: 'pad', inst: 'strings', vol: 0.3 },
+      { role: 'bass', inst: 'cello', octave: -1, vol: 0.5, pattern: 'x..x....' },
+      { role: 'melody', inst: 'horn', octave: 1, in: ['a', 'breath'] },
+      { role: 'melody', inst: 'reed', octave: 1, vol: 0.8, in: ['b'] },
+      { role: 'perc', inst: 'timpani', octave: -1, pattern: 'x.x.....', vol: 0.45 },
+      { role: 'arp', inst: 'harp', octave: 1, pattern: 'xoxo'.repeat(2), order: 'random', density: 0.6, vol: 0.3, from: 0.4 },
+      { role: 'bells', inst: 'glass', octave: 3, density: 0.2, from: 0.6 },
+    ],
+    space: 0.55,
+    bright: 0.45,
+    ambience: [['wind', 0.2], ['cave', 0.25]],
+    floor: 0.3,
+  },
 ];
 
 /* Quest and story variants of the themes above; later ones may build on earlier ones. */
@@ -1517,7 +1545,7 @@ const MEASURED_DB: Readonly<Record<string, number>> = {
   'water-cave': -30.7, sacred: -30.8, rhun: -27.3, sandworm: -23.8, temple: -27.9, thieves: -29.2, nazgul: -26.1,
   trolls: -27.8, wolves: -25.6, erebor: -29, hobbit: -28.6, wight: -28.8, spiders: -27, poison: -28.7, narsil: -25.7,
   eol: -25, nirnaeth: -22.4, 'gondolin-falls': -20.7, alliance: -25.9, dragons: -27.5, haunted: -26.9, evil: -28,
-  thrain: -28.3, apotheosis: -31.5, helcaraxe: -30, 'old-forest': -27.6,
+  thrain: -28.3, apotheosis: -31.5, helcaraxe: -30, 'old-forest': -27.6, captive: -28.2,
 };
 const TARGET_DB = -27;
 

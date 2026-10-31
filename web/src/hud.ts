@@ -200,9 +200,9 @@ export class Hud {
     const statuses = statusLabels(p);
     const key = JSON.stringify([
       [p.name, p.race, p.cls, p.lev, p.chp, p.mhp, p.csp, p.msp, p.csane, p.msane, depthLabel(p), p.au, p.speed, p.skillPoints ?? 0],
-      this.quest?.title ?? '',
+      [this.quest?.title ?? '', this.quest?.random?.slain ?? 0],
       statuses,
-      monsters.map((m) => [m.id, m.name, m.ch, m.attr, m.hp, m.maxhp, m.asleep, m.afraid, m.unique, m.status]),
+      monsters.map((m) => [m.id, m.name, m.ch, m.attr, m.hp, m.maxhp, m.asleep, m.afraid, m.unique, m.status, m.quest]),
       objects.map((o) => [o.id, o.name, o.ch, o.attr]),
     ]);
     if (key === this.lastStateKey) return;
@@ -233,7 +233,9 @@ export class Hud {
       button.dataset.hud = 'quest';
       button.dataset.tap = 'quest';
       button.setAttribute('aria-label', `Quest: ${this.quest.title}`);
+      const r = this.quest.random;
       button.append(el('span', 'glyph', iconText('⚑')), el('span', 'label', this.quest.title));
+      if (r && r.count > 1) button.append(el('span', 'progress', `${r.slain}/${r.count}`));
       item.append(button);
       strip.append(item);
     }
@@ -306,7 +308,11 @@ export class Hud {
     text.append(el('span', m.unique ? 'label unique' : 'label', m.name));
     if (tags.length) text.append(el('span', 'tags', tags.join(' · ')));
     button.append(this.glyph(m.ch, m.attr, palette), text);
-    button.setAttribute('aria-label', [m.name, friendly ? 'ally' : neutral ? 'neutral' : 'hostile', ...tags].join(', '));
+    if (m.quest) {
+      button.classList.add('quest-foe');
+      button.append(el('span', 'quest-mark', iconText('⚑')));
+    }
+    button.setAttribute('aria-label', [m.name, friendly ? 'ally' : neutral ? 'neutral' : 'hostile', ...(m.quest ? ['quest'] : []), ...tags].join(', '));
     item.append(button);
     return item;
   }

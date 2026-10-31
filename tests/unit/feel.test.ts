@@ -44,7 +44,7 @@ describe('game feel events', () => {
     const quest = { id: 5, state: 'active' as const, title: 'Captured princess!', random };
     const onQuest = { ...base, depth: 3, quest };
     assert.deepEqual(playerEvents(base, onQuest), [{ kind: 'quest', title: 'Captured princess!', place: 'Barrow-Downs', feet: 150 }]);
-    assert.deepEqual(playerEvents(onQuest, { ...onQuest, quest: { ...quest, random: { ...random, slain: 1 } } }), []);
+    assert.deepEqual(playerEvents(onQuest, { ...onQuest, quest: { ...quest, random: { ...random, slain: 1 } } }), [{ kind: 'questProgress', slain: 1, count: 5 }]);
     const done = { ...quest, state: 'done' as const };
     assert.deepEqual(playerEvents({ ...onQuest, exp: 0 }, { ...onQuest, exp: 50, quest: done }), [
       { kind: 'exp', amount: 50 },

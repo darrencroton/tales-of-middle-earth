@@ -44,7 +44,8 @@ Map (toolbar, HUD, gestures)
 │       └── Abandon adventure ─ confirmation       card (red), set apart at the foot
 ├── HUD (one height always: the strip of ailments and chips keeps its place when empty)
 │   ├── hero name ─────────── Character (or Fallen hero after death)
-│   ├── quest chip ────────── Quest                card (what the level's quest asks, how many are slain)
+│   ├── quest chip ────────── Quest                card (what the level's quest asks, how many are slain);
+│   │                         while it lasts the map's edges glow violet and its foes' chips are marked ⚑
 │   ├── creature / item chip ─ Creature / Item     card
 │   └── message log ───────── Messages             panel
 ├── Map tap / long-press ───── travel / look card
