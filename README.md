@@ -42,12 +42,12 @@ Every level is generated fresh, every hero is different, and death is permanent.
   </tr>
   <tr>
     <td width="33%"><img src="docs/images/mirkwood.jpg" alt="Mirkwood: a level 12 Hobbit Warrior fights off a nest of giant spiders among the trees — Unstoppable, 8 foes in quick succession" /></td>
-    <td width="33%"><img src="docs/images/moria.jpg" alt="Moria: a level 34 Dwarf Warrior hemmed in by a horde of orcs slays Bolg, Son of Azog — a legend falls, and the Giant-slayer deed is earned" /></td>
-    <td width="33%"><img src="docs/images/doom.jpg" alt="Mount Doom: a level 41 High-Elf Mage, ringed by a pack of fire hounds on the lava, is enveloped in flames — You have died, killed by a Fire hound" /></td>
+    <td width="33%"><img src="docs/images/moria.jpg" alt="Moria: a level 34 Dwarf Warrior surrounded by an army of orcs in the dungeon's corridors slays Bolg, Son of Azog — a legend falls" /></td>
+    <td width="33%"><img src="docs/images/doom-death.jpg" alt="Mount Doom: a level 41 High-Elf Mage, ringed by a pack of fire hounds on the lava, is enveloped in flames — You have died, killed by a Fire hound" /></td>
   </tr>
   <tr>
     <td align="center"><sub><b>Mirkwood</b> · a Hobbit at level 12 cuts through a spider nest</sub></td>
-    <td align="center"><sub><b>Moria</b> · a Dwarf at level 34 fells Bolg amid an orc horde</sub></td>
+    <td align="center"><sub><b>Moria</b> · a Dwarf at level 34 fells Bolg amid an orc army</sub></td>
     <td align="center"><sub><b>Mount Doom</b> · and every tale ends somewhere</sub></td>
   </tr>
 </table>
