@@ -29,7 +29,7 @@ import {
   writeFiles,
 } from './saves.ts';
 import { adventurerOf, AdventurerStore, deleteHeroSave, heroLine } from './play/adventurers.ts';
-import { adventurerSummary, openAdventurer, openAdventurers, type AdventurerDetails, type AdventurerHandlers } from './ui/adventurers.ts';
+import { adventurerSummary, openAdventurers, type AdventurerDetails, type AdventurerHandlers } from './ui/adventurers.ts';
 import type { SaveInfo } from './title.ts';
 import { ANIMATION_FPS, applyTextSize, EFFECT_DELAY, loadSettings, saveSettings, type Settings } from './settings.ts';
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
@@ -2468,7 +2468,6 @@ const adventurers = new AdventurerStore();
 const coach = new Coach(byId<HTMLElement>('stage'));
 const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
   onChoose: (choice) => director.choose(choice),
-  onAdventurer: (save) => openAdventurer(sheets, save, adventurerHandlers),
   onAdventurers: (saves) => openAdventurers(sheets, saves, adventurerHandlers),
   describe: (save) => {
     const details = adventurerDetails(save);

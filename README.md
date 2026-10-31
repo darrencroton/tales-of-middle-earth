@@ -88,7 +88,7 @@ This is the full ToME 2 game, with an interface designed from scratch for phones
 ## Your adventures
 
 - The game **saves automatically** when you leave the app, and **☰ → Save and quit** returns you to the title screen.
-- The title screen offers **Continue** for your last hero, with their level, class and where they stand. **More adventurers** lists the rest; tap any hero to play on, or to delete them.
+- The title screen offers **Continue** for your last hero, with their level, class and where they stand: one tap and you are back in the game. **Adventurers** lists every saved hero; tap any of them to play on, or to delete them.
 - **☰ → Abandon adventure** ends the current adventure for good. Your other heroes, the Hall of Fame and your deeds stay.
 - Everything lives in your browser on this device. **Backup** on the title screen exports all of it as one file, to keep it safe or move it to another device, and imports it again.
 - Clearing your browser's site data deletes your adventures, so export a backup first.

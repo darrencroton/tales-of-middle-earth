@@ -58,8 +58,6 @@ test('creates a character, saves and quits to the title, then continues', async 
   await expect(resume).toContainText(`Continue as ${name}`);
   await expect(resume.locator('.title-choice-detail')).toContainText(/^Level 1 \S+ \S+ · \S/);
   await resume.click();
-  await expect(page.locator('.sheet-adventurer .sheet-title')).toHaveText(name);
-  await page.locator('.sheet-adventurer [data-action="play"]').click();
   await expect.poll(() => inDungeon(page), { timeout: 30_000 }).toBe(true);
   await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
   await waitAtCommand(page);
@@ -420,7 +418,7 @@ test('the world map is entered from the commands and left from the toolbar', asy
   await expect(page.locator('#toolbar [data-action="inventory"]')).toBeVisible();
 });
 
-test('saved heroes: Continue as the last, the others under More adventurers, Abandon and Delete remove only that hero', async ({ page }) => {
+test('saved heroes: Continue plays the last, Adventurers lists them all, Abandon and Delete remove only that hero', async ({ page }) => {
   test.setTimeout(300_000);
   const quit = async () => {
     await page.locator('#toolbar [data-action="menu"]').click();
@@ -456,15 +454,14 @@ test('saved heroes: Continue as the last, the others under More adventurers, Aba
   const choices = page.locator('#title-screen .title-choice');
   await expect(choices.first()).toContainText('Continue as Young Sib');
   await expect(choices.first().locator('.title-choice-detail')).toContainText(/^Level 1 /);
-  await choices.filter({ hasText: 'More adventurers' }).click();
-  await expect(page.locator('.adventurer-row')).toHaveCount(1);
+  await choices.filter({ hasText: 'Adventurers' }).click();
+  await expect(page.locator('.adventurer-row')).toHaveText([/Young Sib/, /Elder/]);
   await page.locator('.adventurer-row', { hasText: 'Elder' }).click();
   await expect(page.locator('.sheet-adventurer .sheet-title')).toHaveText('Elder');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
 
   await choices.first().click();
-  await page.locator('.sheet-adventurer [data-action="play"]').click();
   await expect.poll(() => inDungeon(page), { timeout: 30_000 }).toBe(true);
   await waitAtCommand(page);
   await page.locator('#toolbar [data-action="menu"]').click();
@@ -474,12 +471,14 @@ test('saved heroes: Continue as the last, the others under More adventurers, Aba
   await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
   await waitForEngine(page);
   await expect(choices.first()).toContainText('Continue as Elder');
-  await expect(choices.filter({ hasText: 'More adventurers' })).toHaveCount(0);
+  await expect(choices.filter({ hasText: 'Adventurers' })).toContainText('Your saved hero');
   let files = await savedFiles();
   expect(files).toContain('Elder');
   expect(files.filter((f) => f.startsWith('Young_Sib'))).toEqual([]);
 
-  await choices.first().click();
+  await choices.filter({ hasText: 'Adventurers' }).click();
+  await expect(page.locator('.adventurer-row')).toHaveCount(1);
+  await page.locator('.adventurer-row', { hasText: 'Elder' }).click();
   await page.locator('.sheet-adventurer [data-action="delete"]').click();
   await page.locator('.sheet', { hasText: 'Delete Elder?' }).locator('.sheet-action.danger').click();
   await expect(page.locator('#toast')).toHaveText("Elder's adventure was deleted.", { timeout: 15_000 });

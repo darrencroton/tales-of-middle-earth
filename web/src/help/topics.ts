@@ -549,7 +549,7 @@ export const HELP: readonly HelpGroup[] = [
         keywords: 'save saving load continue export import backup device browser quit delete abandon heroes adventurers',
         body: [
           'The game saves when you leave the app. Menu → *Save game* saves now; *Save and quit* saves and returns to the title.',
-          'On the title screen *Continue* takes up your last hero; *More adventurers* lists the others. Tap a hero for *Play* or *Delete*.',
+          'On the title screen *Continue* takes you straight back into your last hero\'s game; *Adventurers* lists every saved hero. Tap a hero there for *Play* or *Delete*.',
           'Menu → *Abandon adventure* ends the current adventure for good and deletes its saved game; your other heroes, the Hall of Fame and your deeds stay.',
           'Everything is kept in this browser. *Backup* on the title screen exports all of it (every hero, the Hall of Fame, your deeds) as one file, and imports it again, here or on another device.',
           'Clearing this site’s data in your browser deletes your games: export them first.',
