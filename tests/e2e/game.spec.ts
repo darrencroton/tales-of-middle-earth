@@ -246,7 +246,9 @@ test('a new hero can take the name of one who has fallen', async ({ page }) => {
     await page.waitForTimeout(500);
   }
   await finish.click();
-  /* The title returns in the same page, with a fresh engine. */
+  /* The quit is kept in the Hall of Fame; past it, the title returns in the same page, with a fresh engine. */
+  await expect(page.locator('.termview .fame-row')).toContainText('Abandoned in the town');
+  await page.keyboard.press('Escape');
   await waitForEngine(page);
   await expect(page.locator('#title-screen .title-choice').first()).not.toContainText('Continue');
 
