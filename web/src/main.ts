@@ -18,7 +18,7 @@ import { TargetPicker } from './play/targeting.ts';
 import { approachTarget, isKnown, pushPast, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
-import { CAVE_MARK, isHostile, LAYER_MASK, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
+import { CAVE_MARK, isHostile, LAYER_MASK, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -57,7 +57,7 @@ import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
 import { el, iconText, navButton, section } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
-import { describeCell, openFloorObject, openMonster } from './ui/info.ts';
+import { describeCell, openFloorObject, openMonster, openQuest } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
 import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate, type AdventureRules } from './ui/menus.ts';
 import { Sheets, type SheetContent, type SheetTrail } from './ui/sheet.ts';
@@ -270,6 +270,7 @@ const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
   onEntity: (entity) => openEntity(entity),
   onPlayer: () => openNative(lastState?.player?.dead ? 'fallen' : 'character'),
   onSkills: () => openNative('skills'),
+  onQuest: (quest) => openQuest(sheets, quest),
   onMore: () => send([SPACE]),
   onHistory: () => {
     if (travel || picker) stopAutomation(null, 'history');
@@ -768,6 +769,18 @@ function currentPrompt(): PromptKind {
   return classifyPrompt(rowZeroText(), buffer.cursorY === 0);
 }
 
+/** The game state when tome2 last waited for a command (on the map, or a building's). */
+let commandState: GameState | null = null;
+/**
+ * What tome2 has said since it last waited for a command, oldest first, while
+ * it asks something: shown with the question or menu (a rescued princess's
+ * words above her reward), as tome2's -more- would have shown them first
+ * (when messages pause, it has).
+ */
+let leadMessages: MessageState[] = [];
+/* The most of them shown. */
+const LEAD_LINES = 6;
+
 const CARD_KINDS = new Set<PromptKind>(['yesno', 'quantity', 'text', 'direction', 'aim', 'choice']);
 
 /** Pack / Equipment / Floor tabs for tome2's item prompts. */
@@ -796,6 +809,7 @@ function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
   const options: TermViewOptions = { layout, describe: describableRange(prompt), cursorRow: buffer.cursorY };
   if (prompt && kind !== 'more' && !CARD_KINDS.has(kind)) options.title = cleanPrompt(prompt) || undefined;
   if (kind === 'item') options.tabs = itemTabs(prompt);
+  if (layout === 'panel' && leadMessages.length) options.lead = leadMessages.map((m) => m.text);
   if (viewerHeading(prompt)?.size === 0) options.empty = 'Nothing here yet.';
   const box = currentBox();
   if (box) options.hideRow = (row) => row >= box.top && row <= box.bottom;
@@ -1012,7 +1026,7 @@ function updatePromptCard(): void {
   const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
   const show =
     CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !picker && !title.isVisible && engine.pendingKeys === 0;
-  if (show) promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()));
+  if (show) promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()), leadMessages.map((m) => m.text));
   else promptCard.hide();
 }
 
@@ -1205,6 +1219,8 @@ function refresh(): void {
 
   if (!snap.inDungeon) {
     ended = false;
+    commandState = null;
+    leadMessages = [];
     audio.setView('title');
     setMode(title.isVisible ? 'title' : 'screen');
     if (!director.render()) {
@@ -1239,6 +1255,12 @@ function refresh(): void {
     map.setEffects([]);
     hasEffects = false;
   }
+
+  const state = engine.gameState();
+  /* A shop or other building waits for its own commands under its screen. */
+  const atCommands = snap.atCommand || (snap.icky && atBuildingCommands());
+  if (state && atCommands) commandState = state;
+  leadMessages = state && commandState && !atCommands && settings.messages === 'flow' ? newMessages(commandState, state).slice(0, LEAD_LINES).reverse() : [];
 
   /* tome2 clears its screen flag when an item prompt ends, though the shop is still open until the trade's last question. */
   const trading = !!trade && !!engine.store();
@@ -1306,7 +1328,6 @@ function refresh(): void {
   }
   updatePromptCard();
 
-  const state = engine.gameState();
   if (state) {
     if (state.player) {
       state.player.area = areaName(place) ?? undefined;
@@ -1316,7 +1337,13 @@ function refresh(): void {
     lastState = state;
     noteGold(state.objects ?? [], snap);
     hud.update(state, snap.py, snap.px);
-    if (state.player) feel.update(state.player);
+    if (state.player) {
+      feel.update(state.player);
+      feel.setQuest(
+        state.player.quest?.state === 'active' && !state.player.dead,
+        !state.player.status.hallucinating && (state.monsters ?? []).some((m) => m.quest && m.view && isHostile(m)),
+      );
+    }
     const sameHero = !!previous && previous.player?.name === state.player?.name;
     const slain = sameHero ? slainMonsters(previous.monsters ?? [], state.monsters ?? [], newMessages(previous, state)) : [];
     if (sameHero) showHits(previous, state, slain);
@@ -1329,8 +1356,9 @@ function refresh(): void {
     audio.update(snap, state, inStore);
     followAttempt(previous, state);
     coach.update(mode === 'map' && snap.atCommand && !looking && lookCard.hidden && !map.overview, snap.turn);
+    /* A card that shows what tome2 has just said leaves the log to it. */
     hud.updateMessages(
-      state.messages ?? [],
+      promptCard.hasLead ? [] : (state.messages ?? []),
       state.messageTotal ?? 0,
       promptCard.visible ? [] : rowSegments(buffer.chars.subarray(0, buffer.cols), buffer.attrs.subarray(0, buffer.cols), buffer.palette),
     );

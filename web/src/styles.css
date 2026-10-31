@@ -15,6 +15,8 @@
   --button: #221f19;
   --button-active: #3b3427;
   --danger: #d0604f;
+  --quest: #c9a8ff;
+  --quest-glow: 138 78 228;
   --hp: #a3332a;
   --sp: #2d5aa8;
   --sn: #7b3fa0;
@@ -289,6 +291,21 @@ html.keyboard-open .sheet-layer {
   box-shadow: 0 10px 40px rgb(0 0 0 / 0.7);
   touch-action: manipulation;
   animation: sheet-up 160ms ease-out;
+  /* Never taller than the map; a long lead-in scrolls and the question stays put. */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 1.2rem - var(--top-clear));
+}
+
+.prompt-card > * {
+  flex: 0 0 auto;
+}
+
+.prompt-card > .lead-in {
+  flex: 0 1 auto;
+  min-height: 2.6em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .card-title {
@@ -297,6 +314,23 @@ html.keyboard-open .sheet-layer {
   font-size: var(--fs-large);
   font-weight: 600;
   line-height: 1.3;
+}
+
+/* What tome2 said just before it asked: above a card's question or a panel's choices. */
+.lead-in {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0 0 0.75rem;
+  padding-left: 0.7rem;
+  border-left: 2px solid rgb(217 164 65 / 0.6);
+  color: var(--muted);
+  font-size: var(--fs-small);
+  line-height: 1.35;
+}
+
+.lead-in p {
+  margin: 0;
 }
 
 /* The hero has died: the card over the map where it happened. */
@@ -3595,6 +3629,29 @@ html.keyboard-tight .prompt-card.text .card-title {
   color: #ffd56a;
 }
 
+/* The level's quest: violet, the colour of the edge the map takes while it lasts. */
+.entity.quest {
+  border-color: rgb(var(--quest-glow) / 0.6);
+  border-left: 3px solid var(--quest);
+  background: rgb(var(--quest-glow) / 0.16);
+  color: var(--quest);
+  box-shadow: 0 0 0.6rem rgb(var(--quest-glow) / 0.35);
+}
+
+.entity.quest .progress {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.glyph.quest,
+.entity .quest-mark {
+  color: var(--quest);
+}
+
+.entity.quest-foe {
+  box-shadow: inset 0 0 0 1px rgb(var(--quest-glow) / 0.8);
+}
+
 .entity.skills {
   --fill: 100%;
   --bar: #4a3a12;
@@ -3635,6 +3692,57 @@ html.keyboard-tight .prompt-card.text .card-title {
 .feel-layer.still.low::before {
   animation: none;
   opacity: 0.6;
+}
+
+/* A quest on the level: the map's edges glow violet, breathing slowly, and quicker and stronger while a creature it is after is in view. */
+.feel-layer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  box-shadow:
+    inset 0 0 2.6rem rgb(var(--quest-glow) / 0.5),
+    inset 0 0 0.3rem rgb(var(--quest-glow) / 0.7);
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.feel-layer.quest::after {
+  opacity: 0.75;
+  animation: feel-quest 7s ease-in-out infinite;
+}
+
+.feel-layer.quest-near::after {
+  box-shadow:
+    inset 0 0 4rem rgb(var(--quest-glow) / 0.7),
+    inset 0 0 0.4rem rgb(var(--quest-glow) / 0.9);
+  animation-duration: 2.6s;
+}
+
+@keyframes feel-quest {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.feel-layer.still.quest::after {
+  animation: none;
+}
+
+/* The red edge of low health shows through. */
+.feel-layer.low.quest::after {
+  opacity: 0.3;
+  animation: none;
+}
+
+.feel-float.quest {
+  color: var(--quest);
+  text-shadow:
+    0 1px 3px #000,
+    0 0 10px rgb(var(--quest-glow) / 0.9);
 }
 
 /* Kills, streaks, legends and deeds */
@@ -3685,6 +3793,22 @@ html.keyboard-tight .prompt-card.text .card-title {
   color: #ffd56a;
   font-family: var(--serif);
   text-shadow: 0 0 14px rgb(255 190 80 / 0.8);
+}
+
+.feel-banner.quest {
+  border-color: rgb(var(--quest-glow) / 0.7);
+  background: linear-gradient(to right, transparent, rgb(24 10 40 / 0.88) 20%, rgb(24 10 40 / 0.88) 80%, transparent);
+}
+
+.feel-banner.quest strong {
+  color: var(--quest);
+  font-family: var(--serif);
+  text-shadow: 0 0 14px rgb(var(--quest-glow) / 0.9);
+}
+
+.feel-banner.quest.failed strong {
+  color: var(--muted);
+  text-shadow: none;
 }
 
 .feel-deed {

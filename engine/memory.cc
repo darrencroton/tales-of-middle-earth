@@ -10,7 +10,6 @@
  * are included in all such copies.
  */
 
-#include "cave.hpp"
 #include "cave_type.hpp"
 #include "defines.hpp"
 #include "dungeon_flag.hpp"
@@ -35,13 +34,45 @@
 #include <string>
 #include <vector>
 
+/* q_god.cc: the Lost Temple, whose quest fails when a level is generated twice. */
+constexpr std::size_t DUNGEON_LOST_TEMPLE = 30;
+
+/*
+ * The quest of the level the hero is on, done or not, or 0: the fixed quest
+ * whose own level this is, the random quest of this depth in a main dungeon
+ * (QUEST_RANDOM), Merton's level of the Maze, Thráin's level of Dol Guldur
+ * once his cell is built there, or a god's lost temple.
+ */
+int level_quest()
+{
+	if (p_ptr->inside_quest) return p_ptr->inside_quest;
+	if (dun_level < 1) return 0;
+	if (dun_level < MAX_RANDOM_QUEST && (game->dungeon_flags & DF_PRINCIPAL) && random_quests[dun_level].type) return QUEST_RANDOM;
+	auto const &hobbit = quest[QUEST_HOBBIT];
+	if (dungeon_type == DUNGEON_MAZE && dun_level == hobbit.data[0] && hobbit.status >= QUEST_STATUS_TAKEN) return QUEST_HOBBIT;
+	/* Thráin's cell is built only once his quest is taken, which tome2 does on the first arrival: he is there from the next visit (data[1]: built on this level). */
+	auto const &thrain = quest[QUEST_THRAIN];
+	if (dungeon_type == DUNGEON_DOL_GULDUR && dun_level == thrain.data[0] && thrain.data[1]) return QUEST_THRAIN;
+	if (dungeon_type == DUNGEON_LOST_TEMPLE && quest[QUEST_GOD].status >= QUEST_STATUS_TAKEN) return QUEST_GOD;
+	return 0;
+}
+
+/* Whether the quest of this level is still to be done here. */
+bool level_quest_open()
+{
+	int const q = level_quest();
+	switch (q)
+	{
+	case 0: return false;
+	case QUEST_RANDOM: return !random_quests[dun_level].done;
+	default: return quest[q].status == QUEST_STATUS_TAKEN;
+	}
+}
+
 namespace {
 
 /* Prefix of the save extensions this frontend gives to levels (tome2's own special levels keep theirs). */
 constexpr char const *LEVEL_EXT_PREFIX = "lvl";
-
-/* q_god.cc: the Lost Temple, whose quest fails when a level is generated twice. */
-constexpr std::size_t DUNGEON_LOST_TEMPLE = 30;
 
 /* Angband depths of the final quests. */
 constexpr int ANGBAND_FINAL_DEPTH = 99;
@@ -94,18 +125,10 @@ bool eligible_depth(std::size_t d, int depth)
 /* Levels tome2 must make afresh: quests place their monsters or vaults each time a level is built. */
 bool quest_level_here()
 {
-	if (p_ptr->inside_quest || is_quest(dun_level)) return true;
-
-	auto const &hobbit = quest[QUEST_HOBBIT];
-	if (dungeon_type == DUNGEON_MAZE && hobbit.status == QUEST_STATUS_TAKEN && dun_level == hobbit.data[0]) return true;
-
+	if (p_ptr->inside_quest || level_quest_open()) return true;
+	/* Thráin's level from the first arrival: tome2 takes his quest then, and builds his cell on the next visit. */
 	auto const &thrain = quest[QUEST_THRAIN];
-	if (dungeon_type == DUNGEON_DOL_GULDUR && dun_level == thrain.data[0] && !thrain.data[1] &&
-	    thrain.status >= QUEST_STATUS_TAKEN && thrain.status < QUEST_STATUS_FINISHED) return true;
-
-	if (dun_level < 1 || dun_level >= MAX_RANDOM_QUEST) return false;
-	auto const &q = random_quests[dun_level];
-	return (game->dungeon_flags & DF_PRINCIPAL) && q.type && !q.done;
+	return dungeon_type == DUNGEON_DOL_GULDUR && dun_level == thrain.data[0] && thrain.status < QUEST_STATUS_FINISHED;
 }
 
 /* Gives a level this frontend's save extension, or takes it away. */
@@ -120,6 +143,17 @@ void keep_level(std::size_t d, int depth, bool keep)
 	}
 	auto it = by_depth.find(depth);
 	if (it != by_depth.end() && ours(it->second)) it->second.save_extension = boost::none;
+}
+
+/*
+ * Takes the save extension away from the quest level the hero is on, as
+ * loaded from a savefile or when levels have just been made kept: built
+ * levels are handled by level_begin_hook.
+ */
+void keep_off_quest_level()
+{
+	if (persistent_applied != 1 || !character_dungeon || !dun_level) return;
+	if (eligible_dungeon(dungeon_type) && eligible_depth(dungeon_type, dun_level) && quest_level_here()) keep_level(dungeon_type, dun_level, false);
 }
 
 void apply_persistence()
@@ -139,6 +173,7 @@ void apply_persistence()
 	}
 	persistent_applied = persistent_wanted;
 	forget_pending = !on;
+	keep_off_quest_level();
 }
 
 /* Deletes the kept levels of the hero being played, and lets the uniques kept on them appear again. */
@@ -180,6 +215,7 @@ void note_here()
 	here_dungeon = dungeon_type;
 	here_depth = dun_level;
 	here_known = true;
+	keep_off_quest_level();
 }
 
 /*
@@ -224,8 +260,11 @@ bool level_begin_hook(void *, void *, void *)
 	here_depth = dun_level;
 	here_known = true;
 	if (persistent_applied != 1) return false;
-	if (!eligible_dungeon(dungeon_type) || !eligible_depth(dungeon_type, dun_level)) return false;
-	keep_level(dungeon_type, dun_level, !quest_level_here());
+	if (!eligible_dungeon(dungeon_type)) return false;
+	if (eligible_depth(dungeon_type, dun_level)) keep_level(dungeon_type, dun_level, !quest_level_here());
+	/* A fixed quest's level is begun at depth 1 and moved to the quest's own depth as it is built (q_thief.cc and the others): that depth must not keep it either. */
+	int const q = p_ptr->inside_quest;
+	if (q > 0 && q < MAX_Q_IDX && eligible_depth(dungeon_type, quest[q].level)) keep_level(dungeon_type, quest[q].level, false);
 	return false;
 }
 

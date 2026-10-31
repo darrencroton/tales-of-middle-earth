@@ -41,6 +41,7 @@
 #include "player_race_mod.hpp"
 #include "player_spec.hpp"
 #include "player_type.hpp"
+#include "q_rand.hpp"
 #include "quest_type.hpp"
 #include "school_book.hpp"
 #include "school_type.hpp"
@@ -89,6 +90,8 @@ void web_scratch_term_end();
 
 /* Map memory (engine/memory.cc). */
 void web_memory_tick();
+int level_quest();
+bool level_quest_open();
 void web_run_options_tick();
 
 namespace {
@@ -223,6 +226,85 @@ void json_str(std::string &out, char const *key, std::string_view value, bool co
 	json_key(out, key);
 	json_string(out, value);
 	if (comma) out += ',';
+}
+
+/*
+ * The quest of the level the hero is on (memory.cc level_quest), and whether
+ * it is active, done or failed: for a random quest its kind, the creature to
+ * defeat, how many, and how many are slain; for the others their name and
+ * description as tome2's quest log tells it, and whether the level is the
+ * quest's own (reached through a quest entrance, in no dungeon).
+ */
+void json_level_quest(std::string &out)
+{
+	int const q = level_quest();
+	if (!q) return;
+	if (q == QUEST_RANDOM)
+	{
+		auto const &rq = random_quests[dun_level];
+		auto const &r_info = game->edit_data.r_info;
+		bool const sword = is_randhero(dun_level);
+		json_key(out, "quest");
+		out += '{';
+		json_int(out, "id", q);
+		json_str(out, "state", rq.done ? "done" : "active");
+		json_str(out, "title", sword ? "Lost sword!" : "Captured princess!");
+		json_key(out, "random");
+		out += '{';
+		json_str(out, "kind", sword ? "sword" : "princess");
+		json_str(out, "foe", rq.r_idx > 0 && static_cast<std::size_t>(rq.r_idx) < r_info.size() && r_info[rq.r_idx].name ? r_info[rq.r_idx].name : "");
+		json_int(out, "count", rq.type);
+		json_int(out, "slain", rq.done ? rq.type : quest[QUEST_RANDOM].data[0], false);
+		out += "}},";
+		return;
+	}
+
+	auto const &qt = quest[q];
+	if (qt.silent) return;
+	char const *state = "active";
+	switch (qt.status)
+	{
+	case QUEST_STATUS_TAKEN: break;
+	case QUEST_STATUS_COMPLETED:
+	case QUEST_STATUS_REWARDED:
+	case QUEST_STATUS_FINISHED: state = "done"; break;
+	case QUEST_STATUS_FAILED:
+	case QUEST_STATUS_FAILED_DONE: state = "failed"; break;
+	default: return;
+	}
+	std::string text = qt.gen_desc ? qt.gen_desc() : std::string();
+	if (text.empty())
+	{
+		for (int i = 0; i < 10 && qt.desc[i][0]; i++) text += std::string(qt.desc[i]) + '\n';
+	}
+
+	/* Lines, without the headings tome2's quest log colours ("#####y…"). */
+	std::vector<std::string> lines;
+	std::size_t start = 0;
+	while (start < text.size())
+	{
+		auto end = text.find('\n', start);
+		if (end == std::string::npos) end = text.size();
+		auto line = text.substr(start, end - start);
+		while (!line.empty() && line.back() == ' ') line.pop_back();
+		if (!line.empty() && line.rfind("#####", 0) != 0) lines.push_back(line);
+		start = end + 1;
+	}
+
+	json_key(out, "quest");
+	out += '{';
+	json_int(out, "id", q);
+	json_int(out, "own", q == p_ptr->inside_quest ? 1 : 0);
+	json_str(out, "state", state);
+	json_str(out, "title", qt.name);
+	json_key(out, "lines");
+	out += '[';
+	for (std::size_t i = 0; i < lines.size(); i++)
+	{
+		if (i) out += ',';
+		json_string(out, lines[i]);
+	}
+	out += "]},";
 }
 
 void json_object(std::string &out, int index, object_type const *o_ptr)
@@ -831,6 +913,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	json_int(json, "skillPoints", p_ptr->skill_points);
 	json_int(json, "dead", death ? 1 : 0);
 	json_str(json, "diedFrom", game->died_from);
+	json_level_quest(json);
 	json_key(json, "status");
 	json += '{';
 	json_int(json, "blind", p_ptr->blind);
@@ -879,6 +962,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 		json_int(json, "target", inView && !p_ptr->image && !(r_ptr->flags & RF_NO_TARGET) ? 1 : 0);
 		json_int(json, "ridx", m_ptr->r_idx);
 		json_int(json, "ego", m_ptr->ego);
+		json_int(json, "quest", (m_ptr->mflag & MFLAG_QUEST) ? 1 : 0);
 		json_int(json, "level", r_ptr->level, false);
 		json += '}';
 	}
@@ -1295,7 +1379,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_place_json()
 	}
 	json_int(json, "town", town);
 	json_int(json, "townDestroyed", (town > 0 && town_info && town_info[town].destroyed) ? 1 : 0);
-	json_int(json, "quest", dun_level ? is_quest(dun_level) : p_ptr->inside_quest);
+	json_int(json, "quest", p_ptr->inside_quest);
+	json_int(json, "levelQuest", level_quest_open() ? level_quest() : 0);
 
 	auto const level_name = get_dungeon_name();
 	json_str(json, "levelName", level_name ? *level_name : std::string());

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createCharacter, jumpToLevel, summonBeside, waitAtCommand, waitForEngine } from './helpers.ts';
+import { createCharacter, jumpToLevel, summonBeside, waitAtCommand, waitForEngine, wizardCommand } from './helpers.ts';
 
 /** Cells of the town's buildings (tome2 calls every shop, home and hall a building). */
 async function buildings(page: Page): Promise<{ x: number; y: number }[]> {
@@ -115,16 +115,34 @@ test('travel walks through a companion, pushing past it', async ({ page }) => {
   await waitForEngine(page);
   await createCharacter(page, 'Packleader');
   await jumpToLevel(page, 1);
+  /* Lit, so the way is known; travel pushes past a companion only from a floor, as tome2 does. */
+  await wizardCommand(page, 'w');
   let pushed = false;
-  for (let attempt = 0; attempt < 6 && !pushed; attempt++) {
+  for (let attempt = 0; attempt < 8 && !pushed; attempt++) {
     await summonBeside(page, 35, true);
+    /* Two steps away past a companion, where no other way is as short (beside it on a diagonal, or walled on both sides). */
     const goal = await page.evaluate(() => {
       const tome = window.__tome!;
       const snap = tome.engine.snapshot()!;
-      const pet = tome.engine.gameState()!.monsters!.find((m) => m.status > 0);
-      return pet ? { x: pet.x + (pet.x - snap.px), y: pet.y + (pet.y - snap.py) } : null;
+      const features = tome.engine.features();
+      const monsters = tome.engine.gameState()!.monsters!;
+      const open = (x: number, y: number) =>
+        x >= 0 && y >= 0 && x < snap.width && y < snap.height && ((features[snap.feat[y * snap.width + x]]?.flags ?? 0) & 4) !== 0 && !monsters.some((m) => m.x === x && m.y === y);
+      if (!((features[snap.feat[snap.py * snap.width + snap.px]]?.flags ?? 0) & 4)) return null;
+      for (const pet of monsters.filter((m) => m.status > 0)) {
+        const dx = pet.x - snap.px;
+        const dy = pet.y - snap.py;
+        const x = pet.x + dx;
+        const y = pet.y + dy;
+        const sides = dx && dy ? [] : dx ? [[pet.x, pet.y - 1], [pet.x, pet.y + 1]] : [[pet.x - 1, pet.y], [pet.x + 1, pet.y]];
+        if (open(x, y) && !sides.some(([sx, sy]) => open(sx, sy))) return { x, y };
+      }
+      return null;
     });
-    if (!goal) continue;
+    if (!goal) {
+      await wizardCommand(page, 'p');
+      continue;
+    }
     await page.evaluate(({ x, y }) => window.__tome!.tapCell(x, y), goal);
     await page.waitForTimeout(1500);
     await waitAtCommand(page);

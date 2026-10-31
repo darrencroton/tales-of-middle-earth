@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { GameApi } from '../../web/src/ui/api.ts';
-import { describeCell } from '../../web/src/ui/info.ts';
+import { describeCell, questParagraphs } from '../../web/src/ui/info.ts';
 import { CAVE_MARK, type GameState, type LevelSnapshot } from '../../web/src/render/snapshot.ts';
 
 function api(hallucinating: number): GameApi {
@@ -30,5 +30,24 @@ describe('describe cell', () => {
     assert.equal(cell.text, 'You cannot make out what is there.');
     assert.equal(cell.monsters.length, 0);
     assert.equal(describeCell(api(5), { x: 1, y: 0 })!.text, 'You see an open floor.');
+  });
+});
+
+describe('quest of a level', () => {
+  it('says what a random quest asks in our words, with the creatures slain', () => {
+    const quest = (kind: 'princess' | 'sword', count: number, slain = 0) => ({ id: 5, state: 'active' as const, title: '', random: { kind, foe: 'Cave orc', count, slain } });
+    assert.deepEqual(questParagraphs(quest('princess', 5, 2)), [
+      'A princess is held captive on this level. Defeat her guards to set her free: 5 × Cave orc.',
+      'Slain: 2 of 5.',
+    ]);
+    assert.equal(questParagraphs(quest('princess', 1))[0], 'A princess is held captive on this level by Cave orc. Defeat her captor to set her free.');
+    assert.equal(questParagraphs(quest('sword', 12))[0], "An adventurer's sword was taken by creatures roaming this level. Defeat them all to win it back: 12 × Cave orc.");
+  });
+
+  it("joins a fixed quest's description, which tome2 wraps at 80 columns", () => {
+    const lines = ['There are thieves robbing my people! They live in a small', 'burrow outside the city walls.'];
+    assert.deepEqual(questParagraphs({ id: 4, state: 'active', title: 'Thieves!', lines }), [
+      'There are thieves robbing my people! They live in a small burrow outside the city walls.',
+    ]);
   });
 });

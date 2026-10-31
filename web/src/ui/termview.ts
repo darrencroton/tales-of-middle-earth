@@ -1,5 +1,5 @@
 import { readableColour } from '../render/colour.ts';
-import { el } from './dom.ts';
+import { el, leadIn } from './dom.ts';
 import { ListNav, type NavDirection } from './listnav.ts';
 import { renderFooter, type PopAction } from './popup.ts';
 import { isInstructionLine } from './prompttext.ts';
@@ -49,6 +49,8 @@ export interface TermViewOptions {
   badge?: string;
   /** A line under the heading. */
   subtitle?: string;
+  /** What tome2 said just before it asked (a creature's words before a reward), above the content. */
+  lead?: readonly string[];
   /** Lists to switch between (pack, equipment, floor). */
   tabs?: TermViewTab[];
   /** Terminal rows to leave out (shop command lists, page markers). */
@@ -251,7 +253,7 @@ export class TermView {
       }
     }
     const cursorRow = blocks.some((b) => b.kind === 'option') ? options.cursorRow : undefined;
-    const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, cursorRow, !!options.back, options.scroll?.key, blocks]);
+    const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.lead, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, cursorRow, !!options.back, options.scroll?.key, blocks]);
     this.show(options.layout);
     this.tabs = options.tabs ?? [];
     if (key === this.renderedKey) return;
@@ -264,7 +266,7 @@ export class TermView {
 
     this.renderHeader(options);
     this.renderFooter();
-    this.body.replaceChildren(...this.renderBlocks(blocks, options.describe ?? null, cursorRow));
+    this.body.replaceChildren(...(options.lead?.length ? [leadIn(options.lead)] : []), ...this.renderBlocks(blocks, options.describe ?? null, cursorRow));
     if (options.empty && !this.body.textContent?.trim()) this.body.replaceChildren(el('p', 'tv-empty', options.empty));
     this.fitPreformatted();
 

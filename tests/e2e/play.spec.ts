@@ -5,6 +5,7 @@ import {
   dismissMore,
   equipSuggested,
   jumpToLevel,
+  keptLevelFiles,
   playerPos,
   pressExplore,
   screenText,
@@ -13,6 +14,7 @@ import {
   waitAtCommand,
   waitForEngine,
   waitForScreen,
+  wizardCommand,
 } from './helpers.ts';
 
 async function actionIds(page: Page): Promise<string[]> {
@@ -674,6 +676,53 @@ test('Explore in town never leads to a way down, and the quest level below Bree 
   await expect(page.locator('.termview')).toBeHidden();
   expect((await screenText(page)).split('\n')[0]).not.toMatch(/-more-/);
   expect(await page.evaluate(() => window.__tome!.engine.gameState()!.messages!.length)).toBeGreaterThan(0);
+});
+
+test('a random quest is named on arrival, its chip tells what it asks, it survives a save, and it is named again on the next visit', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Rescuer');
+  /* The Barrow-Downs, a main dungeon: of tome2's default 20 random quests, the first waits at its depth 3. */
+  await wizardCommand(page, 'D', 4);
+  const quest = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.quest ?? null);
+  const chip = page.locator('#hud .entity.quest');
+  for (let visit = 0; visit < 2; visit++) {
+    await jumpToLevel(page, 3);
+    const here = await quest();
+    expect(here?.state).toBe('active');
+    expect(here?.title).toMatch(/Captured princess!|Lost sword!/);
+    expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
+    /* Its own music, whichever kind it is, and the map's edge in the quest's colour. */
+    expect(await page.evaluate(() => window.__tome!.engine.place()?.levelQuest)).toBe(5);
+    await expect(page.locator('.feel-layer')).toHaveClass(/\bquest\b/);
+    await expect(page.locator('.feel-banner.quest strong')).toHaveText(here!.title);
+    await expect(page.locator('.feel-banner.quest span')).toHaveText('Barrow-Downs · 150 ft');
+    await expect(chip).toHaveText(new RegExp(here!.title));
+    await chip.click();
+    await expect(page.locator('.sheet-quest .sheet-title')).toHaveText(here!.title);
+    await expect(page.locator('.sheet-quest')).toContainText(/Slain: 0 of \d+\./);
+    await expect(page.locator('.sheet-quest')).toContainText(here!.random!.foe);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+
+    if (visit === 0) {
+      await page.locator('#toolbar [data-action="menu"]').click();
+      await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
+      await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
+      await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+      await waitForEngine(page);
+      await page.locator('#title-screen .title-choice', { hasText: 'Continue as Rescuer' }).click();
+      await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
+      await waitAtCommand(page);
+      expect(await quest()).toEqual(here);
+      await expect(chip).toHaveText(new RegExp(here!.title));
+    }
+    await jumpToLevel(page, 2);
+    await expect(chip).toHaveCount(0);
+    await expect(page.locator('.feel-layer')).not.toHaveClass(/\bquest\b/);
+    expect(await quest()).toBeNull();
+    expect(await keptLevelFiles(page)).not.toContain('Rescuer.lvl4_3');
+  }
 });
 
 test('knowledge and the manual read as whole files, help is searchable, links open more, and cards float over the list that opened them', async ({ page }) => {

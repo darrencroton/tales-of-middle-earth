@@ -44,12 +44,15 @@ Map (toolbar, HUD, gestures)
 │       └── Abandon adventure ─ confirmation       card (red), set apart at the foot
 ├── HUD (one height always: the strip of ailments and chips keeps its place when empty)
 │   ├── hero name ─────────── Character (or Fallen hero after death)
+│   ├── quest chip ────────── Quest                card (what the level's quest asks, how many are slain);
+│   │                         while it lasts the map's edges glow violet and its foes' chips are marked ⚑
 │   ├── creature / item chip ─ Creature / Item     card
 │   └── message log ───────── Messages             panel
 ├── Map tap / long-press ───── travel / look card
 └── tome2 asks something ───── question card on the map (yes/no, how many, text, direction,
                                aim, lettered choice, message box) or a TermView panel
-                               (item prompts, spell lists, shops, options, other menus)
+                               (item prompts, spell lists, shops, options, other menus),
+                               led by what tome2 said since it last waited for a command
 
 Shop, home, museum (walk in, or Enter shop on the door)
                 ─────────────── native panel: one scrolling list a tab — Buy · Sell · Exit (home: Stored ·
@@ -102,6 +105,14 @@ where the code comes from.
 | **Card** | Details of one thing, or a question | Item, spell, creature, shop item, memorial item/foe, a saved hero (Roster), a hero of the Hall of Fame, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
 | **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card, death card | its content | bottom of the map, no backdrop |
 | **Full screen** | A screen that replaces the game | title, character creation, end of game, Hall of Fame after death | whole screen | — |
+
+A map card or tome2 panel shown while tome2 is not at its command prompt (or a
+building's) starts with what tome2 said since it last was (`leadMessages` in
+`main.ts`, the last six, shown by `leadIn`): a rescued princess's words above
+her reward, the adventurer's above *join you?*. With messages flowing past, that
+is what its `-more-` would have made the player read first (with *Pause*, it
+has, so there is none). A question the player asked for has nothing before it.
+A map card with a lead-in takes the message log's place while it shows.
 
 Map cards and full screens predate this work and already behave consistently;
 the rules below are about panels, menus and cards (`ui/sheet.ts` `SheetKind`,
