@@ -50,7 +50,7 @@ export function openAdventurers(sheets: Sheets, saves: readonly SaveInfo[], hand
     row.addEventListener('click', () => openAdventurer(sheets, save, handlers));
     list.append(row);
   }
-  sheets.open({ title: 'Roster', subtitle: 'Your saved heroes', body: list, className: 'sheet-adventurers' });
+  sheets.open({ title: 'Game roster', subtitle: 'Your saved heroes', body: list, className: 'sheet-adventurers' });
 }
 
 /** A saved hero: who and where they are, with Play, and Delete after a warning. */
@@ -76,6 +76,15 @@ function openAdventurer(sheets: Sheets, save: SaveInfo, handlers: AdventurerHand
     className: 'sheet-adventurer',
     actions: [
       {
+        id: 'play',
+        label: 'Play',
+        primary: true,
+        run: () => {
+          sheets.closeAll();
+          handlers.play(save);
+        },
+      },
+      {
         id: 'delete',
         label: 'Delete',
         danger: true,
@@ -91,15 +100,6 @@ function openAdventurer(sheets: Sheets, save: SaveInfo, handlers: AdventurerHand
             },
             true,
           ),
-      },
-      {
-        id: 'play',
-        label: 'Play',
-        primary: true,
-        run: () => {
-          sheets.closeAll();
-          handlers.play(save);
-        },
       },
     ],
   });
