@@ -17,8 +17,8 @@ import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './p
 import { TargetPicker } from './play/targeting.ts';
 import { approachTarget, goAction, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
-import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
-import { CAVE_MARK, isHostile, LAYER_MASK, leadInMessages, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
+import { levelKey, MapMemoryStore, mergeKnown, missingCells, questKey, type HeroMemory } from './play/mapmemory.ts';
+import { CAVE_MARK, isHostile, LAYER_MASK, LEAD_LINES, leadInMessages, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -38,8 +38,8 @@ import { openSoundtrack } from './ui/soundtrack.ts';
 import { openHelp } from './ui/help.ts';
 import { openMagic, openSpell, RecentStore } from './ui/magic.ts';
 import { CastWatcher, fireMacro, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
-import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
-import { GameFeel } from './feel.ts';
+import { capitalise, descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
+import { GameFeel, type FeelEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
 import {
   fightingStyle,
@@ -55,16 +55,16 @@ import {
 import { ABANDONED, buildMemorial, entryKey, memorialKey, type Memorial } from './play/memorial.ts';
 import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
-import { el, iconText, navButton, section } from './ui/dom.ts';
+import { el, glyph, iconText, navButton, section } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
-import { describeCell, openFloorObject, openMonster, openQuest } from './ui/info.ts';
+import { describeCell, monsterSummary, openFloorObject, openMonster, openQuest, type CellDescription } from './ui/info.ts';
 import { openInventory } from './ui/inventory.ts';
 import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate, type AdventureRules } from './ui/menus.ts';
 import { Sheets, type SheetContent, type SheetTrail } from './ui/sheet.ts';
 import { bufferRows, type OptionBlock } from './ui/termparse.ts';
 import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.ts';
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
-import type { PopAction } from './ui/popup.ts';
+import { setRefusal, type PopAction } from './ui/popup.ts';
 import { cleanPrompt, describableRange } from './ui/prompttext.ts';
 import { FilePages, parseHelpFile, viewerSource, viewerHeading, type HelpFile, type HelpLink, type ViewerHeading } from './ui/filepages.ts';
 import { drawnBlocks, entranceLabel, offerElements, SERVICE_CLEAR, serviceReply, shelfElements, shelfPage, shopModel, trades, type ShopHandlers, type ShopModel, type ShopTab } from './ui/store.ts';
@@ -313,6 +313,7 @@ function refuse(text: string): void {
   showToast(text);
   audio.cue('deny');
 }
+setRefusal(refuse);
 
 /* Native views */
 
@@ -500,7 +501,7 @@ function fireSlot(): Slot | null {
 const character = new CharacterPanel(api, {
   sendKeys: (keys) => send(keys),
   source: (letter) => sheetSource(letter),
-  toast: (text) => showToast(text),
+  refuse,
   poke: () => {
     if (!engine.awaitingInput || engine.pendingKeys > 0 || macros.running) return;
     const screen = characterScreen();
@@ -671,22 +672,39 @@ function hideLookCard(): void {
   requestFrame();
 }
 
+/* How the look card says where a cell's contents are known from. */
+const LOOK_NOTES: Readonly<Record<CellDescription['note'], string>> = { here: 'Where you stand', view: 'In view', remembered: 'Remembered', unknown: '' };
+
+/** What is at a map cell, as a card at the foot of the map: its terrain, then each creature and item there (a tap opens its card), and Go there. */
 function showLookCard(point: MapPoint): void {
   const description = describeCell(api, point);
   if (!description) return;
   map.setLookCell(point);
-  const text = el('p', 'look-text', description.text);
+  const head = el('div', 'look-head');
+  head.append(el('p', 'look-title', description.title));
+  const note = LOOK_NOTES[description.note];
+  if (note) head.append(el('span', 'look-note', note));
+  const rows = el('div', 'look-rows');
+  const row = (ch: number, attr: number, name: string, aside: string, open: () => void) => {
+    const button = el('button', 'look-row');
+    button.type = 'button';
+    button.append(glyph(ch, buffer.palette[attr] ?? '#fff'), el('span', 'look-name', name));
+    if (aside) button.append(el('span', 'look-aside', aside));
+    button.addEventListener('click', open);
+    rows.append(button);
+  };
+  for (const m of description.monsters) row(m.ch, m.attr, titleName(m.name), monsterSummary(m), () => openMonster(api, m));
+  for (const o of description.objects) row(o.ch, o.attr, capitalise(o.name), '', () => openFloorObject(api, o));
+  if (description.blurred) rows.append(el('p', 'look-text', 'You cannot make out what is there.'));
+  else if (!description.known) rows.append(el('p', 'look-text', 'You have not explored there.'));
   const buttons = el('div', 'look-buttons');
-  const add = (label: string, run: () => void, primary = false) => {
-    const button = el('button', primary ? 'look-button primary' : 'look-button', label);
+  const add = (label: string, run: () => void) => {
+    const button = el('button', 'look-button', label);
     button.type = 'button';
     button.addEventListener('click', run);
     buttons.append(button);
   };
   const monster = description.monsters[0];
-  const object = description.objects[0];
-  if (monster) add('About', () => openMonster(api, monster), true);
-  else if (object) add('About', () => openFloorObject(api, object), true);
   if (!description.player && description.known && lastSnap?.atCommand) {
     add(monster && isHostile(monster) ? 'Attack' : 'Go there', () => {
       setLooking(false);
@@ -694,7 +712,7 @@ function showLookCard(point: MapPoint): void {
     });
   }
   add('✕', () => hideLookCard());
-  lookCard.replaceChildren(text, buttons);
+  lookCard.replaceChildren(head, ...(rows.childElementCount ? [rows] : []), buttons);
   lookCard.hidden = false;
   dirty = true;
   requestFrame();
@@ -741,6 +759,16 @@ let commandState: GameState | null = null;
  * (when messages pause, it has).
  */
 let leadMessages: MessageState[] = [];
+
+/**
+ * A quest begun (the hero arrived on its level) or ended, held back until
+ * tome2 next waits for a command on the map, then shown as one card: its
+ * title, what tome2 said since the command before it (the scene: a blow on
+ * the head and a prison cell; the stairs revealed and Bree saved), and on
+ * arrival what the quest asks. `led`: tome2 asked something meanwhile and
+ * showed those words with it (a princess's reward), so the banner suffices.
+ */
+let questMoment: { event: Extract<FeelEvent, { kind: 'quest' | 'questEnd' }>; quest: LevelQuest; since: GameState | null; led: boolean } | null = null;
 
 const CARD_KINDS = new Set<PromptKind>(['yesno', 'quantity', 'text', 'direction', 'aim', 'choice']);
 
@@ -1182,6 +1210,7 @@ function refresh(): void {
     ended = false;
     commandState = null;
     leadMessages = [];
+    questMoment = null;
     audio.setView('title');
     setMode(title.isVisible ? 'title' : 'screen');
     if (!director.render()) {
@@ -1220,8 +1249,10 @@ function refresh(): void {
   const state = engine.gameState();
   /* A shop or other building waits for its own commands under its screen. */
   const atCommands = snap.atCommand || (snap.icky && atBuildingCommands());
+  const lastCommandState = commandState;
   if (state && atCommands) commandState = state;
   leadMessages = leadInMessages(commandState, state, atCommands, settings.messages === 'flow');
+  if (questMoment && leadMessages.length) questMoment.led = true;
 
   /* tome2 clears its screen flag when an item prompt ends, though the shop is still open until the trade's last question. */
   const trading = !!trade && !!engine.store();
@@ -1299,7 +1330,11 @@ function refresh(): void {
     noteGold(state.objects ?? [], snap);
     hud.update(state, snap.py, snap.px);
     if (state.player) {
-      feel.update(state.player);
+      const quest = state.player.quest ?? previous?.player?.quest;
+      for (const event of feel.update(state.player, (e) => (e.kind === 'quest' || e.kind === 'questEnd') && !!quest)) {
+        if (questMoment) feel.play(questMoment.event);
+        questMoment = { event: event as NonNullable<typeof questMoment>['event'], quest: quest!, since: lastCommandState, led: false };
+      }
       feel.setQuest(
         state.player.quest?.state === 'active' && !state.player.dead,
         !state.player.status.hallucinating && (state.monsters ?? []).some((m) => m.quest && m.view && isHostile(m)),
@@ -1323,8 +1358,37 @@ function refresh(): void {
       state.messageTotal ?? 0,
       promptCard.visible ? [] : rowSegments(buffer.chars.subarray(0, buffer.cols), buffer.attrs.subarray(0, buffer.cols), buffer.palette),
     );
+    tellQuestMoment(snap, state);
   }
   updateActionBar();
+}
+
+/* tome2's notes of things used up or taken, left out of a quest's scene (the Thieves take everything the hero carries). */
+const SCENE_NOISE = /^You have no more /;
+
+/**
+ * Tells a held quest moment once tome2 waits for a command on the map with
+ * nothing else open: a quest's first arrival as a card with the scene and
+ * what it asks; its end as a card with the scene, unless tome2 already showed
+ * those words with a question, or said nothing. Otherwise, and on a return
+ * to a quest's level, its banner.
+ */
+function tellQuestMoment(snap: LevelSnapshot, state: GameState): void {
+  const moment = questMoment;
+  if (!moment || mode !== 'map' || !snap.atCommand || travel || macros.running || sheets.isOpen || promptCard.visible) return;
+  questMoment = null;
+  const { event, quest } = moment;
+  const arrival = event.kind === 'quest';
+  const key = place ? questKey(quest, place) : '';
+  const told = arrival && (!heroMemory || !key || heroMemory.quests.includes(key));
+  const scene = moment.led || !moment.since ? [] : newMessages(moment.since, state).filter((m) => !SCENE_NOISE.test(m.text)).slice(0, LEAD_LINES).reverse().map((m) => m.text);
+  if (told || (!arrival && !scene.length)) {
+    feel.play(event);
+    return;
+  }
+  if (arrival && heroMemory) mapMemory.noteQuest(heroMemory, key);
+  const subtitle = event.kind === 'questEnd' ? (event.failed ? 'Quest failed' : 'Quest complete') : [event.place, event.feet ? `${event.feet} ft` : ''].filter(Boolean).join(' · ') || 'Quest';
+  openQuest(sheets, quest, { subtitle, scene, task: arrival });
 }
 
 /**
@@ -1562,7 +1626,7 @@ function renderShop(store: StoreState): void {
   if (shopTab?.name !== store.name) shopTab = { name: store.name, tab: 'shelf' };
   if (!trades(store)) {
     termView.renderCustom(
-      { layout: 'panel', title: store.name, subtitle: store.owner.replace(/\s*\(/, ' (') || undefined, tabs: [{ id: 'exit', label: 'Exit', active: false, run: () => send([KEY_ESCAPE]) }] },
+      { layout: 'panel', title: store.name, subtitle: store.owner.replace(/\s*\(/, ' (') || undefined, actions: [{ id: 'exit', label: 'Exit', run: () => send([KEY_ESCAPE]) }] },
       JSON.stringify(model.extras),
       () => [servicesElement(model)],
     );
@@ -1811,7 +1875,7 @@ const FRAME_ACTIONS = new Set(['menu', 'escape', 'keyboard']);
 function panelActions(actions: readonly Action[]): PopAction[] {
   return actions
     .filter((a) => !FRAME_ACTIONS.has(a.id))
-    .map((a) => ({ id: a.id, label: a.label, icon: a.icon, primary: a.primary, run: () => runAction(a) }));
+    .map((a) => ({ id: a.id, label: a.label, icon: a.icon, primary: a.primary, unavailable: a.unavailable, run: () => runAction(a) }));
 }
 
 function runAction(action: Action): void {

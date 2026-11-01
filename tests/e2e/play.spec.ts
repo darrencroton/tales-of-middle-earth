@@ -10,12 +10,14 @@ import {
   playerPos,
   pressExplore,
   screenText,
+  sendText,
   stepOffStairs,
   test,
   viewMode,
   waitAtCommand,
   waitForEngine,
   waitForScreen,
+  waitForSettle,
   wizardCommand,
 } from './helpers.ts';
 
@@ -357,8 +359,38 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
 
   const learnable = page.locator('.sheet .skill-row.learnable, .sheet .skill-row.normal').filter({ hasText: '/pt' }).first();
   await learnable.click();
+  const raise = page.locator('.sheet [data-action="raise"]');
+  const lower = page.locator('.sheet [data-action="lower"]');
+  const save = page.locator('.sheet [data-action="save"]');
+  /* Nothing moved yet: Lower and Save are dimmed and say why; Raise is the default. */
+  await expect(lower).toHaveClass(/unavailable/);
+  await expect(save).toHaveClass(/unavailable/);
+  await expect(raise).toHaveClass(/primary/);
+  await save.click();
+  await expect(page.locator('#toast')).toContainText('Nothing to save');
+  const spare = await points();
+  await raise.click();
+  await expect(page.locator('.sheet-subtitle')).toContainText('1 point not saved');
+  await expect(page.locator('.sheet .skill-row.current .skill-pending')).toHaveText('+1 pt');
+  await expect(save).toHaveClass(/primary/);
+  await lower.click();
+  await expect(page.locator('.sheet-subtitle')).not.toContainText('not saved');
+  await expect(lower).toHaveClass(/unavailable/);
+  /* Save asks first, keeps the points, and stays on the skills. */
+  await raise.click();
+  await expect(page.locator('.sheet-subtitle')).toContainText('not saved');
+  await save.click();
+  await expect(page.locator('.sheet-card')).toContainText('cannot be taken back');
+  await page.locator('.sheet-card [data-action="save"]').click();
+  await expect(page.locator('.sheet-card')).toBeHidden();
+  await expect(page.locator('.sheet .skill-row').first()).toBeVisible();
+  await expect(page.locator('.sheet-subtitle')).not.toContainText('not saved');
+  await expect(page.locator('.sheet .pop-tab.selected')).toContainText('Skills');
+  expect(await points()).toBe(spare - 1);
+  /* Points still moved when the sheet closes are asked about on the map. */
   const before = (await page.locator('.sheet-subtitle').textContent()) ?? '';
-  await page.locator('.sheet [data-action="raise"]').click();
+  await expect(raise).not.toHaveClass(/unavailable/);
+  await raise.click();
   await expect(page.locator('.sheet-subtitle')).not.toHaveText(before);
   await page.locator('.sheet-close:not(.tv-close)').click();
   await expect(page.locator('.prompt-card')).toContainText('Save and use these skill values?');
@@ -482,6 +514,12 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   await waitForEngine(page);
   await createCharacter(page, 'Looker');
   await equipSuggested(page);
+  /* Something left underfoot, for look to find. */
+  const shown = await screenText(page);
+  await sendText(page, '\\da');
+  if (/Quantity/.test((await waitForSettle(page, shown, 3_000)).split('\n')[0])) await sendText(page, '\r');
+  await dismissMore(page);
+  await waitAtCommand(page);
 
   const start = await playerPos(page);
   const box = (await page.locator('#map').boundingBox())!;
@@ -513,14 +551,21 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   await page.mouse.down();
   await page.waitForTimeout(700);
   await page.mouse.up();
-  await expect(page.locator('#look-card')).toContainText('yourself');
+  await expect(page.locator('#look-card .look-note')).toHaveText('Where you stand');
+  /* What lies there is listed, each opening its card. */
+  const dropped = page.locator('#look-card .look-row').first();
+  await expect(dropped).toBeVisible();
+  await dropped.click();
+  await expect(page.locator('.sheet-item')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
   await page.locator('#look-card .look-button', { hasText: '✕' }).click();
 
   await page.locator('#toolbar [data-action="commands"]').click();
   await page.locator('.sheet .command', { hasText: 'Look' }).click();
   await expect(page.locator('#look-banner')).toBeVisible();
   await page.mouse.click(point.x + 30, point.y);
-  await expect(page.locator('#look-card .look-text')).toHaveText(/You see|not explored/);
+  await expect(page.locator('#look-card .look-title')).not.toBeEmpty();
   await page.locator('#toolbar [data-action="lookdone"]').click();
   await expect(page.locator('#look-banner')).toBeHidden();
   expect(await playerPos(page)).toEqual(start);

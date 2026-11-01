@@ -1,8 +1,8 @@
 import { readableColour } from '../render/colour.ts';
 import type { MapPoint } from '../render/map.ts';
-import { CAVE_MARK, CAVE_SEEN, isAlly, isHostile, type LevelQuest, type MonsterState, type ObjectState } from '../render/snapshot.ts';
+import { isAlly, isHostile, type LevelQuest, type MonsterState, type ObjectState } from '../render/snapshot.ts';
 import { capitalise, descriptionParagraphs, titleName, type GameApi } from './api.ts';
-import { el, glyph, iconText } from './dom.ts';
+import { el, glyph, iconText, leadIn } from './dom.ts';
 import { openItem } from './inventory.ts';
 import type { SheetAction, Sheets } from './sheet.ts';
 
@@ -26,10 +26,6 @@ export function monsterSummary(m: MonsterState): string {
   if (isAlly(m)) parts.push('ally');
   else if (!isHostile(m)) parts.push('neutral');
   return parts.join(' · ');
-}
-
-function article(word: string): string {
-  return /^[aeiou]/i.test(word) ? 'an' : 'a';
 }
 
 function distance(a: MapPoint, b: MapPoint): number {
@@ -135,42 +131,42 @@ export function openFloorObject(api: GameApi, o: ObjectState): void {
 
 export interface CellDescription {
   point: MapPoint;
-  /** One-line summary, e.g. "a Village idiot (awake, unhurt) on grass". */
-  text: string;
+  /** The terrain, as tome2's look names it ("Grass", "General Store"); "Unexplored" when unknown. */
+  title: string;
+  /** Where the hero stands, in view, remembered, or nothing known. */
+  note: 'here' | 'view' | 'remembered' | 'unknown';
+  /** Visible creatures there. */
   monsters: MonsterState[];
+  /** Objects noticed there, seen now or remembered. */
   objects: ObjectState[];
-  terrain: string;
+  /** Creatures and objects there cannot be made out (hallucinating). */
+  blurred: boolean;
   known: boolean;
   player: boolean;
 }
 
-/** What the player can see (or remembers) at a map cell. */
+/** What the hero perceives or remembers at a map cell, within what tome2 lets them know. */
 export function describeCell(api: GameApi, point: MapPoint): CellDescription | null {
   const snap = api.snapshot();
   if (!snap || point.x < 0 || point.y < 0 || point.x >= snap.width || point.y >= snap.height) return null;
+  const grid = api.engine.grid(point.x, point.y);
   const state = api.state();
-  const i = point.y * snap.width + point.x;
-  const known = (snap.info[i] & (CAVE_MARK | CAVE_SEEN)) !== 0;
-  const terrain = known ? (api.features()[snap.feat[i]]?.name ?? 'something') : '';
+  const known = !!grid?.known;
   const player = snap.px === point.x && snap.py === point.y;
-  const hallucinating = (state?.player?.status.hallucinating ?? 0) > 0;
-  const here = <T extends { x: number; y: number }>(list: readonly T[] | undefined) => (list ?? []).filter((t) => t.x === point.x && t.y === point.y);
-  if (hallucinating && (here(state?.monsters).length || here(state?.objects).length)) {
-    return { point, text: 'You cannot make out what is there.', monsters: [], objects: [], terrain, known, player };
-  }
-  const monsters = here(state?.monsters);
-  const objects = here(state?.objects);
-
-  const things: string[] = [];
-  if (player) things.push('yourself');
-  for (const m of monsters) things.push(`${m.unique ? '' : `${article(m.name)} `}${m.name} (${m.asleep ? 'asleep' : 'awake'}, ${healthWord(m.hp, m.maxhp)})`);
-  for (const o of objects) things.push(o.name);
-  let text: string;
-  if (!known && things.length === 0) text = 'You have not explored there.';
-  else if (things.length === 0) text = `You see ${/^[aeiou]/i.test(terrain) ? 'an' : 'a'} ${terrain}.`;
-  else text = `You see ${things.join(', ')}${terrain ? ` on ${terrain}` : ''}.`;
-
-  return { point, text: capitalise(text), monsters, objects, terrain, known, player };
+  const name = (grid?.name ?? '').replace(/\.$/, '').replace(/^(a|an) /i, '');
+  const monsters = (state?.monsters ?? []).filter((m) => m.x === point.x && m.y === point.y);
+  const objects = (grid?.objects ?? []).map((o) => ({ ...o, x: point.x, y: point.y }));
+  const blurred = (state?.player?.status.hallucinating ?? 0) > 0 && (monsters.length > 0 || objects.length > 0);
+  return {
+    point,
+    title: known && name ? capitalise(name) : 'Unexplored',
+    note: player ? 'here' : !known ? 'unknown' : grid?.view ? 'view' : 'remembered',
+    monsters: blurred ? [] : monsters,
+    objects: blurred ? [] : objects,
+    blurred,
+    known,
+    player,
+  };
 }
 
 /** What a level's quest asks, as paragraphs: a fixed quest's description (tome2 wraps it at 80 columns), or a random quest in our words with the creatures slain. */
@@ -186,9 +182,25 @@ export function questParagraphs(quest: LevelQuest): string[] {
   return [ask, `Slain: ${r.slain} of ${r.count}.`];
 }
 
-/** The quest of the level, as a card. */
-export function openQuest(sheets: Sheets, quest: LevelQuest): void {
+/** How a quest begins or ends, told in its card: the heading under its title, what tome2 said then, and whether to say what it asks. */
+export interface QuestMoment {
+  subtitle: string;
+  scene: readonly string[];
+  task: boolean;
+}
+
+/** The quest of the level, as a card: what it asks (from the HUD's chip); as it begins or ends, what tome2 said then, first. */
+export function openQuest(sheets: Sheets, quest: LevelQuest, moment?: QuestMoment): void {
   const body = el('div', 'description');
-  for (const text of questParagraphs(quest)) body.append(el('p', undefined, text));
-  sheets.open({ title: quest.title, subtitle: 'Quest on this level', badge: el('span', 'glyph quest', iconText('⚑')), body, kind: 'card', className: 'sheet-quest' });
+  if (moment?.scene.length) body.append(leadIn(moment.scene));
+  if (!moment || moment.task) for (const text of questParagraphs(quest)) body.append(el('p', undefined, text));
+  sheets.open({
+    title: quest.title,
+    subtitle: moment?.subtitle ?? 'Quest on this level',
+    badge: el('span', 'glyph quest', iconText('⚑')),
+    body,
+    kind: 'card',
+    className: 'sheet-quest',
+    actions: moment ? [{ id: 'onward', label: 'Onward', run: () => sheets.back() }] : [],
+  });
 }

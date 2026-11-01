@@ -63,6 +63,19 @@ export function keyDirection(key: string): NavDirection | null {
   }
 }
 
+/** Where the highlight was: its item's key, and its place among the list's rows (or the footer's buttons). */
+export interface NavMark {
+  key: string | undefined;
+  index: number;
+  inList: boolean;
+}
+
+/** The name an item is found by once its list is rebuilt. */
+function navKey(item: HTMLElement): string | undefined {
+  const d = item.dataset;
+  return d.key ?? d.option ?? d.action ?? d.tab;
+}
+
 const SWIPE_MIN = 28;
 const SWIPE_MAX_MS = 600;
 
@@ -113,11 +126,33 @@ export class ListNav {
     if (scroll) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
-  /** Re-applies the highlight after the list was rebuilt, keeping the same position. */
-  refresh(preferred?: HTMLElement | null): void {
+  /** Re-applies the highlight after the list was rebuilt, at the same position. */
+  refresh(): void {
     const items = this.items();
-    if (preferred && items.includes(preferred)) this.setActive(preferred, false);
-    else this.setActive(items.length ? Math.max(0, Math.min(this.index, items.length - 1)) : -1, false);
+    this.setActive(items.length ? Math.max(0, Math.min(this.index, items.length - 1)) : -1, false);
+  }
+
+  /** Where the highlight is, to find it again with `find` once the list is rebuilt. */
+  mark(): NavMark | null {
+    const active = this.active;
+    if (!active) return null;
+    const inList = this.scroller !== this.root && this.scroller.contains(active);
+    const items = this.items().filter((item) => !inList || this.scroller.contains(item));
+    return { key: navKey(active), index: items.indexOf(active), inList };
+  }
+
+  /**
+   * The item a mark points to in the rebuilt list: the one with the same key,
+   * else (its row changed or went: a stack sold, a count changed) the row now
+   * in its place, or the last row when the list grew shorter.
+   */
+  find(mark: NavMark | null): HTMLElement | null {
+    if (!mark) return null;
+    const all = this.items();
+    const same = mark.key === undefined ? undefined : all.find((item) => navKey(item) === mark.key);
+    if (same) return same;
+    const items = all.filter((item) => !mark.inList || this.scroller.contains(item));
+    return items[Math.min(mark.index, items.length - 1)] ?? null;
   }
 
   move(direction: NavDirection): void {

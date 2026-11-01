@@ -192,7 +192,6 @@ export class GameFeel {
     this.deedTimer = window.setTimeout(() => this.nextDeed(), DEED_MS);
   }
 
-  /** Compares with the last state seen and plays any feedback. */
   /** Forgets the last hero, for a new game in the same page. */
   reset(): void {
     this.prev = null;
@@ -205,12 +204,15 @@ export class GameFeel {
     this.layer.classList.remove('low');
   }
 
-  update(player: Tracked): void {
+  /** Compares with the last state seen and plays its feedback, except events `hold` keeps back (to be shown another way, or played later with `play`); returns those. */
+  update(player: Tracked, hold: (event: FeelEvent) => boolean = () => false): FeelEvent[] {
     const events = playerEvents(this.prev, player);
     this.prev = { ...player };
     this.layer.classList.toggle('low', isLowHealth(player));
     this.layer.classList.toggle('still', this.animation() === 'off');
-    for (const event of events) this.play(event);
+    const held = events.filter(hold);
+    for (const event of events) if (!held.includes(event)) this.play(event);
+    return held;
   }
 
   /** Floats a short text (damage, a pickup) at a point on the stage, in viewport coordinates. */
@@ -224,7 +226,8 @@ export class GameFeel {
     window.setTimeout(() => node.remove(), FLOAT_AT_MS);
   }
 
-  private play(event: FeelEvent): void {
+  /** Plays an event's feedback (a banner, a float). */
+  play(event: FeelEvent): void {
     switch (event.kind) {
       case 'hurt':
         this.flash('hurt', 0.35 + event.fraction * 1.3);
