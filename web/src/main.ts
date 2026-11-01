@@ -473,12 +473,12 @@ function settleAttempt(): void {
   if (outcome) showToast(outcome.message, false);
 }
 
-/* Spells carried, read once per game turn for the toolbar. */
-let spellsCache: { turn: number; spells: SpellState | null } | null = null;
+/* Spells, powers and skill actions, read again each game turn and whenever skill points are spent (a skill raised or an ability learnt takes no turn). */
+let spellsCache: { key: string; spells: SpellState | null } | null = null;
 
 function currentSpells(): SpellState | null {
-  const turn = lastSnap?.turn ?? -1;
-  if (spellsCache?.turn !== turn) spellsCache = { turn, spells: engine.spells() };
+  const key = `${lastSnap?.turn ?? -1}:${lastState?.player?.skillPoints ?? 0}`;
+  if (spellsCache?.key !== key) spellsCache = { key, spells: engine.spells() };
   return spellsCache.spells;
 }
 
