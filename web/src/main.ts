@@ -3,7 +3,7 @@ import { GameAudio } from './audio/audio.ts';
 import type { Place } from './audio/places.ts';
 import { attemptOutcome, doorKinds, freshMessages, launcherKind, spellTone, weaponKind, type SpellTone } from './audio/cues.ts';
 import { Engine } from './engine.ts';
-import { areaName, Hud, rowSegments, statusLabels, type HudEntity } from './hud.ts';
+import { areaName, Hud, rowSegments, shortStandaloneView, statusLabels, type HudEntity } from './hud.ts';
 import { attachMapGestures, attachPinch } from './input/gestures.ts';
 import { directionKeys, KEY_BACKSLASH as BACKSLASH, KEY_BACKSPACE, KEY_ENTER, KEY_ESCAPE, keyCodes as codesOf, translateKey, translateText } from './input/keys.ts';
 import { attachSoftKeyboard } from './input/softkeyboard.ts';
@@ -15,10 +15,10 @@ import { commandGroups, commandKeys, contextActions, contextualAction, transitio
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { approachTarget, isKnown, pushPast, STOP_MESSAGES, stepTowards, Travel, type TravelContext, type TravelStep } from './play/travel.ts';
+import { approachTarget, goAction, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, type HeroMemory } from './play/mapmemory.ts';
-import { CAVE_MARK, isHostile, LAYER_MASK, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
+import { CAVE_MARK, isHostile, LAYER_MASK, leadInMessages, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -36,8 +36,8 @@ import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
 import { TitleScreen } from './title.ts';
 import { openSoundtrack } from './ui/soundtrack.ts';
 import { openHelp } from './ui/help.ts';
-import { openMagic, openSpell, RecentStore, recentUsable } from './ui/magic.ts';
-import { CastWatcher, fireMacro, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
+import { openMagic, openSpell, RecentStore } from './ui/magic.ts';
+import { CastWatcher, fireMacro, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
 import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
 import { GameFeel } from './feel.ts';
 import { Coach } from './ui/coach.ts';
@@ -432,53 +432,16 @@ function currentSpells(): SpellState | null {
   return spellsCache.spells;
 }
 
-/**
- * The toolbar's quick repeat. For a hero who uses magic, the last spell or
- * power that can be used again, or before any, the first spell in their
- * books (or their first race or class power); for others, the last aimed
- * thing they did that can be done again (a wand or rod, a thrown flask, a power).
- */
+/** The toolbar's quick repeat (`quickRecent`), while the game waits for a command. */
 function quickEntry(): RecentAction | null {
   if (!lastSnap?.atCommand) return null;
-  const spells = currentSpells();
-  const pack = engine.inventory()?.pack ?? [];
-  const usable = (e: RecentAction) => {
-    if (e.kind !== 'item') return recentUsable(e, spells);
-    const item = recentItem(e, pack);
-    return !!item && !!recentItemAction(e, item);
-  };
-  const recent = api.recent();
-  if (heroStyle().magic) {
-    const magic = recent.find((e) => e.kind !== 'item' && usable(e));
-    if (magic) return magic;
-    const first = spells?.books.flatMap((b) => b.spells).find((spell) => spell.ok);
-    if (first) return { kind: 'spell', name: first.name };
-    const power = spells?.bonus.find((p) => p.level <= (lastState?.player?.lev ?? 0));
-    if (power) return { kind: 'path', command: 'U', steps: [power.name] };
-    return null;
-  }
-  return recent.find((e) => e.aimed && usable(e)) ?? null;
+  return quickRecent(api.recent(), currentSpells(), engine.inventory()?.pack ?? [], heroStyle().magic, lastState?.player?.lev ?? 0);
 }
 
-/**
- * Why a recent spell, power or item cannot be done now: too little mana for
- * the spell (tome2 would only let it be tried at great risk), a wand or
- * staff out of charges, or, for the toolbar's one tap (`needTarget`),
- * nothing in sight to aim it at.
- */
+/** Why a recent action cannot be done now (`recentBlocked`). */
 function recentUnavailable(entry: RecentAction, needTarget: boolean): string | null {
-  if (entry.kind === 'spell') {
-    const spell = currentSpells()?.books.flatMap((b) => b.spells).find((s) => s.name === entry.name);
-    if (spell?.short) return `Not enough mana for ${entry.name}.`;
-  }
-  if (entry.kind === 'item' && /\(0 charges\)/.test(recentItem(entry, engine.inventory()?.pack ?? [])?.name ?? '')) {
-    return `The ${entry.name} is out of charges.`;
-  }
-  if (needTarget && entry.aimed && !targetInSight()) return NO_TARGET;
-  return null;
+  return recentBlocked(entry, currentSpells(), engine.inventory()?.pack ?? [], needTarget, targetInSight());
 }
-
-const NO_TARGET = 'No target in sight.';
 
 /** A hostile creature a spell or missile can be aimed at, as tome2's "nearest target" needs. */
 function targetInSight(): boolean {
@@ -778,8 +741,6 @@ let commandState: GameState | null = null;
  * (when messages pause, it has).
  */
 let leadMessages: MessageState[] = [];
-/* The most of them shown. */
-const LEAD_LINES = 6;
 
 const CARD_KINDS = new Set<PromptKind>(['yesno', 'quantity', 'text', 'direction', 'aim', 'choice']);
 
@@ -1260,7 +1221,7 @@ function refresh(): void {
   /* A shop or other building waits for its own commands under its screen. */
   const atCommands = snap.atCommand || (snap.icky && atBuildingCommands());
   if (state && atCommands) commandState = state;
-  leadMessages = state && commandState && !atCommands && settings.messages === 'flow' ? newMessages(commandState, state).slice(0, LEAD_LINES).reverse() : [];
+  leadMessages = leadInMessages(commandState, state, atCommands, settings.messages === 'flow');
 
   /* tome2 clears its screen flag when an item prompt ends, though the shop is still open until the trade's last question. */
   const trading = !!trade && !!engine.store();
@@ -2041,14 +2002,14 @@ function changingButton(snap: LevelSnapshot): Action {
 
 /** What to tell the player when travel or exploring stops. */
 function stopMessage(journey: Travel | Explore, step: Extract<TravelStep, { kind: 'stop' }>, snap: LevelSnapshot): string | null {
-  const light = changingButton(snap).id === 'equip' && gearSuggestion()?.kind === 'light';
-  if (step.reason === 'explored' && journey instanceof Explore && snap.depth > 0 && snap.lightRadius <= 0) {
-    return light ? 'It is too dark to explore. Tap Light to light your way.' : 'It is too dark to explore further without a light.';
-  }
-  if (step.reason === 'dark' && light) return 'Your light has gone out. Tap Light to light your way again.';
-  if (step.creature) return `You stop: ${titleName(step.creature)} in sight${step.asleep ? ', asleep' : ''}.`;
-  if (step.reason === 'arrived' && travelApproximate) return journey instanceof Travel && journey.walked >= FAR_WALK_STEPS ? STOP_MESSAGES.closest : null;
-  return STOP_MESSAGES[step.reason];
+  return stopText(step, {
+    light: changingButton(snap).id === 'equip' && gearSuggestion()?.kind === 'light',
+    exploring: journey instanceof Explore,
+    walked: journey instanceof Travel ? journey.walked : 0,
+    approximate: travelApproximate,
+    depth: snap.depth,
+    lightRadius: snap.lightRadius,
+  });
 }
 
 /**
@@ -2071,9 +2032,6 @@ function startTravel(goal: MapPoint): void {
   travelApproximate = !!approach && !approach.exact;
   stepTravel();
 }
-
-/* Steps a walk that stops short of an unknown place takes before it says so. */
-const FAR_WALK_STEPS = 10;
 
 /** The pause between steps of travel and exploring: Relaxed walks at its own slower pace, whatever the animation setting. */
 function travelStepMs(): number {
@@ -2253,43 +2211,37 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
 }
 
 function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
-  const player = { x: snap.px, y: snap.py };
-  const near = isAdjacent(player.x, player.y, cell.x, cell.y);
-  const digit = (dx: number, dy: number) => directionKeys(directionDigit(dx, dy) ?? '5', false);
-
-  if (prompt === 'direction') {
-    if (near) send(digit(cell.x - player.x, cell.y - player.y));
-    return;
-  }
-  if (prompt === 'aim') {
-    if (near) send(digit(cell.x - player.x, cell.y - player.y));
-    else startTargeting(cell);
-    return;
-  }
-  if (!snap.atCommand) {
-    /* Resting, running or repeating: a tap interrupts it. */
-    if (prompt === 'none') send([KEY_ESCAPE]);
-    return;
-  }
-  if (cell.x === player.x && cell.y === player.y) {
-    send([BACKSLASH, waitCommand(alwaysPickup()).charCodeAt(0)]);
-    return;
-  }
-  goTowards(snap, cell);
+  doTap(tapAction(snap, materials, cell, prompt));
 }
 
-/**
- * Where a tap on the map takes the hero: travel to a place they have seen,
- * one step to a neighbouring cell, and one step towards anywhere unseen,
- * blank screen beyond the level included.
- */
 function goTowards(snap: LevelSnapshot, point: MapPoint): void {
-  if (isKnown(snap, point) && !isAdjacent(snap.px, snap.py, point.x, point.y)) {
-    startTravel(point);
-    return;
+  doTap(goAction(snap, materials, point));
+}
+
+/** Carries out what a tap on the map decided. */
+function doTap(action: TapAction): void {
+  switch (action.kind) {
+    case 'direction':
+      send(directionKeys(action.digit, false));
+      break;
+    case 'target':
+      startTargeting(action.cell);
+      break;
+    case 'interrupt':
+      send([KEY_ESCAPE]);
+      break;
+    case 'wait':
+      send([BACKSLASH, waitCommand(alwaysPickup()).charCodeAt(0)]);
+      break;
+    case 'travel':
+      startTravel(action.cell);
+      break;
+    case 'step':
+      startStep(action.cell);
+      break;
+    case 'none':
+      break;
   }
-  const step = isKnown(snap, point) ? point : stepTowards(snap, materials, point);
-  if (step) startStep(step);
 }
 
 /** One step to a neighbouring cell (a closed door there is opened, then walked through). */
@@ -2637,19 +2589,6 @@ function safeTop(): number {
   return px;
 }
 
-/**
- * True when an iOS home-screen app's view is shorter than the screen by the
- * status bar: the view then ends above the home indicator.
- */
-function shortStandaloneView(): boolean {
-  if ((navigator as Navigator & { standalone?: boolean }).standalone !== true) return false;
-  const portrait = window.innerHeight >= window.innerWidth;
-  const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
-  const missing = full - window.innerHeight;
-  const top = safeTop();
-  return missing > 0 && top > 0 && Math.abs(missing - top) <= 2;
-}
-
 /* Height of the view without the on-screen keyboard, for the current width. */
 let fullHeight = 0;
 let fullWidth = 0;
@@ -2682,7 +2621,8 @@ function updateAppHeight(): void {
   } else if (window.scrollY !== 0) {
     window.scrollTo(0, 0);
   }
-  root.classList.toggle('short-view', shortStandaloneView());
+  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  root.classList.toggle('short-view', shortStandaloneView(standalone, window.innerWidth, window.innerHeight, screen.width, screen.height, standalone ? safeTop() : 0));
 }
 
 new ResizeObserver(() => layout()).observe(stage);

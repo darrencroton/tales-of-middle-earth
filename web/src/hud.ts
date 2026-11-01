@@ -107,6 +107,18 @@ export function sortByDistance<T extends { x: number; y: number }>(items: T[], p
 }
 
 /**
+ * True when an iOS home-screen app's view is shorter than the screen by the
+ * status bar: the view then ends above the home indicator.
+ */
+export function shortStandaloneView(standalone: boolean, innerWidth: number, innerHeight: number, screenWidth: number, screenHeight: number, safeTop: number): boolean {
+  if (!standalone) return false;
+  const portrait = innerHeight >= innerWidth;
+  const full = portrait ? Math.max(screenWidth, screenHeight) : Math.min(screenWidth, screenHeight);
+  const missing = full - innerHeight;
+  return missing > 0 && safeTop > 0 && Math.abs(missing - safeTop) <= 2;
+}
+
+/**
  * Renders the Brogue-style sidebar (player bars, visible entities) and the
  * fading message area.
  */

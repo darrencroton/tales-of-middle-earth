@@ -1,16 +1,20 @@
-import { expect, test, type Page } from '@playwright/test';
-import { createCharacter, jumpToLevel, summonBeside, waitAtCommand, waitForEngine, wizardCommand } from './helpers.ts';
+import type { Page } from '@playwright/test';
+import { createCharacter, expect, jumpToLevel, summonBeside, test, waitAtCommand, waitForEngine, wizardCommand } from './helpers.ts';
 
-/** Cells of the town's buildings (tome2 calls every shop, home and hall a building). */
-async function buildings(page: Page): Promise<{ x: number; y: number }[]> {
-  return page.evaluate(() => {
-    const tome = window.__tome!;
-    const snap = tome.engine.snapshot()!;
-    const feats = tome.engine.features();
-    const cells: { x: number; y: number }[] = [];
-    for (let i = 0; i < snap.feat.length; i++) if (feats[snap.feat[i]]?.name === 'Building') cells.push({ x: i % snap.width, y: Math.floor(i / snap.width) });
-    return cells;
-  });
+/** The door of a town building, by the glyph and colour tome2 draws it with (st_info.txt). */
+async function door(page: Page, glyph: string, colour: number): Promise<{ x: number; y: number }> {
+  const cell = await page.evaluate(
+    ([g, c]) => {
+      const tome = window.__tome!;
+      const snap = tome.engine.snapshot()!;
+      const feats = tome.engine.features();
+      const i = snap.feat.findIndex((f, n) => feats[f]?.name === 'Building' && snap.glyph[n] === g.charCodeAt(0) && snap.attr[n] === c);
+      return i < 0 ? null : { x: i % snap.width, y: Math.floor(i / snap.width) };
+    },
+    [glyph, colour] as const,
+  );
+  expect(cell, `no building drawn as ${glyph} in colour ${colour}`).not.toBeNull();
+  return cell!;
 }
 
 /** Walks to a building's door (again whenever townsfolk stop the walk) until its panel shows; the building's name. */
@@ -31,67 +35,67 @@ async function leave(page: Page): Promise<void> {
 }
 
 test('shops show their whole stock natively, buy and sell from item cards, the door offers going back in, and a service\'s answer is shown', async ({ page }) => {
-  test.setTimeout(480_000);
+  test.setTimeout(240_000);
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Shopper');
 
-  const names: Record<string, { x: number; y: number }> = {};
-  for (const cell of await buildings(page)) {
-    const name = await walkIn(page, cell);
-    if (!name) continue;
-    names[name] = cell;
-    if (name === 'The Mathom-house') {
-      /* A museum that tome2 words differently from a shop is shown the same way, not as tome2's raw screen. */
-      await expect(page.locator('.termview [data-tab="shelf"]')).toHaveText('Collection');
-      await expect(page.locator('.termview .empty')).toContainText('display cases stand empty');
-    }
-    await leave(page);
-    if (names['General Store'] && names['The Mathom-house']) break;
-  }
-  expect(Object.keys(names)).toContain('General Store');
+  /* Townsfolk sent away, so nothing stops the walks. */
+  await wizardCommand(page, 'z');
 
-  await walkIn(page, names['General Store']);
+  /* A museum that tome2 words differently from a shop is shown the same way, not as tome2's raw screen. */
+  expect(await walkIn(page, await door(page, '+', 5))).toBe('The Mathom-house');
+  await expect(page.locator('.termview [data-tab="shelf"]')).toHaveText('Collection');
+  await expect(page.locator('.termview .empty')).toContainText('display cases stand empty');
+  await leave(page);
+
+  expect(await walkIn(page, await door(page, '1', 15))).toBe('General Store');
   const stock = await page.evaluate(() => window.__tome!.engine.store()!.stock.length);
   await expect(page.locator('.termview .shop-row')).toHaveCount(stock);
   await expect(page.locator('.termview [data-action="nextpage"]')).toHaveCount(0);
 
-  /* Rations are always stocked (st_info.txt), so a run's random stock cannot leave them out. */
-  const rations = () => page.evaluate(() => window.__tome!.engine.inventory()!.pack.find((i) => /Rations? of Food/.test(i.name))?.number ?? 0);
-  const before = await rations();
+  /* The stock is the run's: buy two of the cheapest thing there are two or more of. */
+  const ware = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const gold = tome.engine.gameState()!.player!.au;
+    const stock = tome.engine.store()!.stock.filter((s) => s.number >= 2 && s.price * 2 <= gold).sort((a, b) => a.price - b.price);
+    return stock[0] ? { name: stock[0].name, kind: stock[0].name.replace(/^\d+ /, '') } : null;
+  });
+  expect(ware, 'nothing in stock two can be bought of').not.toBeNull();
+  const held = () =>
+    page.evaluate((kind) => window.__tome!.engine.store()!.stock.find((s) => s.name.replace(/^\d+ /, '') === kind)?.number ?? 0, ware!.kind);
+  const before = await held();
   const gold = await page.evaluate(() => window.__tome!.engine.store()!.gold);
-  await page.locator('.termview .shop-row', { hasText: 'Rations of Food' }).click();
+  await page.locator('.termview .shop-row', { hasText: ware!.name }).click();
   await expect(page.locator('.sheet-item [data-action="take"]')).toHaveText(/^Buy 1 for \d+ gold$/);
   await page.locator('.sheet-item .stepper-button', { hasText: '+' }).click();
   await expect(page.locator('.sheet-item [data-action="take"]')).toHaveText(/^Buy 2 for \d+ gold$/);
   await page.locator('.sheet-item [data-action="take"]').click();
-  await expect.poll(rations).toBe(before + 2);
-  await expect(page.locator('#toast')).toContainText('Bought 2 × Rations of Food');
+  await expect.poll(held).toBe(before - 2);
+  await expect(page.locator('#toast')).toContainText('Bought 2 ×');
   expect(await page.evaluate(() => window.__tome!.engine.store()!.gold)).toBeLessThan(gold);
 
+  /* Every hero sets out with rations, which a general store buys. */
+  const rations = () => page.evaluate(() => window.__tome!.engine.inventory()!.pack.find((i) => /Rations? of Food/.test(i.name))?.number ?? 0);
+  const carried = await rations();
+  expect(carried).toBeGreaterThan(0);
   await page.locator('.termview [data-tab="offer"]').click();
   await expect(page.locator('.termview .shop-note')).toContainText('buys food');
-  await page.locator('.termview .shop-row', { hasText: 'Rations of Food' }).click();
+  await page.locator('.termview .shop-row', { hasText: /Rations? of Food/ }).click();
   await page.locator('.sheet-item [data-action="offer"]').click();
-  await expect.poll(rations).toBe(before + 1);
-  await expect(page.locator('#toast')).toContainText('Sold Rations of Food');
+  await expect.poll(rations).toBe(carried - 1);
+  await expect(page.locator('#toast')).toContainText(/Sold .*Rations? of Food/);
 
   await leave(page);
-  const door = page.locator('#toolbar [data-action="shop"]');
-  await expect(door).toContainText('Enter shop');
-  await door.click();
+  const shopDoor = page.locator('#toolbar [data-action="shop"]');
+  await expect(shopDoor).toContainText('Enter shop');
+  await shopDoor.click();
   await expect(page.locator('.termview [data-tab="exit"]')).toBeVisible();
   await page.keyboard.press('Escape');
   await waitAtCommand(page);
 
   /* tome2 draws a service's answer over the building's screen and pages long ones: it is shown in a card. */
-  for (const cell of await buildings(page)) {
-    if (names["Mayor's Office"]) break;
-    const name = await walkIn(page, cell);
-    if (name === "Mayor's Office") names[name] = cell;
-    else if (name) await leave(page);
-  }
-  if (!(await page.locator('.termview [data-tab="exit"]').isVisible())) await walkIn(page, names["Mayor's Office"]);
+  expect(await walkIn(page, await door(page, '+', 3))).toBe("Mayor's Office");
   const quest = page.locator('.termview .row-button', { hasText: 'Get a quest' });
   await quest.click();
   await expect(page.locator('.sheet-service')).toContainText('Thieves!');

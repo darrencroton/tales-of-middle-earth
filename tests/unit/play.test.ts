@@ -4,7 +4,7 @@ import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, contextualA
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
-import { approachTarget, isKnown, pushPast, stepTowards, Travel, travelGrid, type TravelContext } from '../../web/src/play/travel.ts';
+import { approachTarget, FAR_WALK_STEPS, goAction, isKnown, pushPast, stepTowards, STOP_MESSAGES, stopMessage, tapAction, Travel, travelGrid, type StopContext, type TravelContext } from '../../web/src/play/travel.ts';
 import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials } from '../../web/src/render/materials.ts';
 import { CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, NO_EFFECT, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
 
@@ -179,6 +179,50 @@ describe('travel', () => {
     for (let x = 4; x < 12; x++) snap.info[x] = 0;
     assert.equal(isKnown(snap, { x: 9, y: 0 }), false);
     assert.equal(isKnown(snap, { x: 2, y: 0 }), true);
+  });
+
+  it('decides a tap by the question tome2 asks', () => {
+    const snap = level(['.....', '.....', '.....'], { x: 2, y: 1 });
+    const tap = (x: number, y: number, prompt: Parameters<typeof tapAction>[3]) => tapAction(snap, MATERIALS, { x, y }, prompt);
+    assert.deepEqual(tap(3, 0, 'direction'), { kind: 'direction', digit: '9' });
+    assert.deepEqual(tap(0, 0, 'direction'), { kind: 'none' });
+    assert.deepEqual(tap(1, 1, 'aim'), { kind: 'direction', digit: '4' });
+    assert.deepEqual(tap(0, 0, 'aim'), { kind: 'target', cell: { x: 0, y: 0 } });
+    snap.atCommand = false;
+    assert.deepEqual(tap(0, 0, 'none'), { kind: 'interrupt' });
+    assert.deepEqual(tap(0, 0, 'other'), { kind: 'none' });
+    snap.atCommand = true;
+    assert.deepEqual(tap(2, 1, 'none'), { kind: 'wait' });
+  });
+
+  it('travels to a known place, steps to a neighbour and towards the unseen', () => {
+    const snap = level(['............'], { x: 0, y: 0 });
+    for (let x = 4; x < 12; x++) snap.info[x] = 0;
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 3, y: 0 }), { kind: 'travel', cell: { x: 3, y: 0 } });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 1, y: 0 }), { kind: 'step', cell: { x: 1, y: 0 } });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 9, y: 0 }), { kind: 'step', cell: { x: 1, y: 0 } });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: -5, y: 0 }), { kind: 'none' });
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 3, y: 0 }, 'none'), { kind: 'travel', cell: { x: 3, y: 0 } });
+  });
+
+  it('words why a journey stopped', () => {
+    const base: StopContext = { light: false, exploring: false, walked: 0, approximate: false, depth: 1, lightRadius: 1 };
+    const stop = (reason: Parameters<typeof stopMessage>[0]['reason'], extra = {}) => ({ kind: 'stop' as const, reason, ...extra });
+    assert.equal(stopMessage(stop('hurt'), base), STOP_MESSAGES.hurt);
+    assert.equal(stopMessage(stop('monster', { creature: 'the Cave spider', asleep: true }), base), 'You stop: Cave spider in sight, asleep.');
+    assert.match(stopMessage(stop('explored'), { ...base, exploring: true, lightRadius: 0 }) ?? '', /too dark to explore further/);
+    assert.match(stopMessage(stop('explored'), { ...base, exploring: true, lightRadius: 0, light: true }) ?? '', /Tap Light/);
+    assert.equal(stopMessage(stop('explored'), { ...base, exploring: true, depth: 0, lightRadius: 0 }), STOP_MESSAGES.explored);
+    assert.match(stopMessage(stop('dark'), { ...base, light: true }) ?? '', /Tap Light to light your way again/);
+    assert.equal(stopMessage(stop('dark'), base), STOP_MESSAGES.dark);
+  });
+
+  it('says a walk ended short of the place only after a long enough walk', () => {
+    const arrived = { kind: 'stop' as const, reason: 'arrived' as const };
+    const short: StopContext = { light: false, exploring: false, walked: FAR_WALK_STEPS - 1, approximate: true, depth: 1, lightRadius: 1 };
+    assert.equal(stopMessage(arrived, short), null);
+    assert.equal(stopMessage(arrived, { ...short, walked: FAR_WALK_STEPS }), STOP_MESSAGES.closest);
+    assert.equal(stopMessage(arrived, { ...short, walked: FAR_WALK_STEPS, approximate: false }), null);
   });
 
   it('walks round a corner as near as the known way leads to an unseen tap', () => {

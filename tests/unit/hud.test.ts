@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { areaName, depthLabel, rowSegments, sortByDistance, statusLabels } from '../../web/src/hud.ts';
+import { areaName, depthLabel, rowSegments, shortStandaloneView, sortByDistance, statusLabels } from '../../web/src/hud.ts';
 import { defaultSettings, sanitiseSettings } from '../../web/src/settings.ts';
 import { TerminalBuffer } from '../../web/src/terminal.ts';
 
@@ -179,5 +179,16 @@ describe('hallucination', async () => {
     assert.equal(m.unique, 0);
     assert.equal(m.hp, 5);
     assert.equal(disguiseObject({ id: 2, name: 'a Potion of Speed', ch: 33, attr: 4, x: 0, y: 0 }).name, 'Something odd');
+  });
+});
+
+describe('iOS home-screen view', () => {
+  it('is short only in a home-screen app whose view is one status bar short of the screen', () => {
+    assert.ok(shortStandaloneView(true, 390, 797, 390, 844, 47));
+    assert.ok(shortStandaloneView(true, 844, 343, 844, 390, 47));
+    assert.ok(!shortStandaloneView(false, 390, 797, 390, 844, 47));
+    assert.ok(!shortStandaloneView(true, 390, 844, 390, 844, 47));
+    assert.ok(!shortStandaloneView(true, 390, 797, 390, 844, 0));
+    assert.ok(!shortStandaloneView(true, 390, 780, 390, 844, 47));
   });
 });

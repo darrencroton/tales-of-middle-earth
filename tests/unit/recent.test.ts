@@ -9,17 +9,22 @@ import {
   listedChoices,
   numberedMenu,
   pathMacro,
+  NO_TARGET,
+  quickRecent,
+  recentBlocked,
   recentItem,
   recentItemAction,
   recentLabel,
   rememberRecent,
   screenChoices,
   thenAim,
+  usableRecents,
   validRecent,
   type RecentAction,
 } from '../../web/src/play/recent.ts';
 import { bracketChoices, choiceQuestion, classifyPrompt } from '../../web/src/play/prompts.ts';
 import type { MacroScreen } from '../../web/src/play/macro.ts';
+import type { ItemState, SpellState } from '../../web/src/render/snapshot.ts';
 
 const keys = (text: string) => [...text].map((c) => c.charCodeAt(0));
 const screen = (prompt: string, rest = ''): MacroScreen => ({ prompt, screen: `${prompt}\n${rest}`, atCommand: false });
@@ -151,5 +156,47 @@ describe('recent actions', () => {
     assert.equal(oil.kind === 'item' && recentItemAction(oil, { tval: 77 })?.command, 'v');
     assert.ok(!validRecent({ kind: 'power', skill: 'x', power: 'y' }));
     assert.ok(validRecent({ kind: 'spell', name: 'Manathrust' }));
+  });
+
+  describe('quick repeat', () => {
+    const spell = (name: string, extra = {}) => ({ name, school: 'arcane', level: 1, mana: 2, fail: 10, info: '', ok: 1, short: 0, desc: '', ...extra });
+    const spells: SpellState = {
+      ready: 1,
+      books: [{ i: 0, name: 'Magic Book', spells: [spell('Manathrust'), spell('Phase Door', { short: 1 })] }],
+      powers: [{ label: 'Use Mindcraft', mkey: 2 }],
+      bonus: [{ name: 'Spit', desc: '', level: 5, cost: 1 }],
+    };
+    const wand = (name: string): ItemState => ({ i: 2, name, tval: 65, sval: 1, number: 1, weight: 1, ch: 45, attr: 1, wear: 0, activate: 0, ins: '' });
+    const bolt: RecentAction = { kind: 'spell', name: 'Manathrust' };
+    const aimedWand = itemRecent('a', 'Aim', { tval: 65, sval: 1, name: 'a Wand of Magic Missile (5 charges)' });
+
+    it('keeps spells and powers still known, and drops those not', () => {
+      assert.deepEqual(usableRecents([bolt, { kind: 'spell', name: 'Gone' }, { kind: 'path', command: 'U', steps: ['Spit'] }, aimedWand], spells), [bolt, { kind: 'path', command: 'U', steps: ['Spit'] }]);
+    });
+
+    it('repeats the last usable spell of a caster, else their first spell, else a power', () => {
+      const gone: RecentAction = { kind: 'spell', name: 'Gone' };
+      assert.deepEqual(quickRecent([gone, aimedWand, bolt], spells, [wand('a Wand of Magic Missile (5 charges)')], true, 1), bolt);
+      assert.deepEqual(quickRecent([gone], spells, [], true, 1), { kind: 'spell', name: 'Manathrust' });
+      const noBooks = { ...spells, books: [] };
+      assert.deepEqual(quickRecent([], noBooks, [], true, 5), { kind: 'path', command: 'U', steps: ['Spit'] });
+      assert.equal(quickRecent([], noBooks, [], true, 4), null);
+    });
+
+    it('repeats only the last aimed thing still carried for a hero who does not cast', () => {
+      const pack = [wand('a Wand of Magic Missile (5 charges)')];
+      assert.deepEqual(quickRecent([bolt, aimedWand], spells, pack, false, 1), aimedWand);
+      assert.equal(quickRecent([bolt, aimedWand], spells, [], false, 1), null);
+    });
+
+    it('says why a recent action cannot be done', () => {
+      const pack = [wand('a Wand of Magic Missile (0 charges)')];
+      assert.equal(recentBlocked({ kind: 'spell', name: 'Phase Door' }, spells, [], false, true), 'Not enough mana for Phase Door.');
+      assert.equal(recentBlocked(aimedWand, spells, pack, false, true), 'The Wand of Magic Missile is out of charges.');
+      const charged = [wand('a Wand of Magic Missile (3 charges)')];
+      assert.equal(recentBlocked(aimedWand, spells, charged, true, false), NO_TARGET);
+      assert.equal(recentBlocked(aimedWand, spells, charged, false, false), null);
+      assert.equal(recentBlocked(bolt, spells, [], true, true), null);
+    });
   });
 });

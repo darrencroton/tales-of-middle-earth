@@ -270,6 +270,24 @@ export function newMessages(
   return messages.slice(0, count).filter((m) => !isNotice(m));
 }
 
+/* The most messages shown with a question. */
+const LEAD_LINES = 6;
+
+/**
+ * What tome2 has said since it last waited for a command, oldest first, while
+ * it asks something with messages flowing past: shown with the question or
+ * menu, as tome2's -more- would have shown them first.
+ */
+export function leadInMessages(
+  commandState: Pick<GameState, 'messageTotal' | 'messages'> | null | undefined,
+  state: Pick<GameState, 'messageTotal' | 'messages'> | null | undefined,
+  atCommands: boolean,
+  flow: boolean,
+): MessageState[] {
+  if (!state || !commandState || atCommands || !flow) return [];
+  return newMessages(commandState, state).slice(0, LEAD_LINES).reverse();
+}
+
 export interface GameState {
   ready: number;
   player?: PlayerState;

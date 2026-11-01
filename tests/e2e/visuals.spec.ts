@@ -1,86 +1,92 @@
-import { expect, test } from '@playwright/test';
 import {
   beginNewCharacter,
   canvasBrightness,
   createCharacter,
   dismissMore,
+  expect,
   jumpToLevel,
   playerRegion,
   summonBeside,
+  test,
   viewMode,
   waitAtCommand,
   waitForEngine,
 } from './helpers.ts';
 
-test('opening screen ignites, the intro rises from the flames, then character creation', async ({ page }, testInfo) => {
-  await page.goto('./');
-  await expect(page.locator('#title-screen')).toBeVisible();
-  await waitForEngine(page);
-  await expect
-    .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0, y: 0.8, w: 1, h: 0.2 }), { timeout: 10_000 })
-    .toBeGreaterThan(15);
-  await expect
-    .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0.1, y: 0.1, w: 0.8, h: 0.2 }), { timeout: 10_000 })
-    .toBeGreaterThan(4);
-  await page.waitForTimeout(4500);
-  await testInfo.attach('opening', { body: await page.screenshot(), contentType: 'image/png' });
+test.describe(() => {
+  /* The flames ignite only with animation. */
+  test.use({ settings: { animation: 'full' } });
 
-  await beginNewCharacter(page, 'Lighter');
-  await expect(page.locator('#title-screen .title-intro')).toContainText('The world is indeed full of peril');
-  await page.waitForTimeout(1500);
-  await testInfo.attach('intro', { body: await page.screenshot(), contentType: 'image/png' });
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
+  test('opening screen ignites, the intro rises from the flames, then character creation', { tag: '@layout' }, async ({ page }, testInfo) => {
+    await page.goto('./');
+    await expect(page.locator('#title-screen')).toBeVisible();
+    await waitForEngine(page);
+    await expect
+      .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0, y: 0.8, w: 1, h: 0.2 }), { timeout: 10_000 })
+      .toBeGreaterThan(15);
+    await expect
+      .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0.1, y: 0.1, w: 0.8, h: 0.2 }), { timeout: 10_000 })
+      .toBeGreaterThan(4);
+    await page.waitForTimeout(4500);
+    await testInfo.attach('opening', { body: await page.screenshot(), contentType: 'image/png' });
 
-  await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race', { timeout: 30_000 });
-  expect(await viewMode(page)).toBe('screen');
-  await expect(page.locator('#fx')).toBeVisible();
-  await expect
-    .poll(() => canvasBrightness(page, '#fx', { x: 0, y: 0.85, w: 1, h: 0.15 }), { timeout: 10_000 })
-    .toBeGreaterThan(5);
+    await beginNewCharacter(page, 'Lighter');
+    await expect(page.locator('#title-screen .title-intro')).toContainText('The world is indeed full of peril');
+    await page.waitForTimeout(1500);
+    await testInfo.attach('intro', { body: await page.screenshot(), contentType: 'image/png' });
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
 
-  const current = page.locator('.director .birth-option.current');
-  /* Races whose highlighted name runs into the next column still read as one option each, with their details. */
-  for (const race of ['Dark-Elf', 'Thunderlord', 'DeathMold']) {
-    await page.locator('.director .birth-option', { hasText: race }).click();
-    await expect(current).toHaveText(race);
-    await expect(page.locator('.director .birth-card h3')).toHaveText(race);
-    await expect(page.locator('.director .birth-stat')).toHaveCount(6);
-  }
-  await expect(page.locator('.director .birth-option')).toHaveCount(22);
-  await expect(page.locator('.director .birth-tag')).toContainText('Experimental');
-  await expect(page.locator('.director .birth-traits li').first()).toBeVisible();
+    await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race', { timeout: 30_000 });
+    expect(await viewMode(page)).toBe('screen');
+    await expect(page.locator('#fx')).toBeVisible();
+    await expect
+      .poll(() => canvasBrightness(page, '#fx', { x: 0, y: 0.85, w: 1, h: 0.15 }), { timeout: 10_000 })
+      .toBeGreaterThan(5);
 
-  const other = page.locator('.director .birth-option:not(.current)').first();
-  const otherName = (await other.textContent())!;
-  await other.click();
-  await expect(current).toHaveText(otherName);
-  await expect(page.locator('.director .birth-card h3')).toHaveText(otherName);
-  await testInfo.attach('race', { body: await page.screenshot(), contentType: 'image/png' });
-  await page.locator('#toolbar [data-action="choose"]').click();
-  await expect(page.locator('.director .birth-summary')).toContainText(otherName);
+    const current = page.locator('.director .birth-option.current');
+    /* Races whose highlighted name runs into the next column still read as one option each, with their details. */
+    for (const race of ['Dark-Elf', 'Thunderlord', 'DeathMold']) {
+      await page.locator('.director .birth-option', { hasText: race }).click();
+      await expect(current).toHaveText(race);
+      await expect(page.locator('.director .birth-card h3')).toHaveText(race);
+      await expect(page.locator('.director .birth-stat')).toHaveCount(6);
+    }
+    await expect(page.locator('.director .birth-option')).toHaveCount(22);
+    await expect(page.locator('.director .birth-tag')).toContainText('Experimental');
+    await expect(page.locator('.director .birth-traits li').first()).toBeVisible();
 
-  /* Back returns to the previous step with the earlier choice highlighted. */
-  const step = await page.locator('.director .birth-header h2').textContent();
-  await page.locator('#toolbar [data-action="back"]').click();
-  await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race');
-  await expect(current).toHaveText(otherName);
-  expect(await page.locator('#toolbar [data-action="back"]').count()).toBe(0);
-  await page.locator('#toolbar [data-action="choose"]').click();
-  await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
+    const other = page.locator('.director .birth-option:not(.current)').first();
+    const otherName = (await other.textContent())!;
+    await other.click();
+    await expect(current).toHaveText(otherName);
+    await expect(page.locator('.director .birth-card h3')).toHaveText(otherName);
+    await testInfo.attach('race', { body: await page.screenshot(), contentType: 'image/png' });
+    await page.locator('#toolbar [data-action="choose"]').click();
+    await expect(page.locator('.director .birth-summary')).toContainText(otherName);
 
-  const second = (await page.locator('.director .birth-option:not(.current):not(.unusual)').last().textContent())!;
-  await page.locator('.director .birth-option', { hasText: second }).click();
-  await expect(current).toHaveText(second);
-  await page.locator('#toolbar [data-action="choose"]').click();
-  await expect(page.locator('.director .birth-header h2')).not.toHaveText(step!);
-  await page.locator('#toolbar [data-action="back"]').click();
-  await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
-  await expect(current).toHaveText(second);
-  await expect(page.locator('.director .birth-summary')).toContainText(otherName);
+    /* Back returns to the previous step with the earlier choice highlighted. */
+    const step = await page.locator('.director .birth-header h2').textContent();
+    await page.locator('#toolbar [data-action="back"]').click();
+    await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race');
+    await expect(current).toHaveText(otherName);
+    expect(await page.locator('#toolbar [data-action="back"]').count()).toBe(0);
+    await page.locator('#toolbar [data-action="choose"]').click();
+    await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
+
+    const second = (await page.locator('.director .birth-option:not(.current):not(.unusual)').last().textContent())!;
+    await page.locator('.director .birth-option', { hasText: second }).click();
+    await expect(current).toHaveText(second);
+    await page.locator('#toolbar [data-action="choose"]').click();
+    await expect(page.locator('.director .birth-header h2')).not.toHaveText(step!);
+    await page.locator('#toolbar [data-action="back"]').click();
+    await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
+    await expect(current).toHaveText(second);
+    await expect(page.locator('.director .birth-summary')).toContainText(otherName);
+  });
 });
 
-test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }, testInfo) => {
+test('renders the lit map, HUD and tome2 panels in the dungeon', { tag: ['@layout', '@smoke'] }, async ({ page }, testInfo) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Vis');
@@ -89,6 +95,9 @@ test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }
   await expect(page.locator('#hud .hud-player .name')).toHaveText('Vis');
   await expect(page.locator('#hud .bar-hp')).toContainText('Health');
   expect(await canvasBrightness(page, '#map', { x: 0.4, y: 0.4, w: 0.2, h: 0.2 })).toBeGreaterThan(3);
+  /* In landscape the message log moves into the HUD's sidebar, so the map has the whole height. */
+  const landscape = await page.evaluate(() => matchMedia('(orientation: landscape) and (min-width: 560px)').matches);
+  await expect(page.locator(landscape ? '#hud #messages' : '#stage > #messages')).toHaveCount(1);
   await testInfo.attach('town', { body: await page.screenshot(), contentType: 'image/png' });
 
   await page.keyboard.press('i');
@@ -125,7 +134,7 @@ test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }
   expect(stats.renderMs).toBeLessThan(250);
 });
 
-test('the map keeps its size whatever the HUD strip and toolbar show', async ({ page }) => {
+test('the map keeps its size whatever the HUD strip and toolbar show', { tag: '@layout' }, async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Steady');
@@ -167,7 +176,7 @@ test('the map keeps its size whatever the HUD strip and toolbar show', async ({ 
   expect(new Set(sizes).size, sizes.join(' / ')).toBe(1);
 });
 
-test('settings persist: text size, glyphs and animation', async ({ page }) => {
+test('settings persist: text size, glyphs, animation, music and sound', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   const fontSize = () => page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
@@ -177,6 +186,8 @@ test('settings persist: text size, glyphs and animation', async ({ page }) => {
   await page.locator('.sheet .segment', { hasText: 'Extra large' }).click();
   await page.locator('.sheet .segment', { hasText: 'Classic ASCII' }).click();
   await page.locator('.sheet .segment', { hasText: 'Reduced' }).click();
+  await page.locator('.segmented[aria-label="Music"] .segment', { hasText: 'Off' }).click();
+  await page.locator('.segmented[aria-label="Sound effects"] .segment', { hasText: 'High' }).click();
   expect(await fontSize()).toBe('19px');
   await page.keyboard.press('Escape');
 
@@ -187,4 +198,6 @@ test('settings persist: text size, glyphs and animation', async ({ page }) => {
   await expect(page.locator('.sheet .segment.selected', { hasText: 'Classic ASCII' })).toBeVisible();
   await expect(page.locator('.sheet .segment.selected', { hasText: 'Reduced' })).toBeVisible();
   await expect(page.locator('.sheet .segment.selected', { hasText: 'Extra large' })).toBeVisible();
+  await expect(page.locator('.segmented[aria-label="Music"] .segment.selected')).toHaveText('Off');
+  await expect(page.locator('.segmented[aria-label="Sound effects"] .segment.selected')).toHaveText('High');
 });

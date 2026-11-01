@@ -1,4 +1,20 @@
-import { expect, type Page } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
+
+/**
+ * The test runner with the app's settings stored before the first load:
+ * animation off unless a test asks otherwise (`test.use({ settings })`).
+ */
+export const test = base.extend<{ settings: Record<string, unknown> }>({
+  settings: [{ animation: 'off' }, { option: true }],
+  page: async ({ page, settings }, use) => {
+    await page.addInitScript((stored) => {
+      if (!localStorage.getItem('tome2mobile.settings')) localStorage.setItem('tome2mobile.settings', JSON.stringify(stored));
+    }, settings);
+    await use(page);
+  },
+});
+
+export { expect };
 
 export async function screenText(page: Page): Promise<string> {
   return page.evaluate(() => window.__tome?.screenText() ?? '');
@@ -90,6 +106,19 @@ export async function beginNewCharacter(page: Page, name: string): Promise<void>
   await expect(page.locator('#title-screen .title-intro p').first()).toBeVisible();
 }
 
+/** What the birth screens show: changes once a choice has been taken. */
+function birthState(page: Page): Promise<string> {
+  return page.evaluate(() =>
+    [
+      window.__tome?.screenText().split('\n')[0],
+      document.querySelector('.director .birth-header h2')?.textContent,
+      document.querySelector('.director .birth-option.current')?.textContent,
+      document.querySelector('.prompt-card:not([hidden])')?.textContent,
+      window.__tome?.engine.snapshot()?.inDungeon,
+    ].join('|'),
+  );
+}
+
 /**
  * Creates a character through the native screens with default choices
  * until the town map is shown. Answers yes to tome2 questions (wizard mode).
@@ -100,38 +129,40 @@ export async function createCharacter(
   picks: { race?: string; cls?: string; beforeBegin?: () => Promise<void> } = {},
 ): Promise<void> {
   await beginNewCharacter(page, name);
-  await page.waitForTimeout(400);
-  await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
-  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
+  /* The intro takes a tap once it has begun to rise. */
+  await expect(async () => {
+    if (await page.locator('#title-screen').isVisible()) await page.locator('#title-screen').click({ position: { x: 20, y: 20 }, timeout: 1_000 });
+    await expect(page.locator('#title-screen')).toBeHidden({ timeout: 1_000 });
+  }).toPass({ timeout: 30_000 });
 
+  const candidates = [
+    '.prompt-card .card-button.primary',
+    '#toolbar [data-action="yes"]',
+    '#toolbar [data-action="choose"]',
+    '#toolbar [data-action="accept"]',
+    '#toolbar [data-action="begin"]',
+  ];
   let readied = false;
   for (let i = 0; i < 60 && !(await inDungeon(page)); i++) {
     if (picks.beforeBegin && !readied && (await page.locator('#toolbar [data-action="begin"]').isVisible())) {
       readied = true;
       await picks.beforeBegin();
     }
+    const before = await birthState(page);
     const heading = (await page.locator('.director .birth-header h2').textContent().catch(() => '')) ?? '';
     const pick = /your race/.test(heading) ? picks.race : /your class/.test(heading) ? picks.cls : undefined;
     if (pick && (await page.locator('.director .birth-option.current').textContent()) !== pick) {
       await page.locator('.director .birth-option', { hasText: pick }).first().click();
-      await page.waitForTimeout(300);
-      continue;
-    }
-    const candidates = [
-      '.prompt-card .card-button.primary',
-      '#toolbar [data-action="yes"]',
-      '#toolbar [data-action="choose"]',
-      '#toolbar [data-action="accept"]',
-      '#toolbar [data-action="begin"]',
-    ];
-    for (const selector of candidates) {
-      const target = page.locator(selector);
-      if ((await target.count()) && (await target.first().isVisible())) {
-        await target.first().click();
-        break;
+    } else {
+      for (const selector of candidates) {
+        const target = page.locator(selector).first();
+        if (await target.isVisible()) {
+          await target.click();
+          break;
+        }
       }
     }
-    await page.waitForTimeout(400);
+    await expect.poll(() => birthState(page), { timeout: 5_000 }).not.toBe(before).catch(() => undefined);
   }
   expect(await inDungeon(page), `expected the town map, got:\n${await screenText(page)}`).toBe(true);
   await dismissMore(page);
