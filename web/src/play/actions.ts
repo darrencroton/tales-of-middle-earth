@@ -139,7 +139,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
   {
     title: 'Fight and magic',
     commands: [
-      { label: 'Magic', icon: '✦', command: 'm', native: 'magic', refuse: (c) => (c.magic ? null : 'You know no spells yet.') },
+      { label: 'Magic', icon: '✦', command: 'm', native: 'magic', refuse: (c) => (c.magic ? null : 'You know no magic yet.') },
       { label: 'Powers', icon: '❂', command: 'U', native: 'powers', refuse: (c) => (c.powers ? null : 'You have no powers yet.') },
       { label: 'Fire', icon: '➶', command: 'f' },
       { label: 'Throw', icon: '↗', command: 'v' },
@@ -211,7 +211,7 @@ export function commandGroups(ctx: CommandContext): { title: string; commands: C
     commands: group.commands
       .filter((c) => !c.when || c.when(ctx))
       .map(({ when: _when, refuse, ...c }): CommandDef => {
-        const why = refuse?.(ctx) || (!c.native && worldMapRefusal(c.command, ctx.where === 'worldMap'));
+        const why = (!c.native && worldMapRefusal(c.command, ctx.where === 'worldMap')) || refuse?.(ctx);
         return why ? { ...c, unavailable: why } : c;
       })
       .flatMap((c) => stairs(c, ctx.where)),

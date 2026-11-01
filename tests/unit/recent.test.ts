@@ -14,6 +14,7 @@ import {
   recentBlocked,
   recentItem,
   recentItemAction,
+  hasActivePowers,
   magicArts,
   recentLabel,
   recentSource,
@@ -167,6 +168,9 @@ describe('recent actions', () => {
     };
     assert.deepEqual(magicArts(spells).map((p) => p.label), ['Use Necromancy', 'Copy a spell']);
     assert.deepEqual(techniques(spells).map((p) => p.label), ['Fire piercing shots', 'Change melee mode']);
+    const dodger = { ready: 1, books: [], bonus: [], powers: [{ label: 'Check dodge chance', mkey: 16 }] };
+    assert.equal(hasActivePowers(dodger), false);
+    assert.equal(hasActivePowers(spells), true);
   });
 
   it('labels recents, keeps throws and wands aimed, and drops entries it does not know', () => {

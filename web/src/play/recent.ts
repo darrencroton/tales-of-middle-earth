@@ -82,6 +82,14 @@ export function hasPowers(spells: SpellState | null): boolean {
   return !!spells?.bonus.length || techniques(spells).length > 0;
 }
 
+/* Techniques that only check or switch something, not worth a toolbar button of their own. */
+const MINOR_TECHNIQUES: ReadonlySet<string> = new Set(['Check dodge chance', 'Change melee mode']);
+
+/** The hero has a power, or a technique that acts (not only a check or a switch), worth the toolbar's Powers button. */
+export function hasActivePowers(spells: SpellState | null): boolean {
+  return !!spells?.bonus.length || techniques(spells).some((t) => !MINOR_TECHNIQUES.has(t.label));
+}
+
 /* Item commands that ask for a direction. */
 const AIMED_ITEM_COMMANDS = new Set(['a', 'z', 'v']);
 

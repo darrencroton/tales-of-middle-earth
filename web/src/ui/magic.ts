@@ -128,14 +128,20 @@ export type MagicTab = 'magic' | 'powers';
 
 const SOURCE_ORDER: readonly PowerInfo['source'][] = ['race', 'class', 'form', 'gear', 'corruption', 'other'];
 
+/** What grants a power, without tome2's article ("a Ring of Teleportation" → "Ring of Teleportation"). */
+function grantor(power: PowerInfo): string {
+  return power.from.trim().replace(/^(a|an|the|some) /i, '');
+}
+
 /** The heading a power is listed under: what grants it. */
 function powerHeading(power: PowerInfo): string {
   switch (power.source) {
     case 'race':
+      return grantor(power) || 'Race';
     case 'class':
-      return power.from;
+      return grantor(power) || 'Class';
     case 'form':
-      return `${displayName(power.from)} form`;
+      return grantor(power) ? `${displayName(grantor(power))} form` : 'Form';
     case 'gear':
       return 'Gear';
     case 'corruption':
@@ -152,7 +158,7 @@ function powerMeta(power: PowerInfo): string {
 /** What a power does and what grants it, with Use at the foot. */
 function openPower(api: GameApi, power: PowerInfo, handlers: MagicHandlers): void {
   const body = el('div', 'description');
-  const meta = [powerMeta(power), power.source === 'gear' ? `From ${power.from}` : ''].filter(Boolean).join(' · ');
+  const meta = [powerMeta(power), power.source === 'gear' ? `From ${grantor(power)}` : ''].filter(Boolean).join(' · ');
   if (meta) body.append(el('p', 'muted', meta));
   body.append(el('p', undefined, power.desc || 'No more is known of this power.'));
   api.sheets.open({
@@ -168,7 +174,7 @@ function openPower(api: GameApi, power: PowerInfo, handlers: MagicHandlers): voi
 /** A power as a tappable row (one tap uses it), with ⓘ for what it does. */
 function powerRow(api: GameApi, power: PowerInfo, handlers: MagicHandlers): HTMLElement {
   const row = el('div', 'spell-line');
-  const hint = power.source === 'gear' ? [powerMeta(power), power.from].filter(Boolean).join(' · ') : powerMeta(power);
+  const hint = power.source === 'gear' ? [powerMeta(power), grantor(power)].filter(Boolean).join(' · ') : powerMeta(power);
   row.append(rowButton(displayName(power.name), hint, '❂', `bonus-${power.name}`, () => handlers.run({ kind: 'path', command: 'U', steps: [power.name] })));
   const info = el('button', 'tv-info', 'i');
   info.type = 'button';

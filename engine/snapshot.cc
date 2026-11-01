@@ -12,6 +12,7 @@
 #include "cave.hpp"
 #include "cave_type.hpp"
 #include "cmd5.hpp"
+#include "corrupt.hpp"
 #include "defines.hpp"
 #include "dungeon_info_type.hpp"
 #include "feature_flag.hpp"
@@ -23,14 +24,13 @@
 #include "levels.hpp"
 #include "lua_bind.hpp"
 #include "messages.hpp"
+#include "mimic.hpp"
 #include "monster1.hpp"
 #include "monster2.hpp"
 #include "monster_race.hpp"
 #include "monster_race_flag.hpp"
 #include "monster_type.hpp"
 #include "object1.hpp"
-#include "corrupt.hpp"
-#include "mimic.hpp"
 #include "object2.hpp"
 #include "object_flag.hpp"
 #include "object_flag_meta.hpp"
@@ -43,6 +43,7 @@
 #include "player_race_mod.hpp"
 #include "player_spec.hpp"
 #include "player_type.hpp"
+#include "powers.hpp"
 #include "q_rand.hpp"
 #include "quest_type.hpp"
 #include "school_book.hpp"
@@ -1803,6 +1804,8 @@ static std::pair<std::string, std::string> power_source(int idx)
 		return std::find(std::begin(powers), std::end(powers), idx) != std::end(powers);
 	};
 	bool const own_body = !p_ptr->tim_mimic && !p_ptr->body_monster;
+	/* Vampiric teeth grant their power through a copy of the hero's race modifier (player_gain_vampire_teeth). */
+	if (idx == PWR_VAMPIRISM && player_has_corruption(CORRUPT_VAMPIRE_TEETH)) return { "corruption", "" };
 	if (cp_ptr && grants(cp_ptr->ps.powers)) return { "class", cp_ptr->title };
 	if (own_body && rp_ptr && grants(rp_ptr->ps.powers)) return { "race", rp_ptr->title };
 	if (own_body && rmp_ptr && grants(rmp_ptr->ps.powers)) return { "race", rmp_ptr->title };

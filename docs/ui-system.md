@@ -24,7 +24,7 @@ Map (toolbar, HUD, gestures)
 │   │                         └── Spell / power     card over the panel (Cast / Use)         depth 2
 │   ├── More ──────────────── Commands             panel: commands by intent (section 7)   depth 1
 │   │   ├── Look ──────────── look mode: banner + look card on the map (each creature and item → its card)
-│   │   ├── Magic & powers ── Magic, in the same frame (Back returns to Commands)
+│   │   ├── Magic, Powers ─── the Magic panel on that tab, in the same frame (Back returns to Commands)
 │   │   ├── item commands (Drink potion, Read scroll…) → tome2 item prompt (TermView panel, tabs)
 │   │   ├── Talk, Give, Steal, doors → direction card on the map (Give then asks which item)
 │   │   └── Game options ──── tome2 screen; Commands reopens after

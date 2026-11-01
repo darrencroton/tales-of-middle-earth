@@ -540,7 +540,7 @@ describe('actions', () => {
     assert.equal(why('Read scroll', { where: 'worldMap' }), 'Not on the world map.');
     assert.equal(why('Eat', { where: 'worldMap' }), undefined);
     assert.equal(why('Level map', { where: 'worldMap' }), undefined);
-    assert.equal(why('Magic', {}), 'You know no spells yet.');
+    assert.equal(why('Magic', {}), 'You know no magic yet.');
     assert.equal(why('Powers', { magic: true }), 'You have no powers yet.');
     assert.equal(why('Powers', { powers: true }), undefined);
     assert.deepEqual(
