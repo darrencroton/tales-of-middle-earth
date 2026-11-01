@@ -441,7 +441,7 @@ test('the name prompt sits at the top of the screen, clear of the keyboard', { t
   expect(box!.y + box!.height).toBeLessThan(height * 0.4);
 });
 
-test('saved heroes: Continue plays the last, the Game roster lists them all, an abandoned hero stays in the Hall of Fame until removed, Delete removes only that hero', async ({ page }) => {
+test('saved heroes: Continue plays the last, the Game Roster lists them all, an abandoned hero stays in the Hall of Fame until removed, Delete removes only that hero', async ({ page }) => {
   test.setTimeout(300_000);
   const quit = async () => {
     await page.locator('#toolbar [data-action="menu"]').click();
@@ -477,7 +477,7 @@ test('saved heroes: Continue plays the last, the Game roster lists them all, an 
   const choices = page.locator('#title-screen .title-choice');
   await expect(choices.first()).toContainText('Continue as Young Sib');
   await expect(choices.first().locator('.title-choice-detail')).toContainText(/^Level 1 /);
-  await choices.filter({ hasText: 'Game roster' }).click();
+  await choices.filter({ hasText: 'Game Roster' }).click();
   await expect(page.locator('.adventurer-row')).toHaveText([/Young Sib/, /Elder/]);
   await page.locator('.adventurer-row', { hasText: 'Elder' }).click();
   await expect(page.locator('.sheet-adventurer .sheet-title')).toHaveText('Elder');
@@ -495,7 +495,7 @@ test('saved heroes: Continue plays the last, the Game roster lists them all, an 
   await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
   await waitForEngine(page);
   await expect(choices.first()).toContainText('Continue as Elder');
-  await expect(choices.filter({ hasText: 'Game roster' })).toContainText('1 saved hero');
+  await expect(choices.filter({ hasText: 'Game Roster' })).toContainText('1 saved hero');
   let files = await savedFiles();
   expect(files).toEqual(expect.arrayContaining(['Elder', 'Young_Sib']));
 
@@ -513,7 +513,7 @@ test('saved heroes: Continue plays the last, the Game roster lists them all, an 
   expect(files.filter((f) => f.startsWith('Young_Sib'))).toEqual([]);
   await page.keyboard.press('Escape');
 
-  await choices.filter({ hasText: 'Game roster' }).click();
+  await choices.filter({ hasText: 'Game Roster' }).click();
   await expect(page.locator('.adventurer-row')).toHaveCount(1);
   await page.locator('.adventurer-row', { hasText: 'Elder' }).click();
   await page.locator('.sheet-adventurer [data-action="delete"]').click();

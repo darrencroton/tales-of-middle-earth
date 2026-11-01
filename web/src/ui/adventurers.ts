@@ -50,7 +50,7 @@ export function openAdventurers(sheets: Sheets, saves: readonly SaveInfo[], hand
     row.addEventListener('click', () => openAdventurer(sheets, save, handlers));
     list.append(row);
   }
-  sheets.open({ title: 'Game roster', subtitle: 'Your saved heroes', body: list, className: 'sheet-adventurers' });
+  sheets.open({ title: 'Game Roster', subtitle: 'Your saved heroes', body: list, className: 'sheet-adventurers' });
 }
 
 /** A saved hero: who and where they are, with Play, and Delete after a warning. */

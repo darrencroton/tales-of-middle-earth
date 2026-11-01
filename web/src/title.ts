@@ -210,7 +210,7 @@ export class TitleScreen {
 
   /**
    * Shows Continue for the hero played last (straight into the game),
-   * Game roster (every saved hero, each with Play and Delete) and New character.
+   * Game Roster (every saved hero, each with Play and Delete) and New character.
    */
   setChoices(saves: SaveInfo[]): void {
     this.ready = true;
@@ -239,7 +239,7 @@ export class TitleScreen {
     if (last) {
       const hero = this.callbacks.describe(last);
       make(`Continue as ${hero.name}`, hero.line, true, () => this.callbacks.onChoose({ kind: 'continue', save: last }));
-      make('Game roster', saves.length === 1 ? '1 saved hero' : `${saves.length} saved heroes`, false, () => this.callbacks.onAdventurers(saves));
+      make('Game Roster', saves.length === 1 ? '1 saved hero' : `${saves.length} saved heroes`, false, () => this.callbacks.onAdventurers(saves));
     }
     make(saves.length ? 'New character' : 'Enter Middle-earth', saves.length ? '' : 'Create your hero', saves.length === 0, () =>
       this.callbacks.onChoose({ kind: 'new' }),
