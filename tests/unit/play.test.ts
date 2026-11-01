@@ -530,19 +530,26 @@ describe('actions', () => {
     assert.ok(!labels({}).includes('Steal') && labels({ steals: true }).includes('Steal'));
     assert.ok(!labels({}).includes('Pray') && labels({ pray: 1 }).includes('Pray') && labels({ pray: 2 }).includes('Stop praying'));
     assert.ok(!labels({}).includes('Engrave a rune') && labels({ runes: true }).includes('Engrave a rune'));
-    assert.ok(!labels({}).includes('Drink from fountain') && labels({ underfoot: 'fountain' }).includes('Drink from fountain'));
-    assert.ok(labels({ underfoot: 'altar of Eru' }).includes('Sacrifice at altar'));
+    const why = (label: string, ctx: Partial<CommandContext>) => commandGroups({ ...COMMANDS, ...ctx }).flatMap((g) => g.commands).find((c) => c.label === label)?.unavailable;
+    assert.equal(why('Drink from fountain', {}), 'There is no fountain here.');
+    assert.equal(why('Drink from fountain', { underfoot: 'fountain' }), undefined);
+    assert.equal(why('Sacrifice at altar', { underfoot: 'altar of Eru' }), undefined);
+    assert.equal(why('Talk', { where: 'worldMap', beside: true }), 'Not on the world map.');
+    assert.equal(why('Read scroll', { where: 'worldMap' }), 'Not on the world map.');
+    assert.equal(why('Eat', { where: 'worldMap' }), undefined);
+    assert.equal(why('Level map', { where: 'worldMap' }), undefined);
     assert.ok(!labels({}).includes('Search') && !labels({}).includes('Bonus power'));
     assert.equal(new Set(commandGroups(COMMANDS).map((g) => g.title)).size, commandGroups(COMMANDS).length);
   });
 
-  it('talks to a neutral creature beside the hero, before what lies underfoot', () => {
-    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 1, alwaysPickup: false, prompt: 'none' as const };
-    const talk = contextualAction({ ...base, talk: '4' });
+  it('talks to a neutral creature beside the hero once nothing more pressing applies', () => {
+    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const talk = contextualAction({ ...base, talk: '4', exploreNext: 'down' });
     assert.deepEqual([talk.id, talk.label], ['talk', 'Talk']);
     assert.deepEqual(talk.effect, { kind: 'keys', keys: [92, ...keys('Y4')] });
     assert.equal(contextualAction({ ...base, talk: '4', foe: '6' }).id, 'attack');
-    assert.equal(contextualAction({ ...base, talk: '4', underfoot: 'up staircase' }).id, 'ascend');
+    assert.equal(contextualAction({ ...base, talk: '4', floorObjects: 1 }).id, 'pickup');
+    assert.equal(contextualAction({ ...base, talk: '4', gear: 'eat' }).id, 'equip');
   });
 
   it('names the way to and from the world map on the surface', () => {

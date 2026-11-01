@@ -238,8 +238,12 @@ Four things look different and never stand for each other:
 
 Every command of tome2's dispatcher (`process_command` in `dungeon.cc`, the
 original keyset) and where a player reaches it. The More sheet groups what is
-left by what the player means to do; it hides what does not apply here and
-dims what needs someone beside the hero.
+left by what the player means to do. It leaves out what the hero cannot ever
+do (Pray without a god, Engrave without runes, Steal without the skill) and
+dims, saying why, what cannot be done here: a fountain's or altar's command
+off one, Talk, Give and Steal with no one beside the hero, and on the world
+map whatever tome2 ignores there. What Talk or Give brings out is shown in a
+card named for the creature.
 
 | tome2 | Command | Reached from |
 |---|---|---|
@@ -252,9 +256,9 @@ dims what needs someone beside the hero.
 | `+` | alter (attack, open or tunnel by terrain) | covered by the above and Attack |
 | `Y` | talk | tap a neutral creature beside you; changing button *Talk*; its card; More |
 | `y` | give | a creature's card beside you; More |
-| `Z` | steal from a creature | More (with the Stealing skill); in a shop, *Steal* on a shelf card |
+| `Z` | steal from a creature | More (with the Stealing skill); in a shop, *Steal one* on a shelf card |
 | `P` | command allies | More → *Command allies* |
-| `H` `O` | drink at a fountain, sacrifice at an altar | changing button; More while on one |
+| `H` `O` | drink at a fountain, sacrifice at an altar | changing button; More |
 | `x` | engrave a rune | More, once a rune is learnt |
 | `l` `M` `L` `*` | look, level map, locate, target | long-press; More (*Look*, *Level map*, *Choose target*); dragging the map |
 | `i` `e` `w` `t` `d` `k` `{` `}` `I` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |

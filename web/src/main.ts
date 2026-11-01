@@ -414,9 +414,37 @@ function hearGear(turn: number): void {
   audio.setGear(weaponKind(held(INVEN_WIELD)?.tval), launcherKind(launcher?.tval, launcher?.sval));
 }
 
-/** Gathers the messages of a watched action. */
+/** Gathers the messages of a watched action, and of a conversation. */
 function followAttempt(previous: GameState | null, state: GameState): void {
-  if (attempt && previous) attempt.messages.push(...freshMessages(previous, state));
+  if (!previous) return;
+  if (attempt) attempt.messages.push(...freshMessages(previous, state));
+  if (conversation) conversation.messages.push(...freshMessages(previous, state));
+}
+
+/* A word with a creature (tome2's Talk and Give): what tome2 says until it is back at the command prompt. */
+let conversation: { title: string; messages: string[] } | null = null;
+const TALK = 'Y'.charCodeAt(0);
+const GIVE = 'y'.charCodeAt(0);
+
+/** Begins a conversation when Talk or Give is sent, named for the creature in the direction sent with it. */
+function noteConversation(codes: readonly number[]): void {
+  if (codes[0] !== BACKSLASH || (codes[1] !== TALK && codes[1] !== GIVE) || !lastSnap?.atCommand) return;
+  const snap = lastSnap;
+  const digit = codes[2] - 48;
+  const dx = ((digit - 1) % 3) - 1;
+  const dy = 1 - Math.floor((digit - 1) / 3);
+  const creature = digit >= 1 && digit <= 9 ? lastState?.monsters?.find((m) => m.x === snap.px + dx && m.y === snap.py + dy) : undefined;
+  conversation = { title: creature ? titleName(creature.name) : codes[1] === TALK ? 'Talk' : 'Give', messages: [] };
+}
+
+/** Once tome2 is back at the command prompt: what was said in a card, or a single line as a toast, so a long answer is not lost as messages flow past. */
+function settleConversation(): void {
+  const snap = lastSnap;
+  if (!conversation || !snap?.atCommand || snap.icky || macros.running || engine.pendingKeys > 0) return;
+  const { title, messages } = conversation;
+  conversation = null;
+  if (messages.length > 1) openMessage(sheets, title, messages.join(' '));
+  else if (messages.length === 1) showToast(messages[0], false);
 }
 
 /** Once a watched action has ended (its macro done, tome2 back at the command prompt), tells the player when tome2 refused it or it failed. */
@@ -1962,8 +1990,6 @@ function alwaysPickup(): boolean {
   return !!lastState?.player?.alwaysPickup;
 }
 
-/* Native views that open over the Commands sheet, so Back returns to it. */
-const STACKED_VIEWS = new Set<NativeView>(['magic']);
 
 /** What the More sheet needs to know of the hero's situation. */
 function commandContext(): CommandContext {
@@ -1993,7 +2019,8 @@ function commandButton(icon: string, label: string, onClick: () => void, unavail
 function openCommands(): void {
   const body = el('div', 'commands');
   const run = (def: CommandDef) => {
-    if (def.native && STACKED_VIEWS.has(def.native)) {
+    if (def.native === 'magic') {
+      /* Over the Commands sheet, so Back returns to it. */
       openNative(def.native);
     } else if (def.native) {
       sheets.closeAll();
@@ -2591,6 +2618,7 @@ const engine = new Engine(buffer, {
       stepTargeting();
     }
     settleAttempt();
+    settleConversation();
     settleTrade();
     /* A quest moment held while a macro ran is told once it has finished. */
     tellQuestMoment();
@@ -2627,6 +2655,7 @@ function send(codes: number[] | null): void {
   }
   if (travel || picker) stopAutomation(null, 'send');
   if (macros.running) macros.cancel();
+  noteConversation(codes);
   recentreMap();
   engine.sendKeys(codes);
   if (ctrlLatched) setCtrlLatched(false);

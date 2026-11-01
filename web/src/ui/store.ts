@@ -270,7 +270,7 @@ function description(text: string, fallback: string): HTMLElement {
   return box;
 }
 
-/** One item on the shelf: what it is and costs, how many to take, and Buy (or Take), or Steal for a thief; looking costs nothing. */
+/** One item on the shelf: what it is and costs, how many to take, and Buy (or Take), or Steal one for a thief; looking costs nothing. */
 export function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: StockItem, handlers: ShopHandlers): void {
   const body = el('div', 'item-detail');
   const most = affordable(store, item);
@@ -311,9 +311,9 @@ export function openShelfItem(api: GameApi, store: StoreState, model: ShopModel,
   if (steal && handlers.steals()) {
     actions.push({
       id: 'steal',
-      label: 'Steal',
+      label: 'Steal one',
       danger: true,
-      run: () => handlers.trade(shelfMacro(steal, item.i, quantity, store.stock.length, handlers.page()), `Stole ${traded(item.name, quantity)}.`),
+      run: () => handlers.trade(shelfMacro(steal, item.i, 1, store.stock.length, handlers.page()), `Stole ${traded(item.name, 1)}.`),
     });
   }
   api.sheets.open({

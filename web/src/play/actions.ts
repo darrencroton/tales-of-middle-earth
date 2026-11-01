@@ -95,13 +95,21 @@ export interface CommandContext {
 }
 
 interface CommandEntry extends CommandDef {
-  /** Offered only where this holds. */
+  /** Offered only to a hero for whom this holds. */
   when?: (ctx: CommandContext) => boolean;
-  /** Needs a creature beside the hero. */
-  beside?: boolean;
+  /** Why it cannot be done here and now, if it cannot. */
+  refuse?: (ctx: CommandContext) => string | null;
 }
 
-const NO_ONE_BESIDE = 'There is no one beside you.';
+const beside = (c: CommandContext) => (c.beside ? null : 'There is no one beside you.');
+
+/* Commands tome2 ignores while the hero travels the world map (its wild_mode). */
+const NOT_ON_WORLD_MAP = new Set(['o', 'c', 'B', 'j', 'T', 'y', 'Y', 'Z', 'P', 'p', 'm', 'U', 'M', '*', 'x', 'O', 'h', 'r', 'u', 'a', 'z', 'A', 'q', 'v', 'f', 'w', 't', 'd', '\u0006']);
+
+/** Why tome2 will not take a command on the world map, or null. */
+export function worldMapRefusal(command: string, worldMap: boolean): string | null {
+  return worldMap && NOT_ON_WORLD_MAP.has(command) ? 'Not on the world map.' : null;
+}
 
 /**
  * Every command the More sheet can offer, by what the player means to do.
@@ -118,17 +126,17 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
       { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
       { label: 'Go down', icon: '>', command: '>' },
       { label: 'Go up', icon: '<', command: '<' },
-      { label: 'Drink from fountain', icon: '⌂', command: 'H', when: (c) => /fountain/.test(c.underfoot) },
-      { label: 'Sacrifice at altar', icon: '0', command: 'O', when: (c) => /altar/.test(c.underfoot) },
+      { label: 'Drink from fountain', icon: '⌂', command: 'H', refuse: (c) => (/fountain/.test(c.underfoot) ? null : 'There is no fountain here.') },
+      { label: 'Sacrifice at altar', icon: '0', command: 'O', refuse: (c) => (/altar/.test(c.underfoot) ? null : 'There is no altar here.') },
       { label: 'Engrave a rune', icon: 'ᚱ', command: 'x', when: (c) => c.runes },
     ],
   },
   {
     title: 'People and creatures',
     commands: [
-      { label: 'Talk', icon: '❝', command: 'Y', beside: true },
-      { label: 'Give', icon: '⇄', command: 'y', beside: true },
-      { label: 'Steal', icon: '☚', command: 'Z', beside: true, when: (c) => c.steals },
+      { label: 'Talk', icon: '❝', command: 'Y', refuse: beside },
+      { label: 'Give', icon: '⇄', command: 'y', refuse: beside },
+      { label: 'Steal', icon: '☚', command: 'Z', refuse: beside, when: (c) => c.steals },
       { label: 'Command allies', icon: '♥', command: 'P' },
     ],
   },
@@ -190,13 +198,16 @@ function stairs(c: CommandDef, where: Surroundings): CommandDef[] {
   return [c];
 }
 
-/** The More sheet's groups for the hero's situation: the commands that apply here, dimmed with a reason when they cannot be done now. */
+/** The More sheet's groups for the hero: the commands open to them, dimmed with a reason when they cannot be done here and now. */
 export function commandGroups(ctx: CommandContext): { title: string; commands: CommandDef[] }[] {
   return COMMAND_GROUPS.map((group) => ({
     title: group.title,
     commands: group.commands
       .filter((c) => !c.when || c.when(ctx))
-      .map(({ when: _when, beside, ...c }): CommandDef => (beside && !ctx.beside ? { ...c, unavailable: NO_ONE_BESIDE } : c))
+      .map(({ when: _when, refuse, ...c }): CommandDef => {
+        const why = (!c.native && worldMapRefusal(c.command, ctx.where === 'worldMap')) || refuse?.(ctx);
+        return why ? { ...c, unavailable: why } : c;
+      })
       .flatMap((c) => stairs(c, ctx.where)),
   }));
 }
@@ -330,8 +341,8 @@ const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {
  * The toolbar's one changing button, the first of these that applies: the
  * world map's Walk here; the way on underfoot (a staircase is always what it
  * does); the door of a shop or other building underfoot; Attack a foe
- * alongside; Talk to someone alongside; what lies underfoot to pick up or
- * use; gear the hero needs to go on; and Explore, named for what it will do.
+ * alongside; what lies underfoot to pick up or use; gear the hero needs to
+ * go on; Talk to someone alongside; and Explore, named for what it will do.
  */
 export function contextualAction(ctx: ActionContext): Action {
   if (ctx.worldMap) return command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true);
@@ -339,7 +350,6 @@ export function contextualAction(ctx: ActionContext): Action {
   if (transition) return command(transition.id, transition.label, transition.icon, { command: transition.command }, true);
   if (ctx.entrance) return command('shop', ctx.entrance, '⌂', { command: '_' }, true);
   if (ctx.foe) return { id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true };
-  if (ctx.talk) return command('talk', 'Talk', '❝', { command: `Y${ctx.talk}` }, true);
   if (ctx.floorObjects > 0) return command('pickup', 'Pick up', '⇡', { command: pickupCommand(ctx.alwaysPickup) }, true);
   if (/fountain/.test(ctx.underfoot)) return command('drink', 'Drink', '⌂', { command: 'H' }, true);
   if (/altar/.test(ctx.underfoot)) return command('sacrifice', 'Sacrifice', '0', { command: 'O' }, true);
@@ -347,6 +357,7 @@ export function contextualAction(ctx: ActionContext): Action {
     const [label, icon] = GEAR_ACTIONS[ctx.gear];
     return { id: 'equip', label, icon, effect: { kind: 'native', view: 'equip' }, primary: true };
   }
+  if (ctx.talk) return command('talk', 'Talk', '❝', { command: `Y${ctx.talk}` }, true);
   const [label, icon] = EXPLORE_LABELS[ctx.exploreNext ?? 'explore'];
   return { id: 'explore', label, icon, effect: { kind: 'native', view: 'explore' }, primary: true };
 }
