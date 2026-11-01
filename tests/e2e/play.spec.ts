@@ -749,7 +749,7 @@ test('Explore in town never leads to a way down, and the quest level below Bree 
   expect(await page.evaluate(() => window.__tome!.engine.gameState()!.messages!.length)).toBeGreaterThan(0);
 });
 
-test('a random quest is named on arrival, its chip tells what it asks, it survives a save, and it is named again on the next visit', async ({ page }) => {
+test('a random quest is told on arrival, its chip tells what it asks, it survives a save, and it is named again on the next visit', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Rescuer');
@@ -766,8 +766,21 @@ test('a random quest is named on arrival, its chip tells what it asks, it surviv
     /* Its own music, whichever kind it is, and the map's edge in the quest's colour. */
     expect(await page.evaluate(() => window.__tome!.engine.place()?.levelQuest)).toBe(5);
     await expect(page.locator('.feel-layer')).toHaveClass(/\bquest\b/);
-    await expect(page.locator('.feel-banner.quest strong')).toHaveText(here!.title);
-    await expect(page.locator('.feel-banner.quest span')).toHaveText('Barrow-Downs · 150 ft');
+    if (visit === 0) {
+      /* The first arrival is told in a card: tome2's announcement, then what the quest asks. */
+      const card = page.locator('.sheet-quest');
+      await expect(card.locator('.sheet-title')).toHaveText(here!.title);
+      await expect(card.locator('.sheet-subtitle')).toHaveText('Barrow-Downs · 150 ft');
+      await expect(card.locator('.lead-in')).not.toBeEmpty();
+      await expect(card).toContainText(here!.random!.foe);
+      await card.locator('[data-action="onward"]').click();
+      await expect(page.locator('.sheet-layer')).toBeHidden();
+    } else {
+      /* A return gets the banner. */
+      await expect(page.locator('.sheet-quest')).toHaveCount(0);
+      await expect(page.locator('.feel-banner.quest strong')).toHaveText(here!.title);
+      await expect(page.locator('.feel-banner.quest span')).toHaveText('Barrow-Downs · 150 ft');
+    }
     await expect(chip).toHaveText(new RegExp(here!.title));
     await chip.click();
     await expect(page.locator('.sheet-quest .sheet-title')).toHaveText(here!.title);
