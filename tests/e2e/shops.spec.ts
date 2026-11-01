@@ -123,6 +123,30 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
   await expect(page.locator('.sheet-service')).toContainText('You) Shopper the Human');
   await page.locator('.sheet-service .sheet-action.primary').click();
   await leave(page);
+
+  /* At charisma 3 a black marketeer's offer goes below nothing, which tome2 would take from the hero's gold: not offered. */
+  await wizardCommand(page, 'e\r\r\r\r\r3\r\x1b');
+  expect(await walkIn(page, await door(page, '7', 8))).toBe('Black Market');
+  await page.locator('.termview [data-tab="offer"]').click();
+  const refused = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const offers = tome.engine.store()!.sell;
+    const inventory = tome.engine.inventory()!;
+    const i = offers.find((o) => o.why === 'nothing')?.i;
+    return [...inventory.pack, ...inventory.equip].find((item) => item.i === i)?.name ?? null;
+  });
+  expect(refused, 'nothing carried that the black market would charge for').not.toBeNull();
+  const row = page.locator('.termview .shop-row', { hasText: refused! }).first();
+  await expect(row).toContainText('Offers nothing');
+  await expect(page.locator('.termview .shop-row', { hasText: /-\d+ gold/ })).toHaveCount(0);
+  await row.click();
+  await expect(page.locator('.sheet-item')).toContainText(/offers nothing for it\./);
+  const sell = page.locator('.sheet-item [data-action="offer"]');
+  await expect(sell).toHaveClass(/unavailable/);
+  await sell.click();
+  await expect(page.locator('#toast')).toContainText('offers nothing for it');
+  await page.keyboard.press('Escape');
+  await leave(page);
 });
 
 test('travel walks through a companion, pushing past it', async ({ page }) => {

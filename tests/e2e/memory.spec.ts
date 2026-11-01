@@ -56,8 +56,9 @@ test('kept levels stay as the hero left them, the way back is known, and the hea
     const cause = await page.evaluate(() => window.__tome!.lastStopCause());
     if (!/monster|hurt/.test(cause)) expect(await playerPos(page), `stopped: ${cause}`).toEqual(start);
   }
+  /* The level as it is left: the walk back may have opened a door. */
   const back = await playerPos(page);
-  const known = (await level(page)).known;
+  const leaving = await level(page);
 
   const heading = async () => (await page.evaluate(() => window.__tome!.exploreStop()))?.heading;
   expect(await heading()).toBe('down');
@@ -66,8 +67,8 @@ test('kept levels stay as the hero left them, the way back is known, and the hea
   expect(await heading()).toBe('down');
   await jumpToLevel(page, 2);
   const again = await level(page);
-  expect(again.terrain).toBe(before.terrain);
-  expect(again.known).toBeGreaterThanOrEqual(known);
+  expect(again.terrain).toBe(leaving.terrain);
+  expect(again.known).toBeGreaterThanOrEqual(leaving.known);
   expect(await playerPos(page)).toEqual(back);
   expect(await heading()).toBe('up');
 

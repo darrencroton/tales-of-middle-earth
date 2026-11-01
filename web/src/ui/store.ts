@@ -87,6 +87,8 @@ export function refusal(why: StoreOffer['why']): string {
       return 'Worth nothing';
     case 'cursed':
       return 'Cursed: cannot be let go';
+    case 'nothing':
+      return 'Offers nothing for it';
     default:
       return '';
   }
@@ -319,19 +321,28 @@ export function openOfferItem(api: GameApi, store: StoreState, model: ShopModel,
   const label = () => (shop ? `${verb} ${quantity} for ${quantity * (offer?.price ?? 0)} gold` : `${verb} ${quantity}`);
   const actions: SheetAction[] = [];
   const key = model.offer?.key;
-  if (!why && key) {
-    if (item.number > 1) {
-      body.append(
-        stepper(item.number, (n) => {
-          quantity = n;
-          relabel(body, 'offer', label());
-        }),
-      );
-    }
+  const note = !why
+    ? null
+    : why === 'kind' && !store.buys
+      ? `${keeper(store)} sells, but never buys.`
+      : why === 'nothing'
+        ? `${keeper(store)} offers nothing for it.`
+        : `${refusal(why)}.`;
+  if (note) body.append(el('p', 'shop-short', note));
+  else if (key && item.number > 1) {
+    body.append(
+      stepper(item.number, (n) => {
+        quantity = n;
+        relabel(body, 'offer', label());
+      }),
+    );
+  }
+  if (key) {
     actions.push({
       id: 'offer',
-      label: label(),
+      label: note ? verb : label(),
       primary: true,
+      unavailable: note,
       run: () => {
         const name = traded(item.name, quantity);
         const done = shop
@@ -342,8 +353,6 @@ export function openOfferItem(api: GameApi, store: StoreState, model: ShopModel,
         handlers.trade(offerMacro(key, verb, item, place, quantity), done);
       },
     });
-  } else if (why) {
-    body.append(el('p', 'shop-short', why === 'kind' && !store.buys ? `${keeper(store)} sells, but never buys.` : `${refusal(why)}.`));
   }
   if (store.museum && !why) body.append(el('p', 'muted', 'A donation cannot be taken back.'));
   body.append(description(api.engine.objectDescription(item.i), 'You know nothing more about this item yet.'));
