@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import type { Page } from '@playwright/test';
-import { beginNewCharacter, createCharacter, expect, inDungeon, jumpToLevel, screenText, sendText, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen } from './helpers.ts';
+import { beginNewCharacter, createCharacter, expect, inDungeon, jumpToLevel, screenText, sendText, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
 
 test('loads the engine and lays out the opening screen without overflow', { tag: ['@layout', '@smoke'] }, async ({ page }) => {
   const errors: string[] = [];
@@ -320,6 +320,8 @@ test('a hero who dies is told what killed them and can be looked back on', async
   await waitForEngine(page);
   await createCharacter(page, 'Doomed');
   await jumpToLevel(page, 1);
+  /* Nothing else on the level is near enough to strike first. */
+  await wizardCommand(page, 'z');
   /* A Great Wyrm of Chaos (r_info 783), woken by the hero's blows. */
   await summonBeside(page, 783);
 
