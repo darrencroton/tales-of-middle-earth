@@ -422,24 +422,41 @@ function followAttempt(previous: GameState | null, state: GameState): void {
 }
 
 /* A word with a creature (tome2's Talk and Give): what tome2 says until it is back at the command prompt. */
-let conversation: { title: string; messages: string[] } | null = null;
+let conversation: { title: string; named: boolean; messages: string[] } | null = null;
 const TALK = 'Y'.charCodeAt(0);
 const GIVE = 'y'.charCodeAt(0);
 
-/** Begins a conversation when Talk or Give is sent, named for the creature in the direction sent with it. */
-function noteConversation(codes: readonly number[]): void {
-  if (codes[0] !== BACKSLASH || (codes[1] !== TALK && codes[1] !== GIVE) || !lastSnap?.atCommand) return;
+/** The creature one step from the hero in a keypad direction, by its digit's key code. */
+function creatureTowards(code: number | undefined): MonsterState | undefined {
   const snap = lastSnap;
-  const digit = codes[2] - 48;
+  const digit = (code ?? 0) - 48;
+  if (!snap || digit < 1 || digit > 9 || digit === 5) return undefined;
   const dx = ((digit - 1) % 3) - 1;
   const dy = 1 - Math.floor((digit - 1) / 3);
-  const creature = digit >= 1 && digit <= 9 ? lastState?.monsters?.find((m) => m.x === snap.px + dx && m.y === snap.py + dy) : undefined;
-  conversation = { title: creature ? titleName(creature.name) : codes[1] === TALK ? 'Talk' : 'Give', messages: [] };
+  return lastState?.monsters?.find((m) => m.x === snap.px + dx && m.y === snap.py + dy);
+}
+
+/**
+ * Begins a conversation when Talk or Give is sent at the command prompt
+ * (from a button, or typed), named for the creature in the direction sent
+ * with it, or in the direction answered next.
+ */
+function noteConversation(codes: readonly number[]): void {
+  if (conversation && !conversation.named && codes.length === 1 && currentPrompt() === 'direction') {
+    const creature = creatureTowards(codes[0]);
+    if (creature) conversation = { ...conversation, title: titleName(creature.name), named: true };
+    return;
+  }
+  const command = codes[0] === BACKSLASH ? codes.slice(1) : codes;
+  if ((command[0] !== TALK && command[0] !== GIVE) || !lastSnap?.atCommand) return;
+  const creature = creatureTowards(command[1]);
+  conversation = { title: creature ? titleName(creature.name) : command[0] === TALK ? 'Talk' : 'Give', named: !!creature, messages: [] };
 }
 
 /** Once tome2 is back at the command prompt: what was said in a card, or a single line as a toast, so a long answer is not lost as messages flow past. */
 function settleConversation(): void {
   const snap = lastSnap;
+  if (conversation && lastState?.player?.dead) conversation = null;
   if (!conversation || !snap?.atCommand || snap.icky || macros.running || engine.pendingKeys > 0) return;
   const { title, messages } = conversation;
   conversation = null;
@@ -3016,6 +3033,7 @@ function returnToTitle(): void {
   base = null;
   lastSnap = null;
   lastState = null;
+  conversation = null;
   returnTo = null;
   pendingSync = null;
   lastSavedTurn = -1;
