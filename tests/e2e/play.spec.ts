@@ -301,10 +301,11 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
   await page.locator('.sheet [data-tab="abilities"]').click();
   await expect(page.locator('.sheet .pop-tab.selected')).toContainText('Abilities');
   await expect(page.locator('.sheet .skill-row').first()).toBeVisible();
-  await page.locator('.sheet [data-action="learn"]').click();
-  /* tome2's question (or refusal) is asked in a small card over the sheet. */
-  await expect(page.locator('.sheet.sheet-card')).toBeVisible();
-  await page.locator('.sheet.sheet-card .sheet-action').first().click();
+  /* The first ability needs more than a new hero has: Learn is dimmed and says what. */
+  const learn = page.locator('.sheet [data-action="learn"]');
+  await expect(learn).toHaveClass(/unavailable/);
+  await learn.click();
+  await expect(page.locator('#toast')).toContainText('Needs');
   await expect(page.locator('.sheet-title')).toHaveText('Scholar');
   expect(await size()).toBe(height);
 

@@ -37,10 +37,7 @@ function actionButton(action: PopAction, primary: boolean): HTMLButtonElement {
   if (action.id) button.dataset.action = action.id;
   if (action.icon) button.append(el('span', 'pop-icon', iconText(action.icon)));
   button.append(el('span', 'pop-label', action.label));
-  if (unavailable) {
-    button.setAttribute('aria-disabled', 'true');
-    button.setAttribute('aria-description', unavailable);
-  }
+  if (unavailable) button.setAttribute('aria-description', unavailable);
   button.addEventListener('click', () => (unavailable ? refusal(unavailable) : action.run()));
   return button;
 }
