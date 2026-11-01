@@ -141,7 +141,10 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
   await expect(page.locator('.termview .shop-row', { hasText: /-\d+ gold/ })).toHaveCount(0);
   await row.click();
   await expect(page.locator('.sheet-item')).toContainText(/offers nothing for it\./);
-  await expect(page.locator('.sheet-item [data-action="offer"]')).toHaveCount(0);
+  const sell = page.locator('.sheet-item [data-action="offer"]');
+  await expect(sell).toHaveClass(/unavailable/);
+  await sell.click();
+  await expect(page.locator('#toast')).toContainText('offers nothing for it');
   await page.keyboard.press('Escape');
   await leave(page);
 });
