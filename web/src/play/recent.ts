@@ -1,5 +1,5 @@
 import { KEY_BACKSLASH as BACKSLASH, KEY_ESCAPE, keyCodes, typedAnswer } from '../input/keys.ts';
-import type { ItemState } from '../render/snapshot.ts';
+import type { ItemState, SpellState } from '../render/snapshot.ts';
 import { useAction, type ItemAction } from './items.ts';
 import { bracketChoices, classifyPrompt } from './prompts.ts';
 import type { Macro, MacroScreen } from './macro.ts';
@@ -110,6 +110,75 @@ export function recentItemAction(entry: Extract<RecentAction, { kind: 'item' }>,
   if (entry.command === 'v') return { id: 'throw', label: 'Throw', command: 'v', quantity: 'one' };
   const use = useAction(item.tval);
   return use && use.command === entry.command ? use : null;
+}
+
+/** Whether a recent spell or power can be used now (the spell is in a book carried, the skill or power is known). */
+export function recentUsable(entry: RecentAction, spells: SpellState | null): boolean {
+  if (entry.kind === 'spell') return !!spells?.books.some((b) => b.spells.some((s) => s.ok && s.name === entry.name));
+  if (entry.kind === 'path' && entry.command === 'm') return !!spells?.powers.some((p) => p.label === entry.steps[0]);
+  if (entry.kind === 'path') return !!spells?.bonus.some((p) => p.name === entry.steps[0]);
+  return false;
+}
+
+/** Spells and powers recently used that can be used now. */
+export function usableRecents(recents: readonly RecentAction[], spells: SpellState | null): RecentAction[] {
+  return recents.filter((e) => recentUsable(e, spells));
+}
+
+/**
+ * The toolbar's quick repeat. For a hero who uses magic, the last spell or
+ * power that can be used again, or before any, the first spell in their
+ * books (or their first race or class power); for others, the last aimed
+ * thing they did that can be done again (a wand or rod, a thrown flask, a power).
+ */
+export function quickRecent(
+  recent: readonly RecentAction[],
+  spells: SpellState | null,
+  pack: readonly ItemState[],
+  usesMagic: boolean,
+  level: number,
+): RecentAction | null {
+  const usable = (e: RecentAction) => {
+    if (e.kind !== 'item') return recentUsable(e, spells);
+    const item = recentItem(e, pack);
+    return !!item && !!recentItemAction(e, item);
+  };
+  if (usesMagic) {
+    const magic = recent.find((e) => e.kind !== 'item' && usable(e));
+    if (magic) return magic;
+    const first = spells?.books.flatMap((b) => b.spells).find((spell) => spell.ok);
+    if (first) return { kind: 'spell', name: first.name };
+    const power = spells?.bonus.find((p) => p.level <= level);
+    if (power) return { kind: 'path', command: 'U', steps: [power.name] };
+    return null;
+  }
+  return recent.find((e) => e.aimed && usable(e)) ?? null;
+}
+
+export const NO_TARGET = 'No target in sight.';
+
+/**
+ * Why a recent spell, power or item cannot be done now: too little mana for
+ * the spell (tome2 would only let it be tried at great risk), a wand or
+ * staff out of charges, or, for the toolbar's one tap (`needTarget`),
+ * nothing in sight to aim it at.
+ */
+export function recentBlocked(
+  entry: RecentAction,
+  spells: SpellState | null,
+  pack: readonly ItemState[],
+  needTarget: boolean,
+  targetInSight: boolean,
+): string | null {
+  if (entry.kind === 'spell') {
+    const spell = spells?.books.flatMap((b) => b.spells).find((s) => s.name === entry.name);
+    if (spell?.short) return `Not enough mana for ${entry.name}.`;
+  }
+  if (entry.kind === 'item' && /\(0 charges\)/.test(recentItem(entry, pack)?.name ?? '')) {
+    return `The ${entry.name} is out of charges.`;
+  }
+  if (needTarget && entry.aimed && !targetInSight) return NO_TARGET;
+  return null;
 }
 
 export interface MenuChoice {

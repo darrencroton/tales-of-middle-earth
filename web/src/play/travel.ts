@@ -10,8 +10,9 @@ import {
   type MonsterState,
 } from '../render/snapshot.ts';
 import { KEY_BACKSLASH as BACKSLASH } from '../input/keys.ts';
+import { titleName } from '../ui/api.ts';
 import { findPath, type Point, type TravelGrid } from './pathfinding.ts';
-import { directionDigit } from './prompts.ts';
+import { directionDigit, isAdjacent, type PromptKind } from './prompts.ts';
 
 const MAX_STEPS = 400;
 /* Visits to one cell that end a journey as going round in circles. */
@@ -75,6 +76,34 @@ export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
   closest: 'This is as far as you know the way.',
   creatureInWay: 'A creature stands in the way.',
 };
+
+/** Steps a walk that stops short of an unknown place takes before it says so. */
+export const FAR_WALK_STEPS = 10;
+
+/** What the stop message depends on besides the step itself. */
+export interface StopContext {
+  /** The changing button offers to light the way. */
+  light: boolean;
+  /** The journey is exploring, not travel. */
+  exploring: boolean;
+  /** Steps travel has walked. */
+  walked: number;
+  /** Travel ends short of the place tapped. */
+  approximate: boolean;
+  depth: number;
+  lightRadius: number;
+}
+
+/** What to tell the player when travel or exploring stops. */
+export function stopMessage(step: Extract<TravelStep, { kind: 'stop' }>, ctx: StopContext): string | null {
+  if (step.reason === 'explored' && ctx.exploring && ctx.depth > 0 && ctx.lightRadius <= 0) {
+    return ctx.light ? 'It is too dark to explore. Tap Light to light your way.' : 'It is too dark to explore further without a light.';
+  }
+  if (step.reason === 'dark' && ctx.light) return 'Your light has gone out. Tap Light to light your way again.';
+  if (step.creature) return `You stop: ${titleName(step.creature)} in sight${step.asleep ? ', asleep' : ''}.`;
+  if (step.reason === 'arrived' && ctx.approximate) return !ctx.exploring && ctx.walked >= FAR_WALK_STEPS ? STOP_MESSAGES.closest : null;
+  return STOP_MESSAGES[step.reason];
+}
 
 function isKnownIndex(snap: LevelSnapshot, i: number): boolean {
   return (snap.info[i] & (CAVE_MARK | CAVE_SEEN)) !== 0;
@@ -211,6 +240,43 @@ export function stepTowards(snap: LevelSnapshot, materials: readonly Material[],
 export function isKnown(snap: LevelSnapshot, point: Point): boolean {
   if (point.x < 0 || point.y < 0 || point.x >= snap.width || point.y >= snap.height) return false;
   return (snap.info[point.y * snap.width + point.x] & (CAVE_MARK | CAVE_SEEN)) !== 0;
+}
+
+/** What a tap on the map does. */
+export type TapAction =
+  | { kind: 'direction'; digit: string }
+  | { kind: 'target'; cell: Point }
+  | { kind: 'interrupt' }
+  | { kind: 'wait' }
+  | { kind: 'travel'; cell: Point }
+  | { kind: 'step'; cell: Point }
+  | { kind: 'none' };
+
+/**
+ * Where a tap on the map takes the hero: travel to a place they have seen,
+ * one step to a neighbouring cell, and one step towards anywhere unseen,
+ * blank screen beyond the level included.
+ */
+export function goAction(snap: LevelSnapshot, materials: readonly Material[], point: Point): Extract<TapAction, { kind: 'travel' | 'step' | 'none' }> {
+  const known = isKnown(snap, point);
+  if (known && !isAdjacent(snap.px, snap.py, point.x, point.y)) return { kind: 'travel', cell: point };
+  const step = known ? point : stepTowards(snap, materials, point);
+  return step ? { kind: 'step', cell: step } : { kind: 'none' };
+}
+
+/**
+ * What a tap on a map cell does for the question tome2 is asking: choose a
+ * direction or target, interrupt a rest or run, wait in place, or go there.
+ */
+export function tapAction(snap: LevelSnapshot, materials: readonly Material[], cell: Point, prompt: PromptKind): TapAction {
+  const near = isAdjacent(snap.px, snap.py, cell.x, cell.y);
+  const direction = (): TapAction => ({ kind: 'direction', digit: directionDigit(cell.x - snap.px, cell.y - snap.py) ?? '5' });
+  if (prompt === 'direction') return near ? direction() : { kind: 'none' };
+  if (prompt === 'aim') return near ? direction() : { kind: 'target', cell };
+  /* Resting, running or repeating: a tap interrupts it. */
+  if (!snap.atCommand) return prompt === 'none' ? { kind: 'interrupt' } : { kind: 'none' };
+  if (cell.x === snap.px && cell.y === snap.py) return { kind: 'wait' };
+  return goAction(snap, materials, cell);
 }
 
 /** What keeps the hero from pushing past a companion: tome2 makes them stop, or strike, while confused, stunned or seeing things. */

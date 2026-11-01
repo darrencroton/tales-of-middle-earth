@@ -1,4 +1,4 @@
-import { MKEY_SCHOOL, recentKey, recentLabel, recentSource, rememberRecent, validRecent, type RecentAction } from '../play/recent.ts';
+import { MKEY_SCHOOL, recentKey, recentLabel, recentSource, rememberRecent, usableRecents, validRecent, type RecentAction } from '../play/recent.ts';
 import type { SpellInfo, SpellState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { el, iconText, section } from './dom.ts';
@@ -110,19 +110,6 @@ function recentDetail(entry: RecentAction, spells: SpellState | null): string {
     return spell ? `${spell.mana} mana · ${spell.fail}%` : 'Spell';
   }
   return recentSource(entry);
-}
-
-/** Whether a recent spell or power can be used now (the spell is in a book carried, the skill or power is known). */
-export function recentUsable(entry: RecentAction, spells: SpellState | null): boolean {
-  if (entry.kind === 'spell') return !!spells?.books.some((b) => b.spells.some((s) => s.ok && s.name === entry.name));
-  if (entry.kind === 'path' && entry.command === 'm') return !!spells?.powers.some((p) => p.label === entry.steps[0]);
-  if (entry.kind === 'path') return !!spells?.bonus.some((p) => p.name === entry.steps[0]);
-  return false;
-}
-
-/** Spells and powers recently used that can be used now. */
-export function usableRecents(recents: readonly RecentAction[], spells: SpellState | null): RecentAction[] {
-  return recents.filter((e) => recentUsable(e, spells));
 }
 
 function rowButton(label: string, hint: string, icon: string, key: string, run: () => void): HTMLButtonElement {
