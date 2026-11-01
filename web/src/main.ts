@@ -64,7 +64,8 @@ import { Sheets, type SheetContent, type SheetTrail } from './ui/sheet.ts';
 import { bufferRows, type OptionBlock } from './ui/termparse.ts';
 import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.ts';
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
-import { setRefusal, type PopAction } from './ui/popup.ts';
+import { defaultItem, setRefusal, type PopAction } from './ui/popup.ts';
+import { ListNav } from './ui/listnav.ts';
 import { cleanPrompt, describableRange } from './ui/prompttext.ts';
 import { FilePages, parseHelpFile, viewerSource, viewerHeading, type HelpFile, type HelpLink, type ViewerHeading } from './ui/filepages.ts';
 import { drawnBlocks, entranceLabel, offerElements, SERVICE_CLEAR, serviceReply, shelfElements, shelfPage, shopModel, trades, type ShopHandlers, type ShopModel, type ShopTab } from './ui/store.ts';
@@ -137,6 +138,8 @@ const keyboardInput = byId<HTMLInputElement>('keyboard-input');
 const importFile = byId<HTMLInputElement>('import-file');
 const toast = byId<HTMLDivElement>('toast');
 const lookCard = byId<HTMLDivElement>('look-card');
+/** The look card's highlight: its rows and buttons, moved by arrows and swipes. */
+const lookNav = new ListNav(lookCard);
 const recentre = byId<HTMLButtonElement>('recentre');
 const lookBanner = byId<HTMLDivElement>('look-banner');
 
@@ -687,6 +690,7 @@ function showLookCard(point: MapPoint): void {
   const row = (ch: number, attr: number, name: string, aside: string, open: () => void) => {
     const button = el('button', 'look-row');
     button.type = 'button';
+    button.dataset.nav = '';
     button.append(glyph(ch, buffer.palette[attr] ?? '#fff'), el('span', 'look-name', name));
     if (aside) button.append(el('span', 'look-aside', aside));
     button.addEventListener('click', open);
@@ -700,6 +704,7 @@ function showLookCard(point: MapPoint): void {
   const add = (label: string, run: () => void) => {
     const button = el('button', 'look-button', label);
     button.type = 'button';
+    button.dataset.nav = '';
     button.addEventListener('click', run);
     buttons.append(button);
   };
@@ -713,6 +718,7 @@ function showLookCard(point: MapPoint): void {
   add('✕', () => hideLookCard());
   lookCard.replaceChildren(head, ...(rows.childElementCount ? [rows] : []), buttons);
   lookCard.hidden = false;
+  lookNav.setActive(defaultItem(rows, buttons), false);
   dirty = true;
   requestFrame();
 }
@@ -2784,6 +2790,18 @@ window.addEventListener('keydown', (e) => {
   if ((viewerFile() && termView.readKey(e)) || termView.handleKey(e)) {
     e.preventDefault();
     return;
+  }
+  if (!lookCard.hidden && mode === 'map') {
+    /* The look card is a list: arrows move its highlight, Enter chooses, Escape closes it. */
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      hideLookCard();
+      return;
+    }
+    if (lookNav.handleKey(e)) {
+      e.preventDefault();
+      return;
+    }
   }
   if ((looking || map.overview) && e.key === 'Escape') {
     e.preventDefault();

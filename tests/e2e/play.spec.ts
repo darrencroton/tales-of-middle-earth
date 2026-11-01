@@ -555,8 +555,8 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   await expect(page.locator('#look-card .look-note')).toHaveText('Where you stand');
   /* What lies there is listed, each opening its card. */
   const dropped = page.locator('#look-card .look-row').first();
-  await expect(dropped).toBeVisible();
-  await dropped.click();
+  await expect(dropped).toHaveClass(/is-active/);
+  await page.keyboard.press('Enter');
   await expect(page.locator('.sheet-item')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
