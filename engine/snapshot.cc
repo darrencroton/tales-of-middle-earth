@@ -681,8 +681,8 @@ bool shop_buys_anything(std::string const &name)
 /*
  * The price of one of an object, as store.cc's price_item (static there):
  * `selling` is the shop selling to the player, otherwise the shop buying.
- * Buying, a greedy keeper and a hero of low charisma make it negative, and
- * tome2 would take that much gold for the sale.
+ * Buying, a Black Market keeper's greed and a race they hate (or charisma of
+ * 5 or less) make it negative, and tome2 would take that gold for the sale.
  */
 long shop_price(store_type const &st, owner_type const &owner, object_type const *o_ptr, bool selling)
 {
