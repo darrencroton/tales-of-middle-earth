@@ -29,6 +29,8 @@
 #include "monster_race_flag.hpp"
 #include "monster_type.hpp"
 #include "object1.hpp"
+#include "corrupt.hpp"
+#include "mimic.hpp"
 #include "object2.hpp"
 #include "object_flag.hpp"
 #include "object_flag_meta.hpp"
@@ -1790,6 +1792,37 @@ EMSCRIPTEN_KEEPALIVE char const *web_birth_json()
 }
 
 /*
+ * Where a power of the hero's comes from, as tome2's calc_powers grants it:
+ * their class, race or race modifier (in their own body), something worn,
+ * a corruption, the form they have taken, or something else (a mushroom's
+ * gift, a possessor's way back to a body); with its name ("Hobbit", the item).
+ */
+static std::pair<std::string, std::string> power_source(int idx)
+{
+	auto grants = [idx](auto const &powers) {
+		return std::find(std::begin(powers), std::end(powers), idx) != std::end(powers);
+	};
+	bool const own_body = !p_ptr->tim_mimic && !p_ptr->body_monster;
+	if (cp_ptr && grants(cp_ptr->ps.powers)) return { "class", cp_ptr->title };
+	if (own_body && rp_ptr && grants(rp_ptr->ps.powers)) return { "race", rp_ptr->title };
+	if (own_body && rmp_ptr && grants(rmp_ptr->ps.powers)) return { "race", rmp_ptr->title };
+	for (int i = INVEN_WIELD; i < INVEN_TOTAL; i++)
+	{
+		object_type *o_ptr = &p_ptr->inventory[i];
+		if (!o_ptr->k_ptr || object_power(o_ptr) != idx) continue;
+		char name[160];
+		object_desc(name, o_ptr, true, 0);
+		return { "gear", name };
+	}
+	for (int i = 0; i < CORRUPTIONS_MAX; i++)
+	{
+		if (player_has_corruption(i) && get_corruption_power(i) == idx) return { "corruption", "" };
+	}
+	if (p_ptr->mimic_form) return { "form", get_mimic_name(p_ptr->mimic_form) };
+	return { "other", "" };
+}
+
+/*
  * Returns the spells the player can see in the books and spell-holding
  * items carried (as tome2's spell lists show them), and the skills and
  * abilities that can be activated, in the order of tome2's menu.
@@ -1899,11 +1932,14 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 		{
 			auto it = game->powers.find(idx);
 			if (it == game->powers.end()) continue;
+			auto const [source, from] = power_source(idx);
 			if (!firstPower) json += ',';
 			firstPower = false;
 			json += '{';
 			json_str(json, "name", it->second->name);
 			json_str(json, "desc", it->second->desc_text);
+			json_str(json, "source", source);
+			json_str(json, "from", from);
 			json_int(json, "level", it->second->activation.level);
 			json_int(json, "cost", it->second->activation.cost, false);
 			json += '}';

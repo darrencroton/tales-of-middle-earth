@@ -37,7 +37,7 @@ import { TitleScreen } from './title.ts';
 import { openSoundtrack } from './ui/soundtrack.ts';
 import { openHelp } from './ui/help.ts';
 import { openMagic, openSpell, RecentStore } from './ui/magic.ts';
-import { CastWatcher, fireMacro, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
+import { CastWatcher, fireMacro, hasMagic, hasPowers, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
 import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
 import { GameFeel, type FeelEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
@@ -536,15 +536,15 @@ function heroSteals(): boolean {
 }
 
 /**
- * The toolbar's magic button: for a hero who uses magic, Cast with spell
- * books and Powers with only skills or race powers; for others, Powers when
- * their race or class gives them some. None without any.
+ * The toolbar's magic button, which opens the Magic panel as More does (its
+ * Powers tab a tap away): for a hero who uses magic, Cast with spells or a
+ * magic art, else Powers with powers or techniques; for others, Powers when
+ * they have some. None without any.
  */
 function magicLabel(): string | null {
   const spells = currentSpells();
-  if (!heroStyle().magic) return spells?.bonus.length ? 'Powers' : null;
-  if (!spells || spells.books.length) return 'Cast';
-  return spells.powers.length || spells.bonus.length ? 'Powers' : null;
+  if (heroStyle().magic && (!spells || hasMagic(spells))) return 'Cast';
+  return hasPowers(spells) ? 'Powers' : null;
 }
 
 /** The Fire button, for a hero with a launcher wielded; it says why it cannot shoot now. */
@@ -635,7 +635,8 @@ function openNative(view: NativeView): void {
       character.open('skills');
       break;
     case 'magic':
-      openMagic(api, api.recent(), { run: (entry, anyway) => runRecent(entry, false, anyway) });
+    case 'powers':
+      openMagic(api, api.recent(), { run: (entry, anyway) => runRecent(entry, false, anyway) }, view);
       break;
     case 'recast': {
       const entry = quickEntry();
@@ -2019,6 +2020,8 @@ function commandContext(): CommandContext {
     pray: player?.pray ?? 0,
     runes: (player?.runes ?? 0) > 0,
     steals: heroSteals(),
+    magic: hasMagic(currentSpells()),
+    powers: hasPowers(currentSpells()),
   };
 }
 
@@ -2036,7 +2039,7 @@ function commandButton(icon: string, label: string, onClick: () => void, unavail
 function openCommands(): void {
   const body = el('div', 'commands');
   const run = (def: CommandDef) => {
-    if (def.native === 'magic') {
+    if (def.native === 'magic' || def.native === 'powers') {
       /* Over the Commands sheet, so Back returns to it. */
       openNative(def.native);
     } else if (def.native) {

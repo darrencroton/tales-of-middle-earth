@@ -411,7 +411,7 @@ test.describe(() => {
 
     const openMagic = async () => {
       await page.locator('#toolbar [data-action="commands"]').click();
-      await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
+      await page.locator('.sheet .command', { hasText: 'Magic' }).click();
       await expect(page.locator('.sheet-title')).toHaveText('Magic');
     };
     await openMagic();
@@ -473,15 +473,24 @@ test.describe(() => {
   });
 });
 
-test('race powers are in the Magic sheet, their lettered questions are buttons, and they are offered again', async ({ page }) => {
+test('race powers are under their race in Powers, their lettered questions are buttons, and they are offered again', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await createCharacter(page, 'Stormwing', { race: 'Thunderlord', cls: 'Warrior' });
 
+  /* More's Powers, and the toolbar's, open the panel on Powers, each power under what grants it; Magic is its other tab. */
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await page.locator('.sheet .command', { hasText: 'Powers' }).click();
+  await expect(page.locator('.sheet-title')).toHaveText('Powers');
+  await expect(page.locator('.sheet .sheet-section h3', { hasText: 'Thunderlord' })).toBeVisible();
+  await page.locator('.sheet .pop-tab', { hasText: 'Magic' }).click();
+  await expect(page.locator('.sheet .sheet-section h3', { hasText: 'Magic arts' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
   const openMagic = async () => {
-    await page.locator('#toolbar [data-action="commands"]').click();
-    await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
-    await expect(page.locator('.sheet-title')).toHaveText('Magic');
+    await page.locator('#toolbar [data-action="cast"]', { hasText: 'Powers' }).click();
+    await expect(page.locator('.sheet-title')).toHaveText('Powers');
   };
   /* A power can fail to concentrate; a hero tries again. */
   const aimed = async () => (await screenText(page)).split('\n')[0].startsWith('Direction');
@@ -505,7 +514,6 @@ test('race powers are in the Magic sheet, their lettered questions are buttons, 
 
   await openMagic();
   await expect(page.locator('.sheet .recent-button')).toContainText('Thunder strike');
-  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
 });
 

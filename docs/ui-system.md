@@ -19,8 +19,9 @@ Map (toolbar, HUD, gestures)
 │   │                         └── Item              card over Inventory (actions)            depth 2
 │   │                             ├── How many?     card over Item (Drop, Destroy)           depth 3
 │   │                             └── Inscribe      card at the top (text field)             depth 3
-│   ├── Cast / Powers ─────── Magic                panel: Recent, books, Powers, Skills     depth 1
-│   │                         └── Spell             card over Magic (Cast)                   depth 2
+│   ├── Cast / Powers ─────── Magic · Powers       panel, two tabs, each headed by Recent:  depth 1
+│   │                         Magic: books, Magic arts · Powers: by race, class, form, gear, corruption; Techniques
+│   │                         └── Spell / power     card over the panel (Cast / Use)         depth 2
 │   ├── More ──────────────── Commands             panel: commands by intent (section 7)   depth 1
 │   │   ├── Look ──────────── look mode: banner + look card on the map (each creature and item → its card)
 │   │   ├── Magic & powers ── Magic, in the same frame (Back returns to Commands)
@@ -264,7 +265,7 @@ card named for the creature.
 | `i` `e` `w` `t` `d` `k` `{` `}` `I` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |
 | `q` `r` `E` `a` `u` `z` `A` `F` `v` `f` `b` | use items, fire, throw, browse | item cards, *Recently used*, Again, Fire, gear suggestions; More → Use an item / Fight and magic |
 | `h` `K` | butcher a corpse, cure meat | the corpse's or meat's card |
-| `m` `U` `p` | magic and skills, race and class powers, pray | Cast/Powers; More (*Magic & powers*, *Pray*/*Stop praying* for a god's follower) |
+| `m` `U` `p` | magic and skills, powers, pray | Cast/Powers; More (*Magic*, *Powers*, *Pray*/*Stop praying* for a god's follower): the Magic panel's tabs |
 | `G` `N` `C` | skills, abilities, character | HUD name; Menu → Character (tabs) |
 | `~` `^P` `^O` | knowledge, messages | Menu → Knowledge, Messages; the HUD log |
 | `^F` `^T` `:` | level feeling, time of day, write a note | More → Journal (notes are read in Knowledge) |
@@ -280,7 +281,7 @@ phone), `^W` `^A` (wizard and debug modes: `?wizard` is for testing). The
 Keyboard and Ctrl buttons at the foot of More still reach any of them.
 
 Removed from More: *Search* (`s`, which this tome2 no longer has), *Bonus
-power* (the Powers tab of Magic), and the inventory, equipment, character,
+power* (the Powers tab), and the inventory, equipment, character,
 skills, abilities, knowledge, messages and save buttons that repeated Items
 and the Menu.
 

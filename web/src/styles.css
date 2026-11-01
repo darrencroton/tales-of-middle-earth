@@ -4183,6 +4183,11 @@ html.keyboard-tight .prompt-card.text .card-title {
   align-items: stretch;
 }
 
+.spell-line > .row-button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .spell-row {
   flex: 1 1 auto;
   min-width: 0;

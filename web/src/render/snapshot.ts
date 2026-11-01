@@ -558,13 +558,24 @@ export interface SpellBook {
   spells: SpellInfo[];
 }
 
+/** One of tome2's powers the hero has, and where it comes from (its race, class, gear…, named in `from`). */
+export interface PowerInfo {
+  name: string;
+  desc: string;
+  source: 'race' | 'class' | 'form' | 'gear' | 'corruption' | 'other';
+  /** The race, class, item or form that grants it; empty for corruptions and others. */
+  from: string;
+  level: number;
+  cost: number;
+}
+
 export interface SpellState {
   ready: number;
   books: SpellBook[];
   /** Entries of tome2's "use a skill" menu, in order. */
   powers: { label: string; mkey: number }[];
   /** Race, class and corruption powers (tome2's "use a power" menu), in order. */
-  bonus: { name: string; desc: string; level: number; cost: number }[];
+  bonus: PowerInfo[];
 }
 
 export interface MonsterRecall {

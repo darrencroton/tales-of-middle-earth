@@ -289,7 +289,7 @@ export async function castUntilAimed(page: Page, spell: string, failed?: () => P
   for (let attempt = 0; attempt < 6; attempt++) {
     const total = await page.evaluate(() => window.__tome!.engine.gameState()?.messageTotal ?? 0);
     await page.locator('#toolbar [data-action="commands"]').click();
-    await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
+    await page.locator('.sheet .command', { hasText: 'Magic' }).click();
     await expect(page.locator('.sheet-title')).toHaveText('Magic');
     await page.locator('.sheet .spell-row', { hasText: spell }).click();
     await expect(page.locator('.sheet-layer')).toBeHidden();

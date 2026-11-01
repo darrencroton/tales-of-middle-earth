@@ -393,7 +393,7 @@ describe('targeting', () => {
   });
 });
 
-const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', beside: false, pray: 0, runes: false, steals: false };
+const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', beside: false, pray: 0, runes: false, steals: false, magic: false, powers: false };
 
 describe('actions', () => {
   it('prefixes commands with a keymap bypass', () => {
@@ -464,7 +464,9 @@ describe('actions', () => {
     assert.deepEqual(ids({ fire: {} }), ['explore', 'fire', 'inventory', 'rest', 'commands', 'menu']);
     const ranger = ids({ ...mage, fire: { unavailable: 'Your quiver is empty.' } });
     assert.deepEqual(ranger, ['explore', 'recast', 'cast', 'fire', 'inventory', 'commands', 'menu']);
-    assert.equal(contextActions({ ...base, magic: 'Powers' }).find((a) => a.id === 'cast')?.label, 'Powers');
+    const powers = contextActions({ ...base, magic: 'Powers' }).find((a) => a.id === 'cast');
+    assert.deepEqual([powers?.label, powers?.effect], ['Powers', { kind: 'native', view: 'powers' }]);
+    assert.deepEqual(contextActions({ ...base, magic: 'Cast' }).find((a) => a.id === 'cast')?.effect, { kind: 'native', view: 'magic' });
   });
 
   it('puts the most pressing thing first, else Explore named for what it will do', () => {
@@ -538,6 +540,17 @@ describe('actions', () => {
     assert.equal(why('Read scroll', { where: 'worldMap' }), 'Not on the world map.');
     assert.equal(why('Eat', { where: 'worldMap' }), undefined);
     assert.equal(why('Level map', { where: 'worldMap' }), undefined);
+    assert.equal(why('Magic', {}), 'You know no spells yet.');
+    assert.equal(why('Powers', { magic: true }), 'You have no powers yet.');
+    assert.equal(why('Powers', { powers: true }), undefined);
+    assert.deepEqual(
+      commandGroups(COMMANDS).map((g) => g.title),
+      ['Get around', 'Fight and magic', 'Use an item', 'People and creatures', 'Doors and walls', 'Journal'],
+    );
+    assert.deepEqual(commandGroups(COMMANDS)[1].commands.slice(0, 2).map((c) => [c.label, c.native]), [
+      ['Magic', 'magic'],
+      ['Powers', 'powers'],
+    ]);
     assert.ok(!labels({}).includes('Search') && !labels({}).includes('Bonus power'));
     assert.equal(new Set(commandGroups(COMMANDS).map((g) => g.title)).size, commandGroups(COMMANDS).length);
   });
