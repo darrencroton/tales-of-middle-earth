@@ -347,7 +347,7 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
   const before = (await page.locator('.sheet-subtitle').textContent()) ?? '';
   await page.locator('.sheet [data-action="raise"]').click();
   await expect(page.locator('.sheet-subtitle')).not.toHaveText(before);
-  await page.locator('.sheet-close').click();
+  await page.locator('.sheet-close:not(.tv-close)').click();
   await expect(page.locator('.prompt-card')).toContainText('Save and use these skill values?');
   await page.locator('.prompt-card .card-button.primary').click();
   await waitAtCommand(page);
