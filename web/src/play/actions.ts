@@ -8,6 +8,7 @@ export type NativeView =
   | 'character'
   | 'skills'
   | 'magic'
+  | 'powers'
   | 'recast'
   | 'fire'
   | 'overview'
@@ -92,6 +93,10 @@ export interface CommandContext {
   runes: boolean;
   /** The hero has the Stealing skill. */
   steals: boolean;
+  /** The hero has spells or a magic art to use. */
+  magic: boolean;
+  /** The hero has powers or techniques to use. */
+  powers: boolean;
 }
 
 interface CommandEntry extends CommandDef {
@@ -132,28 +137,10 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
     ],
   },
   {
-    title: 'People and creatures',
-    commands: [
-      { label: 'Talk', icon: '❝', command: 'Y', refuse: beside },
-      { label: 'Give', icon: '⇄', command: 'y', refuse: beside },
-      { label: 'Steal', icon: '☚', command: 'Z', refuse: beside, when: (c) => c.steals },
-      { label: 'Command allies', icon: '♥', command: 'P' },
-    ],
-  },
-  {
-    title: 'Doors and walls',
-    commands: [
-      { label: 'Open', icon: '⊐', command: 'o' },
-      { label: 'Close', icon: '⊏', command: 'c' },
-      { label: 'Bash door', icon: '+', command: 'B' },
-      { label: 'Jam door', icon: '⊣', command: 'j' },
-      { label: 'Tunnel', icon: '#', command: 'T' },
-    ],
-  },
-  {
     title: 'Fight and magic',
     commands: [
-      { label: 'Magic & powers', icon: '✦', command: 'm', native: 'magic' },
+      { label: 'Magic', icon: '✦', command: 'm', native: 'magic', refuse: (c) => (c.magic ? null : 'You know no magic yet.') },
+      { label: 'Powers', icon: '❂', command: 'U', native: 'powers', refuse: (c) => (c.powers ? null : 'You have no powers yet.') },
       { label: 'Fire', icon: '➶', command: 'f' },
       { label: 'Throw', icon: '↗', command: 'v' },
       { label: 'Choose target', icon: '◎', command: '*' },
@@ -172,6 +159,25 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
       { label: 'Zap rod', icon: '⌁', command: 'z' },
       { label: 'Activate', icon: '✧', command: 'A' },
       { label: 'Refuel light', icon: '~', command: 'F' },
+    ],
+  },
+  {
+    title: 'People and creatures',
+    commands: [
+      { label: 'Talk', icon: '❝', command: 'Y', refuse: beside },
+      { label: 'Give', icon: '⇄', command: 'y', refuse: beside },
+      { label: 'Steal', icon: '☚', command: 'Z', refuse: beside, when: (c) => c.steals },
+      { label: 'Command allies', icon: '♥', command: 'P' },
+    ],
+  },
+  {
+    title: 'Doors and walls',
+    commands: [
+      { label: 'Open', icon: '⊐', command: 'o' },
+      { label: 'Close', icon: '⊏', command: 'c' },
+      { label: 'Bash door', icon: '+', command: 'B' },
+      { label: 'Jam door', icon: '⊣', command: 'j' },
+      { label: 'Tunnel', icon: '#', command: 'T' },
     ],
   },
   {
@@ -370,7 +376,7 @@ function slotAction(id: string, slot: Slot, label: string, icon: string, effect:
 function heroActions(ctx: ActionContext): Action[] {
   const actions: Action[] = [
     ...(ctx.quick ? [slotAction('recast', ctx.quick, 'Again', '✺', { kind: 'native', view: 'recast' })] : []),
-    ...(ctx.magic ? [{ id: 'cast', label: ctx.magic, icon: '✦', effect: { kind: 'native', view: 'magic' } } as Action] : []),
+    ...(ctx.magic ? [{ id: 'cast', label: ctx.magic, icon: '✦', effect: { kind: 'native', view: ctx.magic === 'Powers' ? 'powers' : 'magic' } } as Action] : []),
     ...(ctx.fire ? [slotAction('fire', ctx.fire, 'Fire', '➶', { kind: 'native', view: 'fire' })] : []),
     { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
     command('rest', 'Rest', '☾', { command: 'R', then: '&\r' }),

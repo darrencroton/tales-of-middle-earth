@@ -37,7 +37,7 @@ import { TitleScreen } from './title.ts';
 import { openSoundtrack } from './ui/soundtrack.ts';
 import { openHelp } from './ui/help.ts';
 import { openMagic, openSpell, RecentStore } from './ui/magic.ts';
-import { CastWatcher, fireMacro, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
+import { CastWatcher, fireMacro, hasActivePowers, hasMagic, hasPowers, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
 import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
 import { GameFeel, type FeelEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
@@ -473,12 +473,12 @@ function settleAttempt(): void {
   if (outcome) showToast(outcome.message, false);
 }
 
-/* Spells carried, read once per game turn for the toolbar. */
-let spellsCache: { turn: number; spells: SpellState | null } | null = null;
+/* Spells, powers and skill actions, read again each game turn and whenever skill points are spent (a skill raised or an ability learnt takes no turn). */
+let spellsCache: { key: string; spells: SpellState | null } | null = null;
 
 function currentSpells(): SpellState | null {
-  const turn = lastSnap?.turn ?? -1;
-  if (spellsCache?.turn !== turn) spellsCache = { turn, spells: engine.spells() };
+  const key = `${lastSnap?.turn ?? -1}:${lastState?.player?.skillPoints ?? 0}`;
+  if (spellsCache?.key !== key) spellsCache = { key, spells: engine.spells() };
   return spellsCache.spells;
 }
 
@@ -536,15 +536,15 @@ function heroSteals(): boolean {
 }
 
 /**
- * The toolbar's magic button: for a hero who uses magic, Cast with spell
- * books and Powers with only skills or race powers; for others, Powers when
- * their race or class gives them some. None without any.
+ * The toolbar's magic button, which opens the Magic panel as More does (its
+ * other tab a tap away): for a hero who uses magic, Cast with spells or a
+ * magic art; otherwise Powers with a power or a technique that acts (a
+ * dodge check alone does not earn a button). None without any.
  */
 function magicLabel(): string | null {
   const spells = currentSpells();
-  if (!heroStyle().magic) return spells?.bonus.length ? 'Powers' : null;
-  if (!spells || spells.books.length) return 'Cast';
-  return spells.powers.length || spells.bonus.length ? 'Powers' : null;
+  if (heroStyle().magic && (!spells || hasMagic(spells))) return 'Cast';
+  return hasActivePowers(spells) ? 'Powers' : null;
 }
 
 /** The Fire button, for a hero with a launcher wielded; it says why it cannot shoot now. */
@@ -635,7 +635,8 @@ function openNative(view: NativeView): void {
       character.open('skills');
       break;
     case 'magic':
-      openMagic(api, api.recent(), { run: (entry, anyway) => runRecent(entry, false, anyway) });
+    case 'powers':
+      openMagic(api, api.recent(), { run: (entry, anyway) => runRecent(entry, false, anyway) }, view);
       break;
     case 'recast': {
       const entry = quickEntry();
@@ -2019,6 +2020,8 @@ function commandContext(): CommandContext {
     pray: player?.pray ?? 0,
     runes: (player?.runes ?? 0) > 0,
     steals: heroSteals(),
+    magic: hasMagic(currentSpells()),
+    powers: hasPowers(currentSpells()),
   };
 }
 
@@ -2036,7 +2039,7 @@ function commandButton(icon: string, label: string, onClick: () => void, unavail
 function openCommands(): void {
   const body = el('div', 'commands');
   const run = (def: CommandDef) => {
-    if (def.native === 'magic') {
+    if (def.native === 'magic' || def.native === 'powers') {
       /* Over the Commands sheet, so Back returns to it. */
       openNative(def.native);
     } else if (def.native) {

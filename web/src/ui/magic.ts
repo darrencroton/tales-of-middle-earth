@@ -1,5 +1,5 @@
-import { MKEY_SCHOOL, recentKey, recentLabel, recentSource, rememberRecent, usableRecents, validRecent, type RecentAction } from '../play/recent.ts';
-import type { SpellInfo, SpellState } from '../render/snapshot.ts';
+import { displayName, hasMagic, hasPowers, magicArts, recentKey, recentLabel, recentSource, rememberRecent, skillActionName, techniques, usableRecents, validRecent, type RecentAction } from '../play/recent.ts';
+import type { PowerInfo, SpellInfo, SpellState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { el, iconText, section } from './dom.ts';
 
@@ -123,13 +123,89 @@ function rowButton(label: string, hint: string, icon: string, key: string, run: 
   return button;
 }
 
+/** The Magic panel's two views: spells and magic arts, and powers and techniques. */
+export type MagicTab = 'magic' | 'powers';
+
+const SOURCE_ORDER: readonly PowerInfo['source'][] = ['race', 'class', 'form', 'gear', 'corruption', 'other'];
+
+/** What grants a power, without tome2's article ("a Ring of Teleportation" → "Ring of Teleportation"). */
+function grantor(power: PowerInfo): string {
+  return power.from.trim().replace(/^(a|an|the|some) /i, '');
+}
+
+/** The heading a power is listed under: what grants it. */
+function powerHeading(power: PowerInfo): string {
+  switch (power.source) {
+    case 'race':
+      return grantor(power) || 'Race';
+    case 'class':
+      return grantor(power) || 'Class';
+    case 'form':
+      return grantor(power) ? `${displayName(grantor(power))} form` : 'Form';
+    case 'gear':
+      return 'Gear';
+    case 'corruption':
+      return 'Corruptions';
+    default:
+      return 'Other powers';
+  }
+}
+
+function powerMeta(power: PowerInfo): string {
+  return [power.level > 1 ? `Level ${power.level}` : '', power.cost ? `${power.cost} mana` : ''].filter(Boolean).join(' · ');
+}
+
+/** What a power does and what grants it, with Use at the foot. */
+function openPower(api: GameApi, power: PowerInfo, handlers: MagicHandlers): void {
+  const body = el('div', 'description');
+  const meta = [powerMeta(power), power.source === 'gear' ? `From ${grantor(power)}` : ''].filter(Boolean).join(' · ');
+  if (meta) body.append(el('p', 'muted', meta));
+  body.append(el('p', undefined, power.desc || 'No more is known of this power.'));
+  api.sheets.open({
+    title: displayName(power.name),
+    subtitle: powerHeading(power),
+    body,
+    kind: 'card',
+    className: 'sheet-item',
+    actions: [{ id: 'use', label: `Use ${displayName(power.name)}`, primary: true, run: () => handlers.run({ kind: 'path', command: 'U', steps: [power.name] }) }],
+  });
+}
+
+/** A power as a tappable row (one tap uses it), with ⓘ for what it does. */
+function powerRow(api: GameApi, power: PowerInfo, handlers: MagicHandlers): HTMLElement {
+  const row = el('div', 'spell-line');
+  const hint = power.source === 'gear' ? [powerMeta(power), grantor(power)].filter(Boolean).join(' · ') : powerMeta(power);
+  row.append(rowButton(displayName(power.name), hint, '❂', `bonus-${power.name}`, () => handlers.run({ kind: 'path', command: 'U', steps: [power.name] })));
+  const info = el('button', 'tv-info', 'i');
+  info.type = 'button';
+  info.setAttribute('aria-label', `About ${displayName(power.name)}`);
+  info.addEventListener('click', () => openPower(api, power, handlers));
+  row.append(info);
+  return row;
+}
+
+/** Entries of tome2's "use a skill" menu as rows, named for the player. */
+function skillList(entries: SpellState['powers'], icon: string, handlers: MagicHandlers): HTMLElement {
+  const list = el('div', 'menu-list');
+  for (const entry of entries) {
+    list.append(rowButton(skillActionName(entry.label), '', icon, `skill-${entry.label}`, () => handlers.run({ kind: 'path', command: 'm', steps: [entry.label] })));
+  }
+  return list;
+}
+
 /**
- * Magic: recent spells first, then every spell in the books carried, then
- * the other skills that can be used. One tap casts.
+ * Magic and Powers, one panel with a tab each (only the tabs with something
+ * in them). Both start with every spell and power recently used, so a repeat
+ * is one tap from either. Magic: each spell book, then the magic arts
+ * (Necromancy, Mindcraft, Copy a spell…). Powers: the powers of the hero's
+ * race, class, form, gear and corruptions, each under what grants them, then
+ * techniques (Piercing shots, Mimicry, Forge ammo…). One tap casts or uses.
  */
-export function openMagic(api: GameApi, recents: readonly RecentAction[], handlers: MagicHandlers): void {
+export function openMagic(api: GameApi, recents: readonly RecentAction[], handlers: MagicHandlers, tab: MagicTab = 'magic', replace = false): void {
   const spells = api.engine.spells();
   const player = api.state()?.player;
+  const shown: MagicTab[] = [...(hasMagic(spells) ? ['magic' as const] : []), ...(hasPowers(spells) ? ['powers' as const] : [])];
+  const current = shown.includes(tab) ? tab : (shown[0] ?? tab);
   const body = el('div', 'magic');
 
   const recent = usableRecents(recents, spells);
@@ -147,39 +223,41 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
     body.append(section('Recent', grid));
   }
 
-  for (const book of spells?.books ?? []) {
-    const list = el('div', 'spell-list');
-    for (const spell of book.spells) list.append(spellRow(api, spell, handlers));
-    body.append(section(book.name.replace(/^(a|an|the) /i, ''), list));
-  }
-
-  const bonus = spells?.bonus ?? [];
-  if (bonus.length) {
-    const list = el('div', 'menu-list');
-    for (const power of bonus) {
-      const hint = [power.level > 1 ? `Level ${power.level}` : '', power.cost ? `${power.cost} mana` : ''].filter(Boolean).join(' · ');
-      list.append(rowButton(power.name, hint, '❂', `bonus-${power.name}`, () => handlers.run({ kind: 'path', command: 'U', steps: [power.name] })));
+  if (current === 'magic') {
+    for (const book of spells?.books ?? []) {
+      const list = el('div', 'spell-list');
+      for (const spell of book.spells) list.append(spellRow(api, spell, handlers));
+      body.append(section(book.name.replace(/^(a|an|the) /i, ''), list));
     }
-    body.append(section('Powers', list));
-  }
-
-  const skills = (spells?.powers ?? []).filter((p) => p.mkey !== MKEY_SCHOOL);
-  if (skills.length) {
-    const list = el('div', 'menu-list');
-    for (const skill of skills) {
-      list.append(rowButton(skill.label, '', '✧', `skill-${skill.label}`, () => handlers.run({ kind: 'path', command: 'm', steps: [skill.label] })));
+    const arts = magicArts(spells);
+    if (arts.length) body.append(section('Magic arts', skillList(arts, '✧', handlers)));
+  } else {
+    const bonus = [...(spells?.bonus ?? [])].sort((a, b) => SOURCE_ORDER.indexOf(a.source) - SOURCE_ORDER.indexOf(b.source));
+    const groups = new Map<string, PowerInfo[]>();
+    for (const power of bonus) groups.set(powerHeading(power), [...(groups.get(powerHeading(power)) ?? []), power]);
+    for (const [heading, powers] of groups) {
+      const list = el('div', 'menu-list');
+      for (const power of powers) list.append(powerRow(api, power, handlers));
+      body.append(section(heading, list));
     }
-    body.append(section('Skills', list));
+    const moves = techniques(spells);
+    if (moves.length) body.append(section('Techniques', skillList(moves, '✪', handlers)));
   }
 
-  if (!body.childElementCount) {
-    body.append(el('p', 'empty', 'You know no magic or powers yet. Spell books, skills such as Mindcraft or Necromancy, and some races bring spells and powers to use here.'));
+  if (!shown.length) {
+    body.append(el('p', 'empty', 'You know no magic or powers yet. Spell books, skills such as Mindcraft or Necromancy, and some races, classes and items bring spells and powers to use here.'));
   }
 
-  api.sheets.open({
-    title: 'Magic',
+  const content = {
+    title: current === 'magic' ? 'Magic' : 'Powers',
     subtitle: player && player.msp > 0 ? `Mana ${player.csp} / ${player.msp}` : undefined,
     body,
+    tabs:
+      shown.length > 1
+        ? shown.map((id) => ({ id, label: id === 'magic' ? 'Magic' : 'Powers', icon: id === 'magic' ? '✦' : '❂', active: id === current, run: () => openMagic(api, recents, handlers, id, true) }))
+        : undefined,
     className: 'sheet-magic',
-  });
+  };
+  if (replace) api.sheets.replace(content);
+  else api.sheets.open(content);
 }

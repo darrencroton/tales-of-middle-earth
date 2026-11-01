@@ -18,8 +18,77 @@ export type RecentAction =
 
 export const MAX_RECENT = 5;
 
-/* tome2's "use a skill" menu key for school spells (MKEY_SCHOOL). */
+/* tome2's "use a skill" menu keys for school spells (MKEY_SCHOOL) and stealing (MKEY_STEAL, under More's Steal). */
 export const MKEY_SCHOOL = 17;
+const MKEY_STEAL = 15;
+
+/**
+ * tome2's "use a skill" entries, by their label: what the player sees, and
+ * whether it is a magic art (the Magic tab) or a technique (the Powers tab).
+ */
+const SKILL_ACTIONS: Readonly<Record<string, [name: string, magic: boolean]>> = {
+  'Use Necromancy': ['Necromancy', true],
+  'Cast a thaumaturgy spell': ['Thaumaturgy', true],
+  'Use Geomancy': ['Geomancy', true],
+  'Cast a druidistic spell': ['Druidistic magic', true],
+  'Use Mindcraft': ['Mindcraft', true],
+  'Use antimagic': ['Antimagic', true],
+  'Copy a spell': ['Copy a spell', true],
+  'Use symbiotic powers': ['Symbiosis', false],
+  'Use Mimicry': ['Mimicry', false],
+  'Use the possession skill': ['Possession', false],
+  'Manipulate totems': ['Totems', false],
+  'Fire piercing shots': ['Piercing shots', false],
+  'Far reaching attack': ['Far-reaching attack', false],
+  'Activate touch of death': ['Touch of death', false],
+  'Tear down a wall to create boulders': ['Make boulders', false],
+  'Change melee mode': ['Change melee mode', false],
+  'Check dodge chance': ['Check dodge chance', false],
+  'Forge ammo': ['Forge ammo', false],
+  'Turn pet into companion': ['Make a pet a companion', false],
+};
+
+/** A name as the player sees it, with a capital first letter (tome2 names most powers in lower case: "blink"). */
+export function displayName(name: string): string {
+  return name ? name[0].toUpperCase() + name.slice(1) : name;
+}
+
+/** What a "use a skill" entry is called for the player ("Use Necromancy" → "Necromancy"). */
+export function skillActionName(label: string): string {
+  return SKILL_ACTIONS[label]?.[0] ?? displayName(label);
+}
+
+function isMagicArt(label: string): boolean {
+  return SKILL_ACTIONS[label]?.[1] ?? false;
+}
+
+/** The "use a skill" entries that are magic arts: Necromancy, Mindcraft, Copy a spell… */
+export function magicArts(spells: SpellState | null): SpellState['powers'] {
+  return (spells?.powers ?? []).filter((p) => p.mkey !== MKEY_SCHOOL && isMagicArt(p.label));
+}
+
+/** The other "use a skill" entries: techniques such as Piercing shots, Mimicry or Forge ammo (Steal is More's). */
+export function techniques(spells: SpellState | null): SpellState['powers'] {
+  return (spells?.powers ?? []).filter((p) => p.mkey !== MKEY_SCHOOL && p.mkey !== MKEY_STEAL && !isMagicArt(p.label));
+}
+
+/** The hero has spells in their books or a magic art to use. */
+export function hasMagic(spells: SpellState | null): boolean {
+  return !!spells?.books.length || magicArts(spells).length > 0;
+}
+
+/** The hero has a power (from race, class, gear, corruption or form) or a technique to use. */
+export function hasPowers(spells: SpellState | null): boolean {
+  return !!spells?.bonus.length || techniques(spells).length > 0;
+}
+
+/* Techniques that only check or switch something, not worth a toolbar button of their own. */
+const MINOR_TECHNIQUES: ReadonlySet<string> = new Set(['Check dodge chance', 'Change melee mode']);
+
+/** The hero has a power, or a technique that acts (not only a check or a switch), worth the toolbar's Powers button. */
+export function hasActivePowers(spells: SpellState | null): boolean {
+  return !!spells?.bonus.length || techniques(spells).some((t) => !MINOR_TECHNIQUES.has(t.label));
+}
 
 /* Item commands that ask for a direction. */
 const AIMED_ITEM_COMMANDS = new Set(['a', 'z', 'v']);
@@ -67,8 +136,10 @@ export function recentLabel(entry: RecentAction): string {
   switch (entry.kind) {
     case 'spell':
       return entry.name;
-    case 'path':
-      return namedSteps(entry.steps).at(-1) ?? entry.steps[0];
+    case 'path': {
+      const last = namedSteps(entry.steps).at(-1) ?? entry.steps[0];
+      return last === entry.steps[0] && entry.command === 'm' ? skillActionName(last) : displayName(last);
+    }
     case 'item':
       return entry.name;
   }
@@ -78,7 +149,8 @@ export function recentLabel(entry: RecentAction): string {
 export function recentSource(entry: RecentAction): string {
   if (entry.kind === 'path') {
     const named = namedSteps(entry.steps);
-    return named.length > 1 ? named[0] : entry.command === 'U' ? 'Power' : 'Skill';
+    if (named.length > 1) return entry.command === 'm' ? skillActionName(named[0]) : displayName(named[0]);
+    return entry.command === 'U' ? 'Power' : isMagicArt(entry.steps[0]) ? 'Magic' : 'Technique';
   }
   return entry.kind === 'item' ? entry.verb : 'Spell';
 }

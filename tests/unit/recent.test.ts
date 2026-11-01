@@ -14,8 +14,12 @@ import {
   recentBlocked,
   recentItem,
   recentItemAction,
+  hasActivePowers,
+  magicArts,
   recentLabel,
+  recentSource,
   rememberRecent,
+  techniques,
   screenChoices,
   thenAim,
   usableRecents,
@@ -148,9 +152,35 @@ describe('recent actions', () => {
     assert.equal(watcher.idle('', true), null);
   });
 
+  it('splits tome2\'s skill actions into magic arts and techniques, leaving school spells and stealing out', () => {
+    const spells = {
+      ready: 1,
+      books: [],
+      bonus: [],
+      powers: [
+        { label: 'Cast a spell', mkey: 17 },
+        { label: 'Use Necromancy', mkey: 7 },
+        { label: 'Copy a spell', mkey: 19 },
+        { label: 'Fire piercing shots', mkey: 23 },
+        { label: 'Steal object', mkey: 15 },
+        { label: 'Change melee mode', mkey: 0 },
+      ],
+    };
+    assert.deepEqual(magicArts(spells).map((p) => p.label), ['Use Necromancy', 'Copy a spell']);
+    assert.deepEqual(techniques(spells).map((p) => p.label), ['Fire piercing shots', 'Change melee mode']);
+    const dodger = { ready: 1, books: [], bonus: [], powers: [{ label: 'Check dodge chance', mkey: 16 }] };
+    assert.equal(hasActivePowers(dodger), false);
+    assert.equal(hasActivePowers(spells), true);
+  });
+
   it('labels recents, keeps throws and wands aimed, and drops entries it does not know', () => {
     assert.equal(recentLabel({ kind: 'path', command: 'U', steps: ["Thunderlord's Powers", 'Thunder strike'] }), 'Thunder strike');
     assert.equal(recentLabel({ kind: 'path', command: 'm', steps: ['Cast a thaumaturgy spell', '#a', 'Fire bolt'] }), 'Fire bolt');
+    assert.equal(recentSource({ kind: 'path', command: 'm', steps: ['Cast a thaumaturgy spell', '#a', 'Fire bolt'] }), 'Thaumaturgy');
+    assert.equal(recentLabel({ kind: 'path', command: 'U', steps: ['blink'] }), 'Blink');
+    assert.equal(recentLabel({ kind: 'path', command: 'm', steps: ['Use Necromancy'] }), 'Necromancy');
+    assert.equal(recentSource({ kind: 'path', command: 'm', steps: ['Use Mimicry'] }), 'Technique');
+    assert.equal(recentSource({ kind: 'path', command: 'm', steps: ['Copy a spell'] }), 'Magic');
     const oil = itemRecent('v', 'Throw', { tval: 77, sval: 0, name: '5 Flasks of oil' });
     assert.ok(oil.aimed);
     assert.equal(oil.kind === 'item' && recentItemAction(oil, { tval: 77 })?.command, 'v');
@@ -164,7 +194,7 @@ describe('recent actions', () => {
       ready: 1,
       books: [{ i: 0, name: 'Magic Book', spells: [spell('Manathrust'), spell('Phase Door', { short: 1 })] }],
       powers: [{ label: 'Use Mindcraft', mkey: 2 }],
-      bonus: [{ name: 'Spit', desc: '', level: 5, cost: 1 }],
+      bonus: [{ name: 'Spit', desc: '', source: 'race', from: 'Dragon', level: 5, cost: 1 }],
     };
     const wand = (name: string): ItemState => ({ i: 2, name, tval: 65, sval: 1, number: 1, weight: 1, ch: 45, attr: 1, wear: 0, activate: 0, ins: '' });
     const bolt: RecentAction = { kind: 'spell', name: 'Manathrust' };
