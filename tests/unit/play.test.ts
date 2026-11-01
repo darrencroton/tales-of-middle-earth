@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { COMMAND_GROUPS, commandGroups, commandKeys, contextActions, contextualAction, pickupCommand, speedAction, transitionUnderfoot, waitCommand } from '../../web/src/play/actions.ts';
+import { commandGroups, commandKeys, contextActions, contextualAction, pickupCommand, speedAction, transitionUnderfoot, waitCommand, type CommandContext } from '../../web/src/play/actions.ts';
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
@@ -205,6 +205,16 @@ describe('travel', () => {
     assert.deepEqual(tapAction(snap, MATERIALS, { x: 3, y: 0 }, 'none'), { kind: 'travel', cell: { x: 3, y: 0 } });
   });
 
+  it('talks to a neutral creature tapped beside the hero, and steps towards anyone else', () => {
+    const snap = level(['.....'], { x: 2, y: 0 });
+    const creature = (x: number, status: number) => ({ id: 1, name: 'Melinda Proudfoot', ch: 104, attr: 1, x, y: 0, hp: 9, maxhp: 9, asleep: 0, afraid: 0, unique: 1, status });
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 1, y: 0 }, 'none', [creature(1, 0)]), { kind: 'talk', digit: '4' });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 3, y: 0 }, [creature(3, 0)]), { kind: 'talk', digit: '6' });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 3, y: 0 }, [creature(3, -2)]), { kind: 'step', cell: { x: 3, y: 0 } });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 4, y: 0 }, [creature(4, 0)]), { kind: 'travel', cell: { x: 4, y: 0 } });
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 1, y: 0 }, 'direction', [creature(1, 0)]), { kind: 'direction', digit: '4' });
+  });
+
   it('words why a journey stopped', () => {
     const base: StopContext = { light: false, exploring: false, walked: 0, approximate: false, depth: 1, lightRadius: 1 };
     const stop = (reason: Parameters<typeof stopMessage>[0]['reason'], extra = {}) => ({ kind: 'stop' as const, reason, ...extra });
@@ -383,10 +393,12 @@ describe('targeting', () => {
   });
 });
 
+const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', beside: false, pray: 0, runes: false, steals: false };
+
 describe('actions', () => {
   it('prefixes commands with a keymap bypass', () => {
     assert.deepEqual(commandKeys({ command: 'R', then: '&\r' }), [92, ...keys('R&\r')]);
-    for (const group of COMMAND_GROUPS) for (const c of group.commands) assert.ok(c.command.length >= 1 || c.native);
+    for (const group of commandGroups(COMMANDS)) for (const c of group.commands) assert.ok(c.command.length >= 1 || c.native);
   });
 
   it('names the transition underfoot and the command that takes it', () => {
@@ -403,9 +415,6 @@ describe('actions', () => {
     const pickup = (always: boolean) => contextualAction({ mode: 'map', prompt: 'none', atCommand: true, underfoot: 'open floor', floorObjects: 1, alwaysPickup: always }).effect;
     assert.deepEqual(pickup(false), { kind: 'keys', keys: [92, ...keys('g')] });
     assert.deepEqual(pickup(true), { kind: 'keys', keys: [92, ...keys(',')] });
-    const sheet = COMMAND_GROUPS.flatMap((g) => g.commands).find((c) => c.pickup)!;
-    assert.deepEqual(commandKeys(sheet, true), [92, ...keys(',')]);
-    assert.deepEqual(commandKeys(sheet, false), [92, ...keys('g')]);
   });
 
   it('adapts to prompts and the command state', () => {
@@ -435,9 +444,9 @@ describe('actions', () => {
     assert.deepEqual(contextActions({ ...base, looking: true }).map((a) => a.id), ['lookdone']);
     assert.deepEqual(contextActions({ ...base, overview: true }).map((a) => a.id), ['overviewdone']);
     assert.deepEqual(contextActions(base).find((a) => a.id === 'explore')?.effect, { kind: 'native', view: 'explore' });
-    const sheet = COMMAND_GROUPS.flatMap((g) => g.commands);
-    assert.equal(sheet.find((c) => c.label === 'Inventory')?.native, 'inventory');
+    const sheet = commandGroups(COMMANDS).flatMap((g) => g.commands);
     assert.equal(sheet.find((c) => c.label === 'Look')?.native, 'look');
+    assert.equal(sheet.find((c) => c.label === 'Level map')?.native, 'overview');
   });
 
   it('keeps one changing button first and the hero\'s own buttons in their places', () => {
@@ -511,8 +520,33 @@ describe('actions', () => {
     assert.notEqual(speedAction('relaxed').icon, speedAction('normal').icon);
   });
 
+  it('offers the commands that apply where the hero is, dimming those that need someone beside them', () => {
+    const labels = (ctx: Partial<CommandContext>) => commandGroups({ ...COMMANDS, ...ctx }).flatMap((g) => g.commands.map((c) => c.label));
+    const talk = (ctx: Partial<CommandContext>) => commandGroups({ ...COMMANDS, ...ctx }).flatMap((g) => g.commands).find((c) => c.label === 'Talk');
+    assert.equal(talk({})?.unavailable, 'There is no one beside you.');
+    assert.equal(talk({ beside: true })?.unavailable, undefined);
+    assert.deepEqual(commandKeys(talk({ beside: true })!), [92, ...keys('Y')]);
+    assert.ok(labels({}).includes('Give') && labels({}).includes('Command allies'));
+    assert.ok(!labels({}).includes('Steal') && labels({ steals: true }).includes('Steal'));
+    assert.ok(!labels({}).includes('Pray') && labels({ pray: 1 }).includes('Pray') && labels({ pray: 2 }).includes('Stop praying'));
+    assert.ok(!labels({}).includes('Engrave a rune') && labels({ runes: true }).includes('Engrave a rune'));
+    assert.ok(!labels({}).includes('Drink from fountain') && labels({ underfoot: 'fountain' }).includes('Drink from fountain'));
+    assert.ok(labels({ underfoot: 'altar of Eru' }).includes('Sacrifice at altar'));
+    assert.ok(!labels({}).includes('Search') && !labels({}).includes('Bonus power'));
+    assert.equal(new Set(commandGroups(COMMANDS).map((g) => g.title)).size, commandGroups(COMMANDS).length);
+  });
+
+  it('talks to a neutral creature beside the hero, before what lies underfoot', () => {
+    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 1, alwaysPickup: false, prompt: 'none' as const };
+    const talk = contextualAction({ ...base, talk: '4' });
+    assert.deepEqual([talk.id, talk.label], ['talk', 'Talk']);
+    assert.deepEqual(talk.effect, { kind: 'keys', keys: [92, ...keys('Y4')] });
+    assert.equal(contextualAction({ ...base, talk: '4', foe: '6' }).id, 'attack');
+    assert.equal(contextualAction({ ...base, talk: '4', underfoot: 'up staircase' }).id, 'ascend');
+  });
+
   it('names the way to and from the world map on the surface', () => {
-    const labels = (where: Parameters<typeof commandGroups>[0]) => commandGroups(where).flatMap((g) => g.commands.map((c) => c.label));
+    const labels = (where: CommandContext['where']) => commandGroups({ ...COMMANDS, where }).flatMap((g) => g.commands.map((c) => c.label));
     assert.ok(labels('dungeon').includes('Go up') && labels('dungeon').includes('Go down'));
     assert.ok(labels('land').includes('World map') && labels('land').includes('Go down') && !labels('land').includes('Go up'));
     assert.ok(labels('worldMap').includes('Walk here') && !labels('worldMap').includes('Go up') && !labels('worldMap').includes('Go down'));
@@ -530,6 +564,9 @@ describe('actions', () => {
     assert.equal(classifyPrompt('Inscription: ', true), 'text');
     assert.equal(classifyPrompt('Inscription: '), 'other');
     assert.equal(classifyPrompt('Jump to level? ', true), 'other');
+    assert.equal(classifyPrompt('Engrave what? ', true), 'text');
+    assert.equal(classifyPrompt('Wish for what? ', true), 'text');
+    assert.equal(classifyPrompt('What do you want to call the artifact? ', true), 'text');
     assert.equal(classifyPrompt('Select a skill (a-98), @ to select by name, +/- to scroll:', true), 'item');
   });
 

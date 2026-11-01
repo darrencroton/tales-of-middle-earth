@@ -102,14 +102,28 @@ export function useAction(tval: number): ItemAction | null {
   }
 }
 
+/* Corpses: whole ones and heads can be cut up for meat, and meat cured with a potion to keep (tome2's h and K). */
+const SV_CORPSE_CORPSE = 1;
+const SV_CORPSE_HEAD = 3;
+const SV_CORPSE_MEAT = 5;
+
+function corpseAction(item: ItemState): ItemAction | null {
+  if (item.tval !== TV.CORPSE) return null;
+  if (item.sval === SV_CORPSE_CORPSE || item.sval === SV_CORPSE_HEAD) return { id: 'butcher', label: 'Butcher', command: 'h' };
+  if (item.sval === SV_CORPSE_MEAT) return { id: 'cure', label: 'Cure meat', command: 'K' };
+  return null;
+}
+
 /** Actions offered for an item, most likely first. */
 export function itemActions(item: ItemState, place: ItemPlace): ItemAction[] {
   const actions: ItemAction[] = [];
   const use = useAction(item.tval);
+  const corpse = corpseAction(item);
 
   if (place === 'floor') {
     actions.push({ id: 'pickup', label: 'Pick up', command: 'g', primary: true });
     if (use && use.id !== 'fire' && use.id !== 'refuel') actions.push(use);
+    if (corpse) actions.push(corpse);
     return actions;
   }
 
@@ -124,6 +138,7 @@ export function itemActions(item: ItemState, place: ItemPlace): ItemAction[] {
 
   if (use) actions.push({ ...use, primary: true });
   if (item.tval === TV.BOOK) actions.push({ id: 'cast', label: 'Cast a spell', command: 'm' });
+  if (corpse) actions.push(corpse);
   if (item.wear) {
     const weapon = WEAPON_TVALS.has(item.tval);
     actions.push({ id: 'wear', label: weapon ? 'Wield' : 'Wear', command: 'w', primary: actions.length === 0 });

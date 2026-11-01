@@ -16,7 +16,7 @@ export function classifyPrompt(rowZero: string, typing = false): PromptKind {
   if (/^\((Inven|Equip|Floor):|^(Inven|Equip|Floor):|which (item|spell|book|power)|\(\w-\w,/i.test(text)) return 'item';
   if (/^(Quantity|How many)\b/i.test(text)) return 'quantity';
   if (/\([a-zA-Z0-9]-[a-zA-Z0-9]+\)/.test(text)) return 'item';
-  if (typing && /:\s*[^:?]*$/.test(text)) return 'text';
+  if (typing && (/:\s*[^:?]*$/.test(text) || /\bwhat\b[^?]*\?\s*[^?]*$/i.test(text))) return 'text';
   return 'other';
 }
 

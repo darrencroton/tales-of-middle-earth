@@ -3,17 +3,13 @@ import type { PromptKind } from './prompts.ts';
 
 export type NativeView =
   | 'inventory'
-  | 'equipment'
   | 'look'
   | 'lookDone'
   | 'character'
   | 'skills'
-  | 'abilities'
   | 'magic'
   | 'recast'
   | 'fire'
-  | 'knowledge'
-  | 'history'
   | 'overview'
   | 'overviewDone'
   | 'finish'
@@ -56,12 +52,12 @@ export interface CommandDef {
   command: string;
   /** Extra keys sent after the command (e.g. rest duration). */
   then?: string;
-  /** Pick-up command, whose key depends on the always_pickup option. */
-  pickup?: boolean;
   /** Opens a native view instead of sending the command. */
   native?: NativeView;
   /** Shows a tome2 screen to read; the Commands sheet reopens when it closes. */
   reading?: boolean;
+  /** Why it cannot be done now: the button stays, dimmed, and a tap says so instead. */
+  unavailable?: string;
 }
 
 /** tome2 picks up with 'g' normally and with ',' when always_pickup is on. */
@@ -74,100 +70,134 @@ export function waitCommand(alwaysPickup: boolean): string {
   return alwaysPickup ? 'g' : ',';
 }
 
-export function commandKeys(def: Pick<CommandDef, 'command' | 'then' | 'pickup'>, alwaysPickup = false): number[] {
-  const command = def.pickup ? pickupCommand(alwaysPickup) : def.command;
-  return [KEY_BACKSLASH, ...keyCodes(command), ...keyCodes(def.then ?? '')];
+export function commandKeys(def: Pick<CommandDef, 'command' | 'then'>): number[] {
+  return [KEY_BACKSLASH, ...keyCodes(def.command), ...keyCodes(def.then ?? '')];
 }
 
 const text = keyCodes;
 
-export const COMMAND_GROUPS: { title: string; commands: CommandDef[] }[] = [
+/** Where the player is: underground, walking the land (towns and wilderness), or on the world map. */
+export type Surroundings = 'dungeon' | 'land' | 'worldMap';
+
+/** What decides which commands the More sheet offers, and which it dims. */
+export interface CommandContext {
+  where: Surroundings;
+  /** Name of the terrain under the player, lower case. */
+  underfoot: string;
+  /** A creature the hero can see stands beside them. */
+  beside: boolean;
+  /** 0 without a god, 1 when the hero may pray, 2 while praying. */
+  pray: number;
+  /** The hero has learnt runes to engrave. */
+  runes: boolean;
+  /** The hero has the Stealing skill. */
+  steals: boolean;
+}
+
+interface CommandEntry extends CommandDef {
+  /** Offered only where this holds. */
+  when?: (ctx: CommandContext) => boolean;
+  /** Needs a creature beside the hero. */
+  beside?: boolean;
+}
+
+const NO_ONE_BESIDE = 'There is no one beside you.';
+
+/**
+ * Every command the More sheet can offer, by what the player means to do.
+ * Items are also used from their cards (Items); Character, Knowledge,
+ * Messages and saving are in the Menu.
+ */
+const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
   {
-    title: 'Items',
+    title: 'Get around',
     commands: [
-      { label: 'Inventory', icon: '≡', command: 'i', native: 'inventory' },
-      { label: 'Equipment', icon: '[', command: 'e', native: 'equipment' },
-      { label: 'Wear / wield', icon: '|', command: 'w' },
-      { label: 'Take off', icon: '⤴', command: 't' },
-      { label: 'Pick up', icon: '⇡', command: 'g', pickup: true },
-      { label: 'Drop', icon: '⇣', command: 'd' },
-      { label: 'Quaff', icon: '!', command: 'q' },
-      { label: 'Read', icon: '?', command: 'r' },
-      { label: 'Eat', icon: ',', command: 'E' },
-      { label: 'Refuel light', icon: '~', command: 'F' },
-      { label: 'Inspect', icon: '⌕', command: 'I', reading: true },
-      { label: 'Inscribe', icon: '✎', command: '{' },
-      { label: 'Destroy', icon: '✖', command: 'k' },
+      { label: 'Explore', icon: '⇢', command: '', native: 'explore' },
+      { label: 'Rest', icon: '☾', command: 'R', then: '&\r' },
+      { label: 'Look', icon: '◉', command: 'l', native: 'look' },
+      { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
+      { label: 'Go down', icon: '>', command: '>' },
+      { label: 'Go up', icon: '<', command: '<' },
+      { label: 'Drink from fountain', icon: '⌂', command: 'H', when: (c) => /fountain/.test(c.underfoot) },
+      { label: 'Sacrifice at altar', icon: '0', command: 'O', when: (c) => /altar/.test(c.underfoot) },
+      { label: 'Engrave a rune', icon: 'ᚱ', command: 'x', when: (c) => c.runes },
     ],
   },
   {
-    title: 'Combat & magic',
+    title: 'People and creatures',
     commands: [
-      { label: 'Fire', icon: '}', command: 'f' },
-      { label: 'Throw', icon: '↗', command: 'v' },
+      { label: 'Talk', icon: '❝', command: 'Y', beside: true },
+      { label: 'Give', icon: '⇄', command: 'y', beside: true },
+      { label: 'Steal', icon: '☚', command: 'Z', beside: true, when: (c) => c.steals },
+      { label: 'Command allies', icon: '♥', command: 'P' },
+    ],
+  },
+  {
+    title: 'Doors and walls',
+    commands: [
+      { label: 'Open', icon: '⊐', command: 'o' },
+      { label: 'Close', icon: '⊏', command: 'c' },
+      { label: 'Bash door', icon: '+', command: 'B' },
+      { label: 'Jam door', icon: '⊣', command: 'j' },
+      { label: 'Tunnel', icon: '#', command: 'T' },
+    ],
+  },
+  {
+    title: 'Fight and magic',
+    commands: [
       { label: 'Magic & powers', icon: '✦', command: 'm', native: 'magic' },
-      { label: 'Pray', icon: '☼', command: 'p' },
+      { label: 'Fire', icon: '➶', command: 'f' },
+      { label: 'Throw', icon: '↗', command: 'v' },
+      { label: 'Choose target', icon: '◎', command: '*' },
+      { label: 'Pray', icon: '☼', command: 'p', when: (c) => c.pray === 1 },
+      { label: 'Stop praying', icon: '☼', command: 'p', when: (c) => c.pray === 2 },
+    ],
+  },
+  {
+    title: 'Use an item',
+    commands: [
+      { label: 'Drink potion', icon: '!', command: 'q' },
+      { label: 'Read scroll', icon: '?', command: 'r' },
+      { label: 'Eat', icon: '◓', command: 'E' },
       { label: 'Aim wand', icon: '-', command: 'a' },
       { label: 'Use staff', icon: '_', command: 'u' },
       { label: 'Zap rod', icon: '⌁', command: 'z' },
       { label: 'Activate', icon: '✧', command: 'A' },
-      { label: 'Bonus power', icon: '❂', command: 'U' },
-      { label: 'Target', icon: '◎', command: '*' },
+      { label: 'Refuel light', icon: '~', command: 'F' },
     ],
   },
   {
-    title: 'Movement & world',
+    title: 'Journal',
     commands: [
-      { label: 'Explore', icon: '⇢', command: '', native: 'explore' },
-      { label: 'Rest', icon: '☾', command: 'R', then: '&\r' },
-      { label: 'Search', icon: '∴', command: 's' },
-      { label: 'Open', icon: '⊐', command: 'o' },
-      { label: 'Close', icon: '⊏', command: 'c' },
-      { label: 'Bash door', icon: '+', command: 'B' },
-      { label: 'Tunnel', icon: '#', command: 'T' },
-      { label: 'Go down', icon: '>', command: '>' },
-      { label: 'Go up', icon: '<', command: '<' },
-      { label: 'Drink (fountain)', icon: '⌂', command: 'H' },
-      { label: 'Sacrifice (altar)', icon: '0', command: 'O' },
-    ],
-  },
-  {
-    title: 'Knowledge',
-    commands: [
-      { label: 'Look', icon: '◉', command: 'l', native: 'look' },
-      { label: 'Character', icon: '@', command: 'C', native: 'character' },
-      { label: 'Skills', icon: '±', command: 'G', native: 'skills' },
-      { label: 'Abilities', icon: '✪', command: 'N', native: 'abilities' },
-      { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
-      { label: 'Knowledge', icon: '¶', command: '~', native: 'knowledge' },
-      { label: 'Messages', icon: '≣', command: '\u0010', native: 'history' },
-    ],
-  },
-  {
-    title: 'Game',
-    commands: [
-      { label: 'Save', icon: '⇩', command: '\u0013' },
-      { label: 'Options', icon: '=', command: '=', reading: true },
+      { label: 'Level feeling', icon: '≈', command: '\u0006' },
+      { label: 'Time of day', icon: '◷', command: '\u0014' },
+      { label: 'Add a note', icon: '✎', command: ':' },
     ],
   },
 ];
 
-/** Where the player is: underground, walking the land (towns and wilderness), or on the world map. */
-export type Surroundings = 'dungeon' | 'land' | 'worldMap';
+/** tome2's own option screens, offered with the keys at the foot of the More sheet. */
+export const GAME_OPTIONS: CommandDef = { label: 'Game options', icon: '=', command: '=', reading: true };
 
 const WORLD_MAP: CommandDef = { label: 'World map', icon: '⇱', command: '<' };
 const WALK_HERE: CommandDef = { label: 'Walk here', icon: '⇲', command: '>' };
 
-/** The command sheet's groups, with the stairs commands named for where the player is. */
-export function commandGroups(where: Surroundings): { title: string; commands: CommandDef[] }[] {
-  if (where === 'dungeon') return COMMAND_GROUPS;
+/** A stairs command named for where the player is: the land's way up is the world map, and the world map's way down is Walk here. */
+function stairs(c: CommandDef, where: Surroundings): CommandDef[] {
+  if (where === 'dungeon' || c.native) return [c];
+  if (c.command === '<') return where === 'land' ? [WORLD_MAP] : [];
+  if (c.command === '>') return where === 'worldMap' ? [WALK_HERE] : [c];
+  return [c];
+}
+
+/** The More sheet's groups for the hero's situation: the commands that apply here, dimmed with a reason when they cannot be done now. */
+export function commandGroups(ctx: CommandContext): { title: string; commands: CommandDef[] }[] {
   return COMMAND_GROUPS.map((group) => ({
     title: group.title,
-    commands: group.commands.flatMap((c) => {
-      if (c.command === '<' && !c.native) return where === 'land' ? [WORLD_MAP] : [];
-      if (c.command === '>' && !c.native) return where === 'worldMap' ? [WALK_HERE] : [c];
-      return [c];
-    }),
+    commands: group.commands
+      .filter((c) => !c.when || c.when(ctx))
+      .map(({ when: _when, beside, ...c }): CommandDef => (beside && !ctx.beside ? { ...c, unavailable: NO_ONE_BESIDE } : c))
+      .flatMap((c) => stairs(c, ctx.where)),
   }));
 }
 
@@ -217,6 +247,8 @@ export interface ActionContext {
   entrance?: string | null;
   /** Direction digit of the weakest hostile creature next to the player. */
   foe?: string | null;
+  /** Direction digit of a neutral creature next to the player (someone to talk to). */
+  talk?: string | null;
   /** The hero's one-tap repeat: their last (or first) spell or power, or the last aimed thing they used. */
   quick?: Slot | null;
   /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers to use. */
@@ -297,8 +329,9 @@ const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {
 /**
  * The toolbar's one changing button, the first of these that applies: the
  * world map's Walk here; the way on underfoot (a staircase is always what it
- * does); the door of a shop or other building underfoot; Attack a foe alongside; what lies underfoot to pick up or use; gear
- * the hero needs to go on; and Explore, named for what it will do.
+ * does); the door of a shop or other building underfoot; Attack a foe
+ * alongside; Talk to someone alongside; what lies underfoot to pick up or
+ * use; gear the hero needs to go on; and Explore, named for what it will do.
  */
 export function contextualAction(ctx: ActionContext): Action {
   if (ctx.worldMap) return command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true);
@@ -306,6 +339,7 @@ export function contextualAction(ctx: ActionContext): Action {
   if (transition) return command(transition.id, transition.label, transition.icon, { command: transition.command }, true);
   if (ctx.entrance) return command('shop', ctx.entrance, '⌂', { command: '_' }, true);
   if (ctx.foe) return { id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true };
+  if (ctx.talk) return command('talk', 'Talk', '❝', { command: `Y${ctx.talk}` }, true);
   if (ctx.floorObjects > 0) return command('pickup', 'Pick up', '⇡', { command: pickupCommand(ctx.alwaysPickup) }, true);
   if (/fountain/.test(ctx.underfoot)) return command('drink', 'Drink', '⌂', { command: 'H' }, true);
   if (/altar/.test(ctx.underfoot)) return command('sacrifice', 'Sacrifice', '0', { command: 'O' }, true);

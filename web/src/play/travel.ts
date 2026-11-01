@@ -6,6 +6,7 @@ import {
   LAYER_MONSTER,
   isAlly,
   isHostile,
+  isNeutral,
   type LevelSnapshot,
   type MonsterState,
 } from '../render/snapshot.ts';
@@ -250,16 +251,28 @@ export type TapAction =
   | { kind: 'wait' }
   | { kind: 'travel'; cell: Point }
   | { kind: 'step'; cell: Point }
+  | { kind: 'talk'; digit: string }
   | { kind: 'none' };
 
 /**
  * Where a tap on the map takes the hero: travel to a place they have seen,
  * one step to a neighbouring cell, and one step towards anywhere unseen,
- * blank screen beyond the level included.
+ * blank screen beyond the level included. A tap on a neutral creature beside
+ * the hero talks to it, where a step would only stop short of it (after
+ * Pixel Dungeon, whose townsfolk answer a tap).
  */
-export function goAction(snap: LevelSnapshot, materials: readonly Material[], point: Point): Extract<TapAction, { kind: 'travel' | 'step' | 'none' }> {
+export function goAction(
+  snap: LevelSnapshot,
+  materials: readonly Material[],
+  point: Point,
+  monsters: readonly MonsterState[] = [],
+): Extract<TapAction, { kind: 'travel' | 'step' | 'talk' | 'none' }> {
   const known = isKnown(snap, point);
-  if (known && !isAdjacent(snap.px, snap.py, point.x, point.y)) return { kind: 'travel', cell: point };
+  const near = isAdjacent(snap.px, snap.py, point.x, point.y);
+  if (known && !near) return { kind: 'travel', cell: point };
+  if (near && monsters.some((m) => m.x === point.x && m.y === point.y && isNeutral(m))) {
+    return { kind: 'talk', digit: directionDigit(point.x - snap.px, point.y - snap.py) ?? '5' };
+  }
   const step = known ? point : stepTowards(snap, materials, point);
   return step ? { kind: 'step', cell: step } : { kind: 'none' };
 }
@@ -268,7 +281,7 @@ export function goAction(snap: LevelSnapshot, materials: readonly Material[], po
  * What a tap on a map cell does for the question tome2 is asking: choose a
  * direction or target, interrupt a rest or run, wait in place, or go there.
  */
-export function tapAction(snap: LevelSnapshot, materials: readonly Material[], cell: Point, prompt: PromptKind): TapAction {
+export function tapAction(snap: LevelSnapshot, materials: readonly Material[], cell: Point, prompt: PromptKind, monsters: readonly MonsterState[] = []): TapAction {
   const near = isAdjacent(snap.px, snap.py, cell.x, cell.y);
   const direction = (): TapAction => ({ kind: 'direction', digit: directionDigit(cell.x - snap.px, cell.y - snap.py) ?? '5' });
   if (prompt === 'direction') return near ? direction() : { kind: 'none' };
@@ -276,7 +289,7 @@ export function tapAction(snap: LevelSnapshot, materials: readonly Material[], c
   /* Resting, running or repeating: a tap interrupts it. */
   if (!snap.atCommand) return prompt === 'none' ? { kind: 'interrupt' } : { kind: 'none' };
   if (cell.x === snap.px && cell.y === snap.py) return { kind: 'wait' };
-  return goAction(snap, materials, cell);
+  return goAction(snap, materials, cell, monsters);
 }
 
 /** What keeps the hero from pushing past a companion: tome2 makes them stop, or strike, while confused, stunned or seeing things. */
