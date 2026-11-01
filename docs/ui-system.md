@@ -7,12 +7,12 @@ record, including the audit it came from.
 ## 1. Inventory and navigation map
 
 Everything the player can open, by where it is reached from. Depth counts
-taps from the map. **Type** refers to the taxonomy in section 2.
+taps from the map. **Type** refers to the taxonomy in section 3.
 
 ```
 Map (toolbar, HUD, gestures)
 ├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Descend/Ascend/Enter rift, Enter shop/home,
-│   Attack, Pick up, Drink, Wield/Light/Eat, Explore/Way down/Way up/World map — then the hero's
+│   Attack, Talk, Pick up, Drink, Wield/Light/Eat, Explore/Way down/Way up/World map — then the hero's
 │   own buttons in fixed places: quick spell or aimed item, Cast/Powers, Fire, Items, Rest, More,
 │   Menu; while exploring: Stop, Speed, Menu)
 │   ├── Items ─────────────── Inventory            panel, tabs Pack · Equipment · Floor     depth 1
@@ -21,11 +21,12 @@ Map (toolbar, HUD, gestures)
 │   │                             └── Inscribe      card at the top (text field)             depth 3
 │   ├── Cast / Powers ─────── Magic                panel: Recent, books, Powers, Skills     depth 1
 │   │                         └── Spell             card over Magic (Cast)                   depth 2
-│   ├── More ──────────────── Commands             panel: command grid by group             depth 1
+│   ├── More ──────────────── Commands             panel: commands by intent (section 7)   depth 1
 │   │   ├── Look ──────────── look mode: banner + look card on the map (each creature and item → its card)
-│   │   ├── native commands → the native panel, in the same frame (Back returns to Commands)
-│   │   ├── item commands (Quaff, Read…) → tome2 item prompt (TermView panel, tabs)
-│   │   └── reading commands (Inspect, Options) → tome2 screen; Commands reopens after
+│   │   ├── Magic & powers ── Magic, in the same frame (Back returns to Commands)
+│   │   ├── item commands (Drink potion, Read scroll…) → tome2 item prompt (TermView panel, tabs)
+│   │   ├── Talk, Give, Steal, doors → direction card on the map (Give then asks which item)
+│   │   └── Game options ──── tome2 screen; Commands reopens after
 │   └── Menu ──────────────── Menu                 menu                                     depth 1
 │       ├── Character ─────── Character            panel, tabs Summary · Skills · Abilities · Full sheet
 │       │                     └── Save skill points? card over Character (Discard · Save)
@@ -46,9 +47,9 @@ Map (toolbar, HUD, gestures)
 │   ├── hero name ─────────── Character (or Fallen hero after death)
 │   ├── quest chip ────────── Quest                card (what the level's quest asks, how many are slain);
 │   │                         while it lasts the map's edges glow violet and its foes' chips are marked ⚑
-│   ├── creature / item chip ─ Creature / Item     card
+│   ├── creature / item chip ─ Creature / Item     card (a creature beside you, not hostile: Talk · Give)
 │   └── message log ───────── Messages             panel
-├── Map tap / long-press ───── travel / look card (terrain; each creature and item there → its card)
+├── Map tap / long-press ───── travel (a neutral creature beside you: talk) / look card (terrain; each creature and item there → its card)
 ├── A quest begun or ended ─── quest card (the scene tome2 told, then what it asks) or its banner
 └── tome2 asks something ───── question card on the map (yes/no, how many, text, direction,
                                aim, lettered choice, message box) or a TermView panel
@@ -233,7 +234,57 @@ Four things look different and never stand for each other:
 | Thieves' Hideout | The quest's title in a banner; the blow, the cell and the theft only in the log | A card with the scene, then the task; its end told the same way |
 | Title with many heroes | A Continue row per hero | Continue as the last hero goes straight into the game; every hero in the Game Roster panel, each a card with Play and Delete |
 
-## 7. Validation
+## 7. Command coverage
+
+Every command of tome2's dispatcher (`process_command` in `dungeon.cc`, the
+original keyset) and where a player reaches it. The More sheet groups what is
+left by what the player means to do. It leaves out what the hero cannot ever
+do (Pray without a god, Engrave without runes, Steal without the skill) and
+dims, saying why, what cannot be done here: a fountain's or altar's command
+off one, Talk, Give and Steal with no one beside the hero, and on the world
+map whatever tome2 ignores there. What Talk or Give brings out is shown in a
+card named for the creature.
+
+| tome2 | Command | Reached from |
+|---|---|---|
+| `;` `-` `.` | walk, run | tap, travel, Explore |
+| `,` `g` | stay, pick up | tap yourself (wait); changing button *Pick up*; Items → Floor |
+| `R` | rest | toolbar *Rest*; More |
+| `<` `>` | stairs, world map | changing button (Descend, Ascend, Walk here…); More (*Go down*, *Go up* / *World map*) |
+| `_` | enter a building | walk in; changing button *Enter shop* |
+| `o` `c` `B` `j` `T` | open, close, bash, jam (spikes), tunnel | tap a door (opens it); More → Doors and walls |
+| `+` | alter (attack, open or tunnel by terrain) | covered by the above and Attack |
+| `Y` | talk | tap a neutral creature beside you; changing button *Talk*; its card; More |
+| `y` | give | a creature's card beside you; More |
+| `Z` | steal from a creature | More (with the Stealing skill); in a shop, *Steal one* on a shelf card |
+| `P` | command allies | More → *Command allies* |
+| `H` `O` | drink at a fountain, sacrifice at an altar | changing button; More |
+| `x` | engrave a rune | More, once a rune is learnt |
+| `l` `M` `L` `*` | look, level map, locate, target | long-press; More (*Look*, *Level map*, *Choose target*); dragging the map |
+| `i` `e` `w` `t` `d` `k` `{` `}` `I` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |
+| `q` `r` `E` `a` `u` `z` `A` `F` `v` `f` `b` | use items, fire, throw, browse | item cards, *Recently used*, Again, Fire, gear suggestions; More → Use an item / Fight and magic |
+| `h` `K` | butcher a corpse, cure meat | the corpse's or meat's card |
+| `m` `U` `p` | magic and skills, race and class powers, pray | Cast/Powers; More (*Magic & powers*, *Pray*/*Stop praying* for a god's follower) |
+| `G` `N` `C` | skills, abilities, character | HUD name; Menu → Character (tabs) |
+| `~` `^P` `^O` | knowledge, messages | Menu → Knowledge, Messages; the HUD log |
+| `^F` `^T` `:` | level feeling, time of day, write a note | More → Journal (notes are read in Knowledge) |
+| `^S` `^X` `Q` | save, save and quit, quit | Menu (*Save game*, *Save and quit*, *Abandon adventure*) |
+| `=` | options | More → *Game options*; our own in Settings |
+| `?` `V` | help, version | Menu → Help, About |
+
+Left out on purpose: `/` (identify a symbol: Look and creature cards tell
+more), `^R` redraw, `^I` window toggles, `@` `%` `&` `"` `$` and the
+extended `#` commands (keyboard macros, visuals, colours, pref lines, the
+macro recorder, an HTML screen dump: terminal set-up with no meaning on a
+phone), `^W` `^A` (wizard and debug modes: `?wizard` is for testing). The
+Keyboard and Ctrl buttons at the foot of More still reach any of them.
+
+Removed from More: *Search* (`s`, which this tome2 no longer has), *Bonus
+power* (the Powers tab of Magic), and the inventory, equipment, character,
+skills, abilities, knowledge, messages and save buttons that repeated Items
+and the Menu.
+
+## 8. Validation
 
 Checked in the real game (headless Chromium, `?wizard`) with targeted
 Playwright scripts in phone portrait and phone landscape, and the e2e suite
@@ -247,7 +298,7 @@ card ✕ and backdrop closing only the card, tabs fixed, the name question at
 the top in landscape. A new e2e test covers the reader, help links and cards
 (`play.spec.ts`).
 
-## 8. Exceptions and next refinements
+## 9. Exceptions and next refinements
 
 - **Shops** are native panels built from the engine's data (`web_store_json`);
   tome2 still pages its own list underneath, and a trade turns it to the
@@ -259,7 +310,7 @@ the top in landscape. A new e2e test covers the reader, help links and cards
 - **Spell lists, options and other tome2 menus** remain TermView panels
   (modern rows, not native views); see AGENTS.md *Known gaps*.
 
-## 9. Sources
+## 10. Sources
 
 - Apple Human Interface Guidelines, *Sheets* and *Modality*: sheets for
   scoped tasks, a clear way to dismiss, keep the parent visible.

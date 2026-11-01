@@ -151,6 +151,10 @@ export interface PlayerState {
   alwaysPickup: number;
   /** Skill points waiting to be spent. */
   skillPoints?: number;
+  /** 0 without a god, 1 when the hero may pray to theirs, 2 while praying. */
+  pray?: number;
+  /** Runes (tome2's inscriptions) the hero has learnt to engrave. */
+  runes?: number;
   /** 1 once the hero has died. */
   dead?: number;
   /** What killed the hero. */
@@ -225,6 +229,11 @@ export interface MonsterState {
 /** tome2 monster status: below 0 attacks the player, 0 is neutral, above 0 fights for the player. */
 export function isHostile(m: Pick<MonsterState, 'status'>): boolean {
   return m.status < 0;
+}
+
+/** Neither for nor against the player, as tome2's townsfolk with something to say are (Melinda Proudfoot, Farmer Maggot). */
+export function isNeutral(m: Pick<MonsterState, 'status'>): boolean {
+  return m.status === 0;
 }
 
 export function isAlly(m: Pick<MonsterState, 'status'>): boolean {

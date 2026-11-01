@@ -2257,6 +2257,10 @@ html.keyboard-open .tv-layer.panel {
   text-align: center;
 }
 
+.command.unavailable > span {
+  opacity: 0.45;
+}
+
 /* Settings */
 
 .settings-sample {

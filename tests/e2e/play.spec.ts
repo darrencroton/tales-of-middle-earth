@@ -189,8 +189,8 @@ test('items are dropped by the number chosen, used, wielded and taken off from t
   await waitAtCommand(page);
 
   await page.locator('#toolbar [data-action="commands"]').click();
-  await page.locator('.sheet .command', { hasText: 'Destroy' }).click();
-  await waitForScreen(page, /Destroy which item/);
+  await page.locator('.sheet .command', { hasText: 'Eat' }).click();
+  await waitForScreen(page, /Eat which item/);
   if (!/Floor:/.test((await screenText(page)).split('\n')[0])) await page.locator('.termview .pop-tab', { hasText: 'Floor' }).click();
   await waitForScreen(page, /\(Floor:/);
   await expect(page.locator('.termview .tv-choice')).toHaveCount(1);
@@ -231,11 +231,11 @@ test('tome2 menus show as tappable lists with a movable highlight', { tag: '@lay
   await createCharacter(page, 'Tapper');
 
   await page.locator('#toolbar [data-action="commands"]').click();
-  await page.locator('.sheet .command', { hasText: 'Wear / wield' }).click();
+  await page.locator('.sheet .command', { hasText: 'Throw' }).click();
   await expect(page.locator('.sheet-layer')).toBeHidden();
-  await waitForScreen(page, /Wear\/Wield which item/);
+  await waitForScreen(page, /Throw which item/);
   await expect.poll(() => viewMode(page)).toBe('overlay');
-  await expect(page.locator('.termview .tv-title')).toHaveText(/Wear\/Wield which item/);
+  await expect(page.locator('.termview .tv-title')).toHaveText(/Throw which item/);
 
   const first = await page.locator('.termview .tv-choice.is-active').getAttribute('data-key');
   await page.keyboard.press('ArrowDown');
@@ -243,9 +243,8 @@ test('tome2 menus show as tappable lists with a movable highlight', { tag: '@lay
   expect(second).not.toBe(first);
 
   await page.locator('.termview .tv-choice', { hasText: 'Torch' }).click();
-  await expect
-    .poll(() => page.evaluate(() => window.__tome!.engine.inventory()!.equip.find((e) => e.i === 36)?.name ?? ''), { timeout: 10_000 })
-    .toMatch(/Torch/);
+  await waitForScreen(page, /Direction/);
+  await page.keyboard.press('Escape');
   await dismissMore(page);
   await waitAtCommand(page);
 

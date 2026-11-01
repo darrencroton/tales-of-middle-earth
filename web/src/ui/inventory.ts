@@ -1,3 +1,4 @@
+import { worldMapRefusal } from '../play/actions.ts';
 import { SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
 import { itemRecent, recentItem, recentItemAction, recentKey } from '../play/recent.ts';
 import type { EquipSlot, InventoryState, ItemState } from '../render/snapshot.ts';
@@ -133,11 +134,14 @@ export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void 
   const body = el('div', 'item-detail');
 
   const alwaysPickup = !!api.state()?.player?.alwaysPickup;
+  const snap = api.snapshot();
+  const worldMap = !!snap?.inDungeon && snap.depth === 0 && !!snap.wild;
   const actions: SheetAction[] = itemActions(item, place).map((action) => ({
     id: action.id,
     label: action.label,
     primary: action.primary,
     danger: action.danger,
+    unavailable: worldMapRefusal(action.command, worldMap),
     run: () => {
       if (action.needsText) {
         api.askText('Inscribe', `Inscription for ${item.name}`, item.ins).then((text) => {

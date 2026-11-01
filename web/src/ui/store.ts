@@ -14,6 +14,8 @@ export type ShopTab = 'shelf' | 'offer';
 export interface ShopModel {
   shelf: { label: string; verb: string | null; key: string | null; empty: string };
   offer: { label: string; verb: string; key: string } | null;
+  /** The key that tries to steal from the shelf (a shop's, never the home's or a museum's). */
+  steal: string | null;
   /** The building's other services (a fortune told, a night's rest), sent to tome2 as they are. */
   extras: StoreCommand[];
 }
@@ -40,6 +42,7 @@ export function shopModel(store: StoreState): ShopModel {
     return {
       shelf: { label: 'Stored', verb: buy ? 'Take' : null, key: buy, empty: 'Your home stands bare. Whatever you store here waits safely for your return.' },
       offer: sell ? { label: 'Inventory', verb: 'Store', key: sell } : null,
+      steal: null,
       extras,
     };
   }
@@ -47,12 +50,14 @@ export function shopModel(store: StoreState): ShopModel {
     return {
       shelf: { label: 'Collection', verb: null, key: null, empty: 'The display cases stand empty, waiting for a worthy gift.' },
       offer: sell ? { label: 'Donate', verb: 'Donate', key: sell } : null,
+      steal: null,
       extras,
     };
   }
   return {
     shelf: { label: 'Buy', verb: buy ? 'Buy' : null, key: buy, empty: 'The shelves are bare. Come back later: shops restock while you are away.' },
     offer: sell ? { label: 'Sell', verb: 'Sell', key: sell } : null,
+    steal: key(STORE_ACTION.steal),
     extras,
   };
 }
@@ -153,6 +158,8 @@ export interface ShopHandlers {
   trade(macro: Macro, done: string | null): void;
   /** Turns tome2's list to the page an item is on: the page shown now. */
   page(): number;
+  /** The hero has the Stealing skill, so the shelf offers Steal. */
+  steals(): boolean;
 }
 
 /** An item and how many, for the word after a trade ("2 × Flasks of oil"). */
@@ -263,7 +270,7 @@ function description(text: string, fallback: string): HTMLElement {
   return box;
 }
 
-/** One item on the shelf: what it is and costs, how many to take, and Buy (or Take); looking costs nothing. */
+/** One item on the shelf: what it is and costs, how many to take, and Buy (or Take), or Steal one for a thief; looking costs nothing. */
 export function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: StockItem, handlers: ShopHandlers): void {
   const body = el('div', 'item-detail');
   const most = affordable(store, item);
@@ -298,6 +305,15 @@ export function openShelfItem(api: GameApi, store: StoreState, model: ShopModel,
         const done = shop ? `Bought ${name} for ${quantity * item.price} gold.` : `Took ${name} from home.`;
         handlers.trade(shelfMacro(key, item.i, quantity, store.stock.length, handlers.page()), done);
       },
+    });
+  }
+  const steal = model.steal;
+  if (steal && handlers.steals()) {
+    actions.push({
+      id: 'steal',
+      label: 'Steal one',
+      danger: true,
+      run: () => handlers.trade(shelfMacro(steal, item.i, 1, store.stock.length, handlers.page()), `Stole ${traded(item.name, 1)}.`),
     });
   }
   api.sheets.open({

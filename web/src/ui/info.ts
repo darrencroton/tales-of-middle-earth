@@ -1,6 +1,8 @@
+import { KEY_BACKSLASH, keyCodes } from '../input/keys.ts';
+import { directionDigit } from '../play/prompts.ts';
 import { readableColour } from '../render/colour.ts';
 import type { MapPoint } from '../render/map.ts';
-import { isAlly, isHostile, type LevelQuest, type MonsterState, type ObjectState } from '../render/snapshot.ts';
+import { isAlly, isHostile, isNeutral, type LevelQuest, type MonsterState, type ObjectState } from '../render/snapshot.ts';
 import { capitalise, descriptionParagraphs, titleName, type GameApi } from './api.ts';
 import { el, glyph, iconText, leadIn } from './dom.ts';
 import { openItem } from './inventory.ts';
@@ -44,10 +46,23 @@ export function openMonster(api: GameApi, m: MonsterState): void {
   const fallen = !!api.state()?.player?.dead;
   const friendly = !isHostile(m);
   const near = snap ? distance({ x: snap.px, y: snap.py }, m) : 99;
+  /* Beside the hero, someone neutral can be talked to, and anyone not hostile given something (tome2's Y and y, with its direction). */
+  const busy = snap?.atCommand ? null : 'Finish what you are doing first.';
+  const towards = (id: string, label: string, command: string, primary: boolean): SheetAction => ({
+    id,
+    label,
+    primary,
+    unavailable: busy,
+    run: () => {
+      if (snap) api.send([KEY_BACKSLASH, ...keyCodes(`${command}${directionDigit(m.x - snap.px, m.y - snap.py)}`)]);
+    },
+  });
   const actions: SheetAction[] = fallen
     ? []
     : [
-        { id: 'approach', label: friendly ? 'Go to' : near <= 1 ? 'Attack' : 'Approach', primary: true, run: () => api.travelTo({ x: m.x, y: m.y }) },
+        ...(friendly && near === 1
+          ? [...(isNeutral(m) ? [towards('talk', 'Talk', 'Y', true)] : []), towards('give', 'Give', 'y', !isNeutral(m))]
+          : [{ id: 'approach', label: friendly ? 'Go to' : near <= 1 ? 'Attack' : 'Approach', primary: true, run: () => api.travelTo({ x: m.x, y: m.y }) }]),
         {
           id: 'show',
           label: 'Show on map',

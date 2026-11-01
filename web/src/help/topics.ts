@@ -94,7 +94,7 @@ export const HELP: readonly HelpGroup[] = [
           {
             terms: [
               ['Tap a place', 'Walk there by the way you know. A tap on somewhere unseen takes one step towards it.'],
-              ['Tap next to you', 'One step. A creature there is attacked; a closed door is opened.'],
+              ['Tap next to you', 'One step. A foe there is attacked; someone neutral, such as a worried hobbit in town, is talked to; a closed door is opened.'],
               ['Tap yourself', 'Wait a turn, to let a creature come to you.'],
               ['Press and hold', 'Look at anything on the map: creatures, items, terrain.'],
               ['Drag', 'Look around without moving. Your next move brings the view back.'],
@@ -121,7 +121,7 @@ export const HELP: readonly HelpGroup[] = [
         title: 'The toolbar',
         icon: '▭',
         summary: 'What each button does, and the one that changes.',
-        keywords: 'button bar action descend ascend stairs attack pick up wield explore way down way up again cast fire items rest more menu',
+        keywords: 'button bar action descend ascend stairs attack talk pick up wield explore way down way up again cast fire items rest more menu',
         body: [
           'The first button changes with where you are and what is around you. It is the first of these that applies:',
           {
@@ -129,6 +129,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Walk here', 'On the world map: walk into the land beneath you.'],
               ['Descend, Ascend, Enter, Leave', 'You stand on stairs, a path or a gate: take it. On stairs, this button is always those stairs.'],
               ['Attack', 'A creature stands next to you: strike the weakest. Red brackets on the map show which.'],
+              ['Talk', 'Someone neutral stands next to you: hear what they have to say.'],
               ['Pick up, Drink, Sacrifice', 'Something lies at your feet, or you stand at a fountain or an altar.'],
               ['Eat, Wield, Light', 'You are hungry, your weapon hand is empty, or you have no light below ground. *Light* also relights a torch or lantern that has gone out.'],
               ['Explore', 'Walk on to the next place you have not seen.'],
@@ -145,7 +146,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Fire', 'Shoot the nearest foe, while a bow, sling or crossbow is wielded.'],
               ['Items', 'Your pack, your equipment and what lies at your feet.'],
               ['Rest', 'Rest until you have recovered, or until something happens.'],
-              ['More', 'Every other command, by group.'],
+              ['More', 'Every other command, grouped by what you want to do: get around, deal with people and creatures, doors and walls, fight, use an item, and your journal. Commands that need something here (a fountain, an altar, someone beside you) appear or brighten when it is.'],
               ['Menu', 'Your character, messages, knowledge, saving, settings and this help.'],
             ],
           },
@@ -256,7 +257,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'Blows, missiles, and choosing your battles.',
         keywords: 'attack melee combat missile shoot fire throw bow arrow target foe enemy creature monster',
         body: [
-          'Walk into a creature, tap it beside you, or tap *Attack* to strike. *Fire* shoots the nearest foe with your launcher; throwing, wands and other attacks are under *More*.',
+          'Walk into a creature, tap it beside you, or tap *Attack* to strike. *Fire* shoots the nearest foe with your launcher; throwing, wands, choosing a target and commanding your allies are under *More*.',
           'Press and hold a creature before you fight it: once you have met its kind, its description tells you what it can do.',
           {
             list: [
@@ -371,6 +372,7 @@ export const HELP: readonly HelpGroup[] = [
           'Walk into a shop’s door to trade; standing at the door, *Enter shop* on the toolbar takes you back in. *Buy* lists everything for sale, *Sell* what you carry. Tap an item for its description, then *Buy* or *Sell*, choosing how many. Things you cannot afford, or the shop will not take, are dimmed and say why.',
           'Each shop buys only its own kind of goods, and some specialist shops buy nothing at all. Unless you chose *No selling* when you began, shops pay for what they take. With No selling they pay nothing, but gold found lying about is worth five times as much.',
           'Your *Home* keeps anything you leave there safe: *Inventory* to store what you carry, *Stored* to take it back.',
+          'A hero with the Stealing skill can try to *Steal* from a shop’s shelf instead of paying. Caught, they are thrown out for a long while.',
           {
             terms: [
               ['General Store', 'Food, torches, lanterns, oil, cloaks, ammunition, digging tools.'],
@@ -465,7 +467,7 @@ export const HELP: readonly HelpGroup[] = [
         keywords: 'god gods piety pray prayer valar eru manwe tulkas yavanna melkor altar',
         body: [
           'Priests must follow a god; any hero may choose one when they begin, or later at an altar.',
-          'Your *piety* is how pleased your god is: it rises and falls with what you do. *Pray* (under More) calls on your god, bringing some of their gifts into play. Prayers are spells your god grants: they cost piety instead of mana, and grow with your Prayer skill.',
+          'Your *piety* is how pleased your god is: it rises and falls with what you do. *Pray* (under More) calls on your god, bringing some of their gifts into play, until you *Stop praying*. Prayers are spells your god grants: they cost piety instead of mana, and grow with your Prayer skill.',
           {
             terms: [
               ['Eru Ilúvatar', 'The One. Grants wisdom and mana, and while you pray may turn aside evil blows. Wants blunt or blessed weapons, and no good creatures harmed.'],
@@ -508,9 +510,10 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Quests',
         icon: '!',
         summary: 'People who need your help.',
-        keywords: 'quest quests random reward task mission princess sword adventurer',
+        keywords: 'quest quests random reward task mission princess sword adventurer talk chat speak give offer hobbit merton melinda maggot mushrooms',
         body: [
           'Your great quest is set from the start. Beyond it, people in the towns ask for help: walk into their buildings to hear what they need. Some quests take you to a level of their own.',
+          'Some people you meet on the way have something to say: when one stands beside you, *Talk* appears on the toolbar (or tap them). Some want something handed over: tap them among the creatures listed with your hero, or use More → *Give*, and choose what to offer. What they say is shown in a card.',
           '*Random quests* wait at set depths of the main dungeons (the Barrow-Downs, Mirkwood, Mordor and Angband), spread evenly from the top to the bottom: with 20 of them, one about every five levels. Each is a captured princess, guarded by creatures stronger than the depth, or an adventurer whose sword a band of them took.',
           'When you arrive on a quest level a banner names the quest, its music plays, and the edges of the map glow violet for as long as it waits, more strongly while the creatures it is after are in sight. A ⚑ chip below your hero counts the creatures slain when there are several (tap it to read what the quest asks), and those creatures are marked ⚑ among the others. Leave the level and the quest is there on your next visit, begun again.',
           'Save the princess and she offers a choice of rewards; win back the sword and the adventurer offers to join you, or teaches you a skill.',
@@ -580,7 +583,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Map zoom', 'How close the map is; pinching does the same.'],
             ],
           },
-          'The classic ToME options (More → Options) are there for those who know them.',
+          'The classic ToME options (More → Game options) are there for those who know them.',
         ],
         see: ['saving'],
       },

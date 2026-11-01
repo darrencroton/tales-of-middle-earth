@@ -11,14 +11,14 @@ import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
-import { commandGroups, commandKeys, contextActions, contextualAction, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
+import { commandGroups, commandKeys, contextActions, contextualAction, GAME_OPTIONS, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
 import { approachTarget, goAction, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, questKey, type HeroMemory } from './play/mapmemory.ts';
-import { CAVE_MARK, isHostile, LAYER_MASK, LEAD_LINES, leadInMessages, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
+import { CAVE_MARK, isHostile, isNeutral, LAYER_MASK, LEAD_LINES, leadInMessages, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -414,9 +414,54 @@ function hearGear(turn: number): void {
   audio.setGear(weaponKind(held(INVEN_WIELD)?.tval), launcherKind(launcher?.tval, launcher?.sval));
 }
 
-/** Gathers the messages of a watched action. */
+/** Gathers the messages of a watched action, and of a conversation. */
 function followAttempt(previous: GameState | null, state: GameState): void {
-  if (attempt && previous) attempt.messages.push(...freshMessages(previous, state));
+  if (!previous) return;
+  if (attempt) attempt.messages.push(...freshMessages(previous, state));
+  if (conversation) conversation.messages.push(...freshMessages(previous, state));
+}
+
+/* A word with a creature (tome2's Talk and Give): what tome2 says until it is back at the command prompt. */
+let conversation: { title: string; named: boolean; messages: string[] } | null = null;
+const TALK = 'Y'.charCodeAt(0);
+const GIVE = 'y'.charCodeAt(0);
+
+/** The creature one step from the hero in a keypad direction, by its digit's key code. */
+function creatureTowards(code: number | undefined): MonsterState | undefined {
+  const snap = lastSnap;
+  const digit = (code ?? 0) - 48;
+  if (!snap || digit < 1 || digit > 9 || digit === 5) return undefined;
+  const dx = ((digit - 1) % 3) - 1;
+  const dy = 1 - Math.floor((digit - 1) / 3);
+  return lastState?.monsters?.find((m) => m.x === snap.px + dx && m.y === snap.py + dy);
+}
+
+/**
+ * Begins a conversation when Talk or Give is sent at the command prompt
+ * (from a button, or typed), named for the creature in the direction sent
+ * with it, or in the direction answered next.
+ */
+function noteConversation(codes: readonly number[]): void {
+  if (conversation && !conversation.named && codes.length === 1 && currentPrompt() === 'direction') {
+    const creature = creatureTowards(codes[0]);
+    if (creature) conversation = { ...conversation, title: titleName(creature.name), named: true };
+    return;
+  }
+  const command = codes[0] === BACKSLASH ? codes.slice(1) : codes;
+  if ((command[0] !== TALK && command[0] !== GIVE) || !lastSnap?.atCommand) return;
+  const creature = creatureTowards(command[1]);
+  conversation = { title: creature ? titleName(creature.name) : command[0] === TALK ? 'Talk' : 'Give', named: !!creature, messages: [] };
+}
+
+/** Once tome2 is back at the command prompt: what was said in a card, or a single line as a toast, so a long answer is not lost as messages flow past. */
+function settleConversation(): void {
+  const snap = lastSnap;
+  if (conversation && lastState?.player?.dead) conversation = null;
+  if (!conversation || !snap?.atCommand || snap.icky || macros.running || engine.pendingKeys > 0) return;
+  const { title, messages } = conversation;
+  conversation = null;
+  if (messages.length > 1) openMessage(sheets, title, messages.join(' '));
+  else if (messages.length === 1) showToast(messages[0], false);
 }
 
 /** Once a watched action has ended (its macro done, tome2 back at the command prompt), tells the player when tome2 refused it or it failed. */
@@ -468,6 +513,7 @@ function describeSpell(name: string, key: string): boolean {
 
 let styleKey = '';
 let style: FightingStyle = { weapons: true, magic: true };
+let steals = false;
 
 /** How the hero fights, read again when their level or skill points change. */
 function heroStyle(): FightingStyle {
@@ -479,7 +525,14 @@ function heroStyle(): FightingStyle {
   if (!sheet) return style;
   styleKey = key;
   style = fightingStyle(sheet.skills);
+  steals = !!sheet.skills?.some((skill) => skill.name === 'Stealing' && skill.value > 0);
   return style;
+}
+
+/** The hero has the Stealing skill, read with how they fight. */
+function heroSteals(): boolean {
+  heroStyle();
+  return steals;
 }
 
 /**
@@ -575,17 +628,11 @@ function openNative(view: NativeView): void {
     case 'inventory':
       openInventory(api, 'pack');
       break;
-    case 'equipment':
-      openInventory(api, 'equip');
-      break;
     case 'character':
       character.open('summary');
       break;
     case 'skills':
       character.open('skills');
-      break;
-    case 'abilities':
-      character.open('abilities');
       break;
     case 'magic':
       openMagic(api, api.recent(), { run: (entry, anyway) => runRecent(entry, false, anyway) });
@@ -606,17 +653,11 @@ function openNative(view: NativeView): void {
       saveSettings(settings);
       updateActionBar();
       break;
-    case 'knowledge':
-      openKnowledge(api);
-      break;
     case 'finish':
       finishGame();
       break;
     case 'fallen':
       openFallenHero();
-      break;
-    case 'history':
-      showHistory();
       break;
     case 'look':
       setLooking(true);
@@ -1615,6 +1656,7 @@ const shopHandlers: ShopHandlers = {
     if (!macros.running) settleTrade();
   },
   page: () => shelfPage(buffer.screenText()),
+  steals: heroSteals,
 };
 
 /** Gold, stock and what the hero carries, to tell whether a trade went through. */
@@ -1797,6 +1839,13 @@ function adjacentFoe(): MonsterState | null {
   return foes[0] ?? null;
 }
 
+/** A neutral creature next to the player (someone to talk to), if any. */
+function talkPartner(): MonsterState | null {
+  const snap = lastSnap;
+  if (!snap?.inDungeon || !snap.atCommand) return null;
+  return (lastState?.monsters ?? []).find((m) => isNeutral(m) && isAdjacent(m.x, m.y, snap.px, snap.py)) ?? null;
+}
+
 function useSuggested(): void {
   const gear = gearSuggestion();
   if (gear) runMacro(itemMacro({ id: gear.kind, label: gear.kind, command: gear.command }, gear.item, 'pack'));
@@ -1807,7 +1856,9 @@ function mapSituation(snap: LevelSnapshot): Partial<ActionContext> {
   if (travel instanceof Explore) return { exploring: settings.explorePace };
   if (!snap.atCommand) return {};
   const quick = quickEntry();
+  const partner = talkPartner();
   return {
+    talk: partner ? directionDigit(partner.x - snap.px, partner.y - snap.py) : null,
     exploreNext: exploreNext(snap),
     entrance: entranceHere(snap),
     gear: gearSuggestion()?.kind ?? null,
@@ -1956,64 +2007,71 @@ function alwaysPickup(): boolean {
   return !!lastState?.player?.alwaysPickup;
 }
 
-/* Native views that open over the Commands sheet, so Back returns to it. */
-const STACKED_VIEWS = new Set<NativeView>(['inventory', 'equipment', 'character', 'skills', 'abilities', 'magic', 'knowledge', 'history']);
+
+/** What the More sheet needs to know of the hero's situation. */
+function commandContext(): CommandContext {
+  const snap = lastSnap;
+  const player = lastState?.player;
+  return {
+    where: !snap?.inDungeon || snap.depth > 0 ? 'dungeon' : snap.wild ? 'worldMap' : 'land',
+    underfoot: snap?.inDungeon ? underfootName(snap) : '',
+    beside: !!snap && (lastState?.monsters ?? []).some((m) => isAdjacent(snap.px, snap.py, m.x, m.y)),
+    pray: player?.pray ?? 0,
+    runes: (player?.runes ?? 0) > 0,
+    steals: heroSteals(),
+  };
+}
+
+/** A button of the More sheet; one that cannot be done now is dimmed and says why. */
+function commandButton(icon: string, label: string, onClick: () => void, unavailable?: string): HTMLButtonElement {
+  const button = el('button', unavailable ? 'command unavailable' : 'command');
+  button.type = 'button';
+  button.dataset.nav = '';
+  button.append(el('span', 'command-icon', iconText(icon)), el('span', undefined, label));
+  if (unavailable) button.setAttribute('aria-description', unavailable);
+  button.addEventListener('click', () => (unavailable ? refuse(unavailable) : onClick()));
+  return button;
+}
 
 function openCommands(): void {
   const body = el('div', 'commands');
   const run = (def: CommandDef) => {
-    if (def.native && STACKED_VIEWS.has(def.native)) {
+    if (def.native === 'magic') {
+      /* Over the Commands sheet, so Back returns to it. */
       openNative(def.native);
     } else if (def.native) {
       sheets.closeAll();
       openNative(def.native);
     } else if (def.reading && lastSnap?.atCommand) {
       coverSheets(true);
-      send(commandKeys(def, alwaysPickup()));
+      send(commandKeys(def));
     } else {
-      api.send(commandKeys(def, alwaysPickup()));
+      api.send(commandKeys(def));
     }
   };
-  const snap = lastSnap;
-  const where = !snap?.inDungeon || snap.depth > 0 ? 'dungeon' : snap.wild ? 'worldMap' : 'land';
-  for (const group of commandGroups(where)) {
-    const sectionEl = el('section', 'sheet-section');
+  const group = (title: string, buttons: HTMLButtonElement[]) => {
     const grid = el('div', 'command-grid');
-    for (const def of group.commands) {
-      const button = el('button', 'command');
-      button.type = 'button';
-      button.dataset.nav = '';
-      button.append(el('span', 'command-icon', iconText(def.icon)), el('span', undefined, def.label));
-      button.addEventListener('click', () => run(def));
-      grid.append(button);
-    }
-    sectionEl.append(el('h3', undefined, group.title), grid);
+    grid.append(...buttons);
+    const sectionEl = el('section', 'sheet-section');
+    sectionEl.append(el('h3', undefined, title), grid);
     body.append(sectionEl);
+  };
+  for (const { title, commands } of commandGroups(commandContext())) {
+    group(title, commands.map((def) => commandButton(def.icon, def.label, () => run(def), def.unavailable)));
   }
-  const keys = el('section', 'sheet-section');
-  const grid = el('div', 'command-grid');
-  const extra: [string, string, () => void][] = [
-    ['⌨', 'Keyboard', () => {
+  group('Keyboard and options', [
+    commandButton(GAME_OPTIONS.icon, GAME_OPTIONS.label, () => run(GAME_OPTIONS)),
+    commandButton('⌨', 'Keyboard', () => {
       sheets.closeAll();
       keyboardInput.focus();
-    }],
-    ['^', 'Ctrl + next key', () => {
+    }),
+    commandButton('^', 'Ctrl + next key', () => {
       sheets.closeAll();
       setCtrlLatched(!ctrlLatched);
-    }],
-    ['⎋', 'Escape', () => api.send([KEY_ESCAPE])],
-    ['⏎', 'Enter', () => api.send([KEY_ENTER])],
-  ];
-  for (const [icon, label, onClick] of extra) {
-    const button = el('button', 'command');
-    button.type = 'button';
-    button.dataset.nav = '';
-    button.append(el('span', 'command-icon', iconText(icon)), el('span', undefined, label));
-    button.addEventListener('click', onClick);
-    grid.append(button);
-  }
-  keys.append(el('h3', undefined, 'Keys'), grid);
-  body.append(keys);
+    }),
+    commandButton('⎋', 'Escape', () => api.send([KEY_ESCAPE])),
+    commandButton('⏎', 'Enter', () => api.send([KEY_ENTER])),
+  ]);
   sheets.open({ title: 'Commands', body, className: 'sheet-commands' });
 }
 
@@ -2302,11 +2360,11 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
 }
 
 function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
-  doTap(tapAction(snap, materials, cell, prompt));
+  doTap(tapAction(snap, materials, cell, prompt, lastState?.monsters));
 }
 
 function goTowards(snap: LevelSnapshot, point: MapPoint): void {
-  doTap(goAction(snap, materials, point));
+  doTap(goAction(snap, materials, point, lastState?.monsters));
 }
 
 /** Carries out what a tap on the map decided. */
@@ -2329,6 +2387,11 @@ function doTap(action: TapAction): void {
       break;
     case 'step':
       startStep(action.cell);
+      break;
+    case 'talk':
+      stopAutomation(null, 'talk');
+      hideToast();
+      send([BACKSLASH, ...keyCodes(`Y${action.digit}`)]);
       break;
     case 'none':
       break;
@@ -2572,6 +2635,7 @@ const engine = new Engine(buffer, {
       stepTargeting();
     }
     settleAttempt();
+    settleConversation();
     settleTrade();
     /* A quest moment held while a macro ran is told once it has finished. */
     tellQuestMoment();
@@ -2608,6 +2672,7 @@ function send(codes: number[] | null): void {
   }
   if (travel || picker) stopAutomation(null, 'send');
   if (macros.running) macros.cancel();
+  noteConversation(codes);
   recentreMap();
   engine.sendKeys(codes);
   if (ctrlLatched) setCtrlLatched(false);
@@ -2968,6 +3033,7 @@ function returnToTitle(): void {
   base = null;
   lastSnap = null;
   lastState = null;
+  conversation = null;
   returnTo = null;
   pendingSync = null;
   lastSavedTurn = -1;

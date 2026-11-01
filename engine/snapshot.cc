@@ -913,6 +913,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	json_int(json, "wild", p_ptr->wild_mode ? 1 : 0);
 	json_int(json, "alwaysPickup", options->always_pickup ? 1 : 0);
 	json_int(json, "skillPoints", p_ptr->skill_points);
+	json_int(json, "pray", p_ptr->pgod == GOD_NONE ? 0 : p_ptr->praying ? 2 : 1);
+	json_int(json, "runes", static_cast<int>(std::count(p_ptr->inscriptions.begin(), p_ptr->inscriptions.end(), true)));
 	json_int(json, "dead", death ? 1 : 0);
 	json_str(json, "diedFrom", game->died_from);
 	json_level_quest(json);

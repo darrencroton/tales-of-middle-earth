@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { createCharacter, expect, jumpToLevel, summonBeside, test, waitAtCommand, waitForEngine, wizardCommand } from './helpers.ts';
+import { createCharacter, equipSuggested, expect, jumpToLevel, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
 
 /** The door of a town building, by the glyph and colour tome2 draws it with (st_info.txt). */
 async function door(page: Page, glyph: string, colour: number): Promise<{ x: number; y: number }> {
@@ -149,7 +149,7 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
   await leave(page);
 });
 
-test('travel walks through a companion, pushing past it', async ({ page }) => {
+test('travel walks through a companion, pushing past it; someone neutral is talked to', async ({ page }) => {
   test.setTimeout(200_000);
   await page.goto('./?wizard');
   await waitForEngine(page);
@@ -189,4 +189,34 @@ test('travel walks through a companion, pushing past it', async ({ page }) => {
     pushed = await page.evaluate(() => window.__tome!.engine.gameState(10)!.messages!.some((m) => /You push past/.test(m.text)));
   }
   expect(pushed).toBe(true);
+
+  /* Someone neutral beside the hero is talked to: from the changing button, a tap on them, or their card, which also offers Give. */
+  await equipSuggested(page);
+  await wizardCommand(page, 'z');
+  await summonBeside(page, 1041);
+  const melinda = () => page.evaluate(() => window.__tome!.engine.gameState()!.monsters!.find((m) => /Melinda/.test(m.name))!);
+  const heard = () => page.evaluate(() => window.__tome!.engine.gameState(20)!.messages!.filter((m) => /poor Merton/.test(m.text)).length);
+  const reply = page.locator('.sheet', { hasText: 'poor Merton' });
+  await page.locator('#toolbar [data-action="talk"]').click();
+  await expect.poll(heard).toBe(1);
+  await expect(reply.locator('.sheet-title')).toHaveText('Melinda Proudfoot');
+  await page.keyboard.press('Escape');
+  await waitAtCommand(page);
+  const { x, y } = await melinda();
+  await page.evaluate(({ x, y }) => window.__tome!.tapCell(x, y), { x, y });
+  await expect.poll(heard).toBe(2);
+  expect((await melinda()).hp).toBe((await melinda()).maxhp);
+  await expect(reply).toBeVisible();
+  await page.keyboard.press('Escape');
+  await waitAtCommand(page);
+
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await expect(page.locator('.sheet .command', { hasText: 'Talk' })).not.toHaveClass(/unavailable/);
+  await page.keyboard.press('Escape');
+  await page.locator('[data-hud="monster"].neutral').click();
+  await expect(page.locator('.sheet-monster [data-action="talk"]')).toBeVisible();
+  await page.locator('.sheet-monster [data-action="give"]').click();
+  await waitForScreen(page, /What item do you want to offer/);
+  await page.keyboard.press('Escape');
+  await waitAtCommand(page);
 });

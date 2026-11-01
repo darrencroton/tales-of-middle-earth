@@ -52,6 +52,13 @@ describe('item actions', () => {
     assert.equal(itemActions(item({ i: -5, tval: 80 }), 'floor')[0].id, 'pickup');
   });
 
+  it('offers to butcher a corpse and cure meat', () => {
+    assert.deepEqual(itemActions(item({ tval: 9, sval: 1 }), 'pack').slice(0, 2).map((a) => [a.id, a.command]), [['eat', 'E'], ['butcher', 'h']]);
+    assert.ok(itemActions(item({ i: -3, tval: 9, sval: 3 }), 'floor').some((a) => a.id === 'butcher'));
+    assert.equal(itemActions(item({ tval: 9, sval: 5 }), 'pack').find((a) => a.id === 'cure')?.command, 'K');
+    assert.ok(!itemActions(item({ tval: 9, sval: 2 }), 'pack').some((a) => a.id === 'butcher' || a.id === 'cure'));
+  });
+
   it('labels pack and equipment slots like tome2', () => {
     assert.equal(itemLetter(0), 'a');
     assert.equal(itemLetter(4), 'e');
@@ -220,8 +227,9 @@ describe('shops', () => {
     const shop = shopModel(store());
     assert.deepEqual([shop.shelf.label, shop.shelf.verb, shop.shelf.key, shop.offer?.label, shop.offer?.key], ['Buy', 'Buy', 'p', 'Sell', 's']);
     assert.deepEqual(shop.extras, []);
+    assert.equal(shop.steal, 'Z');
     const home = shopModel(store({ home: 1, actions: [{ key: 'd', action: STORE_ACTION.sell, cost: 0, closed: 0, name: 'Drop an item' }, { key: 'g', action: STORE_ACTION.buy, cost: 0, closed: 0, name: 'Get an item' }] }));
-    assert.deepEqual([home.shelf.label, home.shelf.verb, home.offer?.label, home.offer?.verb], ['Stored', 'Take', 'Inventory', 'Store']);
+    assert.deepEqual([home.shelf.label, home.shelf.verb, home.offer?.label, home.offer?.verb, home.steal], ['Stored', 'Take', 'Inventory', 'Store', null]);
     const museum = shopModel(store({ museum: 1, actions: [{ key: 'd', action: STORE_ACTION.sell, cost: 0, closed: 0, name: 'Donate an item' }] }));
     assert.deepEqual([museum.shelf.verb, museum.offer?.verb], [null, 'Donate']);
     const seer = shopModel(store({ actions: [{ key: 'p', action: STORE_ACTION.buy, cost: 0, closed: 0, name: 'Purchase an item' }, { key: 'l', action: 42, cost: 0, closed: 0, name: 'Presage fate' }] }));

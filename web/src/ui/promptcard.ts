@@ -19,10 +19,16 @@ const PAD: [string, string, string][] = [
   ['3', '↘', 'South-east'],
 ];
 
-/** The value tome2 pre-fills after a prompt's colon ("Quantity (1-6): 1" → "1"). */
-export function promptDefault(text: string): string {
+/* Where a prompt's question ends: after its colon, else its question mark ("Engrave what? "). */
+function questionEnd(text: string): number {
   const colon = text.lastIndexOf(':');
-  return colon < 0 ? '' : text.slice(colon + 1).trim();
+  return colon >= 0 ? colon + 1 : text.indexOf('?') + 1;
+}
+
+/** The value tome2 pre-fills after a prompt's question ("Quantity (1-6): 1" → "1"). */
+export function promptDefault(text: string): string {
+  const end = questionEnd(text);
+  return end > 0 ? text.slice(end).trim() : '';
 }
 
 /** Highest quantity offered by "Quantity (1-6):", or null. */
@@ -242,7 +248,7 @@ export class PromptCard {
         this.answer([ESCAPE]);
       }
     });
-    this.root.replaceChildren(this.title(cleanPrompt(raw)), form);
+    this.root.replaceChildren(this.title(cleanPrompt(raw.slice(0, questionEnd(raw) || undefined))), form);
     requestAnimationFrame(() => {
       input.focus();
       input.select();
