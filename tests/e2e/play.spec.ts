@@ -767,11 +767,10 @@ test('a random quest is told on arrival, its chip tells what it asks, it survive
     expect(await page.evaluate(() => window.__tome!.engine.place()?.levelQuest)).toBe(5);
     await expect(page.locator('.feel-layer')).toHaveClass(/\bquest\b/);
     if (visit === 0) {
-      /* The first arrival is told in a card: tome2's announcement, then what the quest asks. */
+      /* The first arrival is told in a card with what the quest asks. */
       const card = page.locator('.sheet-quest');
       await expect(card.locator('.sheet-title')).toHaveText(here!.title);
       await expect(card.locator('.sheet-subtitle')).toHaveText('Barrow-Downs · 150 ft');
-      await expect(card.locator('.lead-in')).not.toBeEmpty();
       await expect(card).toContainText(here!.random!.foe);
       await card.locator('[data-action="onward"]').click();
       await expect(page.locator('.sheet-layer')).toBeHidden();
