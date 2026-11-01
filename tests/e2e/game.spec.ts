@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import type { Page } from '@playwright/test';
-import { beginNewCharacter, createCharacter, expect, inDungeon, jumpToLevel, screenText, sendText, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen } from './helpers.ts';
+import { beginNewCharacter, createCharacter, expect, inDungeon, jumpToLevel, screenText, sendText, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
 
 test('loads the engine and lays out the opening screen without overflow', { tag: ['@layout', '@smoke'] }, async ({ page }) => {
   const errors: string[] = [];
@@ -320,8 +320,13 @@ test('a hero who dies is told what killed them and can be looked back on', async
   await waitForEngine(page);
   await createCharacter(page, 'Doomed');
   await jumpToLevel(page, 1);
-  /* A Great Wyrm of Chaos (r_info 783), woken by the hero's blows. */
-  await summonBeside(page, 783);
+  /* A Great Wyrm of Chaos (r_info 783), woken by the hero's blows. tome2 tries ten cells around the hero, walls included, so in a corridor it can place none: again from elsewhere. */
+  const wyrmHere = () => page.evaluate(() => !!window.__tome!.engine.gameState()?.monsters?.some((m) => m.name === 'Great Wyrm of Chaos'));
+  for (let attempt = 0; attempt < 8 && !(await wyrmHere()); attempt++) {
+    if (attempt) await wizardCommand(page, 'p');
+    await summonBeside(page, 783);
+  }
+  expect(await wyrmHere(), 'no wyrm could be summoned beside the hero').toBe(true);
 
   const death = page.locator('.prompt-card.death');
   for (let i = 0; i < 30 && !(await death.isVisible()); i++) {
