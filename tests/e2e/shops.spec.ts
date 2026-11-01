@@ -54,25 +54,37 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
   await expect(page.locator('.termview .shop-row')).toHaveCount(stock);
   await expect(page.locator('.termview [data-action="nextpage"]')).toHaveCount(0);
 
-  /* Rations are always stocked (st_info.txt), so a run's random stock cannot leave them out. */
-  const rations = () => page.evaluate(() => window.__tome!.engine.inventory()!.pack.find((i) => /Rations? of Food/.test(i.name))?.number ?? 0);
-  const before = await rations();
+  /* The stock is the run's: buy two of the cheapest thing there are two or more of. */
+  const ware = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const gold = tome.engine.gameState()!.player!.au;
+    const stock = tome.engine.store()!.stock.filter((s) => s.number >= 2 && s.price * 2 <= gold).sort((a, b) => a.price - b.price);
+    return stock[0] ? { name: stock[0].name, kind: stock[0].name.replace(/^\d+ /, '') } : null;
+  });
+  expect(ware, 'nothing in stock two can be bought of').not.toBeNull();
+  const held = () =>
+    page.evaluate((kind) => window.__tome!.engine.store()!.stock.find((s) => s.name.replace(/^\d+ /, '') === kind)?.number ?? 0, ware!.kind);
+  const before = await held();
   const gold = await page.evaluate(() => window.__tome!.engine.store()!.gold);
-  await page.locator('.termview .shop-row', { hasText: 'Rations of Food' }).click();
+  await page.locator('.termview .shop-row', { hasText: ware!.name }).click();
   await expect(page.locator('.sheet-item [data-action="take"]')).toHaveText(/^Buy 1 for \d+ gold$/);
   await page.locator('.sheet-item .stepper-button', { hasText: '+' }).click();
   await expect(page.locator('.sheet-item [data-action="take"]')).toHaveText(/^Buy 2 for \d+ gold$/);
   await page.locator('.sheet-item [data-action="take"]').click();
-  await expect.poll(rations).toBe(before + 2);
-  await expect(page.locator('#toast')).toContainText('Bought 2 × Rations of Food');
+  await expect.poll(held).toBe(before - 2);
+  await expect(page.locator('#toast')).toContainText('Bought 2 ×');
   expect(await page.evaluate(() => window.__tome!.engine.store()!.gold)).toBeLessThan(gold);
 
+  /* Every hero sets out with rations, which a general store buys. */
+  const rations = () => page.evaluate(() => window.__tome!.engine.inventory()!.pack.find((i) => /Rations? of Food/.test(i.name))?.number ?? 0);
+  const carried = await rations();
+  expect(carried).toBeGreaterThan(0);
   await page.locator('.termview [data-tab="offer"]').click();
   await expect(page.locator('.termview .shop-note')).toContainText('buys food');
-  await page.locator('.termview .shop-row', { hasText: 'Rations of Food' }).click();
+  await page.locator('.termview .shop-row', { hasText: /Rations? of Food/ }).click();
   await page.locator('.sheet-item [data-action="offer"]').click();
-  await expect.poll(rations).toBe(before + 1);
-  await expect(page.locator('#toast')).toContainText('Sold Rations of Food');
+  await expect.poll(rations).toBe(carried - 1);
+  await expect(page.locator('#toast')).toContainText(/Sold .*Rations? of Food/);
 
   await leave(page);
   const shopDoor = page.locator('#toolbar [data-action="shop"]');
