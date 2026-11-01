@@ -619,27 +619,32 @@ test.describe(() => {
     await equipSuggested(page);
     const travelling = () => page.evaluate(() => window.__tome!.travelling());
     /* Exploring stops when a creature comes into sight: send those about away and begin again. */
-    for (let attempt = 0; attempt < 5 && !(await travelling()); attempt++) {
-      await dismissMore(page);
-      await wizardCommand(page, 'z');
-      await stepOffStairs(page);
-      const explore = page.locator('#toolbar [data-action="explore"]');
-      if (await explore.count()) {
-        await explore.tap();
-      } else {
-        await page.locator('#toolbar [data-action="commands"]').tap();
-        await page.locator('.sheet .command', { hasText: 'Explore' }).tap();
+    const begin = async () => {
+      for (let attempt = 0; attempt < 5 && !(await travelling()); attempt++) {
+        await dismissMore(page);
+        await wizardCommand(page, 'z');
+        await stepOffStairs(page);
+        const explore = page.locator('#toolbar [data-action="explore"]');
+        if (await explore.count()) {
+          await explore.tap();
+        } else {
+          await page.locator('#toolbar [data-action="commands"]').tap();
+          await page.locator('.sheet .command', { hasText: 'Explore' }).tap();
+        }
+        await expect.poll(travelling, { timeout: 2_000 }).toBe(true).catch(() => undefined);
       }
-      await expect.poll(travelling, { timeout: 2_000 }).toBe(true).catch(() => undefined);
-    }
-    expect(await travelling(), 'exploring never got under way').toBe(true);
+      expect(await travelling(), 'exploring never got under way').toBe(true);
+    };
+    await begin();
     await expect(page.locator('#toolbar button')).toHaveText([/Stop/, /Speed/, /Menu/]);
     await page.locator('#toolbar [data-action="pace"]').tap();
     expect(await page.evaluate(() => window.__tome!.settings().explorePace)).toBe('normal');
-    if (await travelling()) {
-      await page.locator('#toolbar [data-action="stop"]').tap();
-      expect(await travelling()).toBe(false);
-    }
+    expect(await travelling(), `Speed stopped exploring (${await page.evaluate(() => window.__tome!.lastStopCause())})`).toBe(true);
+
+    /* Stop, beginning again should exploring have ended on its own meanwhile. */
+    await begin();
+    await page.locator('#toolbar [data-action="stop"]').tap();
+    expect(await travelling()).toBe(false);
   });
 });
 
