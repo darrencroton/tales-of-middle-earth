@@ -17,10 +17,13 @@ async function door(page: Page, glyph: string, colour: number): Promise<{ x: num
   return cell!;
 }
 
+/** A building's Exit: beside the tabs of a shop, the panel's action elsewhere. */
+const EXIT = '.termview :is([data-tab="exit"], [data-action="exit"])';
+
 /** Walks to a building's door (again whenever townsfolk stop the walk) until its panel shows; the building's name. */
 async function walkIn(page: Page, cell: { x: number; y: number }): Promise<string | null> {
   for (let i = 0; i < 120; i++) {
-    if (await page.locator('.termview [data-tab="exit"]').isVisible()) break;
+    if (await page.locator(EXIT).isVisible()) break;
     const idle = await page.evaluate(() => !window.__tome!.travelling() && window.__tome!.mode() === 'map' && !!window.__tome!.engine.snapshot()?.atCommand);
     if (idle && i % 8 === 0) await page.evaluate(({ x, y }) => window.__tome!.tapCell(x, y), cell);
     await page.waitForTimeout(250);
@@ -29,8 +32,8 @@ async function walkIn(page: Page, cell: { x: number; y: number }): Promise<strin
 }
 
 async function leave(page: Page): Promise<void> {
-  await page.locator('.termview [data-tab="exit"]').click();
-  await expect(page.locator('.termview [data-tab="exit"]')).toBeHidden();
+  await page.locator(EXIT).click();
+  await expect(page.locator(EXIT)).toBeHidden();
   await waitAtCommand(page);
 }
 
@@ -66,6 +69,11 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
     page.evaluate((kind) => window.__tome!.engine.store()!.stock.find((s) => s.name.replace(/^\d+ /, '') === kind)?.number ?? 0, ware!.kind);
   const before = await held();
   const gold = await page.evaluate(() => window.__tome!.engine.store()!.gold);
+  /* The list stays where it was after a trade, the highlight on the same item. */
+  const list = page.locator('.termview .tv-body');
+  await list.evaluate((body) => (body.scrollTop = body.scrollHeight));
+  await page.locator('.termview .shop-row', { hasText: ware!.name }).scrollIntoViewIfNeeded();
+  const scrolled = await list.evaluate((body) => body.scrollTop);
   await page.locator('.termview .shop-row', { hasText: ware!.name }).click();
   await expect(page.locator('.sheet-item [data-action="take"]')).toHaveText(/^Buy 1 for \d+ gold$/);
   await page.locator('.sheet-item .stepper-button', { hasText: '+' }).click();
@@ -73,6 +81,8 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
   await page.locator('.sheet-item [data-action="take"]').click();
   await expect.poll(held).toBe(before - 2);
   await expect(page.locator('#toast')).toContainText('Bought 2 ×');
+  expect(await list.evaluate((body) => body.scrollTop)).toBe(scrolled);
+  if (before - 2 >= 2) await expect(page.locator('.termview .shop-row.is-active')).toContainText(ware!.kind);
   expect(await page.evaluate(() => window.__tome!.engine.store()!.gold)).toBeLessThan(gold);
 
   /* Every hero sets out with rations, which a general store buys. */
@@ -90,12 +100,14 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
   const shopDoor = page.locator('#toolbar [data-action="shop"]');
   await expect(shopDoor).toContainText('Enter shop');
   await shopDoor.click();
-  await expect(page.locator('.termview [data-tab="exit"]')).toBeVisible();
+  await expect(page.locator(EXIT)).toBeVisible();
   await page.keyboard.press('Escape');
   await waitAtCommand(page);
 
   /* tome2 draws a service's answer over the building's screen and pages long ones: it is shown in a card. */
   expect(await walkIn(page, await door(page, '+', 3))).toBe("Mayor's Office");
+  /* Exit, its only action, is the default one. */
+  await expect(page.locator('.termview [data-action="exit"]')).toHaveClass(/primary/);
   const quest = page.locator('.termview .row-button', { hasText: 'Get a quest' });
   await quest.click();
   await expect(page.locator('.sheet-service')).toContainText('Thieves!');

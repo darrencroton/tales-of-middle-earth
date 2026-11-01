@@ -343,7 +343,10 @@ test('a hero who dies is told what killed them and can be looked back on', async
     await page.waitForTimeout(300);
   }
   await expect(death).toContainText('You have died');
-  await expect(death).toContainText('Great Wyrm of Chaos');
+  /* The wyrm's chaos can leave the hero seeing it as something else: tome2 records the killer as seen. */
+  const killer = await page.evaluate(() => window.__tome!.engine.gameState()?.player?.diedFrom ?? '');
+  expect(killer).not.toBe('');
+  await expect(death).toContainText(killer);
   await expect(death.locator('.card-button')).toHaveCount(1);
   await death.locator('.card-button.primary').click();
 
@@ -356,7 +359,7 @@ test('a hero who dies is told what killed them and can be looked back on', async
   }
   await expect(page.locator('.termview')).toContainText('Your tale');
   await page.locator('#toolbar [data-action="fallen"]').click();
-  await expect(page.locator('.sheet-fallen .fallen-cause')).toContainText('Great Wyrm of Chaos');
+  await expect(page.locator('.sheet-fallen .fallen-cause')).toContainText(killer);
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
   /* tome2 keeps no score for a hero in wizard mode, so the title follows at once. */

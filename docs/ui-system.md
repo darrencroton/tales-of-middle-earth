@@ -22,13 +22,13 @@ Map (toolbar, HUD, gestures)
 │   ├── Cast / Powers ─────── Magic                panel: Recent, books, Powers, Skills     depth 1
 │   │                         └── Spell             card over Magic (Cast)                   depth 2
 │   ├── More ──────────────── Commands             panel: command grid by group             depth 1
-│   │   ├── Look ──────────── look mode: banner + look card on the map (About → card)
+│   │   ├── Look ──────────── look mode: banner + look card on the map (each creature and item → its card)
 │   │   ├── native commands → the native panel, in the same frame (Back returns to Commands)
 │   │   ├── item commands (Quaff, Read…) → tome2 item prompt (TermView panel, tabs)
 │   │   └── reading commands (Inspect, Options) → tome2 screen; Commands reopens after
 │   └── Menu ──────────────── Menu                 menu                                     depth 1
 │       ├── Character ─────── Character            panel, tabs Summary · Skills · Abilities · Full sheet
-│       │                     └── tome2 question    card over Character (save skills?)
+│       │                     └── Save skill points? card over Character (Discard · Save)
 │       ├── Messages ──────── Messages             panel (log, newest at the foot)
 │       ├── Knowledge ─────── Knowledge            menu                                     depth 2
 │       │                     └── list ─────────── reader (TermView panel); Knowledge reopens after
@@ -48,7 +48,8 @@ Map (toolbar, HUD, gestures)
 │   │                         while it lasts the map's edges glow violet and its foes' chips are marked ⚑
 │   ├── creature / item chip ─ Creature / Item     card
 │   └── message log ───────── Messages             panel
-├── Map tap / long-press ───── travel / look card
+├── Map tap / long-press ───── travel / look card (terrain; each creature and item there → its card)
+├── A quest begun or ended ─── quest card (the scene tome2 told, then what it asks) or its banner
 └── tome2 asks something ───── question card on the map (yes/no, how many, text, direction,
                                aim, lettered choice, message box) or a TermView panel
                                (item prompts, spell lists, shops, options, other menus),
@@ -103,7 +104,7 @@ where the code comes from.
 | **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, Help and its topics; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
 | **Menu** | A short list of places to go | Menu, Knowledge, Backup | its rows, capped at `--popup-height` | bottom sheet |
 | **Card** | Details of one thing, or a question | Item, spell, creature, shop item, memorial item/foe, a saved hero (Game Roster), a hero of the Hall of Fame, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
-| **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card, death card | its content | bottom of the map, no backdrop |
+| **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card (what is at a cell, each creature and item a row opening its card), death card | its content | bottom of the map, no backdrop |
 | **Full screen** | A screen that replaces the game | title, character creation, end of game, Hall of Fame after death | whole screen | — |
 
 A map card or tome2 panel shown while tome2 is not at its command prompt (or a
@@ -152,6 +153,9 @@ No key hints anywhere.
   above whatever opened it, which stays visible (less dimmed) beneath.
 - Actions in a grid at the foot; the likely one is primary. Destructive ones
   are red. No tabs.
+- A quest's first arrival and its end are told in a card over the map
+  (title, the scene tome2 told in the lead-in style, then what the quest
+  asks), once tome2 waits for a command with nothing else open.
 - A card's ✕, a tap outside it, Escape or a swipe down on its header close
   **the card only**, returning to what is beneath.
 - Anything opened from a card (a question about the item) floats above it in
@@ -177,6 +181,17 @@ No key hints anywhere.
   was left; ✕ (or Escape, or Done) leaves help altogether, however many files
   are open.
 - No footer: nothing to page.
+
+### Highlight, default action and what cannot be done
+
+Four things look different and never stand for each other:
+
+| State | Looks | Rule |
+|---|---|---|
+| Highlight | gold outline | Arrows, swipes and Enter act on it. First: the item a view marks current (tome2's cursor), else a pop-up's first usable row, else the footer's default action, else the tab of the view shown (`defaultItem`). A list rebuilt in place keeps it on the same row, or the row now in its place (`ListNav.mark`/`find`). |
+| Default action | gold fill | The action marked primary, or else the only one that can be done unless destructive (`defaultAction`): a building's lone Exit, a card's lone OK. |
+| Selected tab | gold fill in the tab row | Which view shows; never an action. |
+| Cannot be done now | dimmed in place | `PopAction.unavailable`: never the default, still tappable, and says why (a toast and the deny sound, as the toolbar does). Rows that cannot be used now (a shop item too dear, a service not for you) are dimmed and still open their card. |
 
 ## 5. Navigation rules
 
@@ -212,6 +227,10 @@ No key hints anywhere.
 | Map → creature chip → close | Tall pop-up | Card the size of the recall |
 | Menu → Saved games → Export | Two rows in Menu | On the title only, as Backup → Export game data: a backup of everything, not a way to save |
 | Shop → item | Paged tome2 list; a tap on an item could buy it, and a tap on a row of tome2's item prompt opened the wrong card (*Take 1* while storing) | Whole stock in one list; a tap opens the item's card; Buy (or Sell, Store, Take) with how many is the only way to trade |
+| Character → Skills → Raise → keep the points | Points were kept only by closing the sheet or changing tab, which then asked tome2's question; Raise looked available with no points | Raise and Lower are dimmed when tome2 would refuse, saying why; unsaved points show on their rows; Save asks (Discard · Save) and stays on Skills |
+| Shop → sell several things in turn | Each sale took the list back to the top | The list stays where it was, the highlight on the item (or the next, when it is gone) |
+| Long-press a remembered item | Only the terrain (items were known only while in view) | The terrain, then each item noticed there, in view or remembered, as a row opening its card |
+| Thieves' Hideout | The quest's title in a banner; the blow, the cell and the theft only in the log | A card with the scene, then the task; its end told the same way |
 | Title with many heroes | A Continue row per hero | Continue as the last hero goes straight into the game; every hero in the Game Roster panel, each a card with Play and Delete |
 
 ## 7. Validation

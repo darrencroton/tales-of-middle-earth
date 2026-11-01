@@ -8,6 +8,7 @@ import {
   type GameState,
   type InventoryState,
   type LevelSnapshot,
+  type GridState,
   type MonsterRecall,
   type ScoreEntry,
   type SkillTable,
@@ -47,6 +48,7 @@ interface EmscriptenModule {
   _web_snapshot(): number;
   _web_features_json(): number;
   _web_state_json(maxMessages: number): number;
+  _web_grid_json(y: number, x: number): number;
   _web_inventory_json(): number;
   _web_object_desc(item: number): number;
   _web_store_object_desc(index: number): number;
@@ -290,6 +292,11 @@ export class Engine {
   store(): StoreState | null {
     const json = this.callJson<StoreState>((mod) => mod._web_store_json());
     return json && json.here ? json : null;
+  }
+
+  /** What the hero perceives or remembers at a grid of the level: terrain by tome2's look rules, and the objects noticed there. */
+  grid(x: number, y: number): GridState | null {
+    return this.callJson<GridState>((mod) => mod._web_grid_json(y, x));
   }
 
   monsterRecall(index: number): MonsterRecall | null {

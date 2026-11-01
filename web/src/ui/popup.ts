@@ -8,7 +8,8 @@ export interface PopAction {
   icon?: string;
   primary?: boolean;
   danger?: boolean;
-  disabled?: boolean;
+  /** Why it cannot be done now: the button is dimmed, never the default, and a tap says why instead of running it. */
+  unavailable?: string | null;
   run(): void;
 }
 
@@ -21,16 +22,52 @@ export interface PopTab {
   run(): void;
 }
 
-function actionButton(action: PopAction): HTMLButtonElement {
-  const button = el('button', `sheet-action${action.primary ? ' primary' : ''}${action.danger ? ' danger' : ''}`);
+let refusal: (reason: string) => void = () => undefined;
+
+/** How a tap on an unavailable action says why (a toast and a sound, in the game). */
+export function setRefusal(refuse: (reason: string) => void): void {
+  refusal = refuse;
+}
+
+function actionButton(action: PopAction, primary: boolean): HTMLButtonElement {
+  const unavailable = action.unavailable;
+  const button = el('button', `sheet-action${primary ? ' primary' : ''}${action.danger ? ' danger' : ''}${unavailable ? ' unavailable' : ''}`);
   button.type = 'button';
   button.dataset.nav = '';
   if (action.id) button.dataset.action = action.id;
   if (action.icon) button.append(el('span', 'pop-icon', iconText(action.icon)));
   button.append(el('span', 'pop-label', action.label));
-  if (action.disabled) button.disabled = true;
-  button.addEventListener('click', () => action.run());
+  if (unavailable) button.setAttribute('aria-description', unavailable);
+  button.addEventListener('click', () => (unavailable ? refusal(unavailable) : action.run()));
   return button;
+}
+
+/**
+ * The footer's default action: the one marked primary, or else the only
+ * action that can be done (unless it is destructive); never one that cannot.
+ */
+export function defaultAction(actions: readonly PopAction[]): PopAction | null {
+  const usable = actions.filter((a) => !a.unavailable);
+  const marked = usable.find((a) => a.primary);
+  if (marked) return marked;
+  return usable.length === 1 && !usable[0].danger ? usable[0] : null;
+}
+
+/**
+ * What a pop-up highlights when nothing else is asked for: its first row
+ * that can be used (a dimmed shop row still opens its card), else the
+ * footer's default action, else the tab of the view shown, else its first
+ * row, else the footer's first usable button.
+ */
+export function defaultItem(body: HTMLElement, footer: HTMLElement): HTMLElement | null {
+  const rows = [...body.querySelectorAll<HTMLElement>('[data-nav]')];
+  return (
+    rows.find((row) => !row.matches('.unavailable')) ??
+    footer.querySelector<HTMLElement>('.sheet-action.primary') ??
+    footer.querySelector<HTMLElement>('.pop-tab.selected') ??
+    rows[0] ??
+    footer.querySelector<HTMLElement>('[data-nav]:not(.unavailable)')
+  );
 }
 
 function tabButton(tab: PopTab): HTMLButtonElement {
@@ -55,20 +92,22 @@ function tabButton(tab: PopTab): HTMLButtonElement {
  */
 export function renderFooter(footer: HTMLElement, actions: readonly PopAction[], tabs: readonly PopTab[] = []): void {
   const rows: HTMLElement[] = [];
+  const primary = defaultAction(actions);
+  const button = (action: PopAction) => actionButton(action, action === primary);
   if (tabs.length && actions.length) {
     const sub = el('div', 'pop-row pop-sub');
-    sub.append(...actions.map(actionButton));
+    sub.append(...actions.map(button));
     rows.push(sub);
   }
   if (tabs.length) {
-    const main = el('div', 'pop-row pop-tabs');
-    main.setAttribute('role', 'tablist');
-    main.append(...tabs.map(tabButton));
-    rows.push(main);
+    const row = el('div', 'pop-row pop-tabs');
+    row.setAttribute('role', 'tablist');
+    row.append(...tabs.map(tabButton));
+    rows.push(row);
   } else if (actions.length) {
-    const main = el('div', 'pop-row pop-main');
-    main.append(...actions.map(actionButton));
-    rows.push(main);
+    const row = el('div', 'pop-row pop-main');
+    row.append(...actions.map(button));
+    rows.push(row);
   }
   footer.replaceChildren(...rows);
   footer.hidden = rows.length === 0;

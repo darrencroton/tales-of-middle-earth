@@ -160,13 +160,18 @@ function traded(name: string, quantity: number): string {
 }
 
 
-/** A row of the shop's lists: glyph, name and what it costs or why not. */
-function row(api: GameApi, key: string, item: Pick<ItemState, 'ch' | 'attr' | 'name'>, aside: string, dim: boolean, open: () => void): HTMLButtonElement {
+/** What a row of the shop's lists is found by after a trade: the item's name without how many there are. */
+function rowKey(list: string, name: string): string {
+  return `${list}:${name.replace(/^(\d+|an?|the) /i, '')}`;
+}
+
+/** A row of the shop's lists: glyph, name and what it costs (or weighs, at home) or why not. */
+function row(api: GameApi, key: string, item: Pick<ItemState, 'ch' | 'attr' | 'name'>, aside: string, price: boolean, dim: boolean, open: () => void): HTMLButtonElement {
   const button = el('button', `item-row shop-row${dim ? ' dim' : ''}`);
   button.type = 'button';
   button.dataset.nav = '';
   button.dataset.key = key;
-  button.append(glyph(item.ch, api.palette()[item.attr] ?? '#fff'), el('span', 'item-name', item.name), el('span', 'item-weight', aside));
+  button.append(glyph(item.ch, api.palette()[item.attr] ?? '#fff'), el('span', 'item-name', item.name), el('span', price ? 'item-price' : 'item-weight', aside));
   button.addEventListener('click', open);
   return button;
 }
@@ -178,7 +183,7 @@ export function shelfElements(api: GameApi, store: StoreState, model: ShopModel,
   for (const item of store.stock) {
     const short = !store.home && !store.museum && affordable(store, item) === 0;
     const aside = store.home || store.museum ? pounds(item.weight * item.number) : `${item.price} gold`;
-    list.append(row(api, `stock:${item.i}:${item.name}`, item, aside, short, () => openShelfItem(api, store, model, item, handlers)));
+    list.append(row(api, rowKey('stock', item.name), item, aside, !store.home && !store.museum, short, () => openShelfItem(api, store, model, item, handlers)));
   }
   const elements: HTMLElement[] = [list];
   if (store.home) elements.unshift(el('p', 'shop-note muted', `Room on the shelves for ${Math.max(0, store.capacity - store.stock.length)} more.`));
@@ -203,7 +208,7 @@ export function offerElements(api: GameApi, store: StoreState, model: ShopModel,
       const o = offers.get(item.i);
       const why = o?.why ?? 'kind';
       const aside = why ? refusal(why) : store.home || store.museum ? pounds(item.weight * item.number) : `${o?.price ?? 0} gold`;
-      list.append(row(api, `item:${item.i}:${item.name}`, item, aside, !!why, () => openOfferItem(api, store, model, item, place, o ?? null, handlers)));
+      list.append(row(api, rowKey(place, item.name), item, aside, !why && !store.home && !store.museum, !!why, () => openOfferItem(api, store, model, item, place, o ?? null, handlers)));
     }
     return list;
   };
@@ -272,7 +277,8 @@ export function openShelfItem(api: GameApi, store: StoreState, model: ShopModel,
       }),
     );
   }
-  if (verb && shop && most === 0) body.append(el('p', 'shop-short', `You have ${store.gold} gold: not enough for one.`));
+  const short = verb && shop && most === 0 ? `You have ${store.gold} gold: not enough for one.` : null;
+  if (short) body.append(el('p', 'shop-short', short));
   body.append(description(api.engine.storeObjectDescription(item.i), 'Nothing more is known about it until you own it.'));
   const subtitle = shop
     ? [`${item.price} gold each`, item.number > 1 ? `${item.number} for sale` : '', pounds(item.weight)].filter(Boolean).join(' · ')
@@ -283,8 +289,8 @@ export function openShelfItem(api: GameApi, store: StoreState, model: ShopModel,
     actions.push({
       id: 'take',
       label: label(),
-      primary: most > 0,
-      disabled: most === 0,
+      primary: true,
+      unavailable: short,
       run: () => {
         const name = traded(item.name, quantity);
         const done = shop ? `Bought ${name} for ${quantity * item.price} gold.` : `Took ${name} from home.`;

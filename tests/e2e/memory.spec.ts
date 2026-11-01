@@ -201,6 +201,14 @@ test('a quest level is never kept as the dungeon level of its depth', async ({ p
   await page.locator('#toolbar [data-action="enter"]').click();
   await expect.poll(() => page.evaluate(() => window.__tome!.engine.gameState()?.player?.quest?.id ?? 0), { timeout: 30_000 }).toBe(4);
   await waitAtCommand(page);
+  /* The first arrival is told in a card: the scene tome2 tells, then what the quest asks. */
+  const card = page.locator('.sheet-quest');
+  await expect(card.locator('.sheet-title')).toHaveText('Thieves!');
+  await expect(card.locator('.lead-in')).toContainText('You wake up in a prison cell.');
+  await expect(card.locator('.lead-in')).not.toContainText('You have no more');
+  await expect(card).toContainText('kill these ruffians');
+  await card.locator('[data-action="onward"]').click();
+  await expect(card).toBeHidden();
   await expect(page.locator('#hud .entity.quest')).toBeVisible();
   expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
 

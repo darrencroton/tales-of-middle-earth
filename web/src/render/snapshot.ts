@@ -242,6 +242,18 @@ export interface ObjectState {
   x: number;
 }
 
+/** What the hero perceives or remembers at one grid (`web_grid_json`). */
+export interface GridState {
+  /** Remembered or in view. */
+  known: number;
+  /** In view now. */
+  view?: number;
+  /** The terrain as tome2's look names it (a shop's name, where an entrance leads); empty when unknown. */
+  name?: string;
+  /** Objects noticed there, seen now or remembered (no position: they are all at the grid). */
+  objects?: Omit<ObjectState, 'x' | 'y'>[];
+}
+
 export interface MessageState {
   text: string;
   color: number;
@@ -270,8 +282,8 @@ export function newMessages(
   return messages.slice(0, count).filter((m) => !isNotice(m));
 }
 
-/* The most messages shown with a question. */
-const LEAD_LINES = 6;
+/* The most messages shown with a question (or a quest's beginning or end). */
+export const LEAD_LINES = 6;
 
 /**
  * What tome2 has said since it last waited for a command, oldest first, while
@@ -427,12 +439,16 @@ export interface SkillEntry {
   state: 'normal' | 'untrained' | 'learnable' | 'max';
   /** The Miscellaneous group, which cannot be raised itself. */
   misc: number;
+  /** Why tome2 would not put a point in it now (no points, a skill points cannot raise, mastered, above the level's limit); empty when it would. */
+  raise: '' | 'points' | 'fixed' | 'max' | 'level';
   desc: string;
 }
 
 export interface SkillTable {
   ready: number;
   points: number;
+  /** The highest a skill may be raised to at the hero's level. */
+  most: number;
   skills: SkillEntry[];
 }
 

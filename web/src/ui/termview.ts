@@ -1,7 +1,7 @@
 import { readableColour } from '../render/colour.ts';
 import { el, leadIn } from './dom.ts';
 import { ListNav, type NavDirection } from './listnav.ts';
-import { renderFooter, type PopAction } from './popup.ts';
+import { defaultItem, renderFooter, type PopAction } from './popup.ts';
 import { isInstructionLine } from './prompttext.ts';
 import { bufferRows, parseRows, sliceCell, type Block, type Cell, type ChoiceBlock, type OptionBlock, type Run, type TextBlock } from './termparse.ts';
 
@@ -53,6 +53,8 @@ export interface TermViewOptions {
   lead?: readonly string[];
   /** Lists to switch between (pack, equipment, floor). */
   tabs?: TermViewTab[];
+  /** The view's own actions (Exit from a building), before those the toolbar offers for the screen. */
+  actions?: readonly PopAction[];
   /** Terminal rows to leave out (shop command lists, page markers). */
   hideRow?: (row: number) => boolean;
   /** Shown when the screen has nothing to show. */
@@ -113,6 +115,7 @@ export class TermView {
   private readonly body: HTMLElement;
   private readonly footer: HTMLElement;
   private actions: readonly PopAction[] = [];
+  private ownActions: readonly PopAction[] = [];
   private backAction: (() => void) | undefined;
   private footerKey = '';
   private readonly nav: ListNav;
@@ -219,9 +222,9 @@ export class TermView {
 
   private renderFooter(): void {
     const panel = this.root.classList.contains('panel');
-    const actions = panel ? this.actions : [];
+    const actions = panel ? [...this.ownActions, ...this.actions] : [];
     const tabs = this.tabs.map((t, i) => ({ id: t.id ?? `tab${i}`, label: t.label, active: t.active, run: () => t.run() }));
-    const key = JSON.stringify([actions.map((a) => [a.id, a.label, a.primary]), tabs.map((t) => [t.label, t.active])]);
+    const key = JSON.stringify([actions.map((a) => [a.id, a.label, a.primary, a.unavailable]), tabs.map((t) => [t.label, t.active])]);
     if (key === this.footerKey) return;
     this.footerKey = key;
     renderFooter(this.footer, actions, tabs);
@@ -256,6 +259,7 @@ export class TermView {
     const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.lead, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, cursorRow, !!options.back, options.scroll?.key, blocks]);
     this.show(options.layout);
     this.tabs = options.tabs ?? [];
+    this.ownActions = options.actions ?? [];
     if (key === this.renderedKey) return;
     const active = this.nav.active;
     const activeKey = active?.dataset.key ?? active?.dataset.option;
@@ -308,10 +312,12 @@ export class TermView {
   renderCustom(options: TermViewOptions, key: string, build: () => HTMLElement[]): void {
     this.show(options.layout);
     this.tabs = options.tabs ?? [];
+    this.ownActions = options.actions ?? [];
     const fullKey = `custom\u0000${options.layout}\u0000${options.title}\u0000${options.badge}\u0000${key}`;
     if (fullKey === this.renderedKey) return;
-    const activeKey = this.nav.active?.dataset.key;
     const view = `${options.title}\u0000${this.tabs.find((t) => t.active)?.label ?? ''}`;
+    /* The same view rebuilt (a trade changed its list) keeps its place: scroll, and the highlighted row or the one now in its place. */
+    const mark = view === this.customView ? this.nav.mark() : null;
     this.renderedKey = fullKey;
     this.scrollKey = '';
     this.blocks = [];
@@ -319,12 +325,10 @@ export class TermView {
     this.renderHeader(options);
     this.renderFooter();
     this.body.replaceChildren(...build());
-    if (view !== this.customView) this.body.scrollTop = 0;
+    if (!mark) this.body.scrollTop = 0;
     this.customView = view;
     const current = this.body.querySelector<HTMLElement>('.current');
-    const previous = activeKey ? this.body.querySelector<HTMLElement>(`[data-key="${CSS.escape(activeKey)}"]`) : null;
-    const tab = this.footer.querySelector<HTMLElement>('.pop-tab.selected');
-    this.nav.setActive(current ?? previous ?? this.body.querySelector<HTMLElement>('[data-nav]') ?? tab, true);
+    this.nav.setActive(current ?? this.nav.find(mark) ?? defaultItem(this.body, this.footer), true);
   }
 
   move(direction: NavDirection): void {

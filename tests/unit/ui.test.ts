@@ -14,7 +14,7 @@ import { readableColour } from '../../web/src/render/colour.ts';
 import { STORE_ACTION, type ItemState, type StoreState } from '../../web/src/render/snapshot.ts';
 import { descriptionParagraphs } from '../../web/src/ui/api.ts';
 import { affordable, drawnBlocks, offerMacro, refusal, serviceReply, shelfMacro, shelfPage, shopModel, trades } from '../../web/src/ui/store.ts';
-import { abilityMoveKeys, cursorKeys, parseAbilities, parseSkills, selectedSkill, skillMoveKeys } from '../../web/src/ui/skills.ts';
+import { cursorKeys, parseAbilities, parseSkills, raiseRefusal, selectedAbility, selectedSkill } from '../../web/src/ui/skills.ts';
 import { flagLabel, parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
 import { fateText, heroEntry } from '../../web/src/ui/gameover.ts';
 import { findMessageBox } from '../../web/src/ui/msgbox.ts';
@@ -308,32 +308,33 @@ describe('skills screen', () => {
   const colours: Record<number, [number, number, number][]> = { 3: [[0, 80, 11]], 9: [[0, 80, 3]], 10: [[0, 80, 8]] };
   const screen = parseSkills(rows(lines, colours))!;
 
-  it('reads points, description and the skill tree', () => {
-    assert.equal(screen.points, 2);
-    assert.equal(screen.description, 'General ability to fight.');
+  it('reads the skill rows shown and where the cursor is', () => {
     assert.deepEqual(
-      screen.skills.map((s) => [s.name, s.depth, s.branch, s.value, s.mod, s.selected, s.state]),
+      screen.skills.map((s) => [s.name, s.depth, s.selected]),
       [
-        ['Combat', 0, 'open', 2, 0.8, true, 'normal'],
-        ['Weaponmastery', 1, 'open', 1, 0.85, false, 'normal'],
-        ['Sword-mastery', 2, null, 0, 0.4, false, 'learnable'],
-        ['Magic', 1, 'closed', 0, 0, false, 'untrained'],
+        ['Combat', 0, true],
+        ['Weaponmastery', 1, false],
+        ['Sword-mastery', 2, false],
+        ['Magic', 1, false],
       ],
     );
   });
 
-  it('moves the cursor to a tapped skill', () => {
-    assert.equal(skillMoveKeys(screen, screen.skills[2]), '22');
-    assert.equal(skillMoveKeys(screen, screen.skills[0]), '');
-  });
-
   it('finds the cursor in the whole list, whatever part tome2 shows', () => {
-    const entry = (name: string, depth: number) => ({ name, depth, branch: 0, value: 0, mod: 0, state: 'normal' as const, misc: 0, desc: '' });
-    const table = { ready: 1, points: 2, skills: [entry('Stealth', 0), entry('Magic', 0), entry('Combat', 0), entry('Weaponmastery', 1)] };
+    const entry = (name: string, depth: number) => ({ name, depth, branch: 0, value: 0, mod: 0, state: 'normal' as const, misc: 0, raise: '' as const, desc: '' });
+    const table = { ready: 1, points: 2, most: 4, skills: [entry('Stealth', 0), entry('Magic', 0), entry('Combat', 0), entry('Weaponmastery', 1)] };
     assert.equal(selectedSkill(table, screen), 2);
     assert.equal(cursorKeys(2, 0), '88');
     assert.equal(cursorKeys(1, 3), '22');
     assert.equal(cursorKeys(2, 2), '');
+  });
+
+  it('says why a point cannot go into a skill, after tome2', () => {
+    assert.equal(raiseRefusal({ raise: '', misc: 0 }, 6, 1), null);
+    assert.equal(raiseRefusal({ raise: 'points', misc: 0 }, 6, 1), 'No skill points left to spend.');
+    assert.equal(raiseRefusal({ raise: 'level', misc: 0 }, 6, 2), 'At level 2 a skill can go no higher than 6.');
+    assert.match(raiseRefusal({ raise: 'fixed', misc: 1 }, 6, 1)!, /within this group/);
+    assert.match(raiseRefusal({ raise: 'max', misc: 0 }, 6, 1)!, /Mastered/);
   });
 
   it('ignores other screens', () => {
@@ -356,22 +357,17 @@ describe('abilities screen', () => {
   ];
   const screen = parseAbilities(rows(lines, { 7: [[0, 61, 8]], 8: [[0, 66, 13]], 9: [[0, 61, 1]] }))!;
 
-  it('reads points, description and abilities', () => {
-    assert.equal(screen.points, 3);
-    assert.equal(screen.description, 'Increases your max possible blows number by 1 Prereq: Combat@20');
+  it('reads the abilities shown and where the cursor is', () => {
     assert.deepEqual(
-      screen.abilities.map((a) => [a.name, a.cost, a.selected, a.state]),
+      screen.abilities.map((a) => [a.name, a.selected]),
       [
-        ['Ammo creation', 8, false, 'locked'],
-        ['Extra Max Blow(1)', null, true, 'known'],
-        ['Spread blows', 5, false, 'learnable'],
+        ['Ammo creation', false],
+        ['Extra Max Blow(1)', true],
+        ['Spread blows', false],
       ],
     );
-  });
-
-  it('moves the cursor to a tapped ability', () => {
-    assert.equal(abilityMoveKeys(screen, screen.abilities[2]), '2');
-    assert.equal(abilityMoveKeys(screen, screen.abilities[0]), '8');
+    const entry = (name: string) => ({ name, cost: 1, known: 0, met: 1, learnable: 1, desc: '', needs: [] });
+    assert.equal(selectedAbility({ ready: 1, points: 3, abilities: [entry('Ammo creation'), entry('Extra Max Blow(1)')] }, screen), 1);
   });
 
   it('ignores other screens', () => {

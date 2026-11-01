@@ -1019,6 +1019,77 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 
 
 /*
+ * What the hero perceives or remembers at a grid, as tome2's look command
+ * tells it: {known, view, name, objects: [{id, name, ch, attr, gold}]}.
+ * known: the grid is remembered or in view (else nothing more is said);
+ * view: it is in view now. name: its terrain (a mimic's disguise, a shop's
+ * name, where a dungeon's entrance leads), empty when unknown. objects: every
+ * object the hero has noticed there (tome2's `marked`), seen now or
+ * remembered, and the object a sleeping mimic passes for. Creatures come
+ * from web_state_json.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_grid_json(int y, int x)
+{
+	auto const &f_info = game->edit_data.f_info;
+	auto const &st_info = game->edit_data.st_info;
+	auto const &d_info = game->edit_data.d_info;
+
+	json.clear();
+	json += '{';
+	if (!level_ready() || !in_bounds2(y, x))
+	{
+		json_int(json, "known", 0, false);
+		json += '}';
+		return json.c_str();
+	}
+	cave_type const *c_ptr = &cave[y][x];
+	bool const view = player_can_see_bold(y, x);
+	bool const known = view || (c_ptr->info & CAVE_MARK);
+	json_int(json, "known", known ? 1 : 0);
+	json_int(json, "view", view ? 1 : 0);
+
+	std::string name;
+	if (known)
+	{
+		auto const feat = c_ptr->mimic ? c_ptr->mimic : f_info[c_ptr->feat].mimic;
+		if (feat == FEAT_SHOP) name = st_info[c_ptr->special].name;
+		else if (feat == FEAT_MORE && c_ptr->special) name = d_info[c_ptr->special].text;
+		else name = f_info[feat].name;
+	}
+	json_str(json, "name", name);
+
+	std::vector<object_type const *> objects;
+	if (c_ptr->m_idx)
+	{
+		monster_type const *m_ptr = &m_list[c_ptr->m_idx];
+		if ((m_ptr->race()->flags & RF_MIMIC) && m_ptr->csleep) objects.push_back(&o_list[m_ptr->mimic_o_idx()]);
+	}
+	for (auto const o_idx : c_ptr->o_idxs) objects.push_back(&o_list[o_idx]);
+
+	json_key(json, "objects");
+	json += '[';
+	bool first = true;
+	for (auto const *o_ptr : objects)
+	{
+		if (!o_ptr->k_ptr || !o_ptr->marked) continue;
+		char o_name[160];
+		object_desc(o_name, o_ptr, true, 3);
+		if (!first) json += ',';
+		first = false;
+		json += '{';
+		json_int(json, "id", static_cast<int>(o_ptr - o_list));
+		json_str(json, "name", o_name);
+		json_int(json, "ch", static_cast<unsigned char>(object_char(o_ptr)));
+		json_int(json, "attr", object_attr(o_ptr));
+		json_int(json, "gold", o_ptr->tval == TV_GOLD ? 1 : 0, false);
+		json += '}';
+	}
+	json += "]}";
+	return json.c_str();
+}
+
+
+/*
  * A message of our own (a stop reason, a refusal, a deed) added to tome2's
  * message log in NOTICE_COLOUR, which no tome2 message uses, so the log and
  * history show it and readers of tome2's messages can leave it out. The
@@ -1846,9 +1917,11 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 
 /*
  * Returns the skills screen's whole list (tome2 shows only a window of it),
- * in its order: [{name, depth, branch, value, mod, state, desc}], with the
- * points left. branch: 0 none, 1 closed, 2 open. Values are the ones the
- * screen shows while points are being moved.
+ * in its order: [{name, depth, branch, value, mod, state, raise, desc}], with
+ * the points left and the highest level a skill may be raised to now (`most`).
+ * branch: 0 none, 1 closed, 2 open. raise: why tome2's increase_skill would
+ * refuse a point ("points", "fixed", "max", "level"), empty when it would take
+ * one. Values are the ones the screen shows while points are being moved.
  */
 EMSCRIPTEN_KEEPALIVE char const *web_skills_json()
 {
@@ -1889,8 +1962,19 @@ EMSCRIPTEN_KEEPALIVE char const *web_skills_json()
 		return 0;
 	};
 
+	s32b const most = p_ptr->lev + modules[game_module_idx].skills.max_skill_overage;
+	auto refusal = [&](std::size_t i) -> char const * {
+		auto const &skill = s_info[i];
+		if (i == SKILL_MISC || !skill.mod) return "fixed";
+		if (skill.value >= SKILL_MAX) return "max";
+		if ((skill.value + skill.mod) / SKILL_STEP >= most + 1) return "level";
+		if (!p_ptr->skill_points) return "points";
+		return "";
+	};
+
 	json_int(json, "ready", 1);
 	json_int(json, "points", p_ptr->skill_points);
+	json_int(json, "most", most);
 	json_key(json, "skills");
 	json += '[';
 	bool first = true;
@@ -1915,6 +1999,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_skills_json()
 			json_int(json, "mod", skill.mod);
 			json_str(json, "state", state);
 			json_int(json, "misc", i == SKILL_MISC ? 1 : 0);
+			json_str(json, "raise", refusal(i));
 			json_str(json, "desc", s_descriptors[i].desc, false);
 			json += '}';
 			if (skill.dev) add(static_cast<int>(i), depth + 1);

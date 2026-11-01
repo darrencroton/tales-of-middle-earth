@@ -10,12 +10,14 @@ import {
   playerPos,
   pressExplore,
   screenText,
+  sendText,
   stepOffStairs,
   test,
   viewMode,
   waitAtCommand,
   waitForEngine,
   waitForScreen,
+  waitForSettle,
   wizardCommand,
 } from './helpers.ts';
 
@@ -299,10 +301,11 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
   await page.locator('.sheet [data-tab="abilities"]').click();
   await expect(page.locator('.sheet .pop-tab.selected')).toContainText('Abilities');
   await expect(page.locator('.sheet .skill-row').first()).toBeVisible();
-  await page.locator('.sheet [data-action="learn"]').click();
-  /* tome2's question (or refusal) is asked in a small card over the sheet. */
-  await expect(page.locator('.sheet.sheet-card')).toBeVisible();
-  await page.locator('.sheet.sheet-card .sheet-action').first().click();
+  /* The first ability needs more than a new hero has: Learn is dimmed and says what. */
+  const learn = page.locator('.sheet [data-action="learn"]');
+  await expect(learn).toHaveClass(/unavailable/);
+  await learn.click();
+  await expect(page.locator('#toast')).toContainText('Needs');
   await expect(page.locator('.sheet-title')).toHaveText('Scholar');
   expect(await size()).toBe(height);
 
@@ -357,8 +360,38 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
 
   const learnable = page.locator('.sheet .skill-row.learnable, .sheet .skill-row.normal').filter({ hasText: '/pt' }).first();
   await learnable.click();
+  const raise = page.locator('.sheet [data-action="raise"]');
+  const lower = page.locator('.sheet [data-action="lower"]');
+  const save = page.locator('.sheet [data-action="save"]');
+  /* Nothing moved yet: Lower and Save are dimmed and say why; Raise is the default. */
+  await expect(lower).toHaveClass(/unavailable/);
+  await expect(save).toHaveClass(/unavailable/);
+  await expect(raise).toHaveClass(/primary/);
+  await save.click();
+  await expect(page.locator('#toast')).toContainText('Nothing to save');
+  const spare = await points();
+  await raise.click();
+  await expect(page.locator('.sheet-subtitle')).toContainText('1 point not saved');
+  await expect(page.locator('.sheet .skill-row.current .skill-pending')).toHaveText('+1 pt');
+  await expect(save).toHaveClass(/primary/);
+  await lower.click();
+  await expect(page.locator('.sheet-subtitle')).not.toContainText('not saved');
+  await expect(lower).toHaveClass(/unavailable/);
+  /* Save asks first, keeps the points, and stays on the skills. */
+  await raise.click();
+  await expect(page.locator('.sheet-subtitle')).toContainText('not saved');
+  await save.click();
+  await expect(page.locator('.sheet-card')).toContainText('cannot be taken back');
+  await page.locator('.sheet-card [data-action="save"]').click();
+  await expect(page.locator('.sheet-card')).toBeHidden();
+  await expect(page.locator('.sheet .skill-row').first()).toBeVisible();
+  await expect(page.locator('.sheet-subtitle')).not.toContainText('not saved');
+  await expect(page.locator('.sheet .pop-tab.selected')).toContainText('Skills');
+  expect(await points()).toBe(spare - 1);
+  /* Points still moved when the sheet closes are asked about on the map. */
   const before = (await page.locator('.sheet-subtitle').textContent()) ?? '';
-  await page.locator('.sheet [data-action="raise"]').click();
+  await expect(raise).not.toHaveClass(/unavailable/);
+  await raise.click();
   await expect(page.locator('.sheet-subtitle')).not.toHaveText(before);
   await page.locator('.sheet-close:not(.tv-close)').click();
   await expect(page.locator('.prompt-card')).toContainText('Save and use these skill values?');
@@ -482,6 +515,12 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   await waitForEngine(page);
   await createCharacter(page, 'Looker');
   await equipSuggested(page);
+  /* Something left underfoot, for look to find. */
+  const shown = await screenText(page);
+  await sendText(page, '\\da');
+  if (/Quantity/.test((await waitForSettle(page, shown, 3_000)).split('\n')[0])) await sendText(page, '\r');
+  await dismissMore(page);
+  await waitAtCommand(page);
 
   const start = await playerPos(page);
   const box = (await page.locator('#map').boundingBox())!;
@@ -513,14 +552,21 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   await page.mouse.down();
   await page.waitForTimeout(700);
   await page.mouse.up();
-  await expect(page.locator('#look-card')).toContainText('yourself');
+  await expect(page.locator('#look-card .look-note')).toHaveText('Where you stand');
+  /* What lies there is listed, each opening its card. */
+  const dropped = page.locator('#look-card .look-row').first();
+  await expect(dropped).toHaveClass(/is-active/);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.sheet-item')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
   await page.locator('#look-card .look-button', { hasText: '✕' }).click();
 
   await page.locator('#toolbar [data-action="commands"]').click();
   await page.locator('.sheet .command', { hasText: 'Look' }).click();
   await expect(page.locator('#look-banner')).toBeVisible();
   await page.mouse.click(point.x + 30, point.y);
-  await expect(page.locator('#look-card .look-text')).toHaveText(/You see|not explored/);
+  await expect(page.locator('#look-card .look-title')).not.toBeEmpty();
   await page.locator('#toolbar [data-action="lookdone"]').click();
   await expect(page.locator('#look-banner')).toBeHidden();
   expect(await playerPos(page)).toEqual(start);
@@ -703,7 +749,7 @@ test('Explore in town never leads to a way down, and the quest level below Bree 
   expect(await page.evaluate(() => window.__tome!.engine.gameState()!.messages!.length)).toBeGreaterThan(0);
 });
 
-test('a random quest is named on arrival, its chip tells what it asks, it survives a save, and it is named again on the next visit', async ({ page }) => {
+test('a random quest is told on arrival, its chip tells what it asks, it survives a save, and it is named again on the next visit', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Rescuer');
@@ -720,8 +766,20 @@ test('a random quest is named on arrival, its chip tells what it asks, it surviv
     /* Its own music, whichever kind it is, and the map's edge in the quest's colour. */
     expect(await page.evaluate(() => window.__tome!.engine.place()?.levelQuest)).toBe(5);
     await expect(page.locator('.feel-layer')).toHaveClass(/\bquest\b/);
-    await expect(page.locator('.feel-banner.quest strong')).toHaveText(here!.title);
-    await expect(page.locator('.feel-banner.quest span')).toHaveText('Barrow-Downs · 150 ft');
+    if (visit === 0) {
+      /* The first arrival is told in a card with what the quest asks. */
+      const card = page.locator('.sheet-quest');
+      await expect(card.locator('.sheet-title')).toHaveText(here!.title);
+      await expect(card.locator('.sheet-subtitle')).toHaveText('Barrow-Downs · 150 ft');
+      await expect(card).toContainText(here!.random!.foe);
+      await card.locator('[data-action="onward"]').click();
+      await expect(page.locator('.sheet-layer')).toBeHidden();
+    } else {
+      /* A return gets the banner. */
+      await expect(page.locator('.sheet-quest')).toHaveCount(0);
+      await expect(page.locator('.feel-banner.quest strong')).toHaveText(here!.title);
+      await expect(page.locator('.feel-banner.quest span')).toHaveText('Barrow-Downs · 150 ft');
+    }
     await expect(chip).toHaveText(new RegExp(here!.title));
     await chip.click();
     await expect(page.locator('.sheet-quest .sheet-title')).toHaveText(here!.title);

@@ -1,5 +1,5 @@
 import { depthLabel } from '../hud.ts';
-import type { PlayerState } from '../render/snapshot.ts';
+import type { PlayerState, SkillEntry } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { KEY_BACKSLASH, KEY_ENTER, KEY_ESCAPE, keyCodes } from '../input/keys.ts';
 import { fullSheetElements, sheetPageKeys, SHEET_PAGES, type FullSheet } from './charsheet.ts';
@@ -7,19 +7,7 @@ import { bar, el, section } from './dom.ts';
 import { openMenu } from './menus.ts';
 import type { MessageBox } from './msgbox.ts';
 import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
-import {
-  abilitiesElements,
-  abilityMoveKeys,
-  abilityTableElements,
-  cursorKeys,
-  selectedAbility,
-  selectedSkill,
-  skillMoveKeys,
-  skillsElements,
-  skillTableElements,
-  type AbilitiesScreen,
-  type SkillsScreen,
-} from './skills.ts';
+import { abilityTableElements, cursorKeys, raiseRefusal, selectedAbility, selectedSkill, skillTableElements, type AbilitiesScreen, type SkillsScreen } from './skills.ts';
 
 function stat(label: string, value: string, className = ''): HTMLElement {
   const node = el('div', `stat ${className}`.trim());
@@ -59,13 +47,30 @@ export interface CharacterDeps {
   sendKeys(keys: number[]): void;
   /** Name of an equipment letter on the full sheet. */
   source(letter: string): string;
-  toast(text: string): void;
+  /** Says why something cannot be done now. */
+  refuse(text: string): void;
   /** Asks for `step` to run now if tome2 is already waiting for a key. */
   poke(): void;
 }
 
 function points(n: number): string {
-  return `${n} point${n === 1 ? '' : 's'} to spend`;
+  return `${n} point${n === 1 ? '' : 's'}`;
+}
+
+/* tome2's question once points have been moved and the skills screen is left. */
+const SAVE_QUESTION = /Save and use these skill values/;
+
+/**
+ * Points moved on tome2's skills screen since it opened, which tome2 keeps
+ * apart until its screen is left and its question answered: where each
+ * Raise or Lower went (a skill can be lowered only by points put in here),
+ * and the points there were to begin with.
+ */
+interface SkillSession {
+  start: number;
+  invested: Map<string, number>;
+  /** A Raise or Lower sent, and the skill's value and the points left then, to tell once tome2 has answered whether it took. */
+  sent: { name: string; value: number; points: number; step: 1 | -1 } | null;
 }
 
 function screenTab(screen: CharacterScreen): CharacterTab | null {
@@ -93,6 +98,12 @@ export class CharacterPanel {
   /** The sheet was closed while a tome2 screen was open: its last questions are asked on the map, not in a reopened sheet. */
   private leaving = false;
   private renderedKey = '';
+  /** What tome2 showed when last looked at. */
+  private lastScreen: CharacterScreen | null = null;
+  /** Points being moved on tome2's skills screen, while it is open. */
+  private session: SkillSession | null = null;
+  /** The answer to give tome2's question about moved points when it asks (Save or Discard tapped). */
+  private answer: number[] | null = null;
 
   constructor(api: GameApi, deps: CharacterDeps) {
     this.api = api;
@@ -137,8 +148,12 @@ export class CharacterPanel {
 
   private select(tab: CharacterTab): void {
     if (tab === this.want) return;
+    if (this.pending()) {
+      this.confirmSkills(() => this.select(tab));
+      return;
+    }
     if (tab !== 'summary' && !this.shown && !this.api.snapshot()?.atCommand) {
-      this.deps.toast('Finish what you are doing first.');
+      this.deps.refuse('Finish what you are doing first.');
       return;
     }
     this.want = tab;
@@ -161,9 +176,17 @@ export class CharacterPanel {
    * True when keys were sent.
    */
   step(screen: CharacterScreen): boolean {
+    this.lastScreen = screen;
     const current = screenTab(screen);
+    /* A Raise or Lower that took shows at once, though tome2's screen may look the same. */
+    if (this.follow(current, screen.atCommand)) this.render(screen);
     if (current) this.shown = current;
     else if (screen.atCommand) this.shown = null;
+    if (screen.box && this.answer && SAVE_QUESTION.test(screen.box.text)) {
+      this.deps.sendKeys(this.answer);
+      this.answer = null;
+      return true;
+    }
     if (!this.content || screen.box) return false;
     if (current && current !== this.want) {
       this.deps.sendKeys([KEY_ESCAPE]);
@@ -183,8 +206,10 @@ export class CharacterPanel {
 
   /** Shows tome2's screen in the sheet; true when the sheet is handling the screen. */
   render(screen: CharacterScreen): boolean {
+    this.lastScreen = screen;
     if (!this.content) return false;
     const current = screenTab(screen);
+    if (screen.box && this.answer && SAVE_QUESTION.test(screen.box.text)) return true;
     if (screen.box && (current || this.shown)) {
       this.ask(screen.box);
       return true;
@@ -194,7 +219,7 @@ export class CharacterPanel {
     if (!current) return false;
     if (current !== this.want) return true;
     const table = current === 'skills' ? this.api.engine.skillTable() : current === 'abilities' ? this.api.engine.abilityTable() : null;
-    const key = JSON.stringify([current, screen.skills, screen.abilities, screen.sheet, table]);
+    const key = JSON.stringify([current, screen.skills, screen.abilities, screen.sheet, table, [...(this.session?.invested ?? [])]]);
     if (key === this.renderedKey) return true;
     this.renderedKey = key;
     this.replace(this.build(screen));
@@ -274,67 +299,46 @@ export class CharacterPanel {
     }
     const send = (keys: string) => this.deps.sendKeys(keyCodes(keys));
     const body = el('div', 'character-screen');
-    if (this.want === 'skills' && screen?.skills) {
-      const skills = screen.skills;
-      const table = this.api.engine.skillTable();
-      const selected = table ? selectedSkill(table, skills) : -1;
-      if (table && selected >= 0) {
-        body.classList.add('with-detail');
-        body.append(
-          ...skillTableElements(table, selected, (index) => {
-            if (index === selected) {
-              if (table.skills[index].branch) this.deps.sendKeys([KEY_ENTER]);
-            } else {
-              send(cursorKeys(selected, index));
-            }
-          }),
-        );
-      } else {
-        body.append(
-          ...skillsElements(skills, (skill) => {
-            if (skill.selected) {
-              if (skill.branch) this.deps.sendKeys([KEY_ENTER]);
-            } else {
-              const keys = skillMoveKeys(skills, skill);
-              if (keys) send(keys);
-            }
-          }),
-        );
-      }
+    const skillTable = this.want === 'skills' && screen?.skills ? this.api.engine.skillTable() : null;
+    const skillIndex = skillTable && screen?.skills ? selectedSkill(skillTable, screen.skills) : -1;
+    if (skillTable && skillIndex >= 0) {
+      const invested = this.session?.invested ?? new Map<string, number>();
+      body.classList.add('with-detail');
+      body.append(
+        ...skillTableElements(skillTable, skillIndex, invested, (index) => {
+          if (index === skillIndex) {
+            if (skillTable.skills[index].branch) this.deps.sendKeys([KEY_ENTER]);
+          } else {
+            send(cursorKeys(skillIndex, index));
+          }
+        }),
+      );
+      const unsaved = [...invested.values()].reduce((n, c) => n + c, 0);
+      const pending = this.pending();
       return {
         ...base,
-        subtitle: points(skills.points),
+        subtitle: `${points(skillTable.points)} to spend${unsaved ? ` · ${points(unsaved)} not saved` : ''}`,
         body,
         initial: body.querySelector<HTMLElement>('.current'),
         actions: [
-          { id: 'lower', label: 'Lower', icon: '−', run: () => send('4') },
-          { id: 'raise', label: 'Raise', icon: '+', primary: skills.points > 0, run: () => send('6') },
+          { id: 'lower', label: 'Lower', icon: '−', unavailable: this.lowerRefusal(), run: () => this.move(-1) },
+          { id: 'raise', label: 'Raise', icon: '+', primary: !pending, unavailable: this.raiseRefusal(), run: () => this.move(1) },
+          { id: 'save', label: 'Save', icon: '✓', primary: pending, unavailable: pending ? null : 'Nothing to save: raise a skill first.', run: () => this.confirmSkills() },
         ],
         onKey: (e) => this.skillKey(e, true),
       };
     }
-    if (this.want === 'abilities' && screen?.abilities) {
-      const abilities = screen.abilities;
-      const table = this.api.engine.abilityTable();
-      const index = table ? selectedAbility(table, abilities) : -1;
-      if (table && index >= 0) {
-        body.classList.add('with-detail');
-        body.append(...abilityTableElements(table, index, (i) => i !== index && send(cursorKeys(index, i))));
-      } else {
-        body.append(
-          ...abilitiesElements(abilities, (ability) => {
-            const keys = abilityMoveKeys(abilities, ability);
-            if (keys) send(keys);
-          }),
-        );
-      }
-      const selected = table && index >= 0 ? { state: table.abilities[index].learnable ? 'learnable' : 'locked' } : abilities.abilities.find((a) => a.selected);
+    const abilityTable = this.want === 'abilities' && screen?.abilities ? this.api.engine.abilityTable() : null;
+    const abilityIndex = abilityTable && screen?.abilities ? selectedAbility(abilityTable, screen.abilities) : -1;
+    if (abilityTable && abilityIndex >= 0) {
+      body.classList.add('with-detail');
+      body.append(...abilityTableElements(abilityTable, abilityIndex, (i) => i !== abilityIndex && send(cursorKeys(abilityIndex, i))));
       return {
         ...base,
-        subtitle: points(abilities.points),
+        subtitle: `${points(abilityTable.points)} to spend`,
         body,
         initial: body.querySelector<HTMLElement>('.current'),
-        actions: [{ id: 'learn', label: 'Learn', icon: '+', primary: selected?.state === 'learnable', run: () => send('6') }],
+        actions: [{ id: 'learn', label: 'Learn', icon: '+', unavailable: this.learnRefusal(), run: () => send('6') }],
         onKey: (e) => this.skillKey(e, false),
       };
     }
@@ -357,18 +361,145 @@ export class CharacterPanel {
     return { ...base, subtitle: identity, body };
   }
 
-  /** Arrow keys move tome2's cursor on the skills and abilities screens; right raises or learns. */
+  /** Arrow keys move tome2's cursor on the skills and abilities screens; right raises or learns, left lowers. */
   private skillKey(e: KeyboardEvent, skills: boolean): boolean {
-    const keys: Record<string, number[]> = {
-      ArrowUp: keyCodes('8'),
-      ArrowDown: keyCodes('2'),
-      ArrowRight: keyCodes('6'),
-      ...(skills ? { ArrowLeft: keyCodes('4'), Enter: [KEY_ENTER] } : {}),
-    };
-    const send = keys[e.key];
-    if (!send) return false;
-    this.deps.sendKeys(send);
+    const moves: Record<string, string> = { ArrowUp: '8', ArrowDown: '2' };
+    if (moves[e.key]) {
+      this.deps.sendKeys(keyCodes(moves[e.key]));
+      return true;
+    }
+    if (skills && e.key === 'Enter') {
+      this.deps.sendKeys([KEY_ENTER]);
+      return true;
+    }
+    if (e.key === 'ArrowRight' || (skills && e.key === 'ArrowLeft')) {
+      const step = e.key === 'ArrowRight' ? 1 : -1;
+      const why = !skills ? this.learnRefusal() : step > 0 ? this.raiseRefusal() : this.lowerRefusal();
+      if (why) this.deps.refuse(why);
+      else if (skills) this.move(step);
+      else this.deps.sendKeys(keyCodes('6'));
+      return true;
+    }
+    return false;
+  }
+
+  /** The skill tome2's cursor is on. */
+  private currentSkill(): SkillEntry | null {
+    const screen = this.lastScreen?.skills;
+    const table = screen ? this.api.engine.skillTable() : null;
+    const index = table && screen ? selectedSkill(table, screen) : -1;
+    return table && index >= 0 ? table.skills[index] : null;
+  }
+
+  private raiseRefusal(): string | null {
+    const skill = this.currentSkill();
+    const table = this.api.engine.skillTable();
+    if (!skill || !table) return 'Choose a skill first.';
+    return raiseRefusal(skill, table.most, this.api.state()?.player?.lev ?? 1);
+  }
+
+  private lowerRefusal(): string | null {
+    const skill = this.currentSkill();
+    return skill && (this.session?.invested.get(skill.name) ?? 0) > 0 ? null : 'Lower takes back points not yet saved.';
+  }
+
+  private learnRefusal(): string | null {
+    const screen = this.lastScreen?.abilities;
+    const table = screen ? this.api.engine.abilityTable() : null;
+    const index = table && screen ? selectedAbility(table, screen) : -1;
+    const ability = table && index >= 0 ? table.abilities[index] : null;
+    if (!table || !ability) return 'Choose an ability first.';
+    if (ability.known) return 'You know this ability already.';
+    if (!ability.met) return `Needs ${ability.needs.join(', ')}.`;
+    if (table.points < ability.cost) return `It costs ${points(ability.cost)}; you have ${table.points}.`;
+    return null;
+  }
+
+  /** tome2 has every key sent and waits for the next, so the screen last seen is the one keys act on. */
+  private get settled(): boolean {
+    return this.api.engine.awaitingInput && this.api.engine.pendingKeys === 0;
+  }
+
+  /** Puts a point into the current skill, or takes one back; one at a time, so each is known to have taken or not. */
+  private move(step: 1 | -1): void {
+    const session = this.session;
+    const skill = this.currentSkill();
+    if (!session || session.sent || !skill || !this.settled) return;
+    session.sent = { name: skill.name, value: skill.value, points: this.api.engine.skillTable()?.points ?? 0, step };
+    this.deps.sendKeys(keyCodes(step > 0 ? '6' : '4'));
+  }
+
+  /** Points have been moved and not yet saved: tome2 will ask whether to keep them as its screen is left. */
+  private pending(): boolean {
+    const session = this.session;
+    return !!session && (this.api.engine.skillTable()?.points ?? session.start) !== session.start;
+  }
+
+  /**
+   * Keeps the skill session in step with tome2: begun as its skills screen
+   * opens, ended once it has gone, and each Raise or Lower settled once
+   * tome2 has answered it (true then). A skill another one shuts out drops
+   * to nothing, and tome2 gives back the points put into it.
+   */
+  private follow(current: CharacterTab | null, atCommand: boolean): boolean {
+    if (current !== 'skills') {
+      if (current || atCommand) {
+        this.session = null;
+        this.answer = null;
+      }
+      return false;
+    }
+    const table = this.api.engine.skillTable();
+    if (!table?.ready) return false;
+    if (!this.session) {
+      this.session = { start: table.points, invested: new Map(), sent: null };
+      return false;
+    }
+    const { invested, sent } = this.session;
+    if (!sent) return false;
+    /* tome2 changes nothing when it refuses; a point that took moves the points left, or at least the skill (a raise that shuts other skills out can give back as many as it took). */
+    const skill = table.skills.find((s) => s.name === sent.name);
+    if (skill && (table.points !== sent.points || skill.value !== sent.value)) {
+      const count = (invested.get(sent.name) ?? 0) + sent.step;
+      if (count > 0) invested.set(sent.name, count);
+      else invested.delete(sent.name);
+    }
+    this.session.sent = null;
+    for (const skill of table.skills) if (skill.value === 0) invested.delete(skill.name);
     return true;
+  }
+
+  /** Asks whether to save the points moved: Save keeps them, Discard gives them back, closing the card goes on moving them; `then` follows either answer. */
+  private confirmSkills(then?: () => void): void {
+    if (!this.settled) return;
+    const moved = [...(this.session?.invested ?? [])];
+    const body = el('div', 'prose');
+    body.append(el('p', undefined, 'Points spent on skills cannot be taken back once saved.'));
+    if (moved.length) {
+      const list = el('ul', 'skill-moves');
+      for (const [name, count] of moved) list.append(el('li', undefined, `${name} +${points(count)}`));
+      body.append(list);
+    }
+    const answer = (key: string) => {
+      if (this.api.sheets.isTop(card)) this.api.sheets.back();
+      this.answer = keyCodes(key);
+      this.session = null;
+      /* tome2's skills screen is opened again once its question is answered, unless another tab is chosen. */
+      this.requested = null;
+      this.renderedKey = '';
+      this.deps.sendKeys([KEY_ESCAPE]);
+      then?.();
+    };
+    const card: SheetContent = {
+      title: 'Save skill points?',
+      body,
+      kind: 'card',
+      actions: [
+        { id: 'discard', label: 'Discard', run: () => answer('n') },
+        { id: 'save', label: 'Save', primary: true, run: () => answer('y') },
+      ],
+    };
+    this.api.sheets.open(card);
   }
 }
 

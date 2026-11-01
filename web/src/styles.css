@@ -247,8 +247,66 @@ html.keyboard-open .sheet-layer {
   touch-action: manipulation;
 }
 
-.look-text {
+.look-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0 0 0.5rem;
+}
+
+.look-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--accent-bright);
+  font-weight: 600;
+}
+
+.look-note {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+/* Creatures and items at the cell, each opening its card; a big stack scrolls. */
+.look-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: calc(var(--touch) * 3.4);
   margin: 0 0 0.6rem;
+  overflow-y: auto;
+}
+
+.look-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: calc(var(--touch) * 0.85);
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--button);
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.look-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.look-aside {
+  flex: 0 1 auto;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  text-align: right;
+}
+
+.look-text {
+  margin: 0;
+  color: var(--muted);
 }
 
 .look-buttons {
@@ -263,11 +321,6 @@ html.keyboard-open .sheet-layer {
   border-radius: 8px;
   background: var(--button);
   touch-action: manipulation;
-}
-
-.look-button.primary {
-  border-color: var(--accent);
-  color: var(--accent-bright);
 }
 
 .look-button:last-child {
@@ -1259,12 +1312,6 @@ html.keyboard-open .tv-layer.panel {
 
 /* Skills */
 
-.skill-description {
-  margin: 0 0 0.8rem;
-  color: var(--accent-bright);
-  line-height: 1.5;
-}
-
 /* The selected row's details stay at the top of the list at one height, so rows never move as the cursor does. */
 .skill-detail {
   position: sticky;
@@ -1364,6 +1411,21 @@ html.keyboard-open .tv-layer.panel {
 .skill-mod {
   color: var(--muted);
   font-size: var(--fs-small);
+}
+
+/* Points put into a skill and not yet saved. */
+.skill-pending {
+  color: var(--accent-bright);
+  font-size: var(--fs-small);
+}
+
+.skill-row.pending {
+  border-color: rgb(217 164 65 / 0.55);
+}
+
+.skill-moves {
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
 }
 
 /* Sheets: native pop-ups over the game, one frame per layer (docs/ui-system.md). */
@@ -1640,6 +1702,11 @@ html.keyboard-open .tv-layer.panel {
   color: var(--accent-bright);
 }
 
+.sheet-action.unavailable .pop-icon,
+.sheet-action.unavailable .pop-label {
+  opacity: 0.45;
+}
+
 .sheet-action.danger,
 .action-button.danger,
 .row-button.danger .row-label {
@@ -1891,14 +1958,21 @@ html.keyboard-open .tv-layer.panel {
   font-size: var(--fs-small);
 }
 
+.item-price {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: var(--fs-small);
+}
+
 /* Shops: what cannot be bought (too dear) or sold (not wanted) is dimmed but can still be looked at. */
 .shop-row.dim .item-name,
 .shop-row.dim .glyph {
   opacity: 0.5;
 }
 
+.shop-row.dim .item-price,
 .shop-row.dim .item-weight {
-  color: var(--muted);
+  color: var(--faint);
 }
 
 .row-button.unavailable .row-label {

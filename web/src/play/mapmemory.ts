@@ -10,6 +10,8 @@ export interface HeroMemory {
   areas: Record<string, string>;
   /** Grids exploring is done with (visited, or out of reach), by level key. */
   visited: Record<string, number[]>;
+  /** Quests whose arrival has been told in a card (`questKey`), so a return shows only the banner. */
+  quests: string[];
 }
 
 interface Stored {
@@ -102,7 +104,7 @@ export function missingCells(mask: Uint8Array, info: Uint16Array): number[] {
 }
 
 function newHero(): HeroMemory {
-  return { heading: 'down', areas: {}, visited: {} };
+  return { heading: 'down', areas: {}, visited: {}, quests: [] };
 }
 
 function sanitiseHero(raw: unknown): HeroMemory {
@@ -113,7 +115,13 @@ function sanitiseHero(raw: unknown): HeroMemory {
   for (const [key, cells] of Object.entries(value.visited ?? {})) {
     if (Array.isArray(cells)) visited[key] = cells.filter((c): c is number => Number.isInteger(c) && c >= 0);
   }
-  return { heading: value.heading === 'up' ? 'up' : 'down', areas, visited };
+  const quests = Array.isArray(value.quests) ? value.quests.filter((q): q is string => typeof q === 'string') : [];
+  return { heading: value.heading === 'up' ? 'up' : 'down', areas, visited, quests };
+}
+
+/** A quest's arrival, told once: a fixed quest by its index, a random one (they share an index; tome2 has one per depth) by its depth. */
+export function questKey(quest: { id: number; random?: unknown }, depth: number): string {
+  return quest.random ? `${quest.id}:${depth}` : String(quest.id);
 }
 
 export function sanitiseMemory(raw: unknown): Stored {
@@ -131,7 +139,8 @@ function trim<T>(record: Record<string, T>, max: number): void {
 /**
  * What each hero remembers between sessions, kept as `mapmemory.json` next to
  * the savefiles: the areas of the land they have walked, which way they are
- * heading, and where exploring has already been on each level.
+ * heading, where exploring has already been on each level, and which quests'
+ * arrivals have been told.
  */
 export class MapMemoryStore {
   private data: Stored = sanitiseMemory(null);
@@ -181,6 +190,13 @@ export class MapMemoryStore {
     delete hero.visited[key];
     hero.visited[key] = [...cells];
     trim(hero.visited, MAX_LEVELS);
+    this.dirty = true;
+  }
+
+  /** Notes that a quest's arrival has been told (`questKey`). */
+  noteQuest(hero: HeroMemory, key: string): void {
+    if (hero.quests.includes(key)) return;
+    hero.quests.push(key);
     this.dirty = true;
   }
 

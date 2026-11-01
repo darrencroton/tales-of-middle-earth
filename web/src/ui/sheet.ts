@@ -1,6 +1,6 @@
 import { el } from './dom.ts';
 import { ListNav } from './listnav.ts';
-import { renderFooter, type PopAction, type PopTab } from './popup.ts';
+import { defaultItem, renderFooter, type PopAction, type PopTab } from './popup.ts';
 
 /* Downward swipe on a sheet's header (CSS pixels) that dismisses it. */
 const SWIPE_CLOSE = 60;
@@ -138,7 +138,7 @@ class Frame {
 
   /** The first thing to highlight when nothing else is asked for. */
   fallback(): HTMLElement | null {
-    return this.body.querySelector<HTMLElement>('[data-nav]') ?? this.footer.querySelector<HTMLElement>('.primary, .pop-tab.selected') ?? null;
+    return defaultItem(this.body, this.footer);
   }
 
   place(): SheetPlace {
@@ -287,23 +287,24 @@ export class Sheets {
   }
 
   /**
-   * Swaps a sheet's content in place, keeping its scroll position and
-   * highlight (for views that update as the game answers). `previous`
-   * defaults to the top sheet.
+   * Swaps a sheet's content in place, keeping its scroll position and,
+   * within the same view, its highlight (for views that update as the game
+   * answers). `previous` defaults to the top sheet.
    */
   update(content: SheetContent, previous?: SheetContent): void {
     const frame = previous ? this.frames.find((f) => f.entries.includes(previous)) : this.topFrame;
     if (!frame) return;
     const at = previous ? frame.entries.indexOf(previous) : frame.entries.length - 1;
+    const view = (c: SheetContent | undefined) => c?.tabs?.find((t) => t.active)?.label;
+    const sameView = view(frame.entries[at]) === view(content);
     frame.entries[at] = content;
     if (at < frame.entries.length - 1) return;
-    const activeKey = frame.nav.active?.dataset.key;
+    /* The same view rebuilt keeps its highlight's place; another tab starts afresh. */
+    const mark = sameView ? frame.nav.mark() : null;
     const scroll = frame.body.scrollTop;
     frame.render(content, this.frames.indexOf(frame) > 0);
     frame.body.scrollTop = scroll;
-    const same = activeKey ? frame.nav.items().find((item) => item.dataset.key === activeKey) : undefined;
-    const fallback = frame.body.querySelector<HTMLElement>('[data-nav]') ?? frame.footer.querySelector<HTMLElement>('.pop-tab.selected, .primary');
-    frame.nav.setActive(content.initial ?? same ?? fallback, !!content.initial);
+    frame.nav.setActive(content.initial ?? frame.nav.find(mark) ?? frame.fallback(), !!content.initial);
   }
 
   /** Highlights an item of an open sheet (its list was rebuilt in place), scrolling it into view. */
