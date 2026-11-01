@@ -1,15 +1,17 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import {
   castUntilAimed,
   createCharacter,
   dismissMore,
   equipSuggested,
+  expect,
   jumpToLevel,
   keptLevelFiles,
   playerPos,
   pressExplore,
   screenText,
   stepOffStairs,
+  test,
   viewMode,
   waitAtCommand,
   waitForEngine,
@@ -31,10 +33,64 @@ async function packCount(page: Page, pattern: RegExp): Promise<number> {
   );
 }
 
-test('tapping the map travels there along a known path', async ({ page }) => {
-  await page.goto('./');
+test('tapping the map steps towards unseen ground, travels along a known path, and waits on the hero', { tag: '@layout' }, async ({ page }) => {
+  await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Walker');
+  await jumpToLevel(page, 2);
+  await equipSuggested(page);
+  await dismissMore(page);
+  await waitAtCommand(page);
+
+  /* A tap on unseen ground takes one step towards it. */
+  const unseen = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const snap = tome.engine.snapshot()!;
+    const features = tome.engine.features();
+    const known = (x: number, y: number) => (snap.info[y * snap.width + x] & 0x11) !== 0;
+    const open = (x: number, y: number) => {
+      const i = y * snap.width + x;
+      return known(x, y) && (features[snap.feat[i]].flags & 1) === 0 && (snap.layer[i] & 0x7f) === 1;
+    };
+    const onMap = (x: number, y: number) => {
+      const p = tome.mapCellCentre(x, y);
+      return document.elementFromPoint(p.x, p.y)?.id === 'map';
+    };
+    const far = Math.max(1, snap.lightRadius) + 3;
+    let best: { x: number; y: number } | null = null;
+    let bestScore = Infinity;
+    for (let y = 0; y < snap.height; y++) {
+      for (let x = 0; x < snap.width; x++) {
+        const d = Math.max(Math.abs(x - snap.px), Math.abs(y - snap.py));
+        if (d < far || d > far + 4 || known(x, y) || !onMap(x, y)) continue;
+        /* The neighbour in the tap's direction (as `stepTowards` picks it first) is open floor. */
+        const octant = Math.round(Math.atan2(y - snap.py, x - snap.px) / (Math.PI / 4)) * (Math.PI / 4);
+        const ahead = open(snap.px + Math.round(Math.cos(octant)), snap.py + Math.round(Math.sin(octant)));
+        if (ahead && d < bestScore) {
+          bestScore = d;
+          best = { x, y };
+        }
+      }
+    }
+    return best;
+  });
+  expect(unseen, 'no unseen cell on the map to stride towards').not.toBeNull();
+
+  const origin = await playerPos(page);
+  const point = await page.evaluate(([x, y]) => window.__tome!.mapCellCentre(x, y), [unseen!.x, unseen!.y] as const);
+  await page.mouse.click(point.x, point.y);
+  await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 20_000 }).toBe(false);
+  const stepped = await playerPos(page);
+  const stepCause = await page.evaluate(() => window.__tome!.lastStopCause());
+  const stepContext = `stopped (${stepCause || 'never started'}) at ${JSON.stringify(stepped)} from ${JSON.stringify(origin)} towards ${JSON.stringify(unseen)}\n${await screenText(page)}`;
+  await expect(page.locator('#toast'), stepContext).not.toContainText('no way there');
+  const distance = (p: { x: number; y: number }) => Math.hypot(p.x - unseen!.x, p.y - unseen!.y);
+  if (!/monster|hurt/.test(stepCause)) expect(distance(stepped), stepContext).toBeLessThan(distance(origin));
+  expect(Math.max(Math.abs(stepped.x - origin.x), Math.abs(stepped.y - origin.y)), stepContext).toBeLessThanOrEqual(1);
+
+  /* With the level lit and nothing about, a tap on a known place travels there. */
+  await wizardCommand(page, 'w');
+  await wizardCommand(page, 'z');
 
   const target = await page.evaluate(() => {
     const tome = window.__tome!;
@@ -95,41 +151,10 @@ test('tapping the map travels there along a known path', async ({ page }) => {
   expect(await playerPos(page)).toEqual(here);
 });
 
-test('items are used, wielded and taken off from the native inventory', async ({ page }) => {
+test('items are dropped by the number chosen, used, wielded and taken off from the native inventory', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await createCharacter(page, 'Packer');
-
-  await expect.poll(() => actionIds(page)).toEqual(expect.arrayContaining(['inventory', 'commands', 'menu']));
-
-  const food = await packCount(page, /Ration/);
-  await page.locator('#toolbar [data-action="inventory"]').click();
-  await expect(page.locator('.sheet .item-row').first()).toBeVisible();
-  await page.locator('.sheet .item-row', { hasText: 'Ration' }).click();
-  await page.locator('.sheet .sheet-action', { hasText: 'Eat' }).click();
-  await expect(page.locator('.sheet-layer')).toBeHidden();
-  await expect.poll(() => packCount(page, /Ration/), { timeout: 10_000 }).toBe(food - 1);
-  expect(await viewMode(page)).toBe('map');
-
-  await dismissMore(page);
-  await page.locator('#toolbar [data-action="inventory"]').click();
-  await page.locator('.sheet .item-row', { hasText: /Sword|Dagger|Axe|Mace|Spear|Whip/ }).first().click();
-  await page.locator('.sheet .sheet-action', { hasText: 'Wield' }).click();
-  const weapon = () => page.evaluate(() => window.__tome!.engine.inventory()!.equip.find((e) => e.i === 24)?.name ?? '');
-  await expect.poll(weapon, { timeout: 10_000 }).not.toBe('');
-
-  await dismissMore(page);
-  await page.locator('#toolbar [data-action="inventory"]').click();
-  await page.locator('.sheet [data-tab="equip"]').click();
-  await page.locator('.sheet .item-row:not(.empty-slot)').first().click();
-  await page.locator('.sheet .sheet-action', { hasText: 'Take off' }).click();
-  await expect.poll(weapon, { timeout: 10_000 }).toBe('');
-});
-
-test('a stack is dropped by the number chosen, and the floor list shows alone', async ({ page }) => {
-  await page.goto('./');
-  await waitForEngine(page);
-  await createCharacter(page, 'Dropper');
 
   const food = await packCount(page, /Ration/);
   expect(food).toBeGreaterThan(2);
@@ -157,9 +182,34 @@ test('a stack is dropped by the number chosen, and the floor list shows alone', 
   expect(await page.locator('.termview').innerText()).not.toMatch(/###/);
   await page.keyboard.press('Escape');
   await waitAtCommand(page);
+
+  await expect.poll(() => actionIds(page)).toEqual(expect.arrayContaining(['inventory', 'commands', 'menu']));
+
+  const rations = await packCount(page, /Ration/);
+  await page.locator('#toolbar [data-action="inventory"]').click();
+  await expect(page.locator('.sheet .item-row').first()).toBeVisible();
+  await page.locator('.sheet .item-row', { hasText: 'Ration' }).click();
+  await page.locator('.sheet .sheet-action', { hasText: 'Eat' }).click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  await expect.poll(() => packCount(page, /Ration/), { timeout: 10_000 }).toBe(rations - 1);
+  expect(await viewMode(page)).toBe('map');
+
+  await dismissMore(page);
+  await page.locator('#toolbar [data-action="inventory"]').click();
+  await page.locator('.sheet .item-row', { hasText: /Sword|Dagger|Axe|Mace|Spear|Whip/ }).first().click();
+  await page.locator('.sheet .sheet-action', { hasText: 'Wield' }).click();
+  const weapon = () => page.evaluate(() => window.__tome!.engine.inventory()!.equip.find((e) => e.i === 24)?.name ?? '');
+  await expect.poll(weapon, { timeout: 10_000 }).not.toBe('');
+
+  await dismissMore(page);
+  await page.locator('#toolbar [data-action="inventory"]').click();
+  await page.locator('.sheet [data-tab="equip"]').click();
+  await page.locator('.sheet .item-row:not(.empty-slot)').first().click();
+  await page.locator('.sheet .sheet-action', { hasText: 'Take off' }).click();
+  await expect.poll(weapon, { timeout: 10_000 }).toBe('');
 });
 
-test('tome2 menus show as tappable lists with a movable highlight', async ({ page }) => {
+test('tome2 menus show as tappable lists with a movable highlight', { tag: '@layout' }, async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await createCharacter(page, 'Tapper');
@@ -200,10 +250,23 @@ test('tome2 menus show as tappable lists with a movable highlight', async ({ pag
   await expect.poll(() => viewMode(page)).toBe('map');
 });
 
-test('the character sheet keeps its tabs at the foot and shows skills, abilities and the full sheet', async ({ page }) => {
-  await page.goto('./');
+test('the character sheet keeps its tabs at the foot and its skill rows still, and closing after spending saves and returns to the map', { tag: '@layout' }, async ({ page }) => {
+  await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Scholar');
+  await jumpToLevel(page, 1);
+  const points = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.skillPoints ?? 0);
+  for (let i = 0; i < 8 && (await points()) < 2; i++) {
+    await page.evaluate(() => window.__tome!.sendText('\u0001'));
+    await waitForScreen(page, /Debug Command|\[y\/n\]/);
+    if (/\[y\/n\]/.test((await screenText(page)).split('\n')[0])) await page.evaluate(() => window.__tome!.sendText('y'));
+    await waitForScreen(page, /Debug Command/);
+    await page.evaluate(() => window.__tome!.sendText('x'));
+    await dismissMore(page);
+    await waitAtCommand(page);
+  }
+  expect(await points()).toBeGreaterThan(1);
+
 
   await page.locator('.hud-player').click();
   await expect(page.locator('.sheet-title')).toHaveText('Scholar');
@@ -261,25 +324,8 @@ test('the character sheet keeps its tabs at the foot and shows skills, abilities
   await expect(page.locator('.sheet-title')).toHaveText('Menu');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
-});
 
-test('skill rows stay put while the cursor moves, and closing after spending saves and returns to the map', async ({ page }) => {
-  await page.goto('./?wizard');
-  await waitForEngine(page);
-  await createCharacter(page, 'Steady');
-  await jumpToLevel(page, 1);
-  const points = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.skillPoints ?? 0);
-  for (let i = 0; i < 8 && (await points()) < 2; i++) {
-    await page.evaluate(() => window.__tome!.sendText('\u0001'));
-    await waitForScreen(page, /Debug Command|\[y\/n\]/);
-    if (/\[y\/n\]/.test((await screenText(page)).split('\n')[0])) await page.evaluate(() => window.__tome!.sendText('y'));
-    await waitForScreen(page, /Debug Command/);
-    await page.evaluate(() => window.__tome!.sendText('x'));
-    await dismissMore(page);
-    await waitAtCommand(page);
-  }
-  expect(await points()).toBeGreaterThan(1);
-
+  /* Skill rows stay put while the cursor moves. */
   await page.keyboard.press('G');
   const rows = page.locator('.sheet .skill-row');
   await expect(rows.first()).toBeVisible();
@@ -309,47 +355,77 @@ test('skill rows stay put while the cursor moves, and closing after spending sav
   expect(await viewMode(page)).toBe('map');
 });
 
-test('spells are cast from the Magic sheet, and recent ones are offered first', async ({ page }) => {
-  await page.goto('./');
-  await waitForEngine(page);
-  await createCharacter(page, 'Caster', { race: 'High-Elf', cls: 'Mage' });
+test.describe(() => {
+  /* Bolts are drawn, and heard, only with animation. */
+  test.use({ settings: { animation: 'full' } });
 
-  const openMagic = async () => {
-    await page.locator('#toolbar [data-action="commands"]').click();
-    await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
-    await expect(page.locator('.sheet-title')).toHaveText('Magic');
-  };
-  await openMagic();
-  await expect(page.locator('.sheet .recent-button')).toHaveCount(0);
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('Escape');
-  await expect(page.locator('.sheet-layer')).toBeHidden();
-  await castUntilAimed(page, 'Manathrust');
-  await page.keyboard.press('Escape');
-  await dismissMore(page);
-  await waitAtCommand(page);
+  test('spells are cast from the Magic sheet with their sound, and recent ones are offered first', async ({ page }) => {
+    await page.goto('./');
+    await waitForEngine(page);
+    await createCharacter(page, 'Caster', { race: 'High-Elf', cls: 'Mage' });
 
-  /* A magic user's buttons keep their places after the changing first one: the last spell, then Cast. */
-  const ids = () => page.locator('#toolbar button').evaluateAll((buttons) => buttons.slice(1).map((b) => b.getAttribute('data-action')));
-  expect(await ids()).toEqual(['recast', 'cast', 'inventory', 'rest', 'commands', 'menu']);
-  await expect(page.locator('#toolbar [data-action="recast"]')).toContainText('Manathrust');
-  const mana = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.csp ?? 0);
-  const turn = () => page.evaluate(() => window.__tome!.engine.snapshot()?.turn ?? 0);
-  const [before, then] = [await mana(), await turn()];
-  await page.locator('#toolbar [data-action="recast"]').click();
-  /* Aimed at the nearest foe when one is in sight; otherwise refused, without taking a turn. */
-  await expect
-    .poll(async () => (await mana()) < before || /No target in sight/.test((await page.locator('#toast').textContent()) ?? ''), { timeout: 20_000 })
-    .toBe(true);
-  if ((await mana()) === before) expect(await turn()).toBe(then);
-  await dismissMore(page);
-  await waitAtCommand(page);
+    const openMagic = async () => {
+      await page.locator('#toolbar [data-action="commands"]').click();
+      await page.locator('.sheet .command', { hasText: 'Magic & powers' }).click();
+      await expect(page.locator('.sheet-title')).toHaveText('Magic');
+    };
+    await openMagic();
+    await expect(page.locator('.sheet .recent-button')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+    /* Its sound plays as it is let go, before its bolt, and only once; a failed one fizzles. */
+    const heard = () => page.evaluate(() => window.__tome!.audio.status.recent);
+    const direction = await page.evaluate(() => {
+      const snap = window.__tome!.engine.snapshot()!;
+      const floor = snap.feat[snap.py * snap.width + snap.px];
+      const ways: [string, number, number][] = [['6', 1, 0], ['4', -1, 0], ['2', 0, 1], ['8', 0, -1]];
+      const open = ways.find(([, dx, dy]) =>
+        [1, 2, 3].every((k) => {
+          const x = snap.px + dx * k;
+          const y = snap.py + dy * k;
+          return x >= 0 && y >= 0 && x < snap.width && y < snap.height && snap.feat[y * snap.width + x] === floor;
+        }),
+      );
+      return open?.[0] ?? '6';
+    });
+    let start = (await heard()).length;
+    await castUntilAimed(page, 'Manathrust', async () => {
+      await expect.poll(async () => (await heard()).slice(start)).toContain('fizzle');
+      expect((await heard()).slice(start)).not.toContain('cast');
+      start = (await heard()).length;
+    });
+    const released = (await heard()).length;
+    await page.evaluate((d) => window.__tome!.sendText(d), direction);
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await expect.poll(async () => (await heard()).slice(released)).toContain('cast');
+    const sounds = (await heard()).slice(released);
+    expect(sounds.filter((id) => id === 'cast')).toHaveLength(1);
+    expect(sounds.indexOf('bolt')).toBeGreaterThan(sounds.indexOf('cast'));
 
-  await openMagic();
-  await expect(page.locator('.sheet .recent-button')).toHaveText(/Manathrust/);
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('Escape');
-  await expect(page.locator('.sheet-layer')).toBeHidden();
+    /* A magic user's buttons keep their places after the changing first one: the last spell, then Cast. */
+    const ids = () => page.locator('#toolbar button').evaluateAll((buttons) => buttons.slice(1).map((b) => b.getAttribute('data-action')));
+    expect(await ids()).toEqual(['recast', 'cast', 'inventory', 'rest', 'commands', 'menu']);
+    await expect(page.locator('#toolbar [data-action="recast"]')).toContainText('Manathrust');
+    const mana = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.csp ?? 0);
+    const turn = () => page.evaluate(() => window.__tome!.engine.snapshot()?.turn ?? 0);
+    const [before, then] = [await mana(), await turn()];
+    await page.locator('#toolbar [data-action="recast"]').click();
+    /* Aimed at the nearest foe when one is in sight; otherwise refused, without taking a turn. */
+    await expect
+      .poll(async () => (await mana()) < before || /No target in sight/.test((await page.locator('#toast').textContent()) ?? ''), { timeout: 20_000 })
+      .toBe(true);
+    if ((await mana()) === before) expect(await turn()).toBe(then);
+    await dismissMore(page);
+    await waitAtCommand(page);
+
+    await openMagic();
+    await expect(page.locator('.sheet .recent-button')).toHaveText(/Manathrust/);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+  });
 });
 
 test('race powers are in the Magic sheet, their lettered questions are buttons, and they are offered again', async ({ page }) => {
@@ -388,7 +464,7 @@ test('race powers are in the Magic sheet, their lettered questions are buttons, 
   await page.keyboard.press('Escape');
 });
 
-test('dragging pans the map without moving, long press describes, sheets open from the HUD', async ({ page }) => {
+test('dragging pans the map without moving, long press describes, sheets open from the HUD, and a tap acts once on what was pressed', { tag: '@layout' }, async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await createCharacter(page, 'Looker');
@@ -453,6 +529,36 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
   expect(await page.evaluate(() => window.__tome!.travelling())).toBe(false);
+
+  /* The click a browser sends after a touch would land on what the tap opened under the finger. */
+  for (const selector of ['#toolbar [data-action="menu"]', '#toolbar [data-action="inventory"]', '#hud .hud-player']) {
+    await page.locator(selector).tap();
+    await expect(page.locator('.sheet-layer')).toBeVisible();
+    await page.waitForTimeout(600);
+    await expect(page.locator('.sheet-layer'), selector).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+  }
+
+  /* A press let go beside the button, over its neighbour, does nothing. */
+  const items = (await page.locator('#toolbar [data-action="inventory"]').boundingBox())!;
+  await page.mouse.move(items.x + items.width - 2, items.y + items.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(items.x + items.width + 8, items.y + items.height / 2);
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  /* A button given another action during the press does nothing when let go. */
+  const inventory = page.locator('#toolbar [data-action="inventory"]');
+  const centre = (await inventory.boundingBox())!;
+  await page.mouse.move(centre.x + centre.width / 2, centre.y + centre.height / 2);
+  await page.mouse.down();
+  await inventory.evaluate((button) => (button.dataset.tap = 'changed'));
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  await expect(page.locator('.sheet-layer')).toBeHidden();
 });
 
 test('hiding the app autosaves at the command prompt', async ({ page }) => {
@@ -488,139 +594,28 @@ test('hiding the app autosaves at the command prompt', async ({ page }) => {
   await expect(page.locator('#title-screen .title-choice').first()).toContainText('Sleeper');
 });
 
-test('explore reveals the level after the suggested weapon and light are equipped', async ({ page }) => {
-  await page.goto('./?wizard');
-  await waitForEngine(page);
-  await createCharacter(page, 'Scout');
-  await jumpToLevel(page, 2);
+test.describe(() => {
+  /* Steps that take time at either pace, so exploring lasts long enough to be changed and stopped. */
+  test.use({ settings: { animation: 'full', explorePace: 'relaxed' } });
 
-  await equipSuggested(page);
+  test('while exploring, Speed switches the pace without stopping and Stop stops', async ({ page }) => {
+    await page.goto('./?wizard');
+    await waitForEngine(page);
+    await createCharacter(page, 'Pacer');
+    await jumpToLevel(page, 2);
+    await equipSuggested(page);
+    await wizardCommand(page, 'z');
+    await stepOffStairs(page);
 
-  const known = () =>
-    page.evaluate(() => {
-      const snap = window.__tome!.engine.snapshot()!;
-      let n = 0;
-      for (let i = 0; i < snap.info.length; i++) if (snap.info[i] & 0x11) n++;
-      return n;
-    });
-  const before = await known();
-  for (let i = 0; i < 5 && (await known()) <= before; i++) {
-    await dismissMore(page);
-    await waitAtCommand(page);
-    await pressExplore(page);
-  }
-  expect(await known()).toBeGreaterThan(before);
-});
-
-test('a tap that opens a pop-up leaves it open, and a press let go beside a button does nothing', async ({ page }) => {
-  await page.goto('./');
-  await waitForEngine(page);
-  await createCharacter(page, 'Tapper');
-
-  /* The click a browser sends after a touch would land on what the tap opened under the finger. */
-  for (const selector of ['#toolbar [data-action="menu"]', '#toolbar [data-action="inventory"]', '#hud .hud-player']) {
-    await page.locator(selector).tap();
-    await expect(page.locator('.sheet-layer')).toBeVisible();
-    await page.waitForTimeout(600);
-    await expect(page.locator('.sheet-layer'), selector).toBeVisible();
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
-    await expect(page.locator('.sheet-layer')).toBeHidden();
-  }
-
-  /* A press let go beside the button, over its neighbour, does nothing. */
-  const items = (await page.locator('#toolbar [data-action="inventory"]').boundingBox())!;
-  await page.mouse.move(items.x + items.width - 2, items.y + items.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(items.x + items.width + 8, items.y + items.height / 2);
-  await page.mouse.up();
-  await page.waitForTimeout(400);
-  await expect(page.locator('.sheet-layer')).toBeHidden();
-});
-
-test('while exploring, Speed switches the pace without stopping and Stop stops', async ({ page }) => {
-  await page.goto('./?wizard');
-  await waitForEngine(page);
-  await createCharacter(page, 'Pacer');
-  await jumpToLevel(page, 2);
-  await equipSuggested(page);
-
-  const travelling = () => page.evaluate(() => window.__tome!.travelling());
-  const pace = () => page.evaluate(() => window.__tome!.settings().explorePace);
-  let started = false;
-  for (let i = 0; i < 8 && !started; i++) {
-    await dismissMore(page);
-    await waitAtCommand(page);
-    const explore = page.locator('#toolbar [data-action="explore"]');
-    if (!(await explore.count())) break;
-    await explore.tap();
-    started = await travelling();
-  }
-  test.skip(!started, 'exploring stopped at once each time');
-
-  await expect(page.locator('#toolbar button')).toHaveText([/Stop/, /Speed/, /Menu/]);
-  const before = await pace();
-  await page.locator('#toolbar [data-action="pace"]').tap();
-  expect(await pace()).not.toBe(before);
-  if (await travelling()) {
+    await page.locator('#toolbar [data-action="explore"]').tap();
+    await expect.poll(() => page.evaluate(() => window.__tome!.travelling())).toBe(true);
+    await expect(page.locator('#toolbar button')).toHaveText([/Stop/, /Speed/, /Menu/]);
+    await page.locator('#toolbar [data-action="pace"]').tap();
+    expect(await page.evaluate(() => window.__tome!.settings().explorePace)).toBe('normal');
+    expect(await page.evaluate(() => window.__tome!.travelling())).toBe(true);
     await page.locator('#toolbar [data-action="stop"]').tap();
-    expect(await travelling()).toBe(false);
-  }
-});
-
-test('a tap on unseen ground takes one step towards it', async ({ page }) => {
-  await page.goto('./?wizard');
-  await waitForEngine(page);
-  await createCharacter(page, 'Torchbearer');
-  await jumpToLevel(page, 2);
-  await equipSuggested(page);
-  await dismissMore(page);
-  await waitAtCommand(page);
-
-  const target = await page.evaluate(() => {
-    const tome = window.__tome!;
-    const snap = tome.engine.snapshot()!;
-    const features = tome.engine.features();
-    const known = (x: number, y: number) => (snap.info[y * snap.width + x] & 0x11) !== 0;
-    const open = (x: number, y: number) => {
-      const i = y * snap.width + x;
-      return known(x, y) && (features[snap.feat[i]].flags & 1) === 0 && (snap.layer[i] & 0x7f) === 1;
-    };
-    const onMap = (x: number, y: number) => {
-      const p = tome.mapCellCentre(x, y);
-      return document.elementFromPoint(p.x, p.y)?.id === 'map';
-    };
-    const far = Math.max(1, snap.lightRadius) + 3;
-    let best: { x: number; y: number } | null = null;
-    let bestScore = Infinity;
-    for (let y = 0; y < snap.height; y++) {
-      for (let x = 0; x < snap.width; x++) {
-        const d = Math.max(Math.abs(x - snap.px), Math.abs(y - snap.py));
-        if (d < far || d > far + 4 || known(x, y) || !onMap(x, y)) continue;
-        /* The neighbour in the tap's direction (as `stepTowards` picks it first) is open floor. */
-        const octant = Math.round(Math.atan2(y - snap.py, x - snap.px) / (Math.PI / 4)) * (Math.PI / 4);
-        const ahead = open(snap.px + Math.round(Math.cos(octant)), snap.py + Math.round(Math.sin(octant)));
-        if (ahead && d < bestScore) {
-          bestScore = d;
-          best = { x, y };
-        }
-      }
-    }
-    return best;
+    expect(await page.evaluate(() => window.__tome!.travelling())).toBe(false);
   });
-  expect(target, 'no unseen cell on the map to stride towards').not.toBeNull();
-
-  const start = await playerPos(page);
-  const point = await page.evaluate(([x, y]) => window.__tome!.mapCellCentre(x, y), [target!.x, target!.y] as const);
-  await page.mouse.click(point.x, point.y);
-  await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 20_000 }).toBe(false);
-  const end = await playerPos(page);
-  const cause = await page.evaluate(() => window.__tome!.lastStopCause());
-  const context = `stopped (${cause || 'never started'}) at ${JSON.stringify(end)} from ${JSON.stringify(start)} towards ${JSON.stringify(target)}\n${await screenText(page)}`;
-  await expect(page.locator('#toast'), context).not.toContainText('no way there');
-  const distance = (p: { x: number; y: number }) => Math.hypot(p.x - target!.x, p.y - target!.y);
-  if (!/monster|hurt/.test(cause)) expect(distance(end), context).toBeLessThan(distance(start));
-  expect(Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)), context).toBeLessThanOrEqual(1);
 });
 
 test('Explore in town never leads to a way down, and the quest level below Bree stays native', async ({ page }) => {

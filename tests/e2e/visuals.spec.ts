@@ -1,18 +1,19 @@
-import { expect, test } from '@playwright/test';
 import {
   beginNewCharacter,
   canvasBrightness,
   createCharacter,
   dismissMore,
+  expect,
   jumpToLevel,
   playerRegion,
   summonBeside,
+  test,
   viewMode,
   waitAtCommand,
   waitForEngine,
 } from './helpers.ts';
 
-test('opening screen ignites, the intro rises from the flames, then character creation', async ({ page }, testInfo) => {
+test('opening screen ignites, the intro rises from the flames, then character creation', { tag: '@layout' }, async ({ page }, testInfo) => {
   await page.goto('./');
   await expect(page.locator('#title-screen')).toBeVisible();
   await waitForEngine(page);
@@ -80,7 +81,7 @@ test('opening screen ignites, the intro rises from the flames, then character cr
   await expect(page.locator('.director .birth-summary')).toContainText(otherName);
 });
 
-test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }, testInfo) => {
+test('renders the lit map, HUD and tome2 panels in the dungeon', { tag: ['@layout', '@smoke'] }, async ({ page }, testInfo) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Vis');
@@ -89,6 +90,9 @@ test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }
   await expect(page.locator('#hud .hud-player .name')).toHaveText('Vis');
   await expect(page.locator('#hud .bar-hp')).toContainText('Health');
   expect(await canvasBrightness(page, '#map', { x: 0.4, y: 0.4, w: 0.2, h: 0.2 })).toBeGreaterThan(3);
+  /* In landscape the message log moves into the HUD's sidebar, so the map has the whole height. */
+  const landscape = await page.evaluate(() => matchMedia('(orientation: landscape) and (min-width: 560px)').matches);
+  await expect(page.locator(landscape ? '#hud #messages' : '#stage > #messages')).toHaveCount(1);
   await testInfo.attach('town', { body: await page.screenshot(), contentType: 'image/png' });
 
   await page.keyboard.press('i');
@@ -125,7 +129,7 @@ test('renders the lit map, HUD and tome2 panels in the dungeon', async ({ page }
   expect(stats.renderMs).toBeLessThan(250);
 });
 
-test('the map keeps its size whatever the HUD strip and toolbar show', async ({ page }) => {
+test('the map keeps its size whatever the HUD strip and toolbar show', { tag: '@layout' }, async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Steady');
@@ -167,7 +171,7 @@ test('the map keeps its size whatever the HUD strip and toolbar show', async ({ 
   expect(new Set(sizes).size, sizes.join(' / ')).toBe(1);
 });
 
-test('settings persist: text size, glyphs and animation', async ({ page }) => {
+test('settings persist: text size, glyphs, animation, music and sound', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   const fontSize = () => page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
@@ -177,6 +181,8 @@ test('settings persist: text size, glyphs and animation', async ({ page }) => {
   await page.locator('.sheet .segment', { hasText: 'Extra large' }).click();
   await page.locator('.sheet .segment', { hasText: 'Classic ASCII' }).click();
   await page.locator('.sheet .segment', { hasText: 'Reduced' }).click();
+  await page.locator('.segmented[aria-label="Music"] .segment', { hasText: 'Off' }).click();
+  await page.locator('.segmented[aria-label="Sound effects"] .segment', { hasText: 'High' }).click();
   expect(await fontSize()).toBe('19px');
   await page.keyboard.press('Escape');
 
@@ -187,4 +193,6 @@ test('settings persist: text size, glyphs and animation', async ({ page }) => {
   await expect(page.locator('.sheet .segment.selected', { hasText: 'Classic ASCII' })).toBeVisible();
   await expect(page.locator('.sheet .segment.selected', { hasText: 'Reduced' })).toBeVisible();
   await expect(page.locator('.sheet .segment.selected', { hasText: 'Extra large' })).toBeVisible();
+  await expect(page.locator('.segmented[aria-label="Music"] .segment.selected')).toHaveText('Off');
+  await expect(page.locator('.segmented[aria-label="Sound effects"] .segment.selected')).toHaveText('High');
 });

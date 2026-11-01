@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
-import { expect, test, type Page } from '@playwright/test';
-import { beginNewCharacter, createCharacter, inDungeon, screenText, sendText, waitAtCommand, waitForEngine, waitForScreen } from './helpers.ts';
+import type { Page } from '@playwright/test';
+import { beginNewCharacter, createCharacter, expect, inDungeon, jumpToLevel, screenText, sendText, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen } from './helpers.ts';
 
-test('loads the engine and lays out the opening screen without overflow', async ({ page }) => {
+test('loads the engine and lays out the opening screen without overflow', { tag: ['@layout', '@smoke'] }, async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (err) => errors.push(err.message));
 
@@ -23,7 +23,7 @@ test('loads the engine and lays out the opening screen without overflow', async 
   expect(errors).toEqual([]);
 });
 
-test('creates a character, saves and quits to the title, then continues', async ({ page }, testInfo) => {
+test('creates a character, saves and quits to the title with its music playing on, then continues', { tag: ['@layout', '@smoke'] }, async ({ page }, testInfo) => {
   const name = `T${testInfo.project.name.replace(/[^a-z]/gi, '').slice(0, 10)}`;
   const errors: string[] = [];
   page.on('pageerror', (err) => errors.push(err.message));
@@ -51,6 +51,9 @@ test('creates a character, saves and quits to the title, then continues', async 
   await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
   await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
   await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+  /* The title theme plays again at once, without another tap, and the page is not reloaded. */
+  await expect.poll(() => page.evaluate(() => window.__tome!.audio.status.theme), { timeout: 15_000 }).toBe('title');
+  expect(await page.evaluate(() => window.__tome!.audio.status.state)).toBe('running');
   await waitForEngine(page);
   expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1);
 
@@ -153,110 +156,61 @@ test('help opens from the title screen, with races and classes from the game its
   await expect(page.locator('.sheet-layer')).toBeHidden();
 });
 
-test('exports game data from the title screen as a downloadable bundle', async ({ page }) => {
+test('game data exported from the title screen imports back, and is kept after the restart', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await page.evaluate(() => {
     const engine = window.__tome!.engine;
-    const fs = engine.fs!;
-    fs.mkdirTree(`${engine.savePath}/2.4/save`);
-    fs.writeFile(`${engine.savePath}/2.4/save/Exported`, new Uint8Array([1, 2, 3]));
+    engine.fs!.mkdirTree(`${engine.savePath}/2.4/save`);
+    engine.fs!.writeFile(`${engine.savePath}/2.4/save/Exported`, new Uint8Array([1, 2, 3]));
   });
 
   await page.locator('#title-screen [data-link="backup"]').click();
   const downloadPromise = page.waitForEvent('download');
   await page.locator('.sheet .row-button', { hasText: 'Export game data' }).click();
   const download = await downloadPromise;
-
   expect(download.suggestedFilename()).toMatch(/^tome2-saves-.*\.tome2save$/);
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   expect(bundle.format).toBe('tome2mobile-saves');
-  expect(bundle.files.map((f: { path: string }) => f.path)).toContain('2.4/save/Exported');
-});
+  await page.keyboard.press('Escape');
 
-test('imports a save bundle and keeps it after the restart', async ({ page }) => {
-  await page.goto('./');
-  await waitForEngine(page);
-
-  const bundle = JSON.stringify({
-    format: 'tome2mobile-saves',
-    version: 1,
-    exported: new Date().toISOString(),
-    files: [{ path: '2.4/save/Imported', data: Buffer.from([4, 5, 6]).toString('base64') }],
-  });
-
-  await page.locator('#import-file').setInputFiles({
-    name: 'backup.tome2save',
-    mimeType: 'application/json',
-    buffer: Buffer.from(bundle),
-  });
+  /* The exported file, renamed in the bundle, so what comes back can only have come from it. */
+  const exported = bundle.files.find((f: { path: string }) => f.path === '2.4/save/Exported');
+  expect(exported).toBeTruthy();
+  exported.path = '2.4/save/Imported';
+  await page.locator('#import-file').setInputFiles({ name: 'backup.tome2save', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bundle)) });
   const reloaded = page.waitForEvent('load');
   await page.locator('.sheet-action', { hasText: 'Import' }).click();
   await reloaded;
   await waitForEngine(page);
-
   const data = await page.evaluate(() => {
     const engine = window.__tome!.engine;
     return Array.from(engine.fs!.readFile(`${engine.savePath}/2.4/save/Imported`));
   });
-  expect(data).toEqual([4, 5, 6]);
+  expect(data).toEqual([1, 2, 3]);
 });
 
 test.describe('iOS home-screen app', () => {
   test.use({ viewport: { width: 402, height: 812 }, contextOptions: { screen: { width: 402, height: 874 } } });
 
-  const safeBottom = (page: Page) => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim());
-  const insets = async (page: Page) => {
+  test('drops the bottom inset only when the view ends a status bar short of the screen', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'standalone', { get: () => (window as Window & { standaloneTest?: boolean }).standaloneTest === true });
+    });
+    await page.goto('./');
+    await waitForEngine(page);
+    const safeBottom = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim());
     await page.addStyleTag({ content: ':root { --safe-top: 62px; --safe-bottom: 34px; }' });
     await page.evaluate(() => window.dispatchEvent(new Event('resize')));
-  };
+    expect(await safeBottom()).toBe('34px');
 
-  test('drops the bottom inset when the view ends a status bar short of the screen', async ({ page }) => {
-    await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true }));
-    await page.goto('./');
-    await waitForEngine(page);
-    await insets(page);
-    expect(await safeBottom(page)).toBe('0px');
+    await page.evaluate(() => {
+      (window as Window & { standaloneTest?: boolean }).standaloneTest = true;
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(await safeBottom()).toBe('0px');
     expect(await page.evaluate(() => document.getElementById('app')!.getBoundingClientRect().bottom)).toBe(812);
   });
-
-  test('keeps the bottom inset in the browser', async ({ page }) => {
-    await page.goto('./');
-    await waitForEngine(page);
-    await insets(page);
-    expect(await safeBottom(page)).toBe('34px');
-  });
-});
-
-test('a new hero can take the name of one who has fallen', async ({ page }) => {
-  test.setTimeout(240_000);
-  await page.goto('./');
-  await waitForEngine(page);
-  await createCharacter(page, 'Fallen');
-
-  await sendText(page, '\\Q');
-  await waitForScreen(page, /really want to quit/);
-  await sendText(page, 'y');
-  await waitForScreen(page, /verify QUITTING/);
-  await sendText(page, '@');
-  const finish = page.locator('#toolbar [data-action="finish"]');
-  for (let i = 0; i < 40 && !(await finish.isVisible()); i++) {
-    const text = await screenText(page);
-    if (/-more-/.test(text.split('\n')[0] ?? '')) await sendText(page, '\u001b');
-    await page.waitForTimeout(500);
-  }
-  await finish.click();
-  /* The quit is kept in the Hall of Fame; past it, the title returns in the same page, with a fresh engine. */
-  await expect(page.locator('.termview .fame-row')).toContainText('Abandoned in the town');
-  await page.keyboard.press('Escape');
-  await waitForEngine(page);
-  await expect(page.locator('#title-screen .title-choice').first()).not.toContainText('Continue');
-
-  await beginNewCharacter(page, 'Fallen');
-  await page.waitForTimeout(400);
-  await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
-  await expect(page.locator('.director.birth')).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator('.director .birth-summary')).toContainText('Fallen');
 });
 
 /** Writes a scores file with two fallen heroes over the one tome2 keeps in browser storage. */
@@ -360,7 +314,58 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('.sheet .fame-row').first()).toContainText('Grodon');
 });
 
-test('a hero whose adventure ended can be looked back on and begun anew from the Hall of Fame, as a new run', async ({ page }) => {
+test('a hero who dies is told what killed them and can be looked back on', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Doomed');
+  await jumpToLevel(page, 1);
+  /* A Great Wyrm of Chaos (r_info 783), woken by the hero's blows. */
+  await summonBeside(page, 783);
+
+  const death = page.locator('.prompt-card.death');
+  for (let i = 0; i < 30 && !(await death.isVisible()); i++) {
+    const row = (await screenText(page)).split('\n')[0] ?? '';
+    /* Wizard mode offers to cheat death first. */
+    if (/Die\?/.test(row)) await sendText(page, 'y');
+    else if (/-more-/.test(row)) await sendText(page, '\u001b');
+    else {
+      /* A step into the wyrm attacks it, whatever the toolbar offers first (the hero arrived on stairs). */
+      const digit = await page.evaluate(() => {
+        const tome = window.__tome!;
+        const snap = tome.engine.snapshot()!;
+        const wyrm = tome.engine.gameState()?.monsters?.find((m) => m.name === 'Great Wyrm of Chaos');
+        if (!wyrm || Math.max(Math.abs(wyrm.x - snap.px), Math.abs(wyrm.y - snap.py)) !== 1) return null;
+        return String(5 + (wyrm.x - snap.px) - 3 * (wyrm.y - snap.py));
+      });
+      if (digit && (await page.evaluate(() => window.__tome!.engine.snapshot()!.atCommand))) await sendText(page, `\\;${digit}`);
+    }
+    await page.waitForTimeout(300);
+  }
+  await expect(death).toContainText('You have died');
+  await expect(death).toContainText('Great Wyrm of Chaos');
+  await expect(death.locator('.card-button')).toHaveCount(1);
+  await death.locator('.card-button.primary').click();
+
+  const finish = page.locator('#toolbar [data-action="finish"]');
+  for (let i = 0; i < 30 && !(await finish.isVisible()); i++) {
+    const row = (await screenText(page)).split('\n')[0] ?? '';
+    if (/Die\?/.test(row)) await sendText(page, 'y');
+    else if (/-more-/.test(row)) await sendText(page, '\u001b');
+    await page.waitForTimeout(300);
+  }
+  await expect(page.locator('.termview')).toContainText('Your tale');
+  await page.locator('#toolbar [data-action="fallen"]').click();
+  await expect(page.locator('.sheet-fallen .fallen-cause')).toContainText('Great Wyrm of Chaos');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  /* tome2 keeps no score for a hero in wizard mode, so the title follows at once. */
+  await finish.click();
+  await waitForEngine(page);
+  await expect(page.locator('#title-screen .title-choice').first()).not.toContainText('Continue');
+});
+
+test('a hero whose adventure ended can be looked back on and begun anew as a new run, and a new hero can take their name', async ({ page }) => {
   test.setTimeout(300_000);
   await page.goto('./');
   await waitForEngine(page);
@@ -413,9 +418,19 @@ test('a hero whose adventure ended can be looked back on and begun anew from the
   await page.locator('#title-screen [data-link="fame"]').click();
   await page.locator('.sheet .fame-row', { hasText: 'Anew' }).click();
   await expect(page.locator('.sheet-fame-hero [data-action="anew"]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  /* The fallen hero's name is free for a new character. */
+  await beginNewCharacter(page, 'Anew');
+  await page.waitForTimeout(400);
+  await page.locator('#title-screen').click({ position: { x: 20, y: 20 } });
+  await expect(page.locator('.director.birth')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.director .birth-summary')).toContainText('Anew');
 });
 
-test('the name prompt sits at the top of the screen, clear of the keyboard', async ({ page }) => {
+test('the name prompt sits at the top of the screen, clear of the keyboard', { tag: '@layout' }, async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await page.locator('#title-screen .title-choice', { hasText: /Enter Middle-earth|New character/i }).click();
@@ -424,23 +439,6 @@ test('the name prompt sits at the top of the screen, clear of the keyboard', asy
   const box = await page.locator('.sheet.sheet-ask').boundingBox();
   const height = page.viewportSize()!.height;
   expect(box!.y + box!.height).toBeLessThan(height * 0.4);
-});
-
-test('the world map is entered from the commands and left from the toolbar', async ({ page }) => {
-  await page.goto('./');
-  await waitForEngine(page);
-  await createCharacter(page, 'Rover');
-  const wild = () => page.evaluate(() => window.__tome!.engine.snapshot()!.wild);
-  await page.locator('#toolbar [data-action="commands"]').click();
-  await expect(page.locator('.sheet .command', { hasText: 'Go up' })).toHaveCount(0);
-  await page.locator('.sheet .command', { hasText: 'World map' }).click();
-  await expect.poll(wild).toBe(true);
-  await expect(page.locator('#toolbar [data-action="walkhere"]')).toBeVisible();
-  await expect(page.locator('#toolbar [data-action="explore"]')).toHaveCount(0);
-  await page.locator('#toolbar [data-action="walkhere"]').click();
-  await expect.poll(wild).toBe(false);
-  await expect(page.locator('#toolbar [data-action="walkhere"]')).toHaveCount(0);
-  await expect(page.locator('#toolbar [data-action="inventory"]')).toBeVisible();
 });
 
 test('saved heroes: Continue plays the last, the Roster lists them all, an abandoned hero stays in the Hall of Fame until removed, Delete removes only that hero', async ({ page }) => {

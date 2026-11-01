@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { canvasBrightness, createCharacter, dismissMore, equipSuggested, jumpToLevel, keptLevelFiles, playerPos, pressExplore, sendText, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
+import type { Page } from '@playwright/test';
+import { canvasBrightness, createCharacter, dismissMore, equipSuggested, expect, jumpToLevel, keptLevelFiles, playerPos, pressExplore, sendText, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
 
 /** A fingerprint of the level's terrain, and how many grids the hero remembers. */
 function level(page: Page): Promise<{ terrain: number; known: number; depth: number }> {
@@ -29,7 +29,7 @@ async function explore(page: Page, times: number): Promise<void> {
   await waitAtCommand(page);
 }
 
-test('kept levels stay as the hero left them, and the way back is known', async ({ page }) => {
+test('kept levels stay as the hero left them, the way back is known, and the heading follows the depth', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Keeper');
@@ -37,7 +37,7 @@ test('kept levels stay as the hero left them, and the way back is known', async 
   /* The hero arrives on stairs, which are always remembered; gear is taken just off them, in the dark. */
   const start = await playerPos(page);
   await equipSuggested(page);
-  await explore(page, 4);
+  await explore(page, 2);
 
   const before = await level(page);
   const left = await playerPos(page);
@@ -59,45 +59,36 @@ test('kept levels stay as the hero left them, and the way back is known', async 
   const back = await playerPos(page);
   const known = (await level(page)).known;
 
+  const heading = async () => (await page.evaluate(() => window.__tome!.exploreStop()))?.heading;
+  expect(await heading()).toBe('down');
   await jumpToLevel(page, 3);
   expect((await level(page)).depth).toBe(3);
+  expect(await heading()).toBe('down');
   await jumpToLevel(page, 2);
   const again = await level(page);
   expect(again.terrain).toBe(before.terrain);
   expect(again.known).toBeGreaterThanOrEqual(known);
   expect(await playerPos(page)).toEqual(back);
+  expect(await heading()).toBe('up');
+
+  /* Once the level is mapped, exploring has nothing left but the way on. */
+  await wizardCommand(page, 'w');
+  expect((await page.evaluate(() => window.__tome!.exploreStop()))?.kind).not.toBe('frontier');
 });
 
-test('levels are made anew on each visit when they are not kept', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem('tome2mobile.settings', JSON.stringify({ persistentLevels: false }));
+test.describe(() => {
+  test.use({ settings: { animation: 'off', persistentLevels: false } });
+
+  test('levels are made anew on each visit when they are not kept', async ({ page }) => {
+    await page.goto('./?wizard');
+    await waitForEngine(page);
+    await createCharacter(page, 'Wanderer');
+    await jumpToLevel(page, 2);
+    const before = await level(page);
+    await jumpToLevel(page, 3);
+    await jumpToLevel(page, 2);
+    expect((await level(page)).terrain).not.toBe(before.terrain);
   });
-  await page.goto('./?wizard');
-  await waitForEngine(page);
-  await createCharacter(page, 'Wanderer');
-  await jumpToLevel(page, 2);
-  const before = await level(page);
-  await jumpToLevel(page, 3);
-  await jumpToLevel(page, 2);
-  expect((await level(page)).terrain).not.toBe(before.terrain);
-});
-
-test('a mapped level leaves exploring nothing but the way on, which turns upward on the way back', async ({ page }) => {
-  await page.goto('./?wizard');
-  await waitForEngine(page);
-  await createCharacter(page, 'Pathfinder');
-  await jumpToLevel(page, 2);
-  await page.evaluate(() => window.__tome!.sendText('\u0001w'));
-  await dismissMore(page);
-  await waitAtCommand(page);
-  const stop = await page.evaluate(() => window.__tome!.exploreStop());
-  expect(stop?.kind).not.toBe('frontier');
-  expect(stop?.heading).toBe('down');
-
-  await jumpToLevel(page, 1);
-  expect((await page.evaluate(() => window.__tome!.exploreStop()))?.heading).toBe('up');
-  await jumpToLevel(page, 2);
-  expect((await page.evaluate(() => window.__tome!.exploreStop()))?.heading).toBe('down');
 });
 
 test('the first level stays as it was left after a trip up to the land', async ({ page }) => {
@@ -138,7 +129,7 @@ test('the first level stays as it was left after a trip up to the land', async (
   expect(await playerPos(page)).toEqual(left);
 });
 
-test('at night the land is drawn at once on coming down from the world map', async ({ page }) => {
+test('the world map is entered from the commands and left from the toolbar, and at night the land is drawn at once on coming down', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Nightowl');
@@ -168,11 +159,15 @@ test('at night the land is drawn at once on coming down from the world map', asy
 
   const wild = () => page.evaluate(() => window.__tome!.engine.snapshot()!.wild);
   await page.locator('#toolbar [data-action="commands"]').click();
+  await expect(page.locator('.sheet .command', { hasText: 'Go up' })).toHaveCount(0);
   await page.locator('.sheet .command', { hasText: 'World map' }).click();
   await expect.poll(wild).toBe(true);
   await waitAtCommand(page);
+  await expect(page.locator('#toolbar [data-action="explore"]')).toHaveCount(0);
   await page.locator('#toolbar [data-action="walkhere"]').click();
   await expect.poll(wild).toBe(false);
+  await expect(page.locator('#toolbar [data-action="walkhere"]')).toHaveCount(0);
+  await expect(page.locator('#toolbar [data-action="inventory"]')).toBeVisible();
   await dismissMore(page);
   await waitAtCommand(page);
   await expect.poll(() => canvasBrightness(page, '#map', whole), { timeout: 5_000 }).toBeGreaterThan(lit / 2);

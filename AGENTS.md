@@ -58,7 +58,7 @@ web/src/render/        Lit map, materials, lighting, flames, snapshot types
 web/src/title.ts       Opening screen (flames, mosaic logo, Continue/New, intro)
 web/src/audio/         Soundtrack, ambience and sound effects (Web Audio, no files)
 tests/unit/            node:test, pure modules
-tests/e2e/             Playwright (phone portrait, phone landscape, tablet)
+tests/e2e/             Playwright: every test on phone portrait, those tagged @layout also on phone landscape and tablet
 ```
 
 ## How it works
@@ -107,14 +107,17 @@ npm run dev            # http://localhost:5173
 npm test               # unit tests, fast — run often
 npm run typecheck
 npm run build          # needed before e2e; tsc also checks tests/
-npm run test:e2e       # slow (~30+ min for all projects in CI)
+npm run test:e2e       # slow (~10 min locally; CI splits it over three jobs)
 ```
 
 - New engine exports must be added to `-sEXPORTED_FUNCTIONS` in `CMakeLists.txt`.
 - Test in small batches while working (unit tests, a typecheck, targeted Playwright scripts or `npx playwright test -g "<name>" --project=phone-portrait`). Run the full e2e suite at the end of a piece of work, not after every change.
 - Headless Chromium can't emulate iOS safe areas or emoji fonts; check those with CSS overrides (`--safe-left: 59px` etc.) and owner screenshots.
 - iOS softens a band just below the status bar; headings and panels near the top add `--top-clear` (up to 1.75rem, zero without a top inset) so only the map and messages sit under it.
-- `?wizard` starts in wizard mode (a y/n prompt appears at birth); e2e uses it to jump levels.
+- e2e tests are journeys: a new behaviour extends the journey that already reaches it (its hero, its screen) rather than creating a hero of its own. Tag a test `@layout` only when what it checks depends on the screen's size or shape (it then runs on all three projects), `@smoke` only for the few that main runs before deploying.
+- CI: pull requests build once, then run the e2e tests in three shards; a push to main (the tree its pull request tested) runs the unit and `@smoke` tests and deploys.
+- e2e tests import `test` and `expect` from `helpers.ts`, whose `settings` fixture stores the app's settings before the first load: animation off (no pause between travel steps), unless a test sets its own with `test.use({ settings })` (bolts are drawn and heard only with animation).
+- `?wizard` starts in wizard mode (a y/n prompt appears at birth); e2e uses it to jump levels. tome2 keeps no score for a hero in wizard mode, and asks *Die?* before a death.
 - The levels an e2e test meets are the same on every run of one engine build, but any engine change (even one that adds code nobody calls) deals different ones, so a test must not lean on its level's layout: light it (`wizardCommand(page, 'w')`), send creatures away (`'z'`), or find what it needs (`'D'` changes dungeon, `'q'` takes a quest).
 - Debug hook: `window.__tome` (engine, buffer, screenText, sendText, mode, actions, director…).
 
