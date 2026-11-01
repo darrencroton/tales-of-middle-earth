@@ -681,6 +681,8 @@ bool shop_buys_anything(std::string const &name)
 /*
  * The price of one of an object, as store.cc's price_item (static there):
  * `selling` is the shop selling to the player, otherwise the shop buying.
+ * Buying, a greedy keeper and a hero of low charisma make it negative, and
+ * tome2 would take that much gold for the sale.
  */
 long shop_price(store_type const &st, owner_type const &owner, object_type const *o_ptr, bool selling)
 {
@@ -1343,6 +1345,11 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 		{
 			auto const one = one_of(o_ptr);
 			price = std::min<long>(shop_price(*st, owner, &one, false), owner.max_cost);
+			if (price < 0)
+			{
+				why = "nothing";
+				price = 0;
+			}
 		}
 		if (!first) json += ',';
 		first = false;

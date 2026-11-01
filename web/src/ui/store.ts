@@ -87,6 +87,8 @@ export function refusal(why: StoreOffer['why']): string {
       return 'Worth nothing';
     case 'cursed':
       return 'Cursed: cannot be let go';
+    case 'nothing':
+      return 'Offers nothing for it';
     default:
       return '';
   }
@@ -343,7 +345,8 @@ export function openOfferItem(api: GameApi, store: StoreState, model: ShopModel,
       },
     });
   } else if (why) {
-    body.append(el('p', 'shop-short', why === 'kind' && !store.buys ? `${keeper(store)} sells, but never buys.` : `${refusal(why)}.`));
+    const note = why === 'kind' && !store.buys ? `${keeper(store)} sells, but never buys.` : why === 'nothing' ? `${keeper(store)} offers nothing for it.` : `${refusal(why)}.`;
+    body.append(el('p', 'shop-short', note));
   }
   if (store.museum && !why) body.append(el('p', 'muted', 'A donation cannot be taken back.'));
   body.append(description(api.engine.objectDescription(item.i), 'You know nothing more about this item yet.'));

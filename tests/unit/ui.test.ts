@@ -243,6 +243,7 @@ describe('shops', () => {
     assert.equal(refusal(''), '');
     assert.match(refusal('kind'), /Not wanted/);
     assert.match(refusal('cursed'), /Cursed/);
+    assert.match(refusal('nothing'), /Offers nothing/);
   });
 
   it('reads the page of the list tome2 shows', () => {
