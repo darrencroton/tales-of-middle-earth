@@ -22,7 +22,7 @@ Map (toolbar, HUD, gestures)
 │   ├── Cast / Powers ─────── Magic                panel: Recent, books, Powers, Skills     depth 1
 │   │                         └── Spell             card over Magic (Cast)                   depth 2
 │   ├── More ──────────────── Commands             panel: command grid by group             depth 1
-│   │   ├── Look ──────────── look mode: banner + look card on the map (About → card)
+│   │   ├── Look ──────────── look mode: banner + look card on the map (each creature and item → its card)
 │   │   ├── native commands → the native panel, in the same frame (Back returns to Commands)
 │   │   ├── item commands (Quaff, Read…) → tome2 item prompt (TermView panel, tabs)
 │   │   └── reading commands (Inspect, Options) → tome2 screen; Commands reopens after

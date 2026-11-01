@@ -38,7 +38,7 @@ import { openSoundtrack } from './ui/soundtrack.ts';
 import { openHelp } from './ui/help.ts';
 import { openMagic, openSpell, RecentStore } from './ui/magic.ts';
 import { CastWatcher, fireMacro, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
-import { capitalise, descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
+import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
 import { GameFeel, type FeelEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
 import {
@@ -323,7 +323,6 @@ const api: GameApi = {
   palette: () => buffer.palette,
   snapshot: () => lastSnap,
   state: () => lastState,
-  features: () => features,
   send: (keys) => {
     coverSheets(false);
     send(keys);
@@ -694,9 +693,9 @@ function showLookCard(point: MapPoint): void {
     rows.append(button);
   };
   for (const m of description.monsters) row(m.ch, m.attr, titleName(m.name), monsterSummary(m), () => openMonster(api, m));
-  for (const o of description.objects) row(o.ch, o.attr, capitalise(o.name), '', () => openFloorObject(api, o));
+  for (const o of description.objects) row(o.ch, o.attr, o.name, '', () => openFloorObject(api, o));
   if (description.blurred) rows.append(el('p', 'look-text', 'You cannot make out what is there.'));
-  else if (!description.known) rows.append(el('p', 'look-text', 'You have not explored there.'));
+  else if (!description.known && !rows.childElementCount) rows.append(el('p', 'look-text', 'You have not explored there.'));
   const buttons = el('div', 'look-buttons');
   const add = (label: string, run: () => void) => {
     const button = el('button', 'look-button', label);
@@ -759,6 +758,8 @@ let commandState: GameState | null = null;
  * (when messages pause, it has).
  */
 let leadMessages: MessageState[] = [];
+/** Lead lines have been shown since tome2 last waited for a command. */
+let leadShown = false;
 
 /**
  * A quest begun (the hero arrived on its level) or ended, held back until
@@ -1210,6 +1211,7 @@ function refresh(): void {
     ended = false;
     commandState = null;
     leadMessages = [];
+    leadShown = false;
     questMoment = null;
     audio.setView('title');
     setMode(title.isVisible ? 'title' : 'screen');
@@ -1250,8 +1252,13 @@ function refresh(): void {
   /* A shop or other building waits for its own commands under its screen. */
   const atCommands = snap.atCommand || (snap.icky && atBuildingCommands());
   const lastCommandState = commandState;
-  if (state && atCommands) commandState = state;
+  const ledSince = leadShown;
+  if (state && atCommands) {
+    commandState = state;
+    leadShown = false;
+  }
   leadMessages = leadInMessages(commandState, state, atCommands, settings.messages === 'flow');
+  if (leadMessages.length) leadShown = true;
   if (questMoment && leadMessages.length) questMoment.led = true;
 
   /* tome2 clears its screen flag when an item prompt ends, though the shop is still open until the trade's last question. */
@@ -1333,7 +1340,9 @@ function refresh(): void {
       const quest = state.player.quest ?? previous?.player?.quest;
       for (const event of feel.update(state.player, (e) => (e.kind === 'quest' || e.kind === 'questEnd') && !!quest)) {
         if (questMoment) feel.play(questMoment.event);
-        questMoment = { event: event as NonNullable<typeof questMoment>['event'], quest: quest!, since: lastCommandState, led: false };
+        /* tome2 can ask (a princess's reward) before it marks the quest done, and with Pause its -more- has shown every word. */
+        const led = ledSince || leadMessages.length > 0 || (event.kind === 'questEnd' && settings.messages !== 'flow');
+        questMoment = { event: event as NonNullable<typeof questMoment>['event'], quest: quest!, since: lastCommandState, led };
       }
       feel.setQuest(
         state.player.quest?.state === 'active' && !state.player.dead,
@@ -1363,7 +1372,7 @@ function refresh(): void {
   updateActionBar();
 }
 
-/* tome2's notes of things used up or taken, left out of a quest's scene (the Thieves take everything the hero carries). */
+/* tome2's notes of things used up or gone, left out of a quest's scene. */
 const SCENE_NOISE = /^You have no more /;
 
 /**
@@ -1379,7 +1388,7 @@ function tellQuestMoment(snap: LevelSnapshot, state: GameState): void {
   questMoment = null;
   const { event, quest } = moment;
   const arrival = event.kind === 'quest';
-  const key = place ? questKey(quest, place) : '';
+  const key = questKey(quest, snap.depth);
   const told = arrival && (!heroMemory || !key || heroMemory.quests.includes(key));
   const scene = moment.led || !moment.since ? [] : newMessages(moment.since, state).filter((m) => !SCENE_NOISE.test(m.text)).slice(0, LEAD_LINES).reverse().map((m) => m.text);
   if (told || (!arrival && !scene.length)) {

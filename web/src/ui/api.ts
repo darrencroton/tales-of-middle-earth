@@ -2,7 +2,6 @@ import type { Engine } from '../engine.ts';
 import type { Macro } from '../play/macro.ts';
 import type { RecentAction } from '../play/recent.ts';
 import type { MapPoint } from '../render/map.ts';
-import type { FeatureInfo } from '../render/materials.ts';
 import type { GameState, LevelSnapshot } from '../render/snapshot.ts';
 import type { QuantityQuestion } from './menus.ts';
 import type { Sheets } from './sheet.ts';
@@ -14,7 +13,6 @@ export interface GameApi {
   palette(): readonly string[];
   snapshot(): LevelSnapshot | null;
   state(): GameState | null;
-  features(): readonly FeatureInfo[];
   /** Sends keys to the engine (closing any sheets). */
   send(keys: number[]): void;
   /**

@@ -119,9 +119,9 @@ function sanitiseHero(raw: unknown): HeroMemory {
   return { heading: value.heading === 'up' ? 'up' : 'down', areas, visited, quests };
 }
 
-/** A quest's arrival, told once: a fixed quest by its index, a random one (they share an index) by its dungeon and depth. */
-export function questKey(quest: { id: number; random?: unknown }, place: { dungeon: number; depth: number }): string {
-  return quest.random ? `${quest.id}:${place.dungeon}:${place.depth}` : String(quest.id);
+/** A quest's arrival, told once: a fixed quest by its index, a random one (they share an index; tome2 has one per depth) by its depth. */
+export function questKey(quest: { id: number; random?: unknown }, depth: number): string {
+  return quest.random ? `${quest.id}:${depth}` : String(quest.id);
 }
 
 export function sanitiseMemory(raw: unknown): Stored {

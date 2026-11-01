@@ -1312,12 +1312,6 @@ html.keyboard-open .tv-layer.panel {
 
 /* Skills */
 
-.skill-description {
-  margin: 0 0 0.8rem;
-  color: var(--accent-bright);
-  line-height: 1.5;
-}
-
 /* The selected row's details stay at the top of the list at one height, so rows never move as the cursor does. */
 .skill-detail {
   position: sticky;

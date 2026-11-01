@@ -104,11 +104,8 @@ export function raiseRefusal(skill: Pick<SkillEntry, 'raise' | 'misc'>, most: nu
   }
 }
 
-/** Unsaved points per skill, as the row shows them. */
-export type SkillPending = ReadonlyMap<string, number>;
-
 /** The whole skill list with the selected skill's description; rows with unsaved points show how many; `onTap` receives a row index. */
-export function skillTableElements(table: SkillTable, selected: number, pending: SkillPending, onTap: (index: number) => void): HTMLElement[] {
+export function skillTableElements(table: SkillTable, selected: number, pending: ReadonlyMap<string, number>, onTap: (index: number) => void): HTMLElement[] {
   const current = table.skills[selected];
   const out: HTMLElement[] = [detail(current?.name ?? '', [current?.desc ?? ''])];
   table.skills.forEach((skill, i) => {

@@ -415,11 +415,16 @@ export class CharacterPanel {
     return null;
   }
 
+  /** tome2 has every key sent and waits for the next, so the screen last seen is the one keys act on. */
+  private get settled(): boolean {
+    return this.api.engine.awaitingInput && this.api.engine.pendingKeys === 0;
+  }
+
   /** Puts a point into the current skill, or takes one back; one at a time, so each is known to have taken or not. */
   private move(step: 1 | -1): void {
     const session = this.session;
     const skill = this.currentSkill();
-    if (!session || session.sent || !skill) return;
+    if (!session || session.sent || !skill || !this.settled) return;
     session.sent = { name: skill.name, value: skill.value, step };
     this.deps.sendKeys(keyCodes(step > 0 ? '6' : '4'));
   }
@@ -438,7 +443,10 @@ export class CharacterPanel {
    */
   private follow(current: CharacterTab | null, atCommand: boolean): boolean {
     if (current !== 'skills') {
-      if (current || atCommand) this.session = null;
+      if (current || atCommand) {
+        this.session = null;
+        this.answer = null;
+      }
       return false;
     }
     const table = this.api.engine.skillTable();
@@ -462,6 +470,7 @@ export class CharacterPanel {
 
   /** Asks whether to save the points moved: Save keeps them, Discard gives them back, closing the card goes on moving them; `then` follows either answer. */
   private confirmSkills(then?: () => void): void {
+    if (!this.settled) return;
     const moved = [...(this.session?.invested ?? [])];
     const body = el('div', 'prose');
     body.append(el('p', undefined, 'Points spent on skills cannot be taken back once saved.'));

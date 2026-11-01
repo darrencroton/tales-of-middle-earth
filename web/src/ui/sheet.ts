@@ -287,17 +287,20 @@ export class Sheets {
   }
 
   /**
-   * Swaps a sheet's content in place, keeping its scroll position and
-   * highlight (for views that update as the game answers). `previous`
-   * defaults to the top sheet.
+   * Swaps a sheet's content in place, keeping its scroll position and,
+   * within the same view, its highlight (for views that update as the game
+   * answers). `previous` defaults to the top sheet.
    */
   update(content: SheetContent, previous?: SheetContent): void {
     const frame = previous ? this.frames.find((f) => f.entries.includes(previous)) : this.topFrame;
     if (!frame) return;
     const at = previous ? frame.entries.indexOf(previous) : frame.entries.length - 1;
+    const view = (c: SheetContent | undefined) => c?.tabs?.find((t) => t.active)?.label;
+    const sameView = view(frame.entries[at]) === view(content);
     frame.entries[at] = content;
     if (at < frame.entries.length - 1) return;
-    const mark = frame.nav.mark();
+    /* The same view rebuilt keeps its highlight's place; another tab starts afresh. */
+    const mark = sameView ? frame.nav.mark() : null;
     const scroll = frame.body.scrollTop;
     frame.render(content, this.frames.indexOf(frame) > 0);
     frame.body.scrollTop = scroll;
