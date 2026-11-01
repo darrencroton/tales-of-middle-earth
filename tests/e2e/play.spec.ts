@@ -104,19 +104,33 @@ test('tapping the map steps towards unseen ground, travels along a known path, a
       const p = tome.mapCellCentre(x, y);
       return document.elementFromPoint(p.x, p.y)?.id === 'map';
     };
-    for (let d = 5; d >= 3; d--) {
-      for (const [dx, dy] of [[d, 0], [-d, 0], [0, d], [0, -d]]) {
-        const x = snap.px + dx;
-        const y = snap.py + dy;
-        if (x < 0 || y < 0 || x >= snap.width || y >= snap.height) continue;
-        let clear = true;
-        for (let k = 1; k <= d; k++) clear &&= ok(snap.px + Math.sign(dx) * k, snap.py + Math.sign(dy) * k);
-        if (clear && onMap(x, y)) return { x, y };
+    /* A known floor three to five steps away along known floor, at least two cells off, so the tap travels rather than steps. */
+    const steps = new Map([[snap.py * snap.width + snap.px, 0]]);
+    const queue = [snap.py * snap.width + snap.px];
+    for (let i = 0; i < queue.length; i++) {
+      const at = queue[i];
+      const d = steps.get(at)!;
+      if (d === 5) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const x = (at % snap.width) + dx;
+          const y = Math.floor(at / snap.width) + dy;
+          const next = y * snap.width + x;
+          if (x < 0 || y < 0 || x >= snap.width || y >= snap.height || steps.has(next) || !ok(x, y)) continue;
+          steps.set(next, d + 1);
+          queue.push(next);
+        }
       }
+    }
+    const far = [...steps].filter(([, d]) => d >= 3).sort((a, b) => b[1] - a[1]);
+    for (const [cell] of far) {
+      const x = cell % snap.width;
+      const y = Math.floor(cell / snap.width);
+      if (Math.max(Math.abs(x - snap.px), Math.abs(y - snap.py)) >= 2 && onMap(x, y)) return { x, y };
     }
     return null;
   });
-  expect(target, 'no clear straight line to test travel').not.toBeNull();
+  expect(target, 'no known floor a few steps away to test travel').not.toBeNull();
 
   const start = await playerPos(page);
   const before = Math.max(Math.abs(start.x - target!.x), Math.abs(start.y - target!.y));
@@ -266,7 +280,6 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
     await waitAtCommand(page);
   }
   expect(await points()).toBeGreaterThan(1);
-
 
   await page.locator('.hud-player').click();
   await expect(page.locator('.sheet-title')).toHaveText('Scholar');
@@ -604,17 +617,29 @@ test.describe(() => {
     await createCharacter(page, 'Pacer');
     await jumpToLevel(page, 2);
     await equipSuggested(page);
-    await wizardCommand(page, 'z');
-    await stepOffStairs(page);
-
-    await page.locator('#toolbar [data-action="explore"]').tap();
-    await expect.poll(() => page.evaluate(() => window.__tome!.travelling())).toBe(true);
+    const travelling = () => page.evaluate(() => window.__tome!.travelling());
+    /* Exploring stops when a creature comes into sight: send those about away and begin again. */
+    for (let attempt = 0; attempt < 5 && !(await travelling()); attempt++) {
+      await dismissMore(page);
+      await wizardCommand(page, 'z');
+      await stepOffStairs(page);
+      const explore = page.locator('#toolbar [data-action="explore"]');
+      if (await explore.count()) {
+        await explore.tap();
+      } else {
+        await page.locator('#toolbar [data-action="commands"]').tap();
+        await page.locator('.sheet .command', { hasText: 'Explore' }).tap();
+      }
+      await expect.poll(travelling, { timeout: 2_000 }).toBe(true).catch(() => undefined);
+    }
+    expect(await travelling(), 'exploring never got under way').toBe(true);
     await expect(page.locator('#toolbar button')).toHaveText([/Stop/, /Speed/, /Menu/]);
     await page.locator('#toolbar [data-action="pace"]').tap();
     expect(await page.evaluate(() => window.__tome!.settings().explorePace)).toBe('normal');
-    expect(await page.evaluate(() => window.__tome!.travelling())).toBe(true);
-    await page.locator('#toolbar [data-action="stop"]').tap();
-    expect(await page.evaluate(() => window.__tome!.travelling())).toBe(false);
+    if (await travelling()) {
+      await page.locator('#toolbar [data-action="stop"]').tap();
+      expect(await travelling()).toBe(false);
+    }
   });
 });
 
@@ -720,7 +745,7 @@ test('a random quest is named on arrival, its chip tells what it asks, it surviv
   }
 });
 
-test('knowledge and the manual read as whole files, help is searchable, links open more, and cards float over the list that opened them', async ({ page }) => {
+test('knowledge and the manual read as whole files, help is searchable, links open more, and cards float over the list that opened them', { tag: '@layout' }, async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Reader', { cls: 'Mage' });

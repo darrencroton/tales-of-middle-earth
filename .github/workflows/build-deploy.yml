@@ -66,11 +66,12 @@ jobs:
         run: npm run build
 
       - name: Upload app
+        if: github.event_name != 'push'
         uses: actions/upload-artifact@v4
         with:
           name: app
           path: dist
-          retention-days: 1
+          retention-days: 7
 
       # The pull request ran every end-to-end test on this tree; main only checks that the game starts and plays.
       - name: Install Playwright browser

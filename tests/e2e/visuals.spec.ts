@@ -13,72 +13,77 @@ import {
   waitForEngine,
 } from './helpers.ts';
 
-test('opening screen ignites, the intro rises from the flames, then character creation', { tag: '@layout' }, async ({ page }, testInfo) => {
-  await page.goto('./');
-  await expect(page.locator('#title-screen')).toBeVisible();
-  await waitForEngine(page);
-  await expect
-    .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0, y: 0.8, w: 1, h: 0.2 }), { timeout: 10_000 })
-    .toBeGreaterThan(15);
-  await expect
-    .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0.1, y: 0.1, w: 0.8, h: 0.2 }), { timeout: 10_000 })
-    .toBeGreaterThan(4);
-  await page.waitForTimeout(4500);
-  await testInfo.attach('opening', { body: await page.screenshot(), contentType: 'image/png' });
+test.describe(() => {
+  /* The flames ignite only with animation. */
+  test.use({ settings: { animation: 'full' } });
 
-  await beginNewCharacter(page, 'Lighter');
-  await expect(page.locator('#title-screen .title-intro')).toContainText('The world is indeed full of peril');
-  await page.waitForTimeout(1500);
-  await testInfo.attach('intro', { body: await page.screenshot(), contentType: 'image/png' });
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
+  test('opening screen ignites, the intro rises from the flames, then character creation', { tag: '@layout' }, async ({ page }, testInfo) => {
+    await page.goto('./');
+    await expect(page.locator('#title-screen')).toBeVisible();
+    await waitForEngine(page);
+    await expect
+      .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0, y: 0.8, w: 1, h: 0.2 }), { timeout: 10_000 })
+      .toBeGreaterThan(15);
+    await expect
+      .poll(() => canvasBrightness(page, '#title-screen canvas', { x: 0.1, y: 0.1, w: 0.8, h: 0.2 }), { timeout: 10_000 })
+      .toBeGreaterThan(4);
+    await page.waitForTimeout(4500);
+    await testInfo.attach('opening', { body: await page.screenshot(), contentType: 'image/png' });
 
-  await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race', { timeout: 30_000 });
-  expect(await viewMode(page)).toBe('screen');
-  await expect(page.locator('#fx')).toBeVisible();
-  await expect
-    .poll(() => canvasBrightness(page, '#fx', { x: 0, y: 0.85, w: 1, h: 0.15 }), { timeout: 10_000 })
-    .toBeGreaterThan(5);
+    await beginNewCharacter(page, 'Lighter');
+    await expect(page.locator('#title-screen .title-intro')).toContainText('The world is indeed full of peril');
+    await page.waitForTimeout(1500);
+    await testInfo.attach('intro', { body: await page.screenshot(), contentType: 'image/png' });
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
 
-  const current = page.locator('.director .birth-option.current');
-  /* Races whose highlighted name runs into the next column still read as one option each, with their details. */
-  for (const race of ['Dark-Elf', 'Thunderlord', 'DeathMold']) {
-    await page.locator('.director .birth-option', { hasText: race }).click();
-    await expect(current).toHaveText(race);
-    await expect(page.locator('.director .birth-card h3')).toHaveText(race);
-    await expect(page.locator('.director .birth-stat')).toHaveCount(6);
-  }
-  await expect(page.locator('.director .birth-option')).toHaveCount(22);
-  await expect(page.locator('.director .birth-tag')).toContainText('Experimental');
-  await expect(page.locator('.director .birth-traits li').first()).toBeVisible();
+    await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race', { timeout: 30_000 });
+    expect(await viewMode(page)).toBe('screen');
+    await expect(page.locator('#fx')).toBeVisible();
+    await expect
+      .poll(() => canvasBrightness(page, '#fx', { x: 0, y: 0.85, w: 1, h: 0.15 }), { timeout: 10_000 })
+      .toBeGreaterThan(5);
 
-  const other = page.locator('.director .birth-option:not(.current)').first();
-  const otherName = (await other.textContent())!;
-  await other.click();
-  await expect(current).toHaveText(otherName);
-  await expect(page.locator('.director .birth-card h3')).toHaveText(otherName);
-  await testInfo.attach('race', { body: await page.screenshot(), contentType: 'image/png' });
-  await page.locator('#toolbar [data-action="choose"]').click();
-  await expect(page.locator('.director .birth-summary')).toContainText(otherName);
+    const current = page.locator('.director .birth-option.current');
+    /* Races whose highlighted name runs into the next column still read as one option each, with their details. */
+    for (const race of ['Dark-Elf', 'Thunderlord', 'DeathMold']) {
+      await page.locator('.director .birth-option', { hasText: race }).click();
+      await expect(current).toHaveText(race);
+      await expect(page.locator('.director .birth-card h3')).toHaveText(race);
+      await expect(page.locator('.director .birth-stat')).toHaveCount(6);
+    }
+    await expect(page.locator('.director .birth-option')).toHaveCount(22);
+    await expect(page.locator('.director .birth-tag')).toContainText('Experimental');
+    await expect(page.locator('.director .birth-traits li').first()).toBeVisible();
 
-  /* Back returns to the previous step with the earlier choice highlighted. */
-  const step = await page.locator('.director .birth-header h2').textContent();
-  await page.locator('#toolbar [data-action="back"]').click();
-  await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race');
-  await expect(current).toHaveText(otherName);
-  expect(await page.locator('#toolbar [data-action="back"]').count()).toBe(0);
-  await page.locator('#toolbar [data-action="choose"]').click();
-  await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
+    const other = page.locator('.director .birth-option:not(.current)').first();
+    const otherName = (await other.textContent())!;
+    await other.click();
+    await expect(current).toHaveText(otherName);
+    await expect(page.locator('.director .birth-card h3')).toHaveText(otherName);
+    await testInfo.attach('race', { body: await page.screenshot(), contentType: 'image/png' });
+    await page.locator('#toolbar [data-action="choose"]').click();
+    await expect(page.locator('.director .birth-summary')).toContainText(otherName);
 
-  const second = (await page.locator('.director .birth-option:not(.current):not(.unusual)').last().textContent())!;
-  await page.locator('.director .birth-option', { hasText: second }).click();
-  await expect(current).toHaveText(second);
-  await page.locator('#toolbar [data-action="choose"]').click();
-  await expect(page.locator('.director .birth-header h2')).not.toHaveText(step!);
-  await page.locator('#toolbar [data-action="back"]').click();
-  await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
-  await expect(current).toHaveText(second);
-  await expect(page.locator('.director .birth-summary')).toContainText(otherName);
+    /* Back returns to the previous step with the earlier choice highlighted. */
+    const step = await page.locator('.director .birth-header h2').textContent();
+    await page.locator('#toolbar [data-action="back"]').click();
+    await expect(page.locator('.director .birth-header h2')).toHaveText('Choose your race');
+    await expect(current).toHaveText(otherName);
+    expect(await page.locator('#toolbar [data-action="back"]').count()).toBe(0);
+    await page.locator('#toolbar [data-action="choose"]').click();
+    await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
+
+    const second = (await page.locator('.director .birth-option:not(.current):not(.unusual)').last().textContent())!;
+    await page.locator('.director .birth-option', { hasText: second }).click();
+    await expect(current).toHaveText(second);
+    await page.locator('#toolbar [data-action="choose"]').click();
+    await expect(page.locator('.director .birth-header h2')).not.toHaveText(step!);
+    await page.locator('#toolbar [data-action="back"]').click();
+    await expect(page.locator('.director .birth-header h2')).toHaveText(step!);
+    await expect(current).toHaveText(second);
+    await expect(page.locator('.director .birth-summary')).toContainText(otherName);
+  });
 });
 
 test('renders the lit map, HUD and tome2 panels in the dungeon', { tag: ['@layout', '@smoke'] }, async ({ page }, testInfo) => {

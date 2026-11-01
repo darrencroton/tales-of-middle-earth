@@ -113,7 +113,7 @@ export function recentItemAction(entry: Extract<RecentAction, { kind: 'item' }>,
 }
 
 /** Whether a recent spell or power can be used now (the spell is in a book carried, the skill or power is known). */
-export function recentUsable(entry: RecentAction, spells: SpellState | null): boolean {
+function recentUsable(entry: RecentAction, spells: SpellState | null): boolean {
   if (entry.kind === 'spell') return !!spells?.books.some((b) => b.spells.some((s) => s.ok && s.name === entry.name));
   if (entry.kind === 'path' && entry.command === 'm') return !!spells?.powers.some((p) => p.label === entry.steps[0]);
   if (entry.kind === 'path') return !!spells?.bonus.some((p) => p.name === entry.steps[0]);
