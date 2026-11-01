@@ -69,8 +69,8 @@ const SAVE_QUESTION = /Save and use these skill values/;
 interface SkillSession {
   start: number;
   invested: Map<string, number>;
-  /** A Raise or Lower sent, and the skill's value then, to tell once tome2 has answered whether it took. */
-  sent: { name: string; value: number; step: 1 | -1 } | null;
+  /** A Raise or Lower sent, and the skill's value and the points left then, to tell once tome2 has answered whether it took. */
+  sent: { name: string; value: number; points: number; step: 1 | -1 } | null;
 }
 
 function screenTab(screen: CharacterScreen): CharacterTab | null {
@@ -425,7 +425,7 @@ export class CharacterPanel {
     const session = this.session;
     const skill = this.currentSkill();
     if (!session || session.sent || !skill || !this.settled) return;
-    session.sent = { name: skill.name, value: skill.value, step };
+    session.sent = { name: skill.name, value: skill.value, points: this.api.engine.skillTable()?.points ?? 0, step };
     this.deps.sendKeys(keyCodes(step > 0 ? '6' : '4'));
   }
 
@@ -457,8 +457,9 @@ export class CharacterPanel {
     }
     const { invested, sent } = this.session;
     if (!sent) return false;
+    /* tome2 changes nothing when it refuses; a point that took moves the points left, or at least the skill (a raise that shuts other skills out can give back as many as it took). */
     const skill = table.skills.find((s) => s.name === sent.name);
-    if (skill && Math.sign(skill.value - sent.value) === sent.step) {
+    if (skill && (table.points !== sent.points || skill.value !== sent.value)) {
       const count = (invested.get(sent.name) ?? 0) + sent.step;
       if (count > 0) invested.set(sent.name, count);
       else invested.delete(sent.name);

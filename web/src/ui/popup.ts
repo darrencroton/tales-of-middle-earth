@@ -55,16 +55,17 @@ export function defaultAction(actions: readonly PopAction[]): PopAction | null {
 
 /**
  * What a pop-up highlights when nothing else is asked for: its first row
- * that can be used (else its first row), else the footer's default action,
- * else the tab of the view shown, else the footer's first usable button.
+ * that can be used (a dimmed shop row still opens its card), else the
+ * footer's default action, else the tab of the view shown, else its first
+ * row, else the footer's first usable button.
  */
 export function defaultItem(body: HTMLElement, footer: HTMLElement): HTMLElement | null {
   const rows = [...body.querySelectorAll<HTMLElement>('[data-nav]')];
   return (
-    rows.find((row) => !row.matches('.unavailable, .dim')) ??
-    rows[0] ??
+    rows.find((row) => !row.matches('.unavailable')) ??
     footer.querySelector<HTMLElement>('.sheet-action.primary') ??
     footer.querySelector<HTMLElement>('.pop-tab.selected') ??
+    rows[0] ??
     footer.querySelector<HTMLElement>('[data-nav]:not(.unavailable)')
   );
 }

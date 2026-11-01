@@ -237,6 +237,8 @@ const sheets = new Sheets(document.body, () => {
   if (sheets.depth !== sheetDepth) audio.cue(sheets.depth > sheetDepth ? 'ui-open' : 'ui-close');
   sheetDepth = sheets.depth;
   updateActionBar();
+  /* A quest moment held while sheets were open is told once they close. */
+  tellQuestMoment();
 });
 
 const termView = new TermView(stage, () => buffer.palette, {
@@ -764,8 +766,13 @@ let commandState: GameState | null = null;
  * (when messages pause, it has).
  */
 let leadMessages: MessageState[] = [];
-/** Lead lines have been shown since tome2 last waited for a command. */
+/** Lead lines have been shown (with a question or a tome2 panel) since tome2 last waited for a command. */
 let leadShown = false;
+
+function noteLeadShown(): void {
+  leadShown = true;
+  if (questMoment) questMoment.led = true;
+}
 
 /**
  * A quest begun (the hero arrived on its level) or ended, held back until
@@ -805,7 +812,10 @@ function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
   const options: TermViewOptions = { layout, describe: describableRange(prompt), cursorRow: buffer.cursorY };
   if (prompt && kind !== 'more' && !CARD_KINDS.has(kind)) options.title = cleanPrompt(prompt) || undefined;
   if (kind === 'item') options.tabs = itemTabs(prompt);
-  if (layout === 'panel' && leadMessages.length) options.lead = leadMessages.map((m) => m.text);
+  if (layout === 'panel' && leadMessages.length) {
+    options.lead = leadMessages.map((m) => m.text);
+    noteLeadShown();
+  }
   if (viewerHeading(prompt)?.size === 0) options.empty = 'Nothing here yet.';
   const box = currentBox();
   if (box) options.hideRow = (row) => row >= box.top && row <= box.bottom;
@@ -1022,8 +1032,10 @@ function updatePromptCard(): void {
   const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
   const show =
     CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !picker && !title.isVisible && engine.pendingKeys === 0;
-  if (show) promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()), leadMessages.map((m) => m.text));
-  else promptCard.hide();
+  if (show) {
+    promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()), leadMessages.map((m) => m.text));
+    if (leadMessages.length) noteLeadShown();
+  } else promptCard.hide();
 }
 
 /** Names for the equipment letters on the full character sheet. */
@@ -1264,8 +1276,6 @@ function refresh(): void {
     leadShown = false;
   }
   leadMessages = leadInMessages(commandState, state, atCommands, settings.messages === 'flow');
-  if (leadMessages.length) leadShown = true;
-  if (questMoment && leadMessages.length) questMoment.led = true;
 
   /* tome2 clears its screen flag when an item prompt ends, though the shop is still open until the trade's last question. */
   const trading = !!trade && !!engine.store();
@@ -1347,7 +1357,7 @@ function refresh(): void {
       for (const event of feel.update(state.player, (e) => (e.kind === 'quest' || e.kind === 'questEnd') && !!quest)) {
         if (questMoment) feel.play(questMoment.event);
         /* tome2 can ask (a princess's reward) before it marks the quest done, and with Pause its -more- has shown every word. */
-        const led = ledSince || leadMessages.length > 0 || (event.kind === 'questEnd' && settings.messages !== 'flow');
+        const led = ledSince || leadShown || (event.kind === 'questEnd' && settings.messages !== 'flow');
         questMoment = { event: event as NonNullable<typeof questMoment>['event'], quest: quest!, since: lastCommandState, led };
       }
       feel.setQuest(
@@ -1373,7 +1383,7 @@ function refresh(): void {
       state.messageTotal ?? 0,
       promptCard.visible ? [] : rowSegments(buffer.chars.subarray(0, buffer.cols), buffer.attrs.subarray(0, buffer.cols), buffer.palette),
     );
-    tellQuestMoment(snap, state);
+    tellQuestMoment();
   }
   updateActionBar();
 }
@@ -1388,9 +1398,11 @@ const SCENE_NOISE = /^You have no more /;
  * those words with a question, or said nothing. Otherwise, and on a return
  * to a quest's level, its banner.
  */
-function tellQuestMoment(snap: LevelSnapshot, state: GameState): void {
+function tellQuestMoment(): void {
   const moment = questMoment;
-  if (!moment || mode !== 'map' || !snap.atCommand || travel || macros.running || sheets.isOpen || promptCard.visible) return;
+  const snap = lastSnap;
+  const state = lastState;
+  if (!moment || !snap || !state || mode !== 'map' || !snap.atCommand || travel || macros.running || sheets.isOpen || promptCard.visible) return;
   questMoment = null;
   const { event, quest } = moment;
   const arrival = event.kind === 'quest';
@@ -2561,6 +2573,8 @@ const engine = new Engine(buffer, {
     }
     settleAttempt();
     settleTrade();
+    /* A quest moment held while a macro ran is told once it has finished. */
+    tellQuestMoment();
     /* tome2 never comes back to the command prompt after saving to quit: back at it, the quit stopped short, and nothing is left to delete. */
     if (quitting && !macros.running && lastSnap?.inDungeon && lastSnap.atCommand && !lastSnap.icky) {
       quitting = false;

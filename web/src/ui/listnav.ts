@@ -142,17 +142,21 @@ export class ListNav {
   }
 
   /**
-   * The item a mark points to in the rebuilt list: the one with the same key,
-   * else (its row changed or went: a stack sold, a count changed) the row now
-   * in its place, or the last row when the list grew shorter.
+   * The item a mark points to in the rebuilt list: the one with the same key
+   * (nearest its place, when several share it), else (its row changed or
+   * went: a stack sold, a count changed) the row now in its place, or the
+   * last row when the list grew shorter.
    */
   find(mark: NavMark | null): HTMLElement | null {
     if (!mark) return null;
-    const all = this.items();
-    const same = mark.key === undefined ? undefined : all.find((item) => navKey(item) === mark.key);
-    if (same) return same;
-    const items = all.filter((item) => !mark.inList || this.scroller.contains(item));
-    return items[Math.min(mark.index, items.length - 1)] ?? null;
+    const items = this.items().filter((item) => !mark.inList || this.scroller.contains(item));
+    /* Of rows sharing the key (two rings alike), the one nearest the old place. */
+    let same: HTMLElement | null = null;
+    items.forEach((item, i) => {
+      if (mark.key === undefined || navKey(item) !== mark.key) return;
+      if (!same || Math.abs(i - mark.index) < Math.abs(items.indexOf(same) - mark.index)) same = item;
+    });
+    return same ?? items[Math.min(mark.index, items.length - 1)] ?? null;
   }
 
   move(direction: NavDirection): void {
