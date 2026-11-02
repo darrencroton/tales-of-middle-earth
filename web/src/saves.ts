@@ -9,6 +9,7 @@ export interface EmscriptenFS {
   readFile(path: string): Uint8Array;
   writeFile(path: string, data: Uint8Array): void;
   unlink(path: string): void;
+  rmdir(path: string): void;
   mkdirTree(path: string): void;
   syncfs(populate: boolean, callback: (err: unknown) => void): void;
 }
@@ -113,46 +114,42 @@ export function collectFiles(fs: EmscriptenFS, root: string): SaveFile[] {
   return files;
 }
 
-/**
- * The reason a bundle cannot be written as a whole: a path listed twice, a
- * path that is also a directory of another entry, or a clash with a file or
- * directory already in storage. Null when every file can be written.
- */
-export function bundleConflict(fs: Pick<EmscriptenFS, 'stat' | 'isDir'>, root: string, files: readonly SaveFile[]): string | null {
-  const paths = new Set<string>();
-  for (const file of files) {
-    if (!isSafeRelativePath(file.path)) return `Unsafe path: ${file.path}`;
-    if (paths.has(file.path)) return `Listed twice: ${file.path}`;
-    paths.add(file.path);
-  }
-  const isDir = (path: string): boolean | null => {
-    try {
-      return fs.isDir(fs.stat(path).mode);
-    } catch {
-      return null;
+/** Removes everything beneath a root, keeping the root itself. */
+export function clearTree(fs: Pick<EmscriptenFS, 'readdir' | 'stat' | 'isDir' | 'unlink' | 'rmdir'>, root: string): void {
+  for (const name of fs.readdir(root)) {
+    if (name === '.' || name === '..') continue;
+    const path = `${root}/${name}`;
+    if (fs.isDir(fs.stat(path).mode)) {
+      clearTree(fs, path);
+      fs.rmdir(path);
+    } else {
+      fs.unlink(path);
     }
-  };
-  for (const path of paths) {
-    const parts = path.split('/');
-    for (let i = 1; i < parts.length; i++) {
-      const dir = parts.slice(0, i).join('/');
-      if (paths.has(dir)) return `${dir} is both a file and a directory`;
-      if (isDir(`${root}/${dir}`) === false) return `${dir} already exists as a file`;
-    }
-    if (isDir(`${root}/${path}`) === true) return `${path} already exists as a directory`;
   }
-  return null;
 }
 
-/** Writes a bundle into storage; call bundleConflict first so nothing is half written. */
-export function writeFiles(fs: EmscriptenFS, root: string, files: SaveFile[]): void {
-  const conflict = bundleConflict(fs, root, files);
-  if (conflict) throw new Error(conflict);
+function writeAll(fs: EmscriptenFS, root: string, files: readonly SaveFile[]): void {
   for (const file of files) {
+    if (!isSafeRelativePath(file.path)) throw new Error(`Unsafe path: ${file.path}`);
     const absolute = `${root}/${file.path}`;
-    const dir = absolute.slice(0, absolute.lastIndexOf('/'));
-    fs.mkdirTree(dir);
+    fs.mkdirTree(absolute.slice(0, absolute.lastIndexOf('/')));
     fs.writeFile(absolute, file.data);
+  }
+}
+
+/**
+ * Replaces everything beneath a root with a bundle's files. When a file
+ * cannot be written, what was there before is put back and the error thrown.
+ */
+export function restoreFiles(fs: EmscriptenFS, root: string, files: readonly SaveFile[]): void {
+  const before = collectFiles(fs, root);
+  clearTree(fs, root);
+  try {
+    writeAll(fs, root, files);
+  } catch (err) {
+    clearTree(fs, root);
+    writeAll(fs, root, before);
+    throw err;
   }
 }
 

@@ -26,7 +26,7 @@ import {
   encodeBundle,
   exportFilename,
   findSaveIndex,
-  writeFiles,
+  restoreFiles,
 } from './saves.ts';
 import { adventurerOf, AdventurerStore, deleteHeroSave, heroLine, saveBase } from './play/adventurers.ts';
 import { adventurerSummary, openAdventurers, type AdventurerDetails, type AdventurerHandlers } from './ui/adventurers.ts';
@@ -3184,7 +3184,7 @@ function openBackupMenu(): void {
     'Backup',
     [
       { label: 'Export game data', icon: '⤒', hint: 'Download a backup file', run: startExport },
-      { label: 'Import game data', icon: '⤓', hint: 'Restore from a backup file', run: startImport },
+      { label: 'Import game data', icon: '⤓', hint: 'Replace what is here with a backup', run: startImport },
     ],
     'Your adventures, the Hall of Fame and your deeds live in this browser. A backup keeps them safe or moves them to another device.',
   );
@@ -3347,15 +3347,19 @@ async function importSaves(file: File): Promise<void> {
     return;
   }
   const files = decodeBundle(await file.text());
+  if (files.length === 0) {
+    openMessage(sheets, 'Import game data', 'This backup holds no game data.');
+    return;
+  }
   confirmSheet(
     sheets,
-    'Import game data?',
-    `Restore ${files.length} file(s) from this backup? Adventures with the same names are replaced, and the game restarts.`,
-    'Import',
+    'Replace your game data?',
+    'Every hero, the Hall of Fame and your deeds on this device are replaced by those in the backup. Export first to keep what is here. The game then restarts.',
+    'Replace',
     () => {
       sheets.closeAll();
       try {
-        writeFiles(fs, root, files);
+        restoreFiles(fs, root, files);
       } catch (err) {
         openMessage(sheets, 'Import failed', `Nothing was changed: ${String(err instanceof Error ? err.message : err)}`);
         return;

@@ -557,7 +557,7 @@ export const HELP: readonly HelpGroup[] = [
           'The game saves when you leave the app. Menu → *Save game* saves now; *Save and quit* saves and returns to the title.',
           'On the title screen *Continue* takes you straight back into your last hero\'s game; *Game Roster* lists every saved hero. Tap a hero there for *Play* or *Delete*.',
           'Menu → *Abandon adventure* ends the current adventure for good. It is remembered in the Hall of Fame, where you can begin anew with the same hero.',
-          'Everything is kept in this browser. *Backup* on the title screen exports all of it (every hero, the Hall of Fame, your deeds) as one file, and imports it again, here or on another device.',
+          'Everything is kept in this browser. *Backup* on the title screen exports all of it (every hero, the Hall of Fame, your deeds) as one file. Importing a backup, here or on another device, replaces everything kept there with what the backup holds.',
           'Clearing this site’s data in your browser deletes your games: export them first.',
           'Add the game to your home screen to play full screen, even offline.',
         ],
