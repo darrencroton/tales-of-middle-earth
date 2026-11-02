@@ -744,7 +744,11 @@ test('Explore in town never leads to a way down, and the quest level below Bree 
     await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
   }
   await waitAtCommand(page);
-  await expect(page.locator('#toolbar [data-action="descend"]')).toBeVisible();
+  const why = await page.evaluate(() => {
+    const snap = window.__tome!.engine.snapshot()!;
+    return `travel stopped (${window.__tome!.lastStopCause()}) at ${snap.px},${snap.py}`;
+  });
+  await expect(page.locator('#toolbar [data-action="descend"]'), `${why}, stairs at ${stairs!.x},${stairs!.y}`).toBeVisible();
 
   const depthBefore = await page.evaluate(() => window.__tome!.engine.snapshot()!.depth);
   await page.locator('#toolbar [data-action="descend"]').click();

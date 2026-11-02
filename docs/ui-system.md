@@ -11,7 +11,7 @@ taps from the map. **Type** refers to the taxonomy in section 3.
 
 ```
 Map (toolbar, HUD, gestures)
-├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Descend/Ascend/Enter rift, Enter shop/home,
+├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Release, Descend/Ascend/Enter rift, Enter shop/home,
 │   Attack, Talk, Pick up, Drink, Wield/Light/Eat, Explore/Way down/Way up/World map — then the hero's
 │   own buttons in fixed places: quick spell or aimed item, Cast/Powers, Fire, Items, Rest, More,
 │   Menu; while exploring: Stop, Speed, Menu)
@@ -27,6 +27,8 @@ Map (toolbar, HUD, gestures)
 │   │   ├── Magic, Powers ─── the Magic panel on that tab, in the same frame (Back returns to Commands)
 │   │   ├── item commands (Drink potion, Read scroll…) → tome2 item prompt (TermView panel, tabs)
 │   │   ├── Talk, Give, Steal, doors → direction card on the map (Give then asks which item)
+│   │   ├── while controlling a creature: Release creature, Creature powers (its powers, TermView panel),
+│   │   │   Creature's pack (tome2 screen), Creature picks up, Creature drops all
 │   │   └── Game options ──── tome2 screen; Commands reopens after
 │   └── Menu ──────────────── Menu                 menu                                     depth 1
 │       ├── Character ─────── Character            panel, tabs Summary · Skills · Abilities · Full sheet
@@ -243,8 +245,19 @@ left by what the player means to do. It leaves out what the hero cannot ever
 do (Pray without a god, Engrave without runes, Steal without the skill) and
 dims, saying why, what cannot be done here: a fountain's or altar's command
 off one, Rest on a Void Jumpgate, Talk, Give and Steal with no one beside the
-hero, and on the world map whatever tome2 ignores there. What Talk or Give
-brings out is shown in a card named for the creature.
+hero, on the world map whatever tome2 ignores there, and every command of
+the hero's own while they control another creature (Fire Golem, Mind
+Steal). What Talk or Give brings out is shown in a card named for the
+creature.
+
+While the hero controls a creature, tome2 gives it the walking keys, `m`
+(its powers, or letting it go), `i`, `d` and `,` (its pack), and ignores the
+hero's other commands. A map tap steps the creature towards the place
+tapped; the changing button is *Release*; More adds *Release creature*,
+*Creature powers*, *Creature's pack*, *Creature picks up* and *Creature drops
+all*; the hero's own actions (toolbar, More, item, creature and look cards,
+*Recently used*, the character sheet's Skills and Abilities) are dimmed
+with why, and journeys are refused.
 
 | tome2 | Command | Reached from |
 |---|---|---|
@@ -272,6 +285,7 @@ brings out is shown in a card named for the creature.
 | `^S` `^X` `Q` | save, save and quit, quit | Menu (*Save game*, *Save and quit*, *Abandon adventure*) |
 | `=` | options | More → *Game options*; our own in Settings |
 | `?` `V` | help, version | Menu → Help, About |
+| `;` `m` `i` `d` `,` while controlling a creature | move it, its powers or let it go, its pack | a map tap; changing button *Release*; More → People and creatures |
 
 Left out on purpose: `/` (identify a symbol: Look and creature cards tell
 more), `^R` redraw, `^I` window toggles, `@` `%` `&` `"` `$` and the

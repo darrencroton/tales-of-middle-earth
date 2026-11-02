@@ -5,6 +5,7 @@
 export function cleanPrompt(text: string): string {
   let t = text.replace(/\s+/g, ' ').trim();
   if (/Help file '[^']+'/.test(t)) return 'Help';
+  if (/Use which power of your golem\?/.test(t)) return 'Creature powers';
   if (/, (Info file|File) '[^']+', Line \d+\/\d+\]$/.test(t)) return 'Reading';
   const viewer = /^\[[^\]]*?\),\s*(.+?),\s*Line \d+\/\d+\]$/.exec(t);
   if (viewer) return viewer[1];

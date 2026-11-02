@@ -1,4 +1,3 @@
-import { worldMapRefusal } from '../play/actions.ts';
 import { SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
 import { itemRecent, recentItem, recentItemAction, recentKey } from '../play/recent.ts';
 import type { EquipSlot, InventoryState, ItemState } from '../render/snapshot.ts';
@@ -105,13 +104,19 @@ function quickUse(api: GameApi, pack: readonly ItemState[]): HTMLElement | null 
     const item = recentItem(entry, pack);
     const action = item ? recentItemAction(entry, item) : null;
     if (!item || !action) continue;
-    const button = el('button', 'action-button recent-button');
+    const why = api.refusal(action.command);
+    const button = el('button', why ? 'action-button recent-button unavailable' : 'action-button recent-button');
     button.type = 'button';
     button.dataset.nav = '';
     button.dataset.key = recentKey(entry);
     button.append(el('span', 'row-label', `${entry.verb} · ${entry.name}`));
     if (item.number > 1) button.append(el('span', 'row-hint', `×${item.number}`));
+    if (why) button.setAttribute('aria-description', why);
     button.addEventListener('click', () => {
+      if (why) {
+        api.refuse(why);
+        return;
+      }
       api.remember(itemRecent(action.command, action.label, item));
       api.runMacro(itemMacro(action, item, 'pack', '', alwaysPickup));
     });
@@ -134,14 +139,12 @@ export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void 
   const body = el('div', 'item-detail');
 
   const alwaysPickup = !!api.state()?.player?.alwaysPickup;
-  const snap = api.snapshot();
-  const worldMap = !!snap?.inDungeon && snap.depth === 0 && !!snap.wild;
   const actions: SheetAction[] = itemActions(item, place).map((action) => ({
     id: action.id,
     label: action.label,
     primary: action.primary,
     danger: action.danger,
-    unavailable: worldMapRefusal(action.command, worldMap),
+    unavailable: api.refusal(action.command),
     run: () => {
       if (action.needsText) {
         api.askText('Inscribe', `Inscription for ${item.name}`, item.ins).then((text) => {

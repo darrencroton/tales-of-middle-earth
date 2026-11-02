@@ -155,6 +155,8 @@ export interface PlayerState {
   pray?: number;
   /** Runes (tome2's inscriptions) the hero has learnt to engrave. */
   runes?: number;
+  /** The id of the creature the hero controls (a Fire Golem, or one taken by Mind Steal), 0 when none. */
+  control?: number;
   /** 1 once the hero has died. */
   dead?: number;
   /** What killed the hero. */

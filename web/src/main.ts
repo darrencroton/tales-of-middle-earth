@@ -11,11 +11,11 @@ import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
-import { commandGroups, commandKeys, contextActions, contextualAction, GAME_OPTIONS, converseMacro, restMacro, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
+import { commandGroups, commandKeys, contextActions, contextualAction, commandRefusal, CONTROLLING, creaturePowersMacro, GAME_OPTIONS, converseMacro, releaseMacro, restMacro, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { approachTarget, goAction, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
+import { approachTarget, goAction, outOfSight, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, questKey, type HeroMemory } from './play/mapmemory.ts';
 import { CAVE_MARK, isHostile, isNeutral, LAYER_MASK, LEAD_LINES, leadInMessages, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
@@ -353,15 +353,22 @@ const api: GameApi = {
     converse(command, digit);
   },
   travelTo: (point) => {
+    if (!lastSnap?.atCommand) {
+      refuse('Finish what you are doing first.');
+      return;
+    }
     sheets.closeAll();
     hideLookCard();
-    if (lastSnap?.atCommand) startTravel(point);
+    startTravel(point);
   },
   highlight: (point) => flash(point),
   askText: (title, label, initial) => askText(sheets, title, label, initial),
   askQuantity: (question) => askQuantity(sheets, question),
   recent: () => recents.list(lastState?.player?.name ?? ''),
   remember: (entry) => recents.remember(lastState?.player?.name ?? '', entry),
+  refusal: (command) => commandRefusal(command, { worldMap: !!lastSnap?.inDungeon && lastSnap.depth === 0 && lastSnap.wild, controlling: controlling() }),
+  travelRefusal,
+  refuse,
 };
 
 const recents = new RecentStore();
@@ -453,7 +460,7 @@ function beginConversation(command: number, creature: MonsterState | undefined):
  * button or tap, giving the direction only once tome2 asks for it.
  */
 function converse(command: 'Y' | 'y', digit: string): void {
-  if (!lastSnap?.atCommand) return;
+  if (!lastSnap?.atCommand || heroHeld()) return;
   hideToast();
   beginConversation(command.charCodeAt(0), creatureTowards(digit.charCodeAt(0)));
   runMacro(converseMacro(command, digit));
@@ -672,6 +679,13 @@ function openNative(view: NativeView): void {
       watchAttempt();
       runMacro(restMacro());
       break;
+    case 'release':
+      runMacro(releaseMacro());
+      break;
+    case 'creaturePowers':
+      watchAttempt();
+      runMacro(creaturePowersMacro());
+      break;
     case 'talk': {
       const partner = talkPartner();
       const digit = partner && lastSnap ? directionDigit(partner.x - lastSnap.px, partner.y - lastSnap.py) : null;
@@ -776,19 +790,24 @@ function showLookCard(point: MapPoint): void {
   if (description.blurred) rows.append(el('p', 'look-text', 'You cannot make out what is there.'));
   else if (!description.known && !rows.childElementCount) rows.append(el('p', 'look-text', 'You have not explored there.'));
   const buttons = el('div', 'look-buttons');
-  const add = (label: string, run: () => void) => {
-    const button = el('button', 'look-button', label);
+  const add = (label: string, run: () => void, unavailable: string | null = null) => {
+    const button = el('button', unavailable ? 'look-button unavailable' : 'look-button', label);
     button.type = 'button';
     button.dataset.nav = '';
-    button.addEventListener('click', run);
+    if (unavailable) button.setAttribute('aria-description', unavailable);
+    button.addEventListener('click', () => (unavailable ? refuse(unavailable) : run()));
     buttons.append(button);
   };
   const monster = description.monsters[0];
   if (!description.player && description.known && lastSnap?.atCommand) {
-    add(monster && isHostile(monster) ? 'Attack' : 'Go there', () => {
-      setLooking(false);
-      startTravel(point);
-    });
+    add(
+      monster && isHostile(monster) ? 'Attack' : 'Go there',
+      () => {
+        setLooking(false);
+        startTravel(point);
+      },
+      travelRefusal(),
+    );
   }
   add('✕', () => hideLookCard());
   lookCard.replaceChildren(head, ...(rows.childElementCount ? [rows] : []), buttons);
@@ -1104,7 +1123,7 @@ function updatePromptCard(): void {
   }
   const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
   const show =
-    CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !picker && !title.isVisible && engine.pendingKeys === 0;
+    CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !picker && !travel?.answering && !title.isVisible && engine.pendingKeys === 0;
   if (show) {
     promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()), leadMessages.map((m) => m.text));
     if (leadMessages.length) noteLeadShown();
@@ -1285,7 +1304,7 @@ function exploreNext(snap: LevelSnapshot | null): ExploreNext {
 
 function exploreNextFrom(snap: LevelSnapshot): ExploreNext {
   const plan = explorePlan();
-  const stop = nextStop(snap, materials, plan, companionCells(snap));
+  const stop = nextStop(snap, materials, plan, passingCells(snap));
   if (!stop && nextStop(snap, materials, plan, 'all')) return 'explore';
   if (!stop) return snap.depth === 0 ? 'worldMap' : 'none';
   if (stop.kind !== 'exit') return 'explore';
@@ -1866,10 +1885,10 @@ function gearSuggestion(): GearSuggestion | null {
   });
 }
 
-/** The weakest hostile creature next to the player, if any. */
+/** The weakest hostile creature next to the player, if any (none while the hero controls another creature, as the hero cannot fight then). */
 function adjacentFoe(): MonsterState | null {
   const snap = lastSnap;
-  if (!snap?.inDungeon || !snap.atCommand) return null;
+  if (!snap?.inDungeon || !snap.atCommand || controlling()) return null;
   const foes = (lastState?.monsters ?? []).filter((m) => isHostile(m) && isAdjacent(m.x, m.y, snap.px, snap.py));
   foes.sort((a, b) => a.hp / Math.max(1, a.maxhp) - b.hp / Math.max(1, b.maxhp));
   return foes[0] ?? null;
@@ -1916,7 +1935,8 @@ function updateActionBar(force = false): void {
     (shownShop ? shopActions() : null) ??
     contextActions({
       mode,
-      prompt,
+      /* tome2's question of which door travel is opening is answered by travel, not the player. */
+      prompt: travel?.answering ? 'none' : prompt,
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
@@ -1932,6 +1952,7 @@ function updateActionBar(force = false): void {
       ...(mode === 'map' && snap ? mapSituation(snap) : {}),
       foe: foe && snap ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
       worldMap: !!snap?.inDungeon && snap.depth === 0 && snap.wild,
+      controlling: controlling(),
     });
   currentActions = actions;
   termView.setActions(mode === 'overlay' ? panelActions(actions) : []);
@@ -2058,7 +2079,33 @@ function commandContext(): CommandContext {
     steals: heroSteals(),
     magic: hasMagic(currentSpells()),
     powers: hasPowers(currentSpells()),
+    controlling: controlling(),
   };
+}
+
+/** The hero controls another creature (a Fire Golem, or one taken by Mind Steal). */
+function controlling(): boolean {
+  return !!lastState?.player?.control;
+}
+
+/** Where the creature the hero controls stands: undefined when they control none, null when it is out of sight. */
+function steered(): MapPoint | null | undefined {
+  const id = lastState?.player?.control;
+  if (!id) return undefined;
+  const creature = lastState?.monsters?.find((m) => m.id === id);
+  return creature ? { x: creature.x, y: creature.y } : null;
+}
+
+/** Why the hero cannot set off for somewhere while things stay as they are, or null (busy is told when tapped). */
+function travelRefusal(): string | null {
+  return controlling() ? CONTROLLING : null;
+}
+
+/** Refuses a journey of the hero's own while they control another creature. */
+function heroHeld(): boolean {
+  if (!controlling()) return false;
+  refuse(CONTROLLING);
+  return true;
 }
 
 /** A button of the More sheet; one that cannot be done now is dimmed and says why. */
@@ -2118,25 +2165,29 @@ function openCommands(): void {
 
 function travelContext(): TravelContext | null {
   if (!lastSnap || !lastState?.player) return null;
-  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au, passing: companionCells(lastSnap) };
+  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au, passing: passingCells(lastSnap), prompt: currentPrompt() };
 }
 
-/** Cells of the companions travel and exploring walk through, swapping places as tome2 lets the hero (`pushPast`). */
-function companionCells(snap: LevelSnapshot): Set<number> {
+/** Cells of the creatures travel and exploring plan through: those not in sight (`outOfSight`), and companions they swap places with as tome2 lets the hero (`pushPast`). */
+function passingCells(snap: LevelSnapshot): Set<number> {
   const player = lastState?.player;
   const monsters = lastState?.monsters ?? [];
-  if (!player || !monsters.some((m) => m.status > 0)) return new Set();
+  const cells = outOfSight(snap, monsters);
+  if (!player || !monsters.some((m) => m.status > 0)) return cells;
   const weapon = engine.inventory()?.equip.find((slot) => slot.i === INVEN_WIELD)?.name ?? '';
-  return pushPast(snap, materials, monsters, {
+  const companions = pushPast(snap, materials, monsters, {
     confused: (player.status.confused ?? 0) > 0,
     stunned: (player.status.stun ?? 0) > 0,
     hallucinating: (player.status.hallucinating ?? 0) > 0,
     stormbringer: /Stormbringer/.test(weapon),
   });
+  for (const cell of companions) cells.add(cell);
+  return cells;
 }
 
 function stopAutomation(message: string | null, cause: string): void {
   if (travel || picker) lastStopCause = cause;
+  const answering = !!travel?.answering;
   if (travel instanceof Explore && lastSnap) {
     exploreAnchor = travel.anchor;
     exploreLastStop = { x: lastSnap.px, y: lastSnap.py };
@@ -2147,6 +2198,8 @@ function stopAutomation(message: string | null, cause: string): void {
   picker = null;
   map.setPath(null);
   if (message) showToast(message);
+  /* A door's question travel was to answer is left to the player. */
+  if (answering) updatePromptCard();
   updateActionBar();
   requestFrame();
 }
@@ -2206,7 +2259,7 @@ function stopMessage(journey: Travel | Explore, step: Extract<TravelStep, { kind
  */
 function startTravel(goal: MapPoint): void {
   const ctx = travelContext();
-  if (!ctx) return;
+  if (!ctx || heroHeld()) return;
   stopAutomation(null, 'new travel');
   hideToast();
   recentreMap();
@@ -2257,7 +2310,7 @@ function spottedText(): string | null {
  */
 function startExplore(): void {
   const ctx = travelContext();
-  if (!ctx) return;
+  if (!ctx || heroHeld()) return;
   stopAutomation(null, 'explore');
   recentreMap();
   const here = { x: ctx.snap.px, y: ctx.snap.py };
@@ -2399,7 +2452,7 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
 }
 
 function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
-  doTap(tapAction(snap, materials, cell, prompt, lastState?.monsters));
+  doTap(tapAction(snap, materials, cell, prompt, lastState?.monsters, steered()));
 }
 
 function goTowards(snap: LevelSnapshot, point: MapPoint): void {
@@ -2430,6 +2483,12 @@ function doTap(action: TapAction): void {
     case 'talk':
       converse('Y', action.digit);
       break;
+    case 'steer':
+      send([BACKSLASH, ...keyCodes(`;${action.digit}`)]);
+      break;
+    case 'refuse':
+      refuse(action.why);
+      break;
     case 'none':
       break;
   }
@@ -2438,7 +2497,7 @@ function doTap(action: TapAction): void {
 /** One step to a neighbouring cell (a closed door there is opened, then walked through). */
 function startStep(cell: MapPoint): void {
   const ctx = travelContext();
-  if (!ctx) return;
+  if (!ctx || heroHeld()) return;
   stopAutomation(null, 'step');
   hideToast();
   const mat = materials[ctx.snap.feat[cell.y * ctx.snap.width + cell.x]];
@@ -2703,7 +2762,8 @@ const engine = new Engine(buffer, {
 function send(codes: number[] | null): void {
   if (!codes || codes.length === 0) return;
   const key = codes.length === 1 ? codes[0] : codes.length === 2 && codes[0] === BACKSLASH ? codes[1] : null;
-  if (key !== null && lastSnap?.inDungeon) {
+  /* Keys are not followed as the hero's magic while they control another creature. */
+  if (key !== null && lastSnap?.inDungeon && !controlling()) {
     castWatcher.note(rowZeroText(), buffer.screenText(), key, !!lastSnap.atCommand);
     if (castWatcher.casting) audio.castingTone(castingTone(castWatcher.casting));
   }
@@ -3436,7 +3496,7 @@ window.__tome = {
   exploreStop: () => {
     if (!lastSnap) return null;
     const plan = explorePlan();
-    const stop = nextStop(lastSnap, materials, plan, companionCells(lastSnap));
+    const stop = nextStop(lastSnap, materials, plan, passingCells(lastSnap));
     return { kind: stop?.kind ?? 'none', x: stop?.x ?? -1, y: stop?.y ?? -1, heading: plan.heading ?? 'down' };
   },
   macroRunning: () => macros.running,

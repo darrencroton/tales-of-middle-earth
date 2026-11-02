@@ -14,6 +14,8 @@ export type NativeView =
   | 'fire'
   | 'rest'
   | 'talk'
+  | 'release'
+  | 'creaturePowers'
   | 'overview'
   | 'overviewDone'
   | 'finish'
@@ -120,11 +122,15 @@ export interface CommandContext {
   magic: boolean;
   /** The hero has powers or techniques to use. */
   powers: boolean;
+  /** The hero controls another creature. */
+  controlling: boolean;
 }
 
 interface CommandEntry extends CommandDef {
   /** Offered only to a hero for whom this holds. */
   when?: (ctx: CommandContext) => boolean;
+  /** Acts for the creature the hero controls, and is offered only then (tome2 gives these keys to the creature). */
+  creature?: boolean;
   /** Why it cannot be done here and now, if it cannot. */
   refuse?: (ctx: CommandContext) => string | null;
 }
@@ -134,9 +140,41 @@ const beside = (c: CommandContext) => (c.beside ? null : 'There is no one beside
 /* Commands tome2 ignores while the hero travels the world map (its wild_mode). */
 const NOT_ON_WORLD_MAP = new Set(['o', 'c', 'B', 'j', 'T', 'y', 'Y', 'Z', 'P', 'p', 'm', 'U', 'M', '*', 'x', 'O', 'h', 'r', 'u', 'a', 'z', 'A', 'q', 'v', 'f', 'w', 't', 'd', '\u0006']);
 
-/** Why tome2 will not take a command on the world map, or null. */
-export function worldMapRefusal(command: string, worldMap: boolean): string | null {
-  return worldMap && NOT_ON_WORLD_MAP.has(command) ? 'Not on the world map.' : null;
+/*
+ * The hero's own commands while they control another creature
+ * (process_command's p_ptr->control): tome2 ignores these, or gives them to
+ * the creature (`m` its powers, `d` and `,` its pack; also `i` and the
+ * walking keys, which the app never sends for the hero).
+ */
+const NOT_WHILE_CONTROLLING = new Set(['w', 't', 'd', 'k', 'e', '+', 'T', '.', ',', 'g', 'R', '_', '<', '>', 'o', 'c', 'y', 'Y', 'j', 'B', 'G', 'N', 'b', 'm', 'p', 'P', 'h', 'K', 'Z', '{', '}', 'A', 'E', 'F', 'f', 'v', 'a', 'z', 'q', 'H', 'r', 'u', 'U', 'O', '*', 'x']);
+
+export const CONTROLLING = 'Not while you control another creature.';
+
+/** Where the hero is and what holds them, for the commands tome2 will take. */
+interface CommandSituation {
+  worldMap: boolean;
+  /** The hero controls another creature. */
+  controlling: boolean;
+}
+
+/** Why tome2 will not take one of the hero's commands now, or null. */
+export function commandRefusal(command: string, situation: CommandSituation): string | null {
+  if (situation.controlling && NOT_WHILE_CONTROLLING.has(command)) return CONTROLLING;
+  return situation.worldMap && NOT_ON_WORLD_MAP.has(command) ? 'Not on the world map.' : null;
+}
+
+/** Lets go of the creature the hero controls, for now (tome2's abandon, not for good: control comes back with Fire Golem cast again, a load or a return to its level). */
+export function* releaseMacro(): Macro {
+  let s: MacroScreen = yield [KEY_BACKSLASH, ...keyCodes('m')];
+  if (/abandon the creature/.test(s.prompt)) s = yield keyCodes('y');
+  if (/permanently/.test(s.prompt)) yield keyCodes('n');
+}
+
+/** The powers of the creature the hero controls, listed. */
+export function* creaturePowersMacro(): Macro {
+  let s: MacroScreen = yield [KEY_BACKSLASH, ...keyCodes('m')];
+  if (/abandon the creature/.test(s.prompt)) s = yield keyCodes('n');
+  if (/Use which power/.test(s.prompt)) yield keyCodes('*');
 }
 
 /**
@@ -148,7 +186,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
   {
     title: 'Get around',
     commands: [
-      { label: 'Explore', icon: '⇢', command: '', native: 'explore' },
+      { label: 'Explore', icon: '⇢', command: '', native: 'explore', refuse: (c) => (c.controlling ? CONTROLLING : null) },
       { label: 'Rest', icon: '☾', command: 'R', native: 'rest', refuse: (c) => restRefusal(c.feat) },
       { label: 'Look', icon: '◉', command: 'l', native: 'look' },
       { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
@@ -187,6 +225,11 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
   {
     title: 'People and creatures',
     commands: [
+      { label: 'Release creature', icon: '↺', command: 'm', native: 'release', creature: true },
+      { label: 'Creature powers', icon: '❂', command: 'm', native: 'creaturePowers', creature: true },
+      { label: 'Creature’s pack', icon: '≡', command: 'i', reading: true, creature: true },
+      { label: 'Creature picks up', icon: '⇡', command: ',', creature: true },
+      { label: 'Creature drops all', icon: '⇣', command: 'd', creature: true },
       { label: 'Talk', icon: '❝', command: 'Y', refuse: beside },
       { label: 'Give', icon: '⇄', command: 'y', refuse: beside },
       { label: 'Steal', icon: '☚', command: 'Z', refuse: beside, when: (c) => c.steals },
@@ -232,9 +275,10 @@ export function commandGroups(ctx: CommandContext): { title: string; commands: C
   return COMMAND_GROUPS.map((group) => ({
     title: group.title,
     commands: group.commands
-      .filter((c) => !c.when || c.when(ctx))
-      .map(({ when: _when, refuse, ...c }): CommandDef => {
-        const why = (!c.native && worldMapRefusal(c.command, ctx.where === 'worldMap')) || refuse?.(ctx);
+      .filter((c) => (c.creature ? ctx.controlling : !c.when || c.when(ctx)))
+      .map(({ when: _when, refuse, creature, ...c }): CommandDef => {
+        const situation = { worldMap: ctx.where === 'worldMap' && !c.native, controlling: ctx.controlling && !creature };
+        const why = commandRefusal(c.command, situation) || refuse?.(ctx);
         return why ? { ...c, unavailable: why } : c;
       })
       .flatMap((c) => stairs(c, ctx.where)),
@@ -291,6 +335,8 @@ export interface ActionContext {
   foe?: string | null;
   /** A neutral creature stands next to the player (someone to talk to). */
   talk?: boolean;
+  /** The hero controls another creature: walking moves it, and the hero's own actions wait. */
+  controlling?: boolean;
   /** The hero's one-tap repeat: their last (or first) spell or power, or the last aimed thing they used. */
   quick?: Slot | null;
   /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers to use. */
@@ -303,6 +349,8 @@ export interface ActionContext {
 const MAX_MAP_ACTIONS = 7;
 /* The hero's buttons that give way, in order, when the toolbar is full; both are also under More. */
 const OVERFLOW_ORDER = ['rest', 'fire'];
+/* The hero's buttons that act for the hero, which wait while they control another creature. */
+const HERO_ACTS = new Set(['recast', 'cast', 'fire', 'rest']);
 
 const FALLEN: Action = { id: 'fallen', label: 'Your hero', icon: '@', effect: { kind: 'native', view: 'fallen' } };
 const KEYBOARD: Action = { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } };
@@ -370,13 +418,15 @@ const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {
 
 /**
  * The toolbar's one changing button, the first of these that applies: the
- * world map's Walk here; the way on underfoot (a staircase is always what it
- * does); the door of a shop or other building underfoot; Attack a foe
- * alongside; what lies underfoot to pick up or use; gear the hero needs to
- * go on; Talk to someone alongside; and Explore, named for what it will do.
+ * world map's Walk here; Release the creature the hero controls; the way on
+ * underfoot (a staircase is always what it does); the door of a shop or
+ * other building underfoot; Attack a foe alongside; what lies underfoot to
+ * pick up or use; gear the hero needs to go on; Talk to someone alongside;
+ * and Explore, named for what it will do.
  */
 export function contextualAction(ctx: ActionContext): Action {
   if (ctx.worldMap) return command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true);
+  if (ctx.controlling) return { id: 'release', label: 'Release', icon: '↺', effect: { kind: 'native', view: 'release' }, primary: true };
   const transition = transitionUnderfoot(ctx.underfoot);
   if (transition) return command(transition.id, transition.label, transition.icon, { command: transition.command }, true);
   if (ctx.entrance) return command('shop', ctx.entrance, '⌂', { command: '_' }, true);
@@ -412,6 +462,9 @@ function heroActions(ctx: ActionContext): Action[] {
     COMMANDS,
     MENU,
   ];
+  if (ctx.controlling) {
+    for (const action of actions) if (HERO_ACTS.has(action.id)) action.unavailable = CONTROLLING;
+  }
   for (const id of OVERFLOW_ORDER) {
     if (actions.length < MAX_MAP_ACTIONS) break;
     const index = actions.findIndex((a) => a.id === id);

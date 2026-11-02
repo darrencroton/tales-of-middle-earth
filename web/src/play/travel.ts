@@ -19,6 +19,7 @@ const MAX_STEPS = 400;
 /* Visits to one cell that end a journey as going round in circles. */
 const MAX_VISITS = 3;
 const WALK = ';'.charCodeAt(0);
+const OPEN = 'o'.charCodeAt(0);
 
 export type TravelStopReason =
   | 'arrived'
@@ -55,8 +56,10 @@ export interface TravelContext {
   hp: number;
   /** Gold carried, to stop when a thief takes some. */
   gold?: number;
-  /** Cells of companions the hero can push past (`pushPast`). */
+  /** Cells of creatures the way may lead through: companions the hero pushes past (`pushPast`) and creatures not in sight (`outOfSight`). */
   passing?: ReadonlySet<number>;
+  /** What tome2 is asking, if anything. */
+  prompt?: PromptKind;
 }
 
 export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
@@ -129,7 +132,7 @@ export function inferredFloor(snap: LevelSnapshot, materials: readonly Material[
   return (barrier(0, -1) && barrier(0, 1)) || (barrier(-1, 0) && barrier(1, 0));
 }
 
-/** Creatures a way may lead through: those at these cells (companions the hero pushes past), or all of them ('all', to ask whether creatures alone stand in the way). */
+/** Creatures a way may lead through: those at these cells (companions the hero pushes past, creatures not in sight), or all of them ('all', to ask whether creatures alone stand in the way). */
 export type Passing = ReadonlySet<number> | 'all';
 
 const NOBODY: ReadonlySet<number> = new Set();
@@ -251,6 +254,8 @@ export type TapAction =
   | { kind: 'travel'; cell: Point }
   | { kind: 'step'; cell: Point }
   | { kind: 'talk'; digit: string }
+  | { kind: 'steer'; digit: string }
+  | { kind: 'refuse'; why: string }
   | { kind: 'none' };
 
 /**
@@ -277,16 +282,36 @@ export function goAction(
 }
 
 /**
- * What a tap on a map cell does for the question tome2 is asking: choose a
- * direction or target, interrupt a rest or run, wait in place, or go there.
+ * What a tap does while the hero controls another creature (`steered`, where
+ * it stands, or null out of sight): one step of the creature towards the
+ * place tapped, as tome2 moves it with the walking keys.
  */
-export function tapAction(snap: LevelSnapshot, materials: readonly Material[], cell: Point, prompt: PromptKind, monsters: readonly MonsterState[] = []): TapAction {
+function steerAction(steered: Point | null, cell: Point): TapAction {
+  if (!steered) return { kind: 'refuse', why: 'The creature you control is out of sight.' };
+  const digit = directionDigit(cell.x - steered.x, cell.y - steered.y);
+  return digit && digit !== '5' ? { kind: 'steer', digit } : { kind: 'none' };
+}
+
+/**
+ * What a tap on a map cell does for the question tome2 is asking: choose a
+ * direction or target, interrupt a rest or run, steer the creature the hero
+ * controls (`steered`, given only then), wait in place, or go there.
+ */
+export function tapAction(
+  snap: LevelSnapshot,
+  materials: readonly Material[],
+  cell: Point,
+  prompt: PromptKind,
+  monsters: readonly MonsterState[] = [],
+  steered?: Point | null,
+): TapAction {
   const near = isAdjacent(snap.px, snap.py, cell.x, cell.y);
   const direction = (): TapAction => ({ kind: 'direction', digit: directionDigit(cell.x - snap.px, cell.y - snap.py) ?? '5' });
   if (prompt === 'direction') return near ? direction() : { kind: 'none' };
   if (prompt === 'aim') return near ? direction() : { kind: 'target', cell };
   /* Resting, running or repeating: a tap interrupts it. */
   if (!snap.atCommand) return prompt === 'none' ? { kind: 'interrupt' } : { kind: 'none' };
+  if (steered !== undefined) return steerAction(steered, cell);
   if (cell.x === snap.px && cell.y === snap.py) return { kind: 'wait' };
   return goAction(snap, materials, cell, monsters);
 }
@@ -315,6 +340,19 @@ export function pushPast(snap: LevelSnapshot, materials: readonly Material[], mo
     cells.add(m.y * snap.width + m.x);
   }
   return cells;
+}
+
+/**
+ * Cells of creatures shown on the map but not in the hero's line of sight:
+ * tome2 shows creatures up to 20 grids away (MAX_SIGHT) but its line of
+ * sight reaches 18 (MAX_RANGE), and telepathy shows some behind walls. The
+ * way is planned through them, as each step plans it again: one that comes
+ * into sight stops travel or blocks the way then, so a creature at the edge
+ * of sight cannot turn a journey back and forth as the hero steps in and out
+ * of its view.
+ */
+export function outOfSight(snap: LevelSnapshot, monsters: readonly MonsterState[]): Set<number> {
+  return new Set(monsters.filter((m) => !m.view).map((m) => m.y * snap.width + m.x));
 }
 
 /** Hostile creatures in the hero's line of sight (not those only sensed, by telepathy or detection). */
@@ -361,8 +399,12 @@ export class Travel {
   private lastPos: Point | null = null;
   private lastWasMove = false;
   private lastDoor: Point | null = null;
+  /* The direction of a door being opened, given once tome2 asks which door (it does not when only one is beside the hero). */
+  private doorAnswer: { digit: number; path: Point[] } | null = null;
   private steps = 0;
   private finishing = false;
+  /* The journey is to a creature (a tap on it): the creature at the goal neither stops it nor stands in its way. */
+  private readonly quarry: boolean;
   private readonly visits = new Map<number, number>();
 
   /** Steps taken so far. */
@@ -375,6 +417,11 @@ export class Travel {
     return this.single;
   }
 
+  /** Waiting to tell tome2 which door to open. */
+  get answering(): boolean {
+    return this.doorAnswer !== null;
+  }
+
   constructor(goal: Point, start: TravelContext, options: TravelOptions = {}) {
     this.goal = goal;
     this.inSight = options.inSight ?? new Set(hostilesInSight(start.monsters).map((m) => m.id));
@@ -382,12 +429,16 @@ export class Travel {
     this.lastHp = start.hp;
     this.lastGold = start.gold;
     this.lastLight = start.snap.lightRadius;
+    this.quarry = start.monsters.some((m) => m.x === goal.x && m.y === goal.y);
   }
 
   step(ctx: TravelContext): TravelStep {
     const { snap } = ctx;
     const pos = { x: snap.px, y: snap.py };
 
+    const door = this.doorAnswer;
+    this.doorAnswer = null;
+    if (door && ctx.prompt === 'direction') return { kind: 'keys', keys: [door.digit], path: door.path };
     if (!snap.atCommand || snap.icky) return { kind: 'stop', reason: 'interrupted' };
     if (this.finishing || (pos.x === this.goal.x && pos.y === this.goal.y)) return { kind: 'stop', reason: 'arrived' };
     if (this.single && this.steps > 0) return { kind: 'stop', reason: 'interrupted' };
@@ -409,12 +460,13 @@ export class Travel {
     }
     if (this.steps >= MAX_STEPS) return { kind: 'stop', reason: 'limit' };
 
-    const goalIsMonster = ctx.monsters.some((m) => m.x === this.goal.x && m.y === this.goal.y);
+    const atGoal = ctx.monsters.find((m) => m.x === this.goal.x && m.y === this.goal.y);
     const hostiles = hostilesInSight(ctx.monsters);
-    const arrival = hostiles.find((m) => !this.inSight.has(m.id) && (m.x !== this.goal.x || m.y !== this.goal.y));
+    const arrival = hostiles.find((m) => !this.inSight.has(m.id) && !(this.quarry && m === atGoal));
     this.inSight.clear();
     for (const m of hostiles) this.inSight.add(m.id);
     if (arrival && !this.single) return { kind: 'stop', reason: 'monster', creature: arrival.name, asleep: !!arrival.asleep };
+    if (atGoal?.view && !this.quarry) return { kind: 'stop', reason: 'creatureInWay' };
 
     const path = findPath(travelGrid(snap, ctx.materials, ctx.passing), pos, this.goal);
     if (!path || path.length === 0) return { kind: 'stop', reason: 'unreachable' };
@@ -437,10 +489,17 @@ export class Travel {
     this.lastLight = snap.lightRadius;
     this.lastPos = pos;
 
-    /* Walking into a closed door opens it (tome2's easy_open_door, which asks nothing), and the next step goes through. */
-    this.lastWasMove = !closedDoor;
-    this.lastDoor = closedDoor ? next : null;
-    if (!closedDoor && goalIsMonster && path.length === 1) this.finishing = true;
+    if (closedDoor) {
+      this.lastWasMove = false;
+      this.lastDoor = next;
+      this.doorAnswer = { digit, path };
+      /* tome2 repeats `o` on a locked door (always_repeat); walking into it would try once. */
+      return { kind: 'keys', keys: [BACKSLASH, OPEN], path };
+    }
+
+    this.lastWasMove = true;
+    this.lastDoor = null;
+    if (this.quarry && atGoal && path.length === 1) this.finishing = true;
     return { kind: 'keys', keys: [BACKSLASH, WALK, digit], path };
   }
 
