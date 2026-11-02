@@ -189,6 +189,7 @@ describe('places', () => {
   it('chooses music by view, town, terrain, dungeon and quest', () => {
     assert.equal(sceneFor('title', null).base, 'title');
     assert.equal(sceneFor('gameover', place()).base, 'lament');
+    assert.equal(sceneFor('between', place()).base, 'mandos');
     assert.equal(sceneFor('game', place({ wild: 1 })).base, 'overworld');
     assert.equal(sceneFor('game', place({ town: 1 })).base, 'bree');
     assert.equal(sceneFor('game', place({ town: 4 })).base, 'lorien');

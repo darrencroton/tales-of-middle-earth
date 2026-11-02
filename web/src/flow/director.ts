@@ -793,6 +793,10 @@ export class Director {
     card.append(
       el('h3', undefined, 'Your adventure'),
       ...runElements(run, this.quests, {
+        adventure: (on) => {
+          this.deps.engine.setAdventure(on);
+          this.deps.requestRefresh();
+        },
         quests: (count) => {
           this.quests = count;
           this.deps.engine.setRandomQuests(count);

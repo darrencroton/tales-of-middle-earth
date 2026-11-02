@@ -81,6 +81,9 @@ std::string json;
 
 } // namespace
 
+/* engine/adventure.cc */
+bool adventure_mode();
+
 /* Called by web_snapshot (engine/snapshot.cc) on every refresh. */
 void web_run_options_tick()
 {
@@ -97,7 +100,8 @@ extern "C" {
 /*
  * The run options as JSON: the birth options in order, each by name and
  * whether it is on, the number of random quests drawn (tome2 skips a level
- * where it finds no creature to hunt), and the most there can be.
+ * where it finds no creature to hunt), the most there can be, and whether
+ * the hero plays in Adventure mode (engine/adventure.cc).
  */
 EMSCRIPTEN_KEEPALIVE char const *web_run_options_json()
 {
@@ -115,6 +119,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_run_options_json()
 	}
 	json += "],\"drawn\":" + std::to_string(random_quest_count());
 	json += ",\"maxQuests\":" + std::to_string(MAX_RANDOM_QUEST - 1);
+	json += ",\"adventure\":";
+	json += adventure_mode() ? '1' : '0';
 	json += '}';
 	return json.c_str();
 }

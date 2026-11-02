@@ -101,6 +101,19 @@ describe('chronicle', () => {
     assert.ok(newDeeds(c, career, new Set()).some((d) => d.id === 'close-call'));
   });
 
+  it('remembers how often an Adventure hero returned from death, and never forgets one', () => {
+    const c = newChronicle('Merry');
+    const career = newCareer();
+    record(c, career, { ...hero, adventure: 1, lives: 3 }, []);
+    assert.equal(c.returns, 0);
+    record(c, career, { ...hero, adventure: 1, lives: 2 }, []);
+    assert.equal(c.returns, 1);
+    assert.ok(newDeeds(c, career, new Set()).some((d) => d.id === 'sent-back'));
+    /* A game loaded from before the return still keeps it in the tale. */
+    record(c, career, { ...hero, adventure: 1, lives: 3 }, []);
+    assert.equal(c.returns, 1);
+  });
+
   it('gives a tip for the next hero', () => {
     const c = newChronicle('Pippin');
     assert.match(nextTimeTip(c, 'poison', 3), /Poison/);

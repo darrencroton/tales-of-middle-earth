@@ -97,6 +97,7 @@ const TRIM_DB: Partial<Record<CueId, number>> = {
   rumble: 8,
   unique: 6,
   death: 3,
+  returned: 10,
   hungry: 11,
   quest: 1,
   save: 14,
@@ -117,6 +118,7 @@ const DUCK: Partial<Record<CueId, [number, number]>> = {
   'kill-unique': [7, 1.2],
   levelup: [7, 1.5],
   quest: [7, 1.5],
+  returned: [7, 2.5],
   explosion: [3, 0.4],
 };
 
@@ -267,6 +269,8 @@ export class SoundEffects {
         return this.unique(t);
       case 'death':
         return this.death(t);
+      case 'returned':
+        return this.returned(t);
       case 'shop':
         return this.shopBell(t);
       case 'deny':
@@ -886,6 +890,15 @@ export class SoundEffects {
     const dest = this.out(0, 0.9);
     [4, 3, 2, 0].forEach((d, i) => playVoice(this.core, 'strings', dest, t + 0.4 + i * 0.75, 0.9, this.midi(d, 1), 0.85, { bright: 0.5, sustained: false }));
     this.chord(t + 0.3, [0, 4], 3.5, 0.5, 'choir', 0);
+  }
+
+  /** Back from death, the answer to its fall: a breath drawn in, a horn and choir rising, a bell as the light returns. */
+  private returned(t: number): void {
+    this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 400, to: 1600, glide: 1.2, q: 0.8, level: 0.05, attack: 0.9, decay: 0.3 });
+    const dest = this.out(0, 0.9);
+    [0, 2, 4, 7].forEach((d, i) => playVoice(this.core, 'horn', dest, t + 0.3 + i * 0.45, i === 3 ? 1.2 : 0.5, this.midi(d, 1), 0.8, { bright: 0.6, sustained: false }));
+    this.chord(t + 0.2, [0, 4, 7], 2, 0.3, 'choir', 1);
+    playVoice(this.core, 'bell', this.out(0, 1), t + 1.65, 2.5, this.midi(7, 2), 0.9, { bright: 0.8, sustained: false });
   }
 
   private heartbeat(t: number, s: number): void {

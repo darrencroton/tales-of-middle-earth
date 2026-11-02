@@ -91,11 +91,13 @@
 void web_scratch_term_begin();
 void web_scratch_term_end();
 
-/* Map memory (engine/memory.cc). */
+/* Map memory (engine/memory.cc), run options (engine/runoptions.cc) and lives (engine/adventure.cc). */
 void web_memory_tick();
 int level_quest();
 bool level_quest_open();
 void web_run_options_tick();
+void web_adventure_tick();
+void json_adventure(std::string &out);
 
 namespace {
 
@@ -778,6 +780,7 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	if (delay_override >= 0 && options) options->delay_factor = delay_override;
 	web_memory_tick();
 	web_run_options_tick();
+	web_adventure_tick();
 
 	header[H_VERSION] = SNAPSHOT_VERSION;
 	header[H_IN_DUNGEON] = ready ? 1 : 0;
@@ -921,6 +924,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	json_int(json, "control", p_ptr->control);
 	json_int(json, "dead", death ? 1 : 0);
 	json_str(json, "diedFrom", game->died_from);
+	json_adventure(json);
 	json_level_quest(json);
 	json_key(json, "status");
 	json += '{';

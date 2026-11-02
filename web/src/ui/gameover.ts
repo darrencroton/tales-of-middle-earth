@@ -1,4 +1,5 @@
 import type { Chronicle } from '../play/chronicle.ts';
+import { returnsText } from '../play/lives.ts';
 import { dayOf, type Memorial, type MemorialFoe } from '../play/memorial.ts';
 import type { ScoreEntry } from '../render/snapshot.ts';
 import { titleName } from './api.ts';
@@ -96,6 +97,7 @@ export function tombElements(tomb: Tomb, extras: TombExtras): HTMLElement[] {
     if (tale.uniques.length) stats.push(['Legends slain', String(tale.uniques.length)]);
     stats.push(['Deepest', tale.deepestFeet ? `${tale.deepestFeet.toLocaleString('en-GB')} ft` : 'The surface']);
     if (tale.mightiest) stats.push(['Mightiest foe', titleName(tale.mightiest.name)]);
+    if (tale.returns) stats.push(['Returned from death', returnsText(tale.returns)]);
   }
   if (m) stats.push(['Days survived', String(dayOf(m.turn))]);
   for (const [label, value] of stats) {

@@ -161,6 +161,18 @@ export interface PlayerState {
   dead?: number;
   /** What killed the hero. */
   diedFrom?: string;
+  /** 1 in Adventure mode (three lives), 0 in Roguelike (one). */
+  adventure?: number;
+  /** Lives left in Adventure mode, this one included; 0 in Roguelike. */
+  lives?: number;
+  /**
+   * Once dead: `choice` when the hero will be asked whether to return
+   * (Adventure mode, a life to spare), `rescue` when tome2 itself saves them
+   * (the Blood of Life, the One Ring's hold), `final` otherwise.
+   */
+  fate?: 'choice' | 'rescue' | 'final';
+  /** With fate `choice`: the town the hero would return to for safety, empty when none can be reached. */
+  haven?: string;
   /** The quest of the level the hero is on, when it holds one. */
   quest?: LevelQuest;
   /** Name of the town or land walked on the surface (set by the frontend from the place). */

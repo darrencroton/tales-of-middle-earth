@@ -1,4 +1,5 @@
 import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, keyCodes as codes, typedAnswer } from '../input/keys.ts';
+import { LIVES, livesText, RETURN_KEYS } from '../play/lives.ts';
 import { bracketChoices, choiceQuestion, type PromptKind } from '../play/prompts.ts';
 import { el, iconText, leadIn } from './dom.ts';
 import { cleanPrompt } from './prompttext.ts';
@@ -35,6 +36,20 @@ export function promptDefault(text: string): string {
 export function quantityLimit(text: string): number | null {
   const m = /\((\d+)\s*-\s*(\d+)\)/.exec(text);
   return m ? Number(m[2]) : null;
+}
+
+/** What the card between death and life offers. */
+export interface ReturnOffer {
+  /** What killed the hero. */
+  cause: string;
+  /** Lives left once the hero goes back, the one they go back to included. */
+  lives: number;
+  /** What returning to the battlefield means from here. */
+  battlefield: string;
+  /** What returning to safety means, or null when no town can be reached. */
+  safety: string | null;
+  /** Says why a choice cannot be made (a toast and the refusal sound). */
+  refuse(why: string): void;
 }
 
 /**
@@ -137,10 +152,11 @@ export class PromptCard {
 
   /**
    * The hero has died: what killed them and Continue (which declines
-   * tome2's screen dump and leads to the end-of-game summary).
+   * tome2's screen dump and leads to the end-of-game summary). `lastLife`
+   * says that an Adventure hero has no life left.
    */
-  showDeath(cause: string): void {
-    const key = `death\u0000${cause}`;
+  showDeath(cause: string, lastLife = false): void {
+    const key = `death\u0000${cause}\u0000${lastLife}`;
     this.root.hidden = false;
     this.leading = false;
     if (key === this.renderedKey) return;
@@ -154,10 +170,69 @@ export class PromptCard {
     this.root.replaceChildren(
       this.title(retired ? 'Your journey ends' : 'You have died'),
       el('p', 'card-fate', fate),
+      ...(lastLife ? [el('p', 'card-fate', `All ${LIVES} lives are spent.`)] : []),
       el('p', 'card-hint', 'Tap your hero, or the creatures still around you, to look back on the last fight.'),
       buttons,
     );
     primary.focus({ preventScroll: true });
+  }
+
+  /**
+   * Between death and life (tome2's question from engine/adventure.cc): the
+   * hero may return where they fell or to the last town, or accept death,
+   * which is asked once more.
+   */
+  showReturn(offer: ReturnOffer): void {
+    const key = `return\u0000${offer.cause}\u0000${offer.lives}\u0000${offer.battlefield}\u0000${offer.safety}`;
+    this.root.hidden = false;
+    this.leading = false;
+    if (key === this.renderedKey || `${key}\u0000accept` === this.renderedKey) return;
+    this.renderedKey = key;
+    this.root.className = 'prompt-card between';
+    const pips = el('p', 'between-lives');
+    pips.setAttribute('aria-label', livesText(offer.lives));
+    for (let i = 0; i < LIVES; i++) pips.append(el('span', i < offer.lives ? 'life' : 'life spent', iconText(i < offer.lives ? '✦' : '✧')));
+    pips.append(el('span', 'between-lives-text', livesText(offer.lives)));
+    const battle = this.choiceButton('Return to the battlefield', offer.battlefield, () => this.answer(codes(RETURN_KEYS.battlefield)), 'primary');
+    const safety = offer.safety
+      ? this.choiceButton('Return to safety', offer.safety, () => this.answer(codes(RETURN_KEYS.safety)))
+      : this.choiceButton('Return to safety', 'No road leads to a town from here: you must find your own way.', () => offer.refuse('There is no town to return to from here.'), 'unavailable');
+    const accept = this.choiceButton('Accept death', 'Let go. Your tale ends here.', () => this.confirmDeath(offer), 'danger');
+    const choices = el('div', 'between-choices');
+    choices.append(battle, safety, accept);
+    this.root.replaceChildren(
+      el('p', 'card-title', 'The Halls of Waiting'),
+      el('p', 'card-fate', offer.cause ? `Killed by ${offer.cause}.` : 'You have fallen.'),
+      el('p', 'between-words', 'Darkness, then a grey hall beyond the walls of the world. A voice like the sea: “Your thread is not yet cut. Will you go back?”'),
+      pips,
+      choices,
+    );
+    battle.focus({ preventScroll: true });
+  }
+
+  /** Accepting death, asked once more: the adventure ends for good. */
+  private confirmDeath(offer: ReturnOffer): void {
+    this.renderedKey += '\u0000accept';
+    const buttons = el('div', 'card-buttons');
+    const back = this.button('Go back', () => {
+      this.renderedKey = '';
+      this.showReturn(offer);
+    });
+    buttons.append(back, this.button('Accept death', codes(RETURN_KEYS.accept), 'card-button danger'));
+    this.root.replaceChildren(
+      el('p', 'card-title', 'Accept death?'),
+      el('p', 'card-fate', 'Your adventure ends here, and cannot be taken up again.'),
+      buttons,
+    );
+    back.focus({ preventScroll: true });
+  }
+
+  private choiceButton(label: string, detail: string, run: () => void, kind = ''): HTMLButtonElement {
+    const button = el('button', `between-choice ${kind}`.trim());
+    button.type = 'button';
+    button.append(el('span', 'between-choice-label', label), el('span', 'between-choice-detail', detail));
+    button.addEventListener('click', run);
+    return button;
   }
 
   private answer(keys: number[]): void {

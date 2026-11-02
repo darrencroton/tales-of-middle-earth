@@ -1,4 +1,5 @@
 import { depthLabel } from '../hud.ts';
+import { LIVES } from '../play/lives.ts';
 import type { PlayerState, SkillEntry } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { KEY_BACKSLASH, KEY_ENTER, KEY_ESCAPE, keyCodes } from '../input/keys.ts';
@@ -559,6 +560,7 @@ function summaryBody(api: GameApi): HTMLElement | null {
     stat('Deepest', `${sheet.maxDepth * 50} ft`),
     stat('God', sheet.god),
     stat('Infravision', `${sheet.infra} ft`),
+    stat('Lives', player.adventure ? `${player.lives ?? 0} of ${LIVES}` : 'One (Roguelike)'),
   );
   body.append(section('Progress', progress));
   return body;

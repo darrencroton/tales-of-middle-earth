@@ -72,6 +72,12 @@ describe('game feel events', () => {
     ]);
   });
 
+  it('marks a return from death, with the lives left', () => {
+    const dead = { ...base, chp: -5, dead: 1, lives: 3 };
+    assert.deepEqual(playerEvents(dead, { ...base, lives: 2 }), [{ kind: 'returned', lives: 2 }]);
+    assert.deepEqual(playerEvents(dead, { ...base, lives: 3 }), []);
+  });
+
   it('flags low health', () => {
     assert.equal(isLowHealth({ chp: 5, mhp: 20 }), true);
     assert.equal(isLowHealth({ chp: 6, mhp: 20 }), false);

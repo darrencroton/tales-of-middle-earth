@@ -75,6 +75,8 @@ export function segmented<T extends string>(
 export interface AdventureRules {
   hero: string;
   run: RunOptions;
+  /** Lives left in Adventure mode, this one included. */
+  lives: number;
 }
 
 /** Display settings, applied as they change; during a game, the adventure's own rules below them, which cannot change. */
@@ -171,7 +173,7 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
     const fixed = section(
       'Your adventure',
       el('p', 'muted', `Chosen when ${rules.hero} was created, these rules hold for the whole adventure.`),
-      ...runElements(rules.run, rules.run.drawn),
+      ...runElements(rules.run, rules.run.drawn, undefined, rules.lives),
     );
     fixed.classList.add('adventure-rules');
     body.append(fixed);
