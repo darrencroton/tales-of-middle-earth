@@ -1123,7 +1123,7 @@ function updatePromptCard(): void {
   }
   const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
   const show =
-    CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !picker && !title.isVisible && engine.pendingKeys === 0;
+    CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !picker && !travel?.answering && !title.isVisible && engine.pendingKeys === 0;
   if (show) {
     promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()), leadMessages.map((m) => m.text));
     if (leadMessages.length) noteLeadShown();
@@ -1935,7 +1935,8 @@ function updateActionBar(force = false): void {
     (shownShop ? shopActions() : null) ??
     contextActions({
       mode,
-      prompt,
+      /* tome2's question of which door travel is opening is answered by travel, not the player. */
+      prompt: travel?.answering ? 'none' : prompt,
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
@@ -2164,7 +2165,7 @@ function openCommands(): void {
 
 function travelContext(): TravelContext | null {
   if (!lastSnap || !lastState?.player) return null;
-  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au, passing: companionCells(lastSnap) };
+  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au, passing: companionCells(lastSnap), prompt: currentPrompt() };
 }
 
 /** Cells of the companions travel and exploring walk through, swapping places as tome2 lets the hero (`pushPast`). */
@@ -2183,6 +2184,7 @@ function companionCells(snap: LevelSnapshot): Set<number> {
 
 function stopAutomation(message: string | null, cause: string): void {
   if (travel || picker) lastStopCause = cause;
+  const answering = !!travel?.answering;
   if (travel instanceof Explore && lastSnap) {
     exploreAnchor = travel.anchor;
     exploreLastStop = { x: lastSnap.px, y: lastSnap.py };
@@ -2193,6 +2195,8 @@ function stopAutomation(message: string | null, cause: string): void {
   picker = null;
   map.setPath(null);
   if (message) showToast(message);
+  /* A door's question travel was to answer is left to the player. */
+  if (answering) updatePromptCard();
   updateActionBar();
   requestFrame();
 }
