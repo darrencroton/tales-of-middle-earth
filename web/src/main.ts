@@ -15,7 +15,7 @@ import { commandGroups, commandKeys, contextActions, contextualAction, commandRe
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { approachTarget, goAction, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
+import { approachTarget, goAction, outOfSight, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, questKey, type HeroMemory } from './play/mapmemory.ts';
 import { CAVE_MARK, isHostile, isNeutral, LAYER_MASK, LEAD_LINES, leadInMessages, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
@@ -1304,7 +1304,7 @@ function exploreNext(snap: LevelSnapshot | null): ExploreNext {
 
 function exploreNextFrom(snap: LevelSnapshot): ExploreNext {
   const plan = explorePlan();
-  const stop = nextStop(snap, materials, plan, companionCells(snap));
+  const stop = nextStop(snap, materials, plan, passingCells(snap));
   if (!stop && nextStop(snap, materials, plan, 'all')) return 'explore';
   if (!stop) return snap.depth === 0 ? 'worldMap' : 'none';
   if (stop.kind !== 'exit') return 'explore';
@@ -2165,21 +2165,24 @@ function openCommands(): void {
 
 function travelContext(): TravelContext | null {
   if (!lastSnap || !lastState?.player) return null;
-  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au, passing: companionCells(lastSnap), prompt: currentPrompt() };
+  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au, passing: passingCells(lastSnap), prompt: currentPrompt() };
 }
 
-/** Cells of the companions travel and exploring walk through, swapping places as tome2 lets the hero (`pushPast`). */
-function companionCells(snap: LevelSnapshot): Set<number> {
+/** Cells of the creatures travel and exploring plan through: those not in sight (`outOfSight`), and companions they swap places with as tome2 lets the hero (`pushPast`). */
+function passingCells(snap: LevelSnapshot): Set<number> {
   const player = lastState?.player;
   const monsters = lastState?.monsters ?? [];
-  if (!player || !monsters.some((m) => m.status > 0)) return new Set();
+  const cells = outOfSight(snap, monsters);
+  if (!player || !monsters.some((m) => m.status > 0)) return cells;
   const weapon = engine.inventory()?.equip.find((slot) => slot.i === INVEN_WIELD)?.name ?? '';
-  return pushPast(snap, materials, monsters, {
+  const companions = pushPast(snap, materials, monsters, {
     confused: (player.status.confused ?? 0) > 0,
     stunned: (player.status.stun ?? 0) > 0,
     hallucinating: (player.status.hallucinating ?? 0) > 0,
     stormbringer: /Stormbringer/.test(weapon),
   });
+  for (const cell of companions) cells.add(cell);
+  return cells;
 }
 
 function stopAutomation(message: string | null, cause: string): void {
@@ -3493,7 +3496,7 @@ window.__tome = {
   exploreStop: () => {
     if (!lastSnap) return null;
     const plan = explorePlan();
-    const stop = nextStop(lastSnap, materials, plan, companionCells(lastSnap));
+    const stop = nextStop(lastSnap, materials, plan, passingCells(lastSnap));
     return { kind: stop?.kind ?? 'none', x: stop?.x ?? -1, y: stop?.y ?? -1, heading: plan.heading ?? 'down' };
   },
   macroRunning: () => macros.running,

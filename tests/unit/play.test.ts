@@ -4,7 +4,7 @@ import { commandGroups, commandKeys, commandRefusal, contextActions, contextualA
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
-import { approachTarget, FAR_WALK_STEPS, goAction, isKnown, pushPast, stepTowards, STOP_MESSAGES, stopMessage, tapAction, Travel, travelGrid, type StopContext, type TravelContext } from '../../web/src/play/travel.ts';
+import { approachTarget, FAR_WALK_STEPS, goAction, isKnown, outOfSight, pushPast, stepTowards, STOP_MESSAGES, stopMessage, tapAction, Travel, travelGrid, type StopContext, type TravelContext } from '../../web/src/play/travel.ts';
 import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials } from '../../web/src/render/materials.ts';
 import { CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, NO_EFFECT, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
 
@@ -354,6 +354,14 @@ describe('travel', () => {
     const travel = new Travel({ x: 4, y: 0 }, { ...ctx(snap, friend), passing });
     assert.equal(travel.step({ ...ctx(snap, friend), passing }).kind, 'keys');
     assert.equal(new Travel({ x: 4, y: 0 }, ctx(snap, friend)).step(ctx(snap, friend)).kind, 'stop');
+  });
+
+  it('plans through a creature shown but not in sight, which cannot then turn the way back and forth', () => {
+    const snap = level(['.....k.'], { x: 0, y: 0 });
+    const passing = outOfSight(snap, [monster(1, 5, 0, { view: 0 })]);
+    assert.deepEqual([...passing], [5]);
+    assert.equal(travelGrid(snap, MATERIALS, passing).passable(5, 0), true);
+    assert.equal(outOfSight(snap, [monster(1, 5, 0)]).size, 0);
   });
 
   it('does not push past a hostile or neutral creature, nor while unsteady or off the floor', () => {

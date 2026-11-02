@@ -56,7 +56,7 @@ export interface TravelContext {
   hp: number;
   /** Gold carried, to stop when a thief takes some. */
   gold?: number;
-  /** Cells of companions the hero can push past (`pushPast`). */
+  /** Cells of creatures the way may lead through: companions the hero pushes past (`pushPast`) and creatures not in sight (`outOfSight`). */
   passing?: ReadonlySet<number>;
   /** What tome2 is asking, if anything. */
   prompt?: PromptKind;
@@ -340,6 +340,19 @@ export function pushPast(snap: LevelSnapshot, materials: readonly Material[], mo
     cells.add(m.y * snap.width + m.x);
   }
   return cells;
+}
+
+/**
+ * Cells of creatures shown on the map but not in the hero's line of sight:
+ * tome2 shows creatures up to 20 grids away (MAX_SIGHT) but its line of
+ * sight reaches 18 (MAX_RANGE), and telepathy shows some behind walls. The
+ * way is planned through them, as each step plans it again: one that comes
+ * into sight stops travel or blocks the way then, so a creature at the edge
+ * of sight cannot turn a journey back and forth as the hero steps in and out
+ * of its view.
+ */
+export function outOfSight(snap: LevelSnapshot, monsters: readonly MonsterState[]): Set<number> {
+  return new Set(monsters.filter((m) => !m.view).map((m) => m.y * snap.width + m.x));
 }
 
 /** Hostile creatures in the hero's line of sight (not those only sensed, by telepathy or detection). */
