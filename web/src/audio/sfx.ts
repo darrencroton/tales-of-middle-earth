@@ -72,7 +72,7 @@ const TRIM_DB: Partial<Record<CueId, number>> = {
   tunnel: 12,
   heal: 16,
   teleport: 20,
-  trap: 12,
+  trap: 14,
   breath: 12,
   'spell-monster': 20,
   shriek: 20,
@@ -99,7 +99,7 @@ const TRIM_DB: Partial<Record<CueId, number>> = {
   death: 3,
   hungry: 11,
   quest: 1,
-  save: 9,
+  save: 14,
   danger: 2,
 };
 
@@ -669,7 +669,7 @@ export class SoundEffects {
   /** A book shut: pages, the cover, then its clasp. */
   private closeBook(t: number): void {
     this.rustle(t, 0.07);
-    this.thump(t + 0.12, 0.22, 160, 80, 0.05);
+    this.thump(t + 0.12, 0.1, 160, 80, 0.05);
     this.noise(this.out(0, 1), t + 0.12, { type: 'lowpass', freq: 1200, level: 0.08, decay: 0.03, brown: true });
     this.ring(this.out(0.1, 1), t + 0.24, rand(1500, 1800), 2.76, 1.5, 0.04, 0.05);
   }
@@ -800,7 +800,7 @@ export class SoundEffects {
   private trap(t: number): void {
     this.noise(this.out(0, 1), t, { type: 'highpass', freq: 1500, level: 0.3, decay: 0.01 });
     this.ring(this.out(0, 1), t + 0.01, rand(550, 750), 2.76, 2.5, 0.02, 0.12);
-    this.thump(t + 0.03, 0.1, 110, 40, 0.12);
+    this.thump(t + 0.03, 0.05, 110, 40, 0.1);
     this.ring(this.out(0, 1), t + 0.09, rand(900, 1200), 2.76, 2, 0.03, 0.08);
   }
 
