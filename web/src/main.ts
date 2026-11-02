@@ -3370,8 +3370,9 @@ async function importSaves(file: File): Promise<void> {
   );
 }
 
-/** Says why an import failed, then reloads, which reads storage again as it was before the import. */
+/** Says why an import failed, then reloads, which reads storage again as it was before the import (nothing is synced meanwhile). */
 function importFailed(err: unknown): void {
+  engine.holdStorage();
   const body = el('div', 'prose');
   body.append(el('p', undefined, `Nothing was changed: ${String(err instanceof Error ? err.message : err)}`));
   sheets.open({ title: 'Import failed', body, kind: 'card', actions: [{ label: 'OK', primary: true, run: () => sheets.back() }], onClose: () => location.reload() });
