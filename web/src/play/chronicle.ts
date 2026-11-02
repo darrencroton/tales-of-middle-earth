@@ -26,7 +26,7 @@ export interface Chronicle {
   /** Health once fell below a tenth of the maximum. */
   nearDeath: boolean;
   /** Times the hero returned from death (Adventure mode). */
-  returns?: number;
+  returns: number;
   /** Deeds earned by this hero, in order. */
   deeds: string[];
   /** The hero has died; the name may be taken again by a new hero. */
@@ -68,7 +68,7 @@ export const DEEDS: readonly Deed[] = [
   { id: 'champion', title: 'Champion', text: 'Reach level 40.', earned: (c) => c.peakLevel >= 40 },
   { id: 'hoard', title: 'Dragon’s hoard', text: 'Carry 10,000 gold.', earned: (c) => c.peakGold >= 10000 },
   { id: 'close-call', title: 'Close call', text: 'Fall below a tenth of your health, and live.', earned: (_, k) => k.closeCalls >= 1 },
-  { id: 'sent-back', title: 'Sent back', text: 'Return from death to finish what you began.', earned: (c) => (c.returns ?? 0) >= 1 },
+  { id: 'sent-back', title: 'Sent back', text: 'Return from death to finish what you began.', earned: (c) => c.returns >= 1 },
   { id: 'wanderer', title: 'Wanderer', text: 'Set out across the world map.', earned: (_, k) => k.worldMap },
 ];
 
@@ -112,7 +112,7 @@ export function extendStreak(streak: Streak, kills: number, turn: number): { str
 }
 
 export function newChronicle(name: string): Chronicle {
-  return { name, kills: 0, uniques: [], deepestFeet: 0, deepestPlace: '', mightiest: null, peakLevel: 1, peakGold: 0, nearDeath: false, deeds: [] };
+  return { name, kills: 0, uniques: [], deepestFeet: 0, deepestPlace: '', mightiest: null, peakLevel: 1, peakGold: 0, nearDeath: false, returns: 0, deeds: [] };
 }
 
 export function newCareer(): Career {
@@ -146,7 +146,7 @@ export function record(c: Chronicle, career: Career, player: Progress, slain: re
   c.peakGold = Math.max(c.peakGold, player.au);
   career.bestStreak = Math.max(career.bestStreak, streak);
   if (player.wild) career.worldMap = true;
-  c.returns = Math.max(c.returns ?? 0, returns(player));
+  c.returns = Math.max(c.returns, returns(player));
   if (hurt && player.mhp > 0 && player.chp > 0 && player.chp < player.mhp * 0.1) c.nearDeath = true;
   else if (c.nearDeath && player.mhp > 0 && player.chp >= player.mhp * 0.5) {
     c.nearDeath = false;

@@ -787,25 +787,27 @@ export class Director {
     );
   }
 
-  /** The run's options under the hero about to begin: random quests and tome2's birth options, set as they are tapped. */
+  /** The run's options under the hero about to begin: lives, random quests and tome2's birth options, set as they are tapped. */
   private runCard(run: RunOptions): HTMLElement {
     const card = el('article', 'birth-card run');
     card.append(
       el('h3', undefined, 'Your adventure'),
       ...runElements(run, this.quests, {
-        adventure: (on) => {
-          this.deps.engine.setAdventure(on);
-          this.deps.requestRefresh();
-        },
-        quests: (count) => {
-          this.quests = count;
-          this.deps.engine.setRandomQuests(count);
-          this.deps.requestRefresh();
-        },
-        option: (index, on) => {
-          this.deps.engine.setRunOption(index, on);
-          if (run.options[index]?.name === 'unusualRooms' && !on) this.deps.engine.setRandomQuests(this.quests);
-          this.deps.requestRefresh();
+        change: {
+          adventure: (on) => {
+            this.deps.engine.setAdventure(on);
+            this.deps.requestRefresh();
+          },
+          quests: (count) => {
+            this.quests = count;
+            this.deps.engine.setRandomQuests(count);
+            this.deps.requestRefresh();
+          },
+          option: (index, on) => {
+            this.deps.engine.setRunOption(index, on);
+            if (run.options[index]?.name === 'unusualRooms' && !on) this.deps.engine.setRandomQuests(this.quests);
+            this.deps.requestRefresh();
+          },
         },
       }),
     );

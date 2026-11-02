@@ -310,13 +310,13 @@ export const HELP: readonly HelpGroup[] = [
           'In Adventure mode, a hero who falls with a life to spare wakes in the *Halls of Waiting* and chooses:',
           {
             terms: [
-              ['Return to the battlefield', 'Back where you fell, whole again. A level kept as you left it is just as it was, your foes still there, so you wake a step or two away from them when there is room. Elsewhere you wake at the same depth on a level made anew; from a quest’s own level, by its door.'],
-              ['Return to safety', 'In the last town you stood in, as Word of Recall would leave you: the way back down is kept.'],
+              ['Return to the battlefield', 'Back where you fell, whole again. A level kept as you left it is just as it was, your foes still there, so you wake a step or two away from them when there is room. Elsewhere you wake at the same depth on a level made anew; from a quest’s own level, on the surface outside it.'],
+              ['Return to safety', 'In the last town you stood in, as Word of Recall would leave you: the way back down is kept. Not where Word of Recall cannot take you out, nor for an astral being.'],
               ['Accept death', 'The adventure ends, as it would with no life left.'],
             ],
           },
           'Either way back costs a life. It restores health, mana and sanity, cures ailments (poison, cuts, stunning, fear, blindness, confusion, hallucination, paralysis, slowness, the Black Breath) and hunger, and ends a Word of Recall under way. What lasts stays: drained attributes and experience, curses, corruptions, and quests done or failed. The game is saved at once.',
-          'Your lives left are on the character sheet and at the foot of Settings. Things of the game itself that save a hero, such as the *Blood of Life*, come first and cost no life; while the One Ring holds you, it alone decides.',
+          'Your lives left are on the character sheet and at the foot of Settings. The *Blood of Life* saves you first and costs no life; while the One Ring holds you, it alone decides. Eru may still raise a devoted follower who accepts death or has no life left.',
         ],
         see: ['survival', 'new-hero', 'deeds'],
       },

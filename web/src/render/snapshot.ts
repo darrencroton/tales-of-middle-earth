@@ -171,8 +171,10 @@ export interface PlayerState {
    * (the Blood of Life, the One Ring's hold), `final` otherwise.
    */
   fate?: 'choice' | 'rescue' | 'final';
-  /** With fate `choice`: the town the hero would return to for safety, empty when none can be reached. */
+  /** With fate `choice`: the town the hero would return to for safety. */
   haven?: string;
+  /** With fate `choice`, instead of `haven`: why there is no returning to safety (astral; held where Word of Recall cannot leave; no town). */
+  closed?: 'astral' | 'held' | 'none';
   /** The quest of the level the hero is on, when it holds one. */
   quest?: LevelQuest;
   /** Name of the town or land walked on the surface (set by the frontend from the place). */

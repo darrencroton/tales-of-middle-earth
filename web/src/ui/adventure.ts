@@ -12,11 +12,11 @@ export interface RunChanges {
 
 /**
  * The rules of a run: its lives, its random quests and tome2's birth
- * options, as the last creation screen sets them. Read-only once the
- * adventure has begun (no `change`, and the `lives` left): the choice made
- * stands out and the others are faded.
+ * options, as the last creation screen sets them (`change`). Read-only once
+ * the adventure has begun (with the `lives` left): the choice made stands
+ * out and the others are faded.
  */
-export function runElements(run: RunOptions, quests: number, change?: RunChanges, lives?: number): HTMLElement[] {
+export function runElements(run: RunOptions, quests: number, { change, lives }: { change?: RunChanges; lives?: number } = {}): HTMLElement[] {
   const mode = run.adventure ? 'adventure' : 'roguelike';
   const modeBox = el('section', 'run-mode');
   const modes = segmented('Lives', [['adventure', MODE_TEXT.adventure.label], ['roguelike', MODE_TEXT.roguelike.label]], mode, (value) =>

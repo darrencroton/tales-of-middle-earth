@@ -46,8 +46,8 @@ export interface ReturnOffer {
   lives: number;
   /** What returning to the battlefield means from here. */
   battlefield: string;
-  /** What returning to safety means, or null when no town can be reached. */
-  safety: string | null;
+  /** What returning to safety means, or why it cannot be done. */
+  safety: { text: string } | { refusal: string };
   /** Says why a choice cannot be made (a toast and the refusal sound). */
   refuse(why: string): void;
 }
@@ -183,7 +183,7 @@ export class PromptCard {
    * which is asked once more.
    */
   showReturn(offer: ReturnOffer): void {
-    const key = `return\u0000${offer.cause}\u0000${offer.lives}\u0000${offer.battlefield}\u0000${offer.safety}`;
+    const key = `return\u0000${offer.cause}\u0000${offer.lives}\u0000${offer.battlefield}\u0000${JSON.stringify(offer.safety)}`;
     this.root.hidden = false;
     this.leading = false;
     if (key === this.renderedKey || `${key}\u0000accept` === this.renderedKey) return;
@@ -194,9 +194,11 @@ export class PromptCard {
     for (let i = 0; i < LIVES; i++) pips.append(el('span', i < offer.lives ? 'life' : 'life spent', iconText(i < offer.lives ? '✦' : '✧')));
     pips.append(el('span', 'between-lives-text', livesText(offer.lives)));
     const battle = this.choiceButton('Return to the battlefield', offer.battlefield, () => this.answer(codes(RETURN_KEYS.battlefield)), 'primary');
-    const safety = offer.safety
-      ? this.choiceButton('Return to safety', offer.safety, () => this.answer(codes(RETURN_KEYS.safety)))
-      : this.choiceButton('Return to safety', 'No road leads to a town from here: you must find your own way.', () => offer.refuse('There is no town to return to from here.'), 'unavailable');
+    const offered = offer.safety;
+    const safety =
+      'text' in offered
+        ? this.choiceButton('Return to safety', offered.text, () => this.answer(codes(RETURN_KEYS.safety)))
+        : this.choiceButton('Return to safety', offered.refusal, () => offer.refuse(offered.refusal), 'unavailable');
     const accept = this.choiceButton('Accept death', 'Let go. Your tale ends here.', () => this.confirmDeath(offer), 'danger');
     const choices = el('div', 'between-choices');
     choices.append(battle, safety, accept);

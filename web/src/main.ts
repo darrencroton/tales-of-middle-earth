@@ -53,7 +53,7 @@ import {
   type GearSuggestion,
 } from './play/items.ts';
 import { ABANDONED, buildMemorial, entryKey, hasFallen, memorialKey, type Memorial } from './play/memorial.ts';
-import { battlefieldText, isReturnPrompt, returnedFromDeath, safetyText } from './play/lives.ts';
+import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/lives.ts';
 import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
 import { el, glyph, iconText, navButton, section } from './ui/dom.ts';
@@ -198,6 +198,8 @@ let picker: TargetPicker | null = null;
 let lastSavedTurn = -1;
 /** A save command was sent; once the engine has written it, storage is synced (and the player told, if asked). */
 let pendingSync: 'silent' | 'toast' | null = null;
+/** The lives the hero had when asked whether to return from death (`followReturn`), else null. */
+let askedLives: number | null = null;
 /** The hero has returned from death: the game is saved at the next command prompt, as tome2 saves a death at once. */
 let saveOnReturn = false;
 let currentActions: Action[] = [];
@@ -1121,14 +1123,15 @@ function updatePromptCard(): void {
   }
   const kind = currentPrompt();
   const quiet = !macros.running && engine.pendingKeys === 0;
-  if (kind === 'yesno' && /Dump the screen\?/.test(rowZeroText()) && quiet) {
+  /* tome2 asks to dump the screen at a death, or for a last screenshot when undead form ends it. */
+  if (kind === 'yesno' && /Dump the screen\?|Make a last screenshot\?/.test(rowZeroText()) && quiet) {
     const player = engine.gameState(0)?.player;
     if (player && !hasFallen(player)) {
       /* A life to return with, or tome2 saves the hero: no death card, and no screen dump. */
       promptCard.hide();
       send(keyCodes('n'));
     } else {
-      promptCard.showDeath(player?.diedFrom ?? '', !!player?.adventure);
+      promptCard.showDeath(player?.diedFrom ?? '', !!player?.adventure && player.lives === 1);
     }
     return;
   }
@@ -1138,7 +1141,7 @@ function updatePromptCard(): void {
       cause: player?.diedFrom ?? '',
       lives: (player?.lives ?? 1) - 1,
       battlefield: battlefieldText(place),
-      safety: player?.haven ? safetyText(player.haven) : null,
+      safety: player?.closed ? { refusal: SAFETY_CLOSED[player.closed] } : { text: safetyText(player?.haven ?? '') },
       refuse,
     });
     return;
@@ -1487,9 +1490,14 @@ function refresh(): void {
     if (shownShop && !inStore) audio.cue('shop');
     inStore = !!shownShop;
     audio.setView(ended ? 'gameover' : state.player?.dead && state.player.fate === 'choice' ? 'between' : 'game');
-    if (previous?.player && state.player && returnedFromDeath(previous.player, state.player)) {
-      audio.cue('returned');
-      saveOnReturn = true;
+    if (state.player) {
+      const follow = followReturn(askedLives, state.player);
+      askedLives = follow.asked;
+      if (follow.returned) {
+        feel.play({ kind: 'returned', lives: state.player.lives ?? 0 });
+        audio.cue('returned');
+        saveOnReturn = true;
+      }
     }
     hearGear(snap.turn);
     audio.update(snap, state, inStore);
@@ -3161,6 +3169,7 @@ function returnToTitle(): void {
   conversation = null;
   returnTo = null;
   pendingSync = null;
+  askedLives = null;
   saveOnReturn = false;
   lastSavedTurn = -1;
   inStore = false;

@@ -1,7 +1,7 @@
 import type { AnimationLevel } from './settings.ts';
 import type { PlayerState } from './render/snapshot.ts';
 import { depthLabel } from './hud.ts';
-import { livesText, returnedFromDeath } from './play/lives.ts';
+import { livesText } from './play/lives.ts';
 import { el, iconText } from './ui/dom.ts';
 
 /** Health below this fraction of the maximum counts as low. */
@@ -21,10 +21,10 @@ export type FeelEvent =
   | { kind: 'questProgress'; slain: number; count: number }
   | { kind: 'gold'; amount: number }
   | { kind: 'exp'; amount: number }
-  /** Back from death in Adventure mode, with `lives` left (this one included). */
+  /** Back from death in Adventure mode, with `lives` left (this one included); played by main.ts (`followReturn`). */
   | { kind: 'returned'; lives: number };
 
-type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown' | 'quest' | 'dead' | 'lives'>;
+type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown' | 'quest'>;
 
 /** What changed for the player between two states, as feedback events. */
 export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
@@ -54,7 +54,6 @@ export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
   else if (next.exp > prev.exp) events.push({ kind: 'exp', amount: next.exp - prev.exp });
   if (next.chp < prev.chp && next.mhp > 0) events.push({ kind: 'hurt', fraction: Math.min(1, (prev.chp - next.chp) / next.mhp) });
   if (next.au > prev.au) events.push({ kind: 'gold', amount: next.au - prev.au });
-  if (returnedFromDeath(prev, next)) events.push({ kind: 'returned', lives: next.lives ?? 0 });
   if (quest) events.push(quest);
   return events;
 }

@@ -21,6 +21,8 @@
 #include "cave.hpp"
 #include "cave_type.hpp"
 #include "defines.hpp"
+#include "dungeon_flag.hpp"
+#include "dungeon_info_type.hpp"
 #include "feature_flag.hpp"
 #include "feature_type.hpp"
 #include "files.hpp"
@@ -50,6 +52,8 @@
 #include <cstdlib>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 /* The question asked between death and life; the frontend shows it as its own card. */
 #define RETURN_PROMPT "Halls of Waiting: [B]attlefield, [S]afety or [A]ccept death? "
@@ -86,13 +90,12 @@ std::string side_file()
 	return name_file_save() + ".adventure";
 }
 
-void write_side_file()
+bool write_side_file()
 {
-	if (FILE *f = std::fopen(side_file().c_str(), "w"))
-	{
-		std::fprintf(f, "%d %d %d\n", adventure.on ? 1 : 0, adventure.spent, adventure.town);
-		std::fclose(f);
-	}
+	FILE *f = std::fopen(side_file().c_str(), "w");
+	if (!f) return false;
+	bool const ok = std::fprintf(f, "%d %d %d\n", adventure.on ? 1 : 0, adventure.spent, adventure.town) > 0;
+	return (std::fclose(f) == 0) && ok;
 }
 
 void read_side_file()
@@ -178,22 +181,27 @@ bool rescued()
 	return (ring_hold() && p_ptr->mhp > 1) || p_ptr->allow_one_death > 0;
 }
 
-/* The hero may go back to a town: an astral being has to find the way up on foot. */
-bool safety_open()
+/* Why the hero cannot go back to a town: an astral being climbs on foot, and where Word of Recall cannot leave, nor can they. */
+char const *safety_closed()
 {
-	return !p_ptr->astral && haven() > 0;
+	if (p_ptr->astral) return "astral";
+	if ((game->dungeon_flags & DF_NO_RECALL_OUT) || dungeon_type == DUNGEON_DEATH) return "held";
+	if (!haven()) return "none";
+	return nullptr;
 }
 
 /* Whether this death in progress will ask the hero what to do. */
 bool may_return()
 {
-	return alive && death && !accepted && !total_winner && lives_left() > 1 && !ring_hold() && !rescued();
+	return alive && death && !accepted && lives_left() > 1 && !ring_hold() && !rescued();
 }
 
 enum class Choice { BATTLEFIELD, SAFETY, ACCEPT };
 
 Choice ask()
 {
+	/* Keys sent before the hero fell answer nothing here. */
+	flush();
 	while (true)
 	{
 		char ch = 0;
@@ -203,7 +211,7 @@ Choice ask()
 		case 'b':
 			return Choice::BATTLEFIELD;
 		case 's':
-			if (safety_open()) return Choice::SAFETY;
+			if (!safety_closed()) return Choice::SAFETY;
 			break;
 		case 'a':
 			if (get_check("Accept death? Your adventure ends forever. ")) return Choice::ACCEPT;
@@ -238,7 +246,7 @@ void go_to_safety()
 	int const town = haven();
 	int x, y;
 	town_area(town, &x, &y);
-	if (dun_level) p_ptr->recall_dungeon = dungeon_type;
+	if (dun_level && !p_ptr->inside_quest && !(game->edit_data.d_info[dungeon_type].flags & DF_NO_RECALL)) p_ptr->recall_dungeon = dungeon_type;
 	dungeon_type = DUNGEON_WILDERNESS;
 	dun_level = 0;
 	p_ptr->wild_mode = false;
@@ -251,22 +259,6 @@ void go_to_safety()
 	cmsg_format(TERM_L_GREEN, "You return to life in %s.", town_name(town).c_str());
 }
 
-bool die_hook(void *, void *, void *)
-{
-	if (!may_return()) return false;
-	Choice const choice = ask();
-	if (choice == Choice::ACCEPT)
-	{
-		accepted = true;
-		return false;
-	}
-	adventure.spent++;
-	if (choice == Choice::SAFETY) go_to_safety();
-	else go_back();
-	msg_print(NULL);
-	return true;
-}
-
 bool hurts(feature_type const &f)
 {
 	for (int i = 0; i < 4; i++)
@@ -276,14 +268,23 @@ bool hurts(feature_type const &f)
 	return false;
 }
 
-/* Ground a hero can stand on and live: floor, empty, no lava, no deep water; stairs and doors only where tome2 put the hero. */
+/* Ground a hero can stand on and live: floor, empty, no lava, deep water, glyph or rune; stairs and doors only where tome2 put the hero. */
 bool livable(int y, int x, bool fixtures)
 {
 	if (!in_bounds(y, x)) return false;
 	auto const &c = cave[y][x];
 	auto const &f = game->edit_data.f_info[c.feat];
-	if (!(f.flags & FF_FLOOR) || c.m_idx || c.feat == FEAT_DEEP_WATER || hurts(f)) return false;
+	if (!(f.flags & FF_FLOOR) || c.m_idx || c.inscription || hurts(f)) return false;
+	if (c.feat == FEAT_DEEP_WATER || c.feat == FEAT_GLYPH || c.feat == FEAT_MINOR_GLYPH) return false;
 	return fixtures || !(f.flags & FF_PERMANENT);
+}
+
+/* Ground a hero can walk across, creatures aside: floor and doors. */
+bool passable(int y, int x)
+{
+	if (!in_bounds(y, x)) return false;
+	auto const &f = game->edit_data.f_info[cave[y][x].feat];
+	return (f.flags & FF_FLOOR) || (f.flags & FF_DOOR);
 }
 
 bool hostile_beside(int y, int x)
@@ -301,29 +302,40 @@ bool hostile_beside(int y, int x)
 }
 
 /*
- * Puts the hero on the nearest safe ground to where tome2 placed them, out
- * of reach of a hostile creature's next blow when such ground is near.
+ * Puts the hero on the nearest safe ground that can be walked to from where
+ * tome2 placed them, out of reach of a hostile creature's next blow when
+ * such ground is near.
  */
 void land()
 {
 	int const py = p_ptr->py, px = p_ptr->px;
+	if (!in_bounds(py, px)) return;
 	bool const here = livable(py, px, true);
 	if (here && !hostile_beside(py, px)) return;
+	/* The ground within reach, nearest first by the steps to it. */
+	std::vector<std::pair<int, int>> reached { { py, px } };
+	std::vector<bool> seen(static_cast<std::size_t>(cur_hgt * cur_wid), false);
+	seen[py * cur_wid + px] = true;
+	for (std::size_t i = 0; i < reached.size(); i++)
+	{
+		auto const [y, x] = reached[i];
+		if (std::max(std::abs(y - py), std::abs(x - px)) >= LANDING_REACH) continue;
+		for (int d = 0; d < 8; d++)
+		{
+			int const ny = y + ddy_ddd[d], nx = x + ddx_ddd[d];
+			if (!passable(ny, nx) || seen[ny * cur_wid + nx]) continue;
+			seen[ny * cur_wid + nx] = true;
+			reached.emplace_back(ny, nx);
+		}
+	}
 	for (int pass = 0; pass < 2; pass++)
 	{
-		for (int d = 1; d <= LANDING_REACH; d++)
+		for (auto const &[y, x] : reached)
 		{
-			for (int y = py - d; y <= py + d; y++)
-			{
-				for (int x = px - d; x <= px + d; x++)
-				{
-					if (std::max(std::abs(y - py), std::abs(x - px)) != d) continue;
-					if (!livable(y, x, false) || (pass == 0 && hostile_beside(y, x))) continue;
-					p_ptr->py = y;
-					p_ptr->px = x;
-					return;
-				}
-			}
+			if (!livable(y, x, false) || (pass == 0 && hostile_beside(y, x))) continue;
+			p_ptr->py = y;
+			p_ptr->px = x;
+			return;
 		}
 		if (here) return;
 	}
@@ -359,6 +371,27 @@ bool wild_gen_hook(void *, void *in_, void *)
 	return false;
 }
 
+bool die_hook(void *, void *, void *)
+{
+	if (!may_return()) return false;
+	Choice const choice = ask();
+	if (choice == Choice::ACCEPT)
+	{
+		accepted = true;
+		return false;
+	}
+	adventure.spent++;
+	if (choice == Choice::SAFETY) go_to_safety();
+	else go_back();
+	/* Last among the level's hooks, so the hero lands after quests and joke monsters have placed their creatures. */
+	del_hook_new(HOOK_LEVEL_END_GEN, level_end_hook);
+	add_hook_new(HOOK_LEVEL_END_GEN, level_end_hook, "web_return_level", nullptr);
+	del_hook_new(HOOK_WILD_GEN, wild_gen_hook);
+	add_hook_new(HOOK_WILD_GEN, wild_gen_hook, "web_return_wild", nullptr);
+	msg_print(NULL);
+	return true;
+}
+
 /* A JSON string of plain text: tome2's names hold no quotes, backslashes or control characters, and any that came would be dropped. */
 void json_text(std::string &out, std::string_view s)
 {
@@ -381,6 +414,8 @@ bool adventure_mode()
 /* Called by web_snapshot (engine/snapshot.cc) on every refresh. */
 void web_adventure_tick()
 {
+	/* tome2 can still save a hero who accepted death (Eru, the wizard's Die?); their next death is asked again. */
+	if (!death) accepted = false;
 	if (hooks_added) return;
 	add_hook_new(HOOK_DIE, die_hook, "web_die", nullptr);
 	add_hook_new(HOOK_LEVEL_END_GEN, level_end_hook, "web_return_level", nullptr);
@@ -391,8 +426,9 @@ void web_adventure_tick()
 /*
  * The hero's lives for the player JSON (web_state_json): `adventure`, the
  * lives left with this one (`lives`), and once dead `fate`: `choice` (they
- * will be asked whether to return; `haven` names the town, empty when it
- * cannot be reached), `rescue` (tome2 itself saves them) or `final`.
+ * are asked whether to return, or have chosen to and are on their way;
+ * `haven` names the town, or `closed` says why there is none: `astral`,
+ * `held` or `none`), `rescue` (tome2 itself saves them) or `final`.
  */
 void json_adventure(std::string &out)
 {
@@ -400,13 +436,15 @@ void json_adventure(std::string &out)
 	out += adventure.on ? '1' : '0';
 	out += ",\"lives\":" + std::to_string(lives_left()) + ',';
 	if (!death) return;
-	bool const choice = may_return();
+	bool const choice = returning || may_return();
 	out += "\"fate\":";
-	json_text(out, choice ? "choice" : (alive && !accepted && !total_winner && rescued()) ? "rescue" : "final");
+	json_text(out, choice ? "choice" : (alive && !accepted && rescued()) ? "rescue" : "final");
 	out += ',';
 	if (!choice) return;
-	out += "\"haven\":";
-	json_text(out, safety_open() ? town_name(haven()) : std::string());
+	char const *closed = safety_closed();
+	json_text(out, closed ? "closed" : "haven");
+	out += ':';
+	json_text(out, closed ? closed : town_name(haven()));
 	out += ',';
 }
 
@@ -415,12 +453,10 @@ extern "C" {
 bool __real__Z11save_playerv();
 bool __real__Z11load_playerRK12program_args(program_args const &args);
 
-/* tome2's save_player, followed by the side file. */
+/* tome2's save_player, followed by the side file; a save without it has failed. */
 bool __wrap__Z11save_playerv()
 {
-	bool const ok = __real__Z11save_playerv();
-	if (ok) write_side_file();
-	return ok;
+	return __real__Z11save_playerv() && write_side_file();
 }
 
 /*

@@ -3424,6 +3424,12 @@ html.keyboard-tight .prompt-card.text .card-title {
   animation: none;
 }
 
+:root[data-animation="off"] #app.between #map,
+:root[data-animation="off"] #app.between #hud,
+:root[data-animation="off"] #app.between #toolbar {
+  transition: none;
+}
+
 .tv-empty {
   margin: 1.5rem 0;
   color: var(--muted);

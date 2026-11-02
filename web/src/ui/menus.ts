@@ -173,7 +173,7 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
     const fixed = section(
       'Your adventure',
       el('p', 'muted', `Chosen when ${rules.hero} was created, these rules hold for the whole adventure.`),
-      ...runElements(rules.run, rules.run.drawn, undefined, rules.lives),
+      ...runElements(rules.run, rules.run.drawn, { lives: rules.lives }),
     );
     fixed.classList.add('adventure-rules');
     body.append(fixed);

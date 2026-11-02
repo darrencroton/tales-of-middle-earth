@@ -22,7 +22,7 @@ export function livesText(lives: number): string {
 
 /** What returning to the battlefield means from where the hero fell. */
 export function battlefieldText(place: Pick<Place, 'depth' | 'kept' | 'quest'> | null): string {
-  if (place?.quest) return 'Wake by the door to the quest. It still waits for you.';
+  if (place?.quest) return 'Wake on the surface, outside the quest’s own place.';
   if (place && place.depth > 0 && !place.kept) return 'Wake at this depth, whole again, on a level made anew.';
   if (place && place.depth > 0) return 'Wake where you fell, whole again. Your foes are still there.';
   return 'Wake where you fell, whole again.';
@@ -33,9 +33,25 @@ export function safetyText(haven: string): string {
   return `Wake in ${haven}, weary but whole. The way back is yours to find.`;
 }
 
-/** The hero was dead and has come back with one life fewer (not saved by something of tome2's own). */
-export function returnedFromDeath(prev: Pick<PlayerState, 'dead' | 'lives'> | null, next: Pick<PlayerState, 'dead' | 'lives'>): boolean {
-  return !!prev?.dead && !next.dead && (next.lives ?? 0) < (prev.lives ?? 0);
+/** Why the hero cannot return to safety (`closed` in web_state_json). */
+export const SAFETY_CLOSED: Readonly<Record<NonNullable<PlayerState['closed']>, string>> = {
+  astral: 'An astral being must find the way up on foot.',
+  held: 'Nothing that leaves this place by magic can leave it now.',
+  none: 'No town stands to return to.',
+};
+
+/**
+ * Follows a death the hero may return from: `asked` holds the lives they
+ * had when asked (null otherwise), and `returned` is true on the first state
+ * alive again with fewer. tome2 can stop at a -more- between the choice and
+ * the new level, so neither the count nor the hero's life is read at one
+ * moment; a rescue of tome2's own spends no life and is no return.
+ */
+export function followReturn(asked: number | null, player: Pick<PlayerState, 'dead' | 'fate' | 'lives'>): { asked: number | null; returned: boolean } {
+  const lives = player.lives ?? 0;
+  if (player.dead) return { asked: player.fate === 'choice' ? Math.max(asked ?? 0, lives) : null, returned: false };
+  if (asked !== null && lives < asked) return { asked: null, returned: true };
+  return { asked, returned: false };
 }
 
 /** How many times an Adventure hero has returned from death. */
