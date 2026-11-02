@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { commandGroups, commandKeys, contextActions, contextualAction, pickupCommand, speedAction, transitionUnderfoot, waitCommand, type CommandContext } from '../../web/src/play/actions.ts';
+import { commandGroups, commandKeys, contextActions, contextualAction, pickupCommand, restMacro, speedAction, transitionUnderfoot, waitCommand, type CommandContext } from '../../web/src/play/actions.ts';
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
@@ -393,11 +393,11 @@ describe('targeting', () => {
   });
 });
 
-const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', beside: false, pray: 0, runes: false, steals: false, magic: false, powers: false };
+const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', feat: 1, beside: false, pray: 0, runes: false, steals: false, magic: false, powers: false };
 
 describe('actions', () => {
   it('prefixes commands with a keymap bypass', () => {
-    assert.deepEqual(commandKeys({ command: 'R', then: '&\r' }), [92, ...keys('R&\r')]);
+    assert.deepEqual(commandKeys({ command: 'R' }), [92, ...keys('R')]);
     for (const group of commandGroups(COMMANDS)) for (const c of group.commands) assert.ok(c.command.length >= 1 || c.native);
   });
 
@@ -469,6 +469,20 @@ describe('actions', () => {
     assert.deepEqual(contextActions({ ...base, magic: 'Cast' }).find((a) => a.id === 'cast')?.effect, { kind: 'native', view: 'magic' });
   });
 
+  it('rests only when tome2 asks how long, and dims Rest on a Void Jumpgate', () => {
+    const base = { mode: 'map' as const, atCommand: true, floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const rest = (feat: number) => contextActions({ ...base, underfoot: '', feat }).find((a) => a.id === 'rest');
+    assert.deepEqual(rest(1)?.effect, { kind: 'native', view: 'rest' });
+    assert.equal(rest(1)?.unavailable, undefined);
+    assert.equal(rest(160)?.unavailable, 'Resting on a Void Jumpgate is too dangerous.');
+    const asked = restMacro();
+    assert.deepEqual(asked.next().value, [92, ...keys('R')]);
+    assert.deepEqual(asked.next({ prompt: "Rest (0-9999, '*' for HP/SP, '&' as needed): &", screen: '', atCommand: false }).value, [13]);
+    const refused = restMacro();
+    refused.next();
+    assert.ok(refused.next({ prompt: 'Resting is impossible while undead!', screen: '', atCommand: true }).done);
+  });
+
   it('puts the most pressing thing first, else Explore named for what it will do', () => {
     const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
     const first = (ctx: Partial<Parameters<typeof contextualAction>[0]>) => {
@@ -536,6 +550,8 @@ describe('actions', () => {
     assert.equal(why('Drink from fountain', {}), 'There is no fountain here.');
     assert.equal(why('Drink from fountain', { underfoot: 'fountain' }), undefined);
     assert.equal(why('Sacrifice at altar', { underfoot: 'altar of Eru' }), undefined);
+    assert.equal(why('Rest', { feat: 160 }), 'Resting on a Void Jumpgate is too dangerous.');
+    assert.equal(why('Rest', { feat: 176 }), undefined);
     assert.equal(why('Talk', { where: 'worldMap', beside: true }), 'Not on the world map.');
     assert.equal(why('Read scroll', { where: 'worldMap' }), 'Not on the world map.');
     assert.equal(why('Eat', { where: 'worldMap' }), undefined);

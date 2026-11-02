@@ -11,7 +11,7 @@ import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
-import { commandGroups, commandKeys, contextActions, contextualAction, GAME_OPTIONS, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
+import { commandGroups, commandKeys, contextActions, contextualAction, GAME_OPTIONS, restMacro, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
@@ -649,6 +649,10 @@ function openNative(view: NativeView): void {
     case 'fire':
       watchAttempt();
       runMacro(fireMacro());
+      break;
+    case 'rest':
+      watchAttempt();
+      runMacro(restMacro());
       break;
     case 'halt':
       break;
@@ -1809,8 +1813,12 @@ function shopActions(): Action[] {
 
 /* Action bar */
 
+function underfootFeat(snap: LevelSnapshot): number {
+  return snap.feat[snap.py * snap.width + snap.px];
+}
+
 function underfootName(snap: LevelSnapshot): string {
-  return features[snap.feat[snap.py * snap.width + snap.px]]?.name.toLowerCase() ?? '';
+  return features[underfootFeat(snap)]?.name.toLowerCase() ?? '';
 }
 
 /** The button for the door of a shop, the home or another building the hero stands at (tome2 calls them all buildings). */
@@ -1895,6 +1903,7 @@ function updateActionBar(force = false): void {
       overview: map.overview,
       atCommand: !!snap?.atCommand,
       underfoot: snap && snap.inDungeon ? underfootName(snap) : '',
+      feat: snap?.inDungeon ? underfootFeat(snap) : undefined,
       floorObjects: snap?.floorObjects ?? 0,
       alwaysPickup: alwaysPickup(),
       ...(mode === 'map' && snap ? mapSituation(snap) : {}),
@@ -2019,6 +2028,7 @@ function commandContext(): CommandContext {
   return {
     where: !snap?.inDungeon || snap.depth > 0 ? 'dungeon' : snap.wild ? 'worldMap' : 'land',
     underfoot: snap?.inDungeon ? underfootName(snap) : '',
+    feat: snap?.inDungeon ? underfootFeat(snap) : -1,
     beside: !!snap && (lastState?.monsters ?? []).some((m) => isAdjacent(snap.px, snap.py, m.x, m.y)),
     pray: player?.pray ?? 0,
     runes: (player?.runes ?? 0) > 0,

@@ -172,6 +172,16 @@ test('the world map is entered from the commands and left from the toolbar, and 
   await dismissMore(page);
   await waitAtCommand(page);
   await expect.poll(() => canvasBrightness(page, '#map', whole), { timeout: 5_000 }).toBeGreaterThan(lit / 2);
+
+  /* tome2 will not let the hero rest on a Void Jumpgate: Rest is dimmed and says so, taking no turn and opening nothing. */
+  await wizardCommand(page, 'F', 160);
+  const rest = page.locator('#toolbar [data-action="rest"]');
+  await expect(rest).toHaveClass(/unavailable/);
+  const turn = await page.evaluate(() => window.__tome!.engine.snapshot()!.turn);
+  await rest.click();
+  await expect(page.locator('#toast')).toHaveText('Resting on a Void Jumpgate is too dangerous.');
+  await expect(page.locator('.tv-layer')).toBeHidden();
+  expect(await page.evaluate(() => window.__tome!.engine.snapshot()!.turn)).toBe(turn);
 });
 
 test('a quest level is never kept as the dungeon level of its depth', async ({ page }) => {
