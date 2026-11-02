@@ -31,7 +31,7 @@ export interface Place {
   lev: number;
 }
 
-export type View = 'title' | 'game' | 'gameover';
+export type View = 'title' | 'game' | 'between' | 'gameover';
 
 /** d_info.txt dungeon indices. */
 const DUNGEON_THEMES: Readonly<Record<number, string>> = {
@@ -133,6 +133,8 @@ export function sceneFor(view: View, place: Place | null): Scene {
   const scene: Scene = { base: 'title', night: false, stage: 0, ruined: false, climax: false, depth: 0 };
   if (view === 'title') return scene;
   if (view === 'gameover') return { ...scene, base: 'lament' };
+  /* Between death and life: the Halls of Mandos, where the dead wait. */
+  if (view === 'between') return { ...scene, base: 'mandos' };
   if (!place || !place.ready) return scene;
   scene.stage = place.stage;
   scene.night = place.night === 1;

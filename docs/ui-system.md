@@ -68,6 +68,8 @@ Shop, home, museum (walk in, or Enter shop on the door)
 Other buildings ─────────────── native panel: their services as rows · Exit
                                 └── A service ───── its answer as a card (a quest, a rumour, the race legends);
                                                     a service that opens a file opens the reader
+Death with a life to spare ──── Halls of Waiting (map card over a grey veil: Return to the battlefield · Return
+  (Adventure mode)              to safety · Accept death → confirmation) → the map, with a banner; or, accepted, as below
 Death ──────────────────────── death card → end-of-game summary (full screen) → Hall of Fame (full screen)
                                 └── a hero ──────── card: how it ended, when, deepest, score; Begin anew · Look back
                                     └── Fallen hero panel, tabs Hero · Gear · Skills · Last moments
@@ -79,7 +81,7 @@ Title ──────────────────────── C
                                 · Soundtrack (panel) · Hall of Fame (panel → a hero: card as after death,
                                   with Remove (→ confirmation))
 Character creation ─────────── director screens (full screen, Back/Random/Choose), name card;
-                               Ready to begin: the hero, then Your adventure (random quests, birth options)
+                               Ready to begin: the hero, then Your adventure (lives, random quests, birth options)
 ```
 
 ## 2. Audit findings (before this redesign)
@@ -108,7 +110,7 @@ where the code comes from.
 | **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, Help and its topics; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
 | **Menu** | A short list of places to go | Menu, Knowledge, Backup | its rows, capped at `--popup-height` | bottom sheet |
 | **Card** | Details of one thing, or a question | Item, spell, creature, shop item, memorial item/foe, a saved hero (Game Roster), a hero of the Hall of Fame, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
-| **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card (what is at a cell, each creature and item a row opening its card), death card | its content | bottom of the map, no backdrop |
+| **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card (what is at a cell, each creature and item a row opening its card), the Halls of Waiting, death card | its content | bottom of the map, no backdrop |
 | **Full screen** | A screen that replaces the game | title, character creation, end of game, Hall of Fame after death | whole screen | — |
 
 A map card or tome2 panel shown while tome2 is not at its command prompt (or a

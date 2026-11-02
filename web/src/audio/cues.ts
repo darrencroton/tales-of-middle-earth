@@ -54,6 +54,7 @@ export type CueId =
   | 'danger'
   | 'unique'
   | 'death'
+  | 'returned'
   | 'shop'
   | 'deny'
   | 'poisoned'

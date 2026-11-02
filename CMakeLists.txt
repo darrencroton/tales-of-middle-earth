@@ -94,7 +94,7 @@ add_subdirectory(${TOME2_DIR}/src ${CMAKE_BINARY_DIR}/tome2 EXCLUDE_FROM_ALL)
 #
 # Web frontend
 #
-add_executable(tome engine/main-web.cc engine/snapshot.cc engine/memory.cc engine/runoptions.cc)
+add_executable(tome engine/main-web.cc engine/snapshot.cc engine/memory.cc engine/runoptions.cc engine/adventure.cc)
 target_include_directories(tome PRIVATE ${TOME2_DIR}/src ${TOME2_DIR}/src/include)
 target_link_libraries(tome PRIVATE game_main game squelch ${LIBS})
 
@@ -117,10 +117,12 @@ set(TOME_LINK_FLAGS
 	-sENVIRONMENT=web
 	-sEXIT_RUNTIME=1
 	-sEXPORTED_RUNTIME_METHODS=FS,HEAPU8,HEAPU16,HEAP32,UTF8ToString
-	-sEXPORTED_FUNCTIONS=_main,_web_snapshot,_web_features_json,_web_state_json,_web_grid_json,_web_inventory_json,_web_object_desc,_web_store_object_desc,_web_store_json,_web_monster_desc,_web_character_json,_web_set_auto_more,_web_set_effect_delay,_web_run_options_json,_web_set_run_option,_web_set_random_quests,_web_name_buffer,_web_set_hero_name,_web_mark_abandoned,_web_remove_score,_web_clear_rows,_web_place_json,_web_scores_json,_web_birth_json,_web_spells_json,_web_skills_json,_web_abilities_json,_web_saved_screen,_web_set_persistent_levels,_web_mark_buffer,_web_mark_known,_web_notice_buffer,_web_add_notice
+	-sEXPORTED_FUNCTIONS=_main,_web_snapshot,_web_features_json,_web_state_json,_web_grid_json,_web_inventory_json,_web_object_desc,_web_store_object_desc,_web_store_json,_web_monster_desc,_web_character_json,_web_set_auto_more,_web_set_effect_delay,_web_run_options_json,_web_set_run_option,_web_set_random_quests,_web_name_buffer,_web_set_hero_name,_web_mark_abandoned,_web_remove_score,_web_clear_rows,_web_place_json,_web_scores_json,_web_birth_json,_web_spells_json,_web_skills_json,_web_abilities_json,_web_saved_screen,_web_set_persistent_levels,_web_mark_buffer,_web_mark_known,_web_notice_buffer,_web_add_notice,_web_set_adventure
 	-lidbfs.js
 	-Wl,--wrap=nanosleep
 	-Wl,--wrap=getpwuid
+	-Wl,--wrap=_Z11save_playerv
+	-Wl,--wrap=_Z11load_playerRK12program_args
 	-Wl,--wrap=_ZN8Messages3addERKNSt3__212basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEEh
 	"SHELL:--preload-file ${TOME_LIB_DIR}@/lib"
 	"SHELL:--exclude-file ${TOME_LIB_DIR}/xtra/font"

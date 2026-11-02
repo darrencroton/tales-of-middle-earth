@@ -63,7 +63,7 @@ export function nextRunName(name: string, taken: ReadonlySet<string>): string {
   return line;
 }
 
-/** The files of a hero among those in the save directory: the savefile and the levels kept with it (`Base.lvl4_2`). */
+/** The files of a hero among those in the save directory: the savefile, its lives (`Base.adventure`) and the levels kept with it (`Base.lvl4_2`). */
 export function heroFiles(names: readonly string[], base: string): string[] {
   return names.filter((n) => n === base || n.startsWith(`${base}.`));
 }
@@ -80,7 +80,7 @@ export function withoutIndexEntry(text: string, base: string): string {
 }
 
 /**
- * Deletes a hero's saved game: the savefile and the levels kept with it, in
+ * Deletes a hero's saved game: the savefile, its lives and the levels kept with it, in
  * the directory of tome2's index (`indexPath`, global.svg), their notes
  * (`Base.nte`, in the directory above), and the hero's line in the index.
  * Other heroes' files are left alone. Returns the files removed.

@@ -52,7 +52,8 @@ import {
   type FightingStyle,
   type GearSuggestion,
 } from './play/items.ts';
-import { ABANDONED, buildMemorial, entryKey, memorialKey, type Memorial } from './play/memorial.ts';
+import { ABANDONED, buildMemorial, entryKey, hasFallen, memorialKey, type Memorial } from './play/memorial.ts';
+import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/lives.ts';
 import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
 import { el, glyph, iconText, navButton, section } from './ui/dom.ts';
@@ -197,6 +198,10 @@ let picker: TargetPicker | null = null;
 let lastSavedTurn = -1;
 /** A save command was sent; once the engine has written it, storage is synced (and the player told, if asked). */
 let pendingSync: 'silent' | 'toast' | null = null;
+/** The lives the hero had when asked whether to return from death (`followReturn`), else null. */
+let askedLives: number | null = null;
+/** The hero has returned from death: the game is saved at the next command prompt, as tome2 saves a death at once. */
+let saveOnReturn = false;
 let currentActions: Action[] = [];
 let actionsKey = '';
 /* A map toolbar button that has just changed ignores taps this long (Stop and the pace never do). */
@@ -273,7 +278,7 @@ const promptCard = new PromptCard(stage, (keys) => send(keys));
 
 const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
   onEntity: (entity) => openEntity(entity),
-  onPlayer: () => openNative(lastState?.player?.dead ? 'fallen' : 'character'),
+  onPlayer: () => openNative(hasFallen(lastState?.player) ? 'fallen' : 'character'),
   onSkills: () => openNative('skills'),
   onQuest: (quest) => openQuest(sheets, quest),
   onMore: () => send([SPACE]),
@@ -1117,8 +1122,28 @@ function updatePromptCard(): void {
     return;
   }
   const kind = currentPrompt();
-  if (kind === 'yesno' && /Dump the screen\?/.test(rowZeroText()) && !macros.running && engine.pendingKeys === 0) {
-    promptCard.showDeath(engine.gameState(0)?.player?.diedFrom ?? '');
+  const quiet = !macros.running && engine.pendingKeys === 0;
+  /* tome2 asks to dump the screen at a death, or for a last screenshot when undead form ends it. */
+  if (kind === 'yesno' && /Dump the screen\?|Make a last screenshot\?/.test(rowZeroText()) && quiet) {
+    const player = engine.gameState(0)?.player;
+    if (player && !hasFallen(player)) {
+      /* A life to return with, or tome2 saves the hero: no death card, and no screen dump. */
+      promptCard.hide();
+      send(keyCodes('n'));
+    } else {
+      promptCard.showDeath(player?.diedFrom ?? '', !!player?.adventure && player.lives === 1);
+    }
+    return;
+  }
+  if (isReturnPrompt(rowZeroText()) && quiet) {
+    const player = engine.gameState(0)?.player;
+    promptCard.showReturn({
+      cause: player?.diedFrom ?? '',
+      lives: (player?.lives ?? 1) - 1,
+      battlefield: battlefieldText(place),
+      safety: player?.closed ? { refusal: SAFETY_CLOSED[player.closed] } : { text: safetyText(player?.haven ?? '') },
+      refuse,
+    });
     return;
   }
   const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
@@ -1461,10 +1486,19 @@ function refresh(): void {
     const slain = sameHero ? slainMonsters(previous.monsters ?? [], state.monsters ?? [], newMessages(previous, state)) : [];
     if (sameHero) showHits(previous, state, slain);
     if (state.player) chronicleUpdate(state.player, slain, snap.turn, sameHero && (previous.player?.chp ?? 0) > state.player.chp);
-    if (state.player?.dead) captureMemorial(state.player, state, snap);
+    if (hasFallen(state.player)) captureMemorial(state.player!, state, snap);
     if (shownShop && !inStore) audio.cue('shop');
     inStore = !!shownShop;
-    audio.setView(ended ? 'gameover' : 'game');
+    audio.setView(ended ? 'gameover' : state.player?.dead && state.player.fate === 'choice' ? 'between' : 'game');
+    if (state.player) {
+      const follow = followReturn(askedLives, state.player);
+      askedLives = follow.asked;
+      if (follow.returned) {
+        feel.play({ kind: 'returned', lives: state.player.lives ?? 0 });
+        audio.cue('returned');
+        saveOnReturn = true;
+      }
+    }
     hearGear(snap.turn);
     audio.update(snap, state, inStore);
     followAttempt(previous, state);
@@ -1544,7 +1578,8 @@ let chronicle: Chronicle | null = null;
 let streak: Streak = { count: 0, lastTurn: 0 };
 
 function chronicleUpdate(player: PlayerState, slain: readonly Slain[], turn: number, hurt: boolean): void {
-  app.classList.toggle('fallen', !!player.dead && !abandoning);
+  app.classList.toggle('fallen', hasFallen(player) && !abandoning);
+  app.classList.toggle('between', !!player.dead && player.fate === 'choice');
   if (player.dead) return;
   if (chronicle?.name !== player.name) {
     chronicle = chronicles.hero(player.name);
@@ -1940,7 +1975,7 @@ function updateActionBar(force = false): void {
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
-      fallen: !!lastState?.player?.dead,
+      fallen: hasFallen(lastState?.player),
       screen: !termView.visible ? null : termView.options().length ? 'options' : /You may now dump a character record/.test(buffer.screenText()) || (ended && /Hall of Fame/.test(rowZeroText())) ? 'gameover' : viewerHeading(rowZeroText()) ? 'file' : null,
       looking,
       overview: map.overview,
@@ -2699,6 +2734,8 @@ const engine = new Engine(buffer, {
         },
       );
     }
+    /* After the sync above, which is for a save already written: this one syncs at the next command prompt. */
+    if (saveOnReturn && engine.pendingKeys === 0 && saveGame('silent')) saveOnReturn = false;
     if (engine.pendingKeys > 0) {
       requestFrame();
       return;
@@ -3077,9 +3114,9 @@ function openSettingsSheet(): void {
 
 /** The rules the hero's adventure was begun with, during a game. */
 function adventureRules(): AdventureRules | null {
-  const hero = lastState?.player?.name;
+  const player = lastState?.player;
   const run = inGame() ? engine.runOptions() : null;
-  return hero && run ? { hero, run } : null;
+  return player?.name && run ? { hero: player.name, run, lives: player.lives ?? 0 } : null;
 }
 
 /** Applies the settings that live in CSS: text size and animation. */
@@ -3133,6 +3170,8 @@ function returnToTitle(): void {
   conversation = null;
   returnTo = null;
   pendingSync = null;
+  askedLives = null;
+  saveOnReturn = false;
   lastSavedTurn = -1;
   inStore = false;
   shownShop = null;
@@ -3166,7 +3205,7 @@ function returnToTitle(): void {
   styleKey = '';
   place = null;
   placePos = { x: -1, y: -1 };
-  app.classList.remove('fallen', 'ended');
+  app.classList.remove('fallen', 'between', 'ended');
   buffer.clear();
   hud.reset();
   feel.reset();
@@ -3368,7 +3407,8 @@ function abandonAdventure(): void {
 
 function openGameMenu(): void {
   const playing = inGame();
-  const fallen = playing && !!lastState?.player?.dead;
+  const dead = playing && !!lastState?.player?.dead;
+  const fallen = playing && hasFallen(lastState?.player);
   openMenu(sheets, 'Menu', [
     { label: fallen ? 'Your hero' : 'Character', icon: '@', hidden: !playing, run: () => (fallen ? openFallenHero() : character.open('summary')) },
     { label: 'Messages', icon: '≣', hidden: !playing, run: () => showHistory() },
@@ -3377,7 +3417,7 @@ function openGameMenu(): void {
       sheets.closeAll();
       if (!saveGame('toast')) showToast('Finish what you are doing first.');
     } },
-    { label: playing ? 'Save and quit' : 'Quit to title', icon: '⏻', hint: 'Back to the title screen', hidden: fallen, run: () => {
+    { label: playing ? 'Save and quit' : 'Quit to title', icon: '⏻', hint: 'Back to the title screen', hidden: dead, run: () => {
       if (!playing) {
         saveAndQuit();
       } else if (engine.storageError) {
@@ -3396,7 +3436,7 @@ function openGameMenu(): void {
     { label: 'Settings', icon: '⚙', hint: 'Text size, animation, map', run: () => openSettingsSheet() },
     { label: 'Help', icon: '?', hint: 'How to play, with a search', run: () => openHelpSheet() },
     { label: 'About', icon: 'ℹ', run: () => openTemplate(sheets, 'About', 'about-template') },
-    { label: 'Abandon adventure', icon: '✕', hint: 'End it for good', danger: true, hidden: !playing || fallen, run: () => {
+    { label: 'Abandon adventure', icon: '✕', hint: 'End it for good', danger: true, hidden: !playing || dead, run: () => {
       const name = lastState?.player?.name ?? 'This hero';
       confirmSheet(
         sheets,

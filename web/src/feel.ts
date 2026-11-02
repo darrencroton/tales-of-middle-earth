@@ -1,6 +1,7 @@
 import type { AnimationLevel } from './settings.ts';
 import type { PlayerState } from './render/snapshot.ts';
 import { depthLabel } from './hud.ts';
+import { livesText } from './play/lives.ts';
 import { el, iconText } from './ui/dom.ts';
 
 /** Health below this fraction of the maximum counts as low. */
@@ -19,7 +20,9 @@ export type FeelEvent =
   /** One more of a random quest's creatures slain, the quest not yet done. */
   | { kind: 'questProgress'; slain: number; count: number }
   | { kind: 'gold'; amount: number }
-  | { kind: 'exp'; amount: number };
+  | { kind: 'exp'; amount: number }
+  /** Back from death in Adventure mode, with `lives` left (this one included); played by main.ts (`followReturn`). */
+  | { kind: 'returned'; lives: number };
 
 type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown' | 'quest'>;
 
@@ -83,7 +86,7 @@ interface Banner {
 
 function rankOf(kind: string): BannerRank {
   if (kind.startsWith('quest')) return 'quest';
-  return kind === 'levelup' || kind === 'legend' ? 'milestone' : 'passing';
+  return kind === 'levelup' || kind === 'legend' || kind === 'returned' ? 'milestone' : 'passing';
 }
 const FLOAT_MS = 1400;
 /* Damage and kill floats over creatures (the CSS animation is 1600ms). */
@@ -278,13 +281,18 @@ export class GameFeel {
       case 'gold':
         this.float(`+${event.amount} gold`, 'gold');
         break;
+      case 'returned':
+        this.flash('returned', 1);
+        this.showBanner('Returned from death', livesText(event.lives), 'returned');
+        vibrate([60, 120, 60]);
+        break;
     }
   }
 
   private flash(kind: string, strength: number): void {
     if (this.animation() === 'off') return;
     this.vignette.style.setProperty('--strength', String(Math.min(1, strength)));
-    this.vignette.classList.remove('hurt', 'levelup');
+    this.vignette.classList.remove('hurt', 'levelup', 'returned');
     void this.vignette.offsetWidth;
     this.vignette.classList.add(kind);
   }

@@ -66,6 +66,11 @@ export interface Memorial {
   tale?: Chronicle;
 }
 
+/** The hero has died for good: no life left to return with, nothing in tome2 to save them, or they let go. */
+export function hasFallen(player: Pick<PlayerState, 'dead' | 'fate'> | null | undefined): boolean {
+  return !!player?.dead && player.fate === 'final';
+}
+
 /** Strips a leading article so "a Cave spider" matches the creature "Cave spider". */
 export function bareName(name: string): string {
   return name.replace(/^(a|an|the|some)\s+/i, '').trim().toLowerCase();

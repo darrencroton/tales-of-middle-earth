@@ -1,4 +1,4 @@
-import { RUN_OPTION_TEXT } from '../flow/runoptions.ts';
+import { MODE_TEXT, RUN_OPTION_TEXT } from '../flow/runoptions.ts';
 
 /**
  * The game's help: our own topics, grouped for finding things quickly. Text
@@ -46,7 +46,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'What the game is, and what you are here to do.',
         keywords: 'goal quest aim win roguelike permadeath sauron morgoth ring',
         body: [
-          'Tales of Middle-earth is a roguelike: every dungeon level is made when you first enter it, no two adventures are alike, and when your hero falls, that tale is over. It is hard, and that is half the fun: each hero teaches you something for the next.',
+          'Tales of Middle-earth is a roguelike: every dungeon level is made when you first enter it, and no two adventures are alike. A hero has three lives (or one, if you choose *Roguelike* when you make them), and when the last is spent, that tale is over. It is hard, and that is half the fun: each hero teaches you something for the next.',
           { heading: 'Your quest' },
           'A shadow lies over Mirkwood. Your first great task is to find the Necromancer in the tower of *Dol Guldur* and defeat him. That wakes a greater evil: *Sauron* must be found and beaten, and the *One Ring* cast into the fires of *Mount Doom*, where it was forged. Last of all, *Morgoth* waits in the depths of *Angband*.',
           'It is a long road. Along the way are towns to rest in, people who need help, dozens of dungeons and treasures with stories of their own.',
@@ -289,9 +289,36 @@ export const HELP: readonly HelpGroup[] = [
             ],
           },
           'Leave while you still can: an escape works best before a fight turns bad.',
-          'Death is final. Your hero’s tale goes into the Hall of Fame, and a new hero begins.',
+          'A hero has three lives in Adventure mode: the first two times they fall, they may go back. The last fall is final: the tale goes into the Hall of Fame, and a new hero begins.',
         ],
-        see: ['ailments', 'fighting', 'deeds'],
+        see: ['lives', 'ailments', 'fighting', 'deeds'],
+      },
+      {
+        id: 'lives',
+        title: 'Lives and death',
+        icon: '✦',
+        summary: 'Adventure or Roguelike, and coming back from death.',
+        keywords: 'lives life death die dead resurrect resurrection return revive adventure roguelike permadeath halls waiting mandos blood ring',
+        body: [
+          'When you make a hero you choose how they live, and it cannot be changed afterwards:',
+          {
+            terms: [
+              [MODE_TEXT.adventure.label, MODE_TEXT.adventure.detail],
+              [MODE_TEXT.roguelike.label, MODE_TEXT.roguelike.detail],
+            ],
+          },
+          'In Adventure mode, a hero who falls with a life to spare wakes in the *Halls of Waiting* and chooses:',
+          {
+            terms: [
+              ['Return to the battlefield', 'Back where you fell, whole again. A level kept as you left it is just as it was, your foes still there, so you wake a step or two away from them when there is room. Elsewhere you wake at the same depth on a level made anew; from a quest’s own level, on the surface outside it.'],
+              ['Return to safety', 'In the last town you stood in, as Word of Recall would leave you: the way back down is kept. Not where Word of Recall cannot take you out, nor for an astral being.'],
+              ['Accept death', 'The adventure ends, as it would with no life left.'],
+            ],
+          },
+          'Either way back costs a life. It restores health, mana and sanity, cures ailments (poison, cuts, stunning, fear, blindness, confusion, hallucination, paralysis, slowness, the Black Breath) and hunger, and ends a Word of Recall under way. What lasts stays: drained attributes and experience, curses, corruptions, and quests done or failed. The game is saved at once.',
+          'Your lives left are on the character sheet and at the foot of Settings. The *Blood of Life* saves you first and costs no life; while the One Ring holds you, it alone decides. Eru may still raise a devoted follower who accepts death or has no life left.',
+        ],
+        see: ['survival', 'new-hero', 'deeds'],
       },
       {
         id: 'ailments',
@@ -487,19 +514,20 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Making a new hero',
         icon: '✚',
         summary: 'Race, class, and the choices before you begin.',
-        keywords: 'new character creation birth create race class name random back options quests fates small levels',
+        keywords: 'new character creation birth create race class name random back options lives adventure roguelike quests fates small levels',
         body: [
           'Choose a race, a race modifier, a class and its specialisation (and for some, a god), then name your hero. *Back* steps back a choice; *Random* highlights one for you to take or change.',
           'Last comes *Ready to begin?*: the hero you have made, and how your adventure is set up. These can only be chosen now:',
           {
             terms: [
+              ['Lives', `${MODE_TEXT.adventure.label} (three lives) or ${MODE_TEXT.roguelike.label} (one).`],
               ['Random quests', 'How many random quests wait in the dungeons: none, 10, 20, 40 or 60.'],
               ...Object.values(RUN_OPTION_TEXT).map(({ label, detail }): [string, string] => [label, detail]),
             ],
           },
           { tip: 'For a first hero, try a Wood-Elf Archer, a Troll Unbeliever or a Half-Ogre Warrior: tough, simple and strong from the start.' },
         ],
-        see: ['races', 'first-steps'],
+        see: ['races', 'lives', 'first-steps'],
       },
     ],
   },

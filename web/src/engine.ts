@@ -60,6 +60,7 @@ interface EmscriptenModule {
   _web_run_options_json(): number;
   _web_set_run_option(index: number, on: number): number;
   _web_set_random_quests(count: number): number;
+  _web_set_adventure(on: number): number;
   _web_name_buffer(bytes: number): number;
   _web_set_hero_name(): number;
   _web_mark_abandoned(): number;
@@ -220,6 +221,13 @@ export class Engine {
     const mod = this.module;
     if (!mod || this.state !== 'running') return false;
     return mod._web_set_random_quests(count) !== 0;
+  }
+
+  /** Chooses Adventure mode (three lives) or Roguelike (one) for the hero being created; false once the game has begun. */
+  setAdventure(on: boolean): boolean {
+    const mod = this.module;
+    if (!mod || this.state !== 'running') return false;
+    return mod._web_set_adventure(on ? 1 : 0) !== 0;
   }
 
   /** Names the hero being created, and their savefile; false once the game has begun or for a name tome2 refuses. */
