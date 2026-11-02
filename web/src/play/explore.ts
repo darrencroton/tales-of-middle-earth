@@ -203,11 +203,6 @@ export class Explore {
     return nextStop(snap, materials, all, passing) ? 'blocked' : 'creatureInWay';
   }
 
-  /** Waiting to tell tome2 which door to open. */
-  get answering(): boolean {
-    return !!this.travel?.answering;
-  }
-
   step(ctx: TravelContext): TravelStep {
     const { snap } = ctx;
     if (this.lastHp !== null && ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };

@@ -117,7 +117,7 @@ describe('explore', () => {
     const explore = new Explore(plan(-1));
     const ctx = { snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp: 10 };
     const open = explore.step(ctx);
-    assert.deepEqual(open.kind === 'keys' && open.keys, [92, 'o'.charCodeAt(0)]);
+    assert.deepEqual(open.kind === 'keys' && open.keys, [92, ';'.charCodeAt(0), '6'.charCodeAt(0)]);
     const next = explore.step(ctx);
     assert.deepEqual(next.kind === 'keys' && next.keys, [92, ';'.charCodeAt(0), '4'.charCodeAt(0)]);
   });

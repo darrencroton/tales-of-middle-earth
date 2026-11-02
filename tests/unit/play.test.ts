@@ -240,15 +240,10 @@ describe('travel', () => {
     assert.deepEqual(approachTarget(snap, MATERIALS, { x: 9, y: 9 }), { point: { x: 4, y: 2 }, exact: false });
   });
 
-  it('opens closed doors on the way, saying which only when tome2 asks', () => {
+  it('opens closed doors on the way by walking into them', () => {
     const snap = level(['.+..'], { x: 0, y: 0 });
-    const travel = new Travel({ x: 3, y: 0 }, ctx(snap));
-    const step = travel.step(ctx(snap));
-    assert.deepEqual(step.kind === 'keys' && step.keys, [92, ...keys('o')]);
-    assert.ok(travel.answering);
-    const asked = travel.step({ ...ctx({ ...snap, atCommand: false }), prompt: 'direction' });
-    assert.deepEqual(asked.kind === 'keys' && asked.keys, keys('6'));
-    assert.ok(!travel.answering);
+    const step = new Travel({ x: 3, y: 0 }, ctx(snap)).step(ctx(snap));
+    assert.deepEqual(step.kind === 'keys' && step.keys, [92, ...keys(';6')]);
   });
 
   it('stops when a door stays shut after an attempt to open it', () => {

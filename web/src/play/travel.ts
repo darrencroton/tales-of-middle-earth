@@ -19,7 +19,6 @@ const MAX_STEPS = 400;
 /* Visits to one cell that end a journey as going round in circles. */
 const MAX_VISITS = 3;
 const WALK = ';'.charCodeAt(0);
-const OPEN = 'o'.charCodeAt(0);
 
 export type TravelStopReason =
   | 'arrived'
@@ -58,8 +57,6 @@ export interface TravelContext {
   gold?: number;
   /** Cells of companions the hero can push past (`pushPast`). */
   passing?: ReadonlySet<number>;
-  /** What tome2 is asking, if anything. */
-  prompt?: PromptKind;
 }
 
 export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
@@ -364,8 +361,6 @@ export class Travel {
   private lastPos: Point | null = null;
   private lastWasMove = false;
   private lastDoor: Point | null = null;
-  /* The direction of a door being opened, given once tome2 asks which door (it does not when only one is beside the hero). */
-  private doorAnswer: { digit: number; path: Point[] } | null = null;
   private steps = 0;
   private finishing = false;
   private readonly visits = new Map<number, number>();
@@ -378,11 +373,6 @@ export class Travel {
   /** Only the one step (see `TravelOptions`). */
   get oneStep(): boolean {
     return this.single;
-  }
-
-  /** Waiting to tell tome2 which door to open. */
-  get answering(): boolean {
-    return this.doorAnswer !== null;
   }
 
   constructor(goal: Point, start: TravelContext, options: TravelOptions = {}) {
@@ -398,9 +388,6 @@ export class Travel {
     const { snap } = ctx;
     const pos = { x: snap.px, y: snap.py };
 
-    const door = this.doorAnswer;
-    this.doorAnswer = null;
-    if (door && ctx.prompt === 'direction') return { kind: 'keys', keys: [door.digit], path: door.path };
     if (!snap.atCommand || snap.icky) return { kind: 'stop', reason: 'interrupted' };
     if (this.finishing || (pos.x === this.goal.x && pos.y === this.goal.y)) return { kind: 'stop', reason: 'arrived' };
     if (this.single && this.steps > 0) return { kind: 'stop', reason: 'interrupted' };
@@ -450,16 +437,10 @@ export class Travel {
     this.lastLight = snap.lightRadius;
     this.lastPos = pos;
 
-    if (closedDoor) {
-      this.lastWasMove = false;
-      this.lastDoor = next;
-      this.doorAnswer = { digit, path };
-      return { kind: 'keys', keys: [BACKSLASH, OPEN], path };
-    }
-
-    this.lastWasMove = true;
-    this.lastDoor = null;
-    if (goalIsMonster && path.length === 1) this.finishing = true;
+    /* Walking into a closed door opens it (tome2's easy_open_door, which asks nothing), and the next step goes through. */
+    this.lastWasMove = !closedDoor;
+    this.lastDoor = closedDoor ? next : null;
+    if (!closedDoor && goalIsMonster && path.length === 1) this.finishing = true;
     return { kind: 'keys', keys: [BACKSLASH, WALK, digit], path };
   }
 
