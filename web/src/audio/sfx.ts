@@ -36,63 +36,77 @@ const rand = (min: number, max: number) => min + Math.random() * (max - min);
 /** Level trims in dB so each sound sits where it should against the music. */
 const TRIM_DB: Partial<Record<CueId, number>> = {
   hit: 5,
-  miss: 10,
+  miss: 20,
   hurt: 3,
-  parry: 11,
-  kill: 4,
-  impact: 9,
-  'door-open': 8,
-  'door-close': 4,
-  'door-locked': 6,
-  unlock: 11,
+  parry: 15,
+  kill: 7,
+  impact: 12,
+  'door-open': 16,
+  'door-close': 1,
+  'door-locked': 11,
+  unlock: 16,
   'distant-door': 10,
-  'stairs-down': 2,
-  'stairs-up': 2,
+  'stairs-down': 6,
+  'stairs-up': 5,
   travel: 8,
-  pickup: 11,
-  gold: 10,
-  buy: 10,
+  pickup: 20,
+  gold: 16,
+  buy: 17,
   levelup: -3,
-  learn: 5,
-  quaff: 10,
-  read: 11,
-  eat: 14,
+  learn: 9,
+  quaff: 15,
+  read: 16,
+  eat: 26,
   cast: 7,
-  fizzle: 9,
-  fire: 11,
-  throw: 10,
-  zap: 13,
-  activate: 4,
-  wield: 7,
-  takeoff: 10,
+  fizzle: 20,
+  fire: 13,
+  throw: 18,
+  zap: 18,
+  activate: 12,
+  wield: 12,
+  takeoff: 20,
   drop: 8,
-  fuel: 11,
-  disarm: 11,
-  tunnel: 11,
-  heal: 8,
-  teleport: 12,
-  trap: 10,
-  breath: 10,
-  'spell-monster': 12,
-  shriek: 14,
-  shop: 8,
-  deny: 8,
-  poisoned: 10,
-  confused: 9,
-  hallucinate: 8,
-  blind: 9,
-  paralyzed: 10,
-  afraid: 14,
-  stun: 4,
-  cut: 9,
-  haste: 9,
-  slow: 9,
-  cured: 7,
-  bolt: 18,
+  fuel: 22,
+  disarm: 16,
+  tunnel: 12,
+  heal: 16,
+  teleport: 20,
+  trap: 12,
+  breath: 12,
+  'spell-monster': 20,
+  shriek: 20,
+  shop: 11,
+  deny: 12,
+  poisoned: 23,
+  confused: 15,
+  hallucinate: 14,
+  blind: 20,
+  paralyzed: 16,
+  afraid: 24,
+  stun: 6,
+  cut: 15,
+  haste: 20,
+  slow: 15,
+  cured: 10,
+  bolt: 24,
   explosion: 3,
   'ui-open': 10,
   'ui-close': 11,
+  secret: 5,
+  rumble: 8,
+  unique: 6,
+  death: 3,
+  hungry: 11,
+  quest: 1,
+  save: 9,
+  danger: 2,
 };
+
+/** A thump's sawtooth level, for the loudness of a sine of the given level. */
+const THUMP_GAIN = 1.6;
+
+/** Level trims in dB for a cast by its school, beside `cast`'s own, as some schools ring on longer than others. */
+const CAST_DB: Partial<Record<SpellTone, number>> = { arcane: -2, frost: 2, earth: -5, nature: -11, holy: -6, mind: -1, song: -10 };
 
 /** Sounds the music dips under (dB, and for how long), so the hero's own deeds and big moments stand out. */
 const DUCK: Partial<Record<CueId, [number, number]>> = {
@@ -109,14 +123,14 @@ const DUCK: Partial<Record<CueId, [number, number]>> = {
 };
 
 /** Element sounds for bolts and explosions, from the colour tome2 draws them in. */
-const ELEMENT_NOISE: Record<Element, { freq: number; q: number; brown: boolean }> = {
-  fire: { freq: 900, q: 0.6, brown: true },
-  cold: { freq: 4200, q: 1.2, brown: false },
-  lightning: { freq: 2600, q: 0.8, brown: false },
-  poison: { freq: 1400, q: 2.5, brown: false },
-  magic: { freq: 1800, q: 4, brown: false },
-  dark: { freq: 400, q: 1, brown: true },
-  earth: { freq: 300, q: 0.7, brown: true },
+const ELEMENT_NOISE: Record<Element, { freq: number; q: number; brown: boolean; gain?: number }> = {
+  fire: { freq: 900, q: 0.6, brown: true, gain: 1.6 },
+  cold: { freq: 4200, q: 1.2, brown: false, gain: 0.6 },
+  lightning: { freq: 2600, q: 0.8, brown: false, gain: 0.6 },
+  poison: { freq: 1400, q: 2.5, brown: false, gain: 1.6 },
+  magic: { freq: 700, q: 0.9, brown: true, gain: 2 },
+  dark: { freq: 400, q: 1, brown: true, gain: 1.6 },
+  earth: { freq: 300, q: 0.7, brown: true, gain: 1.6 },
 };
 
 /**
@@ -165,7 +179,8 @@ export class SoundEffects {
       case 'bite':
         return this.bite(t, s);
       case 'parry':
-        return this.whoosh(t, 0.1, 450, 1500, 0.2);
+        this.whoosh(t, 0.08, 450, 1500, 0.12);
+        return this.ring(this.out(rand(-0.2, 0.2), 1), t + 0.06, rand(1800, 2300), 1.41, 1.5, 0.05, 0.18);
       case 'kill':
         return this.kill(t, cue.variant as WeaponKind | undefined);
       case 'kill-unique':
@@ -199,7 +214,7 @@ export class SoundEffects {
       case 'levelup':
         return this.levelUp(t);
       case 'learn':
-        return this.arpeggio(t, [4, 7], 0.18, 0.12, 'celesta', 2);
+        return this.learn(t);
       case 'quaff':
         return this.quaff(t);
       case 'read':
@@ -237,7 +252,7 @@ export class SoundEffects {
       case 'trap':
         return this.trap(t);
       case 'secret':
-        return this.arpeggio(t, [4, 6, 9], 0.16, 0.14, 'celesta', 1);
+        return this.secret(t);
       case 'rumble':
         return this.rumble(t);
       case 'breath':
@@ -263,7 +278,7 @@ export class SoundEffects {
       case 'hallucinate':
         return this.warble(t, 2.5);
       case 'blind':
-        return this.noise(this.out(0, 1), t, { type: 'lowpass', freq: 2000, to: 150, glide: 0.6, level: 0.18, attack: 0.05, decay: 0.25, brown: true });
+        return this.noise(this.out(0, 1), t, { type: 'lowpass', freq: 3000, to: 400, glide: 0.6, level: 0.18, attack: 0.05, decay: 0.25, brown: true });
       case 'paralyzed':
         return this.freeze(t);
       case 'afraid':
@@ -275,9 +290,9 @@ export class SoundEffects {
       case 'haste':
         return this.whoosh(t, 0.4, 300, 3500, 0.2);
       case 'slow':
-        return this.tone(this.out(0, 1), t, { type: 'triangle', freq: 600, to: 120, glide: 0.6, level: 0.1, attack: 0.02, decay: 0.3 });
+        return this.slow(t);
       case 'cured':
-        return this.arpeggio(t, [7, 9], 0.12, 0.09, 'celesta', 1);
+        return this.chord(t, [0, 4], 0.7, 0.85, 'glass', 1);
       case 'hungry':
         return this.growl(t);
       case 'bolt':
@@ -293,7 +308,7 @@ export class SoundEffects {
       case 'quest':
         return this.fanfare(t);
       case 'save':
-        return this.arpeggio(t, [0, 4], 0.1, 0.12, 'celesta', 2);
+        return this.closeBook(t);
     }
   }
 
@@ -374,8 +389,14 @@ export class SoundEffects {
     mod.stop(end);
   }
 
+  /** A low blow, its body rounded off above its first few harmonics, which carry it on a phone speaker that cannot play the body itself. */
   private thump(t: number, level: number, from: number, to: number, decay: number, pan = 0): void {
-    this.tone(this.out(pan, 1), t, { freq: from, to, glide: 0.06, level, decay });
+    const round = this.core.ctx.createBiquadFilter();
+    round.type = 'lowpass';
+    round.frequency.value = from * 5;
+    round.Q.value = 0.5;
+    round.connect(this.out(pan, 1));
+    this.tone(round, t, { type: 'sawtooth', freq: from, to, glide: 0.06, level: level * THUMP_GAIN, decay });
   }
 
   private whoosh(t: number, length: number, from: number, to: number, level: number, pan = rand(-0.3, 0.3)): void {
@@ -386,7 +407,12 @@ export class SoundEffects {
     return degreeToMidi(this.key.root + 12 * octave, SCALES[this.key.scale], degree);
   }
 
-  private arpeggio(t: number, degrees: number[], step: number, level: number, inst: 'celesta' | 'harp' | 'bell', octave: number): void {
+  /** A note moved by octaves into the octave starting at `floor`, so a sound keeps its register whatever the key. */
+  private low(midi: number, floor: number): number {
+    return floor + ((((midi - floor) % 12) + 12) % 12);
+  }
+
+  private arpeggio(t: number, degrees: number[], step: number, level: number, inst: 'harp' | 'bell', octave: number): void {
     const dest = this.out(0, 1);
     degrees.forEach((d, i) => playVoice(this.core, inst, dest, t + i * step, 0.6, this.midi(d, octave), level / 0.12, { bright: 0.8, sustained: false }));
   }
@@ -410,18 +436,18 @@ export class SoundEffects {
         this.ring(out(), t + 0.01, 2400 * pitch, 1.41, 1.2, 0.025, 0.12);
         break;
       case 'axe':
-        this.thump(t, 0.45 + 0.35 * s, 130 * pitch, 45 * pitch, 0.11 + 0.05 * s, pan);
-        this.noise(out(), t, { type: 'bandpass', freq: 1300 * pitch, to: 380, glide: 0.06, q: 1.1, level: 0.2 + 0.14 * s, decay: 0.04 });
+        this.thump(t, 0.3 + 0.24 * s, 130 * pitch, 45 * pitch, 0.11 + 0.05 * s, pan);
+        this.noise(out(), t, { type: 'bandpass', freq: 1300 * pitch, to: 380, glide: 0.06, q: 1.1, level: 0.14 + 0.1 * s, decay: 0.04 });
         this.noise(out(), t + 0.015, { type: 'highpass', freq: 2500, level: 0.08, decay: 0.01 });
         break;
       case 'blunt':
-        this.thump(t, 0.55 + 0.35 * s, 105 * pitch, 34 * pitch, 0.13 + 0.06 * s, pan);
-        this.noise(out(), t, { type: 'lowpass', freq: 900 * pitch, to: 300, glide: 0.08, level: 0.16 + 0.12 * s, decay: 0.05, brown: true });
+        this.thump(t, 0.44 + 0.28 * s, 105 * pitch, 34 * pitch, 0.13 + 0.06 * s, pan);
+        this.noise(out(), t, { type: 'lowpass', freq: 900 * pitch, to: 300, glide: 0.08, level: 0.13 + 0.1 * s, decay: 0.05, brown: true });
         break;
       case 'polearm':
         this.whoosh(t, 0.08, 700, 2400, 0.12, pan);
-        this.thump(t + 0.07, 0.35 + 0.3 * s, 150 * pitch, 55 * pitch, 0.08 + 0.05 * s, pan);
-        this.noise(out(), t + 0.07, { type: 'bandpass', freq: 1800 * pitch, to: 600, glide: 0.05, q: 1, level: 0.12 + 0.1 * s, decay: 0.03 });
+        this.thump(t + 0.07, 0.31 + 0.27 * s, 150 * pitch, 55 * pitch, 0.08 + 0.05 * s, pan);
+        this.noise(out(), t + 0.07, { type: 'bandpass', freq: 1800 * pitch, to: 600, glide: 0.05, q: 1, level: 0.11 + 0.09 * s, decay: 0.03 });
         break;
       case 'unarmed':
         this.thump(t, 0.3 + 0.25 * s, 140 * pitch, 70 * pitch, 0.06 + 0.03 * s, pan);
@@ -452,7 +478,7 @@ export class SoundEffects {
 
   private bite(t: number, s: number): void {
     this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 1300, q: 1.5, level: 0.2, decay: 0.02 });
-    this.tone(this.out(0, 1), t, { type: 'square', freq: 260, to: 120, glide: 0.04, level: 0.04, decay: 0.03 });
+    this.noise(this.out(0, 1), t + 0.015, { type: 'lowpass', freq: 600, level: 0.16, decay: 0.03, brown: true });
     this.hurt(t + 0.03, s);
   }
 
@@ -461,7 +487,8 @@ export class SoundEffects {
     if (weapon) this.hit(t, 0.9, false, weapon);
     else this.thump(t + 0.05, 0.25, 120, 42, 0.12);
     this.noise(this.out(rand(-0.2, 0.2), 1), t + 0.09, { type: 'lowpass', freq: 700, to: 200, glide: 0.25, level: weapon ? 0.18 : 0.3, attack: 0.01, decay: 0.12, brown: true });
-    this.arpeggio(t + 0.12, [4, 7], 0.08, 0.05, 'celesta', 1);
+    this.noise(this.out(rand(-0.2, 0.2), 1), t + 0.12, { type: 'bandpass', freq: 1200, to: 300, glide: 0.4, q: 1.2, level: 0.35, attack: 0.03, decay: 0.14 });
+    this.thump(t + 0.22, 0.22, 75, 38, 0.1);
   }
 
   private killUnique(t: number, weapon?: WeaponKind): void {
@@ -469,7 +496,6 @@ export class SoundEffects {
     playVoice(this.core, 'gong', this.out(0, 1), t + 0.05, 4, this.key.root - 12, 0.9, { bright: 0.7, sustained: false });
     [0, 0.18, 0.36].forEach((d, i) => playVoice(this.core, 'timpani', this.out(0, 1), t + d, 0.5, this.key.root - 12 + (i === 2 ? 7 : 0), 0.8, { bright: 0.7, sustained: false }));
     this.chord(t + 0.3, [0, 4, 7, 9], 2.2, 0.5, 'strings', 1);
-    this.arpeggio(t + 0.5, [7, 9, 11, 14], 0.12, 0.1, 'celesta', 1);
   }
 
   /* Doors and places */
@@ -500,7 +526,7 @@ export class SoundEffects {
     bp.Q.value = 6;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t + 0.03);
-    g.gain.linearRampToValueAtTime(0.09, t + 0.03 + length * 0.3);
+    g.gain.linearRampToValueAtTime(0.2, t + 0.03 + length * 0.3);
     g.gain.setTargetAtTime(0, t + 0.03 + length * 0.75, 0.06);
     o.connect(bp);
     bp.connect(g);
@@ -514,8 +540,9 @@ export class SoundEffects {
   }
 
   private doorClose(t: number, far: number): void {
-    const dest = this.out(rand(-0.2, 0.2), far);
-    this.tone(dest, t, { freq: 95, to: 48, glide: 0.06, level: 0.4, decay: 0.12 });
+    const pan = rand(-0.2, 0.2);
+    const dest = this.out(pan, far);
+    this.thump(t, 0.4 * far, 95, 48, 0.12, pan);
     this.noise(dest, t, { type: 'lowpass', freq: 900, level: 0.18, decay: 0.05, brown: true });
     this.noise(dest, t + 0.06, { type: 'bandpass', freq: 3200, q: 3, level: 0.08, decay: 0.01 });
   }
@@ -562,14 +589,14 @@ export class SoundEffects {
 
   private pickup(t: number): void {
     this.rustle(t, 0.1);
-    this.ring(this.out(0.1, 1), t + 0.07, rand(2300, 2900), 3.5, 1.2, 0.035, 0.06);
+    this.ring(this.out(0.1, 1), t + 0.07, rand(1100, 1500), 2.76, 1.2, 0.03, 0.05);
   }
 
   private coins(t: number, s: number): void {
-    const count = Math.round(2 + s * 8);
+    const count = Math.round(2 + s * 6);
     let at = t;
     for (let i = 0; i < count; i++) {
-      const f = rand(3000, 5200);
+      const f = rand(1900, 3400);
       const dest = this.out(rand(-0.4, 0.4), 1);
       this.ring(dest, at, f, 1.47, 0.7, rand(0.025, 0.045), rand(0.04, 0.09));
       this.tone(dest, at, { freq: f * 1.33, level: 0.012, decay: 0.05 });
@@ -585,9 +612,10 @@ export class SoundEffects {
   private quaff(t: number): void {
     for (let i = 0; i < 4; i++) {
       const at = t + i * rand(0.11, 0.16);
-      const f = rand(260, 420);
-      this.tone(this.out(0, 1), at, { freq: f, to: f * 2.2, glide: 0.06, level: 0.07, attack: 0.01, decay: 0.04 });
+      const f = rand(300, 500);
+      this.tone(this.out(0, 1), at, { freq: f, to: f * 1.5, glide: 0.05, level: 0.1, attack: 0.01, decay: 0.035 });
       this.noise(this.out(0, 1), at, { type: 'lowpass', freq: 700, level: 0.06, attack: 0.01, decay: 0.05, brown: true });
+      this.noise(this.out(0, 1), at + 0.02, { type: 'bandpass', freq: rand(800, 1500), q: 4, level: 0.16, decay: 0.02 });
     }
   }
 
@@ -605,9 +633,8 @@ export class SoundEffects {
   }
 
   private pour(t: number): void {
-    for (let i = 0; i < 6; i++) {
-      const f = rand(500, 900);
-      this.tone(this.out(0, 1), t + i * 0.07, { freq: f, to: f * 1.4, glide: 0.04, level: 0.035, decay: 0.03 });
+    for (let i = 0; i < 10; i++) {
+      this.noise(this.out(0, 1), t + i * rand(0.03, 0.05), { type: 'bandpass', freq: rand(700, 1400), q: 4, level: 0.5, attack: 0.005, decay: 0.025, brown: true });
     }
   }
 
@@ -622,19 +649,72 @@ export class SoundEffects {
     for (let i = 0; i < 4; i++) this.noise(this.out(rand(-0.4, 0.4), 1), t + 0.08 + i * rand(0.04, 0.08), { type: 'bandpass', freq: rand(1500, 3000), q: 2, level: 0.04, decay: 0.01 });
   }
 
+  private learn(t: number): void {
+    this.rustle(t, 0.08);
+    this.arpeggio(t + 0.1, [0, 4, 7], 0.08, 0.045, 'harp', 1);
+  }
+
+  /** Stone grinding aside, then a bell. */
+  private secret(t: number): void {
+    this.noise(this.out(0.1, 1), t, { type: 'bandpass', freq: 380, to: 220, glide: 0.5, q: 2, level: 0.18, attack: 0.12, decay: 0.15, brown: true });
+    this.thump(t + 0.45, 0.18, 90, 50, 0.08, 0.1);
+    this.arpeggio(t + 0.3, [4], 0, 0.18, 'bell', 1);
+  }
+
+  /** A book shut: pages, the cover, then its clasp. */
+  private closeBook(t: number): void {
+    this.rustle(t, 0.07);
+    this.thump(t + 0.12, 0.22, 160, 80, 0.05);
+    this.noise(this.out(0, 1), t + 0.12, { type: 'lowpass', freq: 1200, level: 0.08, decay: 0.03, brown: true });
+    this.ring(this.out(0.1, 1), t + 0.24, rand(1500, 1800), 2.76, 1.5, 0.04, 0.05);
+  }
+
   /* Magic */
+
+  /** A dark swell under a spell: two sawtooths a little apart, kept low. */
+  private drone(t: number, freq: number, length: number, level: number): void {
+    const ctx = this.core.ctx;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(900, t);
+    lp.frequency.exponentialRampToValueAtTime(200, t + length);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.03);
+    g.gain.setTargetAtTime(0, t + 0.03, length * 0.3);
+    lp.connect(g);
+    g.connect(this.out(0, 1));
+    for (const cents of [-12, 12]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = freq;
+      o.detune.value = cents;
+      o.connect(lp);
+      o.start(t);
+      o.stop(t + length * 2.5);
+    }
+  }
+
+  /** Ice cracking: `count` brittle ticks over `length` seconds. */
+  private crackle(t: number, count: number, length: number, level: number, pan = 0): void {
+    for (let i = 0; i < count; i++) this.noise(this.out(pan + rand(-0.2, 0.2), 1), t + rand(0, length), { type: 'bandpass', freq: rand(3500, 7000), q: 3, level: level * rand(0.6, 1), decay: 0.006 });
+  }
 
   /** A spell let go, coloured by its school (the god's, for a prayer): an onset at once and a short tail. */
   private cast(t: number, tone: SpellTone = 'arcane'): void {
+    this.trim *= Math.pow(10, (CAST_DB[tone] ?? 0) / 20);
     const out = () => this.out(0, 1);
     const flare = (freq: number, to: number, level: number, brown = false) =>
       this.noise(out(), t, { type: brown ? 'lowpass' : 'bandpass', freq, to, glide: 0.12, q: 1.6, level, attack: 0.012, decay: 0.09, brown });
     switch (tone) {
       case 'arcane':
-        flare(900, 4200, 0.35);
-        this.tone(out(), t, { type: 'triangle', freq: 280, to: 1100, glide: 0.12, level: 0.14, attack: 0.01, decay: 0.1 });
-        this.ring(out(), t + 0.02, midiToFrequency(this.midi(7, 2)), 2.01, 0.8, 0.05, 0.25);
-        this.arpeggio(t + 0.03, [7, 11, 14], 0.045, 0.2, 'celesta', 1);
+        flare(300, 1800, 0.4);
+        this.thump(t, 0.18, 90, 34, 0.18);
+        this.noise(out(), t + 0.02, { type: 'lowpass', freq: 2400, to: 240, glide: 0.4, level: 0.12, attack: 0.01, decay: 0.16, brown: true });
+        this.noise(out(), t + 0.02, { type: 'bandpass', freq: 650, to: 260, glide: 0.35, q: 1.5, level: 1.2, attack: 0.01, decay: 0.14, brown: true });
+        this.noise(out(), t + 0.02, { type: 'bandpass', freq: 1300, to: 450, glide: 0.3, q: 1.5, level: 0.35, attack: 0.01, decay: 0.12, brown: true });
+        this.drone(t, midiToFrequency(this.low(this.key.root, 43)), 0.5, 0.12);
+        this.ring(out(), t + 0.02, midiToFrequency(this.low(this.key.root, 50)), 1.41, 2.4, 0.12, 0.4);
         break;
       case 'fire':
         flare(250, 3200, 0.55, true);
@@ -644,8 +724,9 @@ export class SoundEffects {
         break;
       case 'frost':
         flare(3500, 8000, 0.12);
-        this.ring(out(), t + 0.01, 3400, 1.5, 0.7, 0.05, 0.3);
-        this.arpeggio(t + 0.02, [7, 11, 14], 0.04, 0.12, 'celesta', 2);
+        this.whoosh(t, 0.35, 1500, 5000, 0.18, 0);
+        this.thump(t, 0.18, 80, 40, 0.12);
+        this.crackle(t + 0.03, 8, 0.3, 0.08);
         break;
       case 'storm':
         this.noise(out(), t, { type: 'highpass', freq: 1800, level: 0.45, decay: 0.014 });
@@ -657,7 +738,7 @@ export class SoundEffects {
         flare(200, 700, 0.25, true);
         break;
       case 'shadow':
-        flare(300, 1100, 0.14, true);
+        flare(300, 1100, 0.2, true);
         this.tone(out(), t, { type: 'sawtooth', freq: 110, to: 73, glide: 0.4, level: 0.08, attack: 0.02, decay: 0.18, detune: 25 });
         this.arpeggio(t + 0.02, [0, 1], 0.09, 0.12, 'bell', 0);
         break;
@@ -667,14 +748,14 @@ export class SoundEffects {
         break;
       case 'holy':
         flare(900, 3000, 0.18);
-        this.arpeggio(t, [7, 11, 14], 0.06, 0.2, 'bell', 1);
-        this.chord(t, [0, 4, 7], 0.9, 0.5, 'choir', 1);
+        this.arpeggio(t, [0], 0, 0.3, 'bell', 1);
+        this.chord(t, [0, 4, 7], 0.6, 0.5, 'choir', 1);
         break;
       case 'mind':
         flare(500, 2000, 0.3);
-        this.warble(t, 7);
-        this.tone(out(), t, { type: 'sine', freq: 600, to: 1400, glide: 0.2, level: 0.24, attack: 0.015, decay: 0.15, detune: 15 });
-        this.tone(out(), t + 0.03, { type: 'sine', freq: 900, to: 2100, glide: 0.2, level: 0.14, attack: 0.015, decay: 0.12, detune: -15 });
+        this.noise(this.out(-0.3, 1), t, { type: 'bandpass', freq: 900, to: 2200, glide: 0.3, q: 7, level: 0.8, attack: 0.04, decay: 0.15 });
+        this.noise(this.out(0.3, 1), t + 0.05, { type: 'bandpass', freq: 1400, to: 700, glide: 0.3, q: 7, level: 0.65, attack: 0.04, decay: 0.15 });
+        this.chord(t, [0, 4], 0.8, 1, 'ooh', 0);
         break;
       case 'song':
         this.arpeggio(t, [0, 2, 4, 7, 9], 0.05, 0.16, 'harp', 1);
@@ -684,23 +765,23 @@ export class SoundEffects {
 
   /** A cast that gathers and collapses: the swell of `cast` cut short by a falling puff. */
   private fizzle(t: number): void {
-    this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 400, to: 1300, glide: 0.2, q: 2, level: 0.07, attack: 0.18, decay: 0.04 });
-    this.tone(this.out(0, 1), t + 0.2, { type: 'triangle', freq: 520, to: 170, glide: 0.22, level: 0.06, decay: 0.07, detune: 30 });
-    this.noise(this.out(0, 1), t + 0.2, { type: 'lowpass', freq: 1400, to: 200, glide: 0.25, level: 0.08, decay: 0.08, brown: true });
+    this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 400, to: 1300, glide: 0.2, q: 2, level: 0.15, attack: 0.18, decay: 0.04 });
+    this.thump(t + 0.2, 0.05, 110, 50, 0.08);
+    this.noise(this.out(0, 1), t + 0.2, { type: 'bandpass', freq: 1400, to: 400, glide: 0.25, q: 0.8, level: 0.3, decay: 0.08, brown: true });
   }
 
   /** A shot: a bow's twang, a sling's whirl and release, a crossbow's click and thunk. */
   private shoot(t: number, launcher: LauncherKind = 'bow'): void {
     switch (launcher) {
       case 'bow':
-        this.tone(this.out(0.1, 1), t, { type: 'triangle', freq: 190, to: 170, glide: 0.1, level: 0.12, decay: 0.07 });
-        this.noise(this.out(0.1, 1), t, { type: 'highpass', freq: 2000, level: 0.1, decay: 0.006 });
+        this.tone(this.out(0.1, 1), t, { type: 'triangle', freq: 190, to: 170, glide: 0.1, level: 0.13, decay: 0.09 });
+        this.noise(this.out(0.1, 1), t, { type: 'highpass', freq: 2000, level: 0.05, decay: 0.006 });
         this.whoosh(t + 0.04, 0.18, 2200, 800, 0.12, 0.3);
         break;
       case 'sling':
-        this.whoosh(t, 0.12, 500, 1100, 0.08, -0.2);
-        this.whoosh(t + 0.13, 0.12, 550, 1300, 0.1, 0.2);
-        this.whoosh(t + 0.26, 0.16, 1600, 700, 0.14, 0.3);
+        this.whoosh(t, 0.12, 500, 1100, 0.25, -0.2);
+        this.whoosh(t + 0.13, 0.12, 550, 1300, 0.3, 0.2);
+        this.whoosh(t + 0.26, 0.16, 1600, 700, 0.4, 0.3);
         break;
       case 'crossbow':
         this.noise(this.out(0.1, 1), t, { type: 'highpass', freq: 3500, level: 0.12, decay: 0.008 });
@@ -717,14 +798,17 @@ export class SoundEffects {
     bp.frequency.value = 1800;
     bp.Q.value = 1.2;
     bp.connect(dest);
-    this.tone(bp, t, { type: 'square', freq: 1400, to: 160, glide: 0.18, level: 0.07, decay: 0.08 });
-    for (let i = 0; i < 4; i++) this.noise(dest, t + i * 0.03, { type: 'highpass', freq: 3000, level: 0.05, decay: 0.006 });
+    this.noise(bp, t, { type: 'bandpass', freq: 3000, to: 700, glide: 0.2, q: 1.5, level: 0.25, attack: 0.02, decay: 0.1 });
+    this.thump(t, 0.02, 90, 45, 0.06);
+    for (let i = 0; i < 4; i++) this.noise(dest, t + i * 0.03, { type: 'highpass', freq: 3000, level: 0.012, decay: 0.006 });
+    for (let i = 0; i < 9; i++) this.noise(dest, t + 0.02 + i * rand(0.018, 0.026), { type: 'bandpass', freq: rand(1000, 2000), q: 2, level: 0.12, attack: 0.004, decay: 0.012 });
   }
 
   private activate(t: number): void {
-    this.tone(this.out(-0.2, 1), t, { freq: 220, level: 0.05, attack: 0.25, decay: 0.25 });
-    this.tone(this.out(0.2, 1), t, { freq: 331, level: 0.04, attack: 0.25, decay: 0.25 });
-    this.arpeggio(t + 0.25, [0, 4, 7], 0.07, 0.07, 'celesta', 2);
+    this.tone(this.out(-0.2, 1), t, { freq: 220, level: 0.05, attack: 0.08, decay: 0.25 });
+    this.tone(this.out(0.2, 1), t, { freq: 331, level: 0.04, attack: 0.08, decay: 0.25 });
+    this.ring(this.out(0, 1), t + 0.08, midiToFrequency(this.low(this.key.root, 50)), 1.41, 2, 0.06, 0.5);
+    this.chord(t + 0.08, [0, 7], 0.9, 0.35, 'ooh', 0);
   }
 
   private heal(t: number): void {
@@ -734,49 +818,31 @@ export class SoundEffects {
 
   private teleport(t: number): void {
     this.noise(this.out(-0.3, 1), t, { type: 'bandpass', freq: 200, to: 4500, glide: 0.35, q: 3, level: 0.12, attack: 0.25, decay: 0.12 });
-    this.tone(this.out(0.3, 1), t, { type: 'sine', freq: 200, to: 1800, glide: 0.35, level: 0.05, attack: 0.25, decay: 0.12 });
+    this.thump(t + 0.4, 0.06, 90, 45, 0.12);
     this.noise(this.out(0.3, 1), t + 0.4, { type: 'bandpass', freq: 3500, to: 300, glide: 0.4, q: 3, level: 0.06, attack: 0.05, decay: 0.2 });
   }
 
   private trap(t: number): void {
     this.noise(this.out(0, 1), t, { type: 'highpass', freq: 1500, level: 0.3, decay: 0.01 });
-    const ctx = this.core.ctx;
-    const o = ctx.createOscillator();
-    o.frequency.value = 320;
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 28;
-    const depth = ctx.createGain();
-    depth.gain.setValueAtTime(90, t);
-    depth.gain.setTargetAtTime(0, t, 0.15);
-    lfo.connect(depth);
-    depth.connect(o.frequency);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.08, t + 0.005);
-    g.gain.setTargetAtTime(0, t + 0.005, 0.12);
-    o.connect(g);
-    g.connect(this.out(0, 1));
-    o.start(t);
-    lfo.start(t);
-    o.stop(t + 0.9);
-    lfo.stop(t + 0.9);
-    this.chord(t, [0, 1], 0.25, 0.4, 'brass', 0);
+    this.ring(this.out(0, 1), t + 0.01, rand(550, 750), 2.76, 2.5, 0.02, 0.12);
+    this.thump(t + 0.03, 0.1, 110, 40, 0.12);
+    this.ring(this.out(0, 1), t + 0.09, rand(900, 1200), 2.76, 2, 0.03, 0.08);
   }
 
   private rumble(t: number): void {
     this.noise(this.out(0, 1), t, { type: 'lowpass', freq: 120, q: 0.8, level: 0.6, attack: 0.4, decay: 0.8, brown: true });
-    for (let i = 0; i < 6; i++) this.noise(this.out(rand(-0.7, 0.7), 1), t + rand(0.1, 1.2), { type: 'bandpass', freq: rand(600, 1800), q: 1.5, level: 0.05, decay: 0.03 });
+    for (let i = 0; i < 10; i++) this.noise(this.out(rand(-0.7, 0.7), 1), t + rand(0.1, 1.2), { type: 'bandpass', freq: rand(400, 1800), q: 1.5, level: 0.12, decay: 0.03, brown: true });
   }
 
   private breath(t: number, element: Element): void {
     const n = ELEMENT_NOISE[element];
     this.noise(this.out(0, 1), t, { type: 'lowpass', freq: 300, to: 1400, glide: 0.4, level: 0.25, attack: 0.25, decay: 0.35, brown: true });
-    this.noise(this.out(0, 1), t + 0.1, { type: 'bandpass', freq: n.freq, q: n.q, level: 0.15, attack: 0.2, decay: 0.3, brown: n.brown });
+    this.noise(this.out(0, 1), t + 0.1, { type: 'bandpass', freq: n.freq, q: n.q, level: 0.15 * (n.gain ?? 1), attack: 0.2, decay: 0.3, brown: n.brown });
   }
 
   private monsterSpell(t: number): void {
-    this.noise(this.out(rand(-0.4, 0.4), 1), t, { type: 'bandpass', freq: 300, to: 1600, glide: 0.4, q: 3, level: 0.09, attack: 0.35, decay: 0.06 });
-    this.tone(this.out(0, 1), t, { type: 'sawtooth', freq: midiToFrequency(this.key.root - 12), level: 0.03, attack: 0.3, decay: 0.15 });
+    this.noise(this.out(rand(-0.4, 0.4), 1), t, { type: 'bandpass', freq: 300, to: 1600, glide: 0.4, q: 3, level: 0.2, attack: 0.35, decay: 0.06 });
+    this.tone(this.out(0, 1), t, { type: 'sawtooth', freq: midiToFrequency(this.low(this.key.root, 48)), level: 0.04, attack: 0.3, decay: 0.15 });
   }
 
   private shriek(t: number): void {
@@ -811,8 +877,8 @@ export class SoundEffects {
   private bolt(t: number, element: Element): void {
     const n = ELEMENT_NOISE[element];
     const pan = rand(-0.4, 0.4);
-    this.noise(this.out(pan, 1), t, { type: 'bandpass', freq: n.freq * 0.5, to: n.freq * 1.3, glide: 0.2, q: n.q, level: 0.14, attack: 0.08, decay: 0.12, brown: n.brown });
-    if (element === 'cold') this.ring(this.out(pan, 1), t + 0.05, 3400, 1.5, 0.6, 0.03, 0.2);
+    this.noise(this.out(pan, 1), t, { type: 'bandpass', freq: n.freq * 0.5, to: n.freq * 1.3, glide: 0.2, q: n.q, level: 0.14 * (n.gain ?? 1), attack: 0.08, decay: 0.12, brown: n.brown });
+    if (element === 'cold') this.crackle(t + 0.03, 5, 0.2, 0.05, pan);
     if (element === 'lightning') for (let i = 0; i < 5; i++) this.noise(this.out(pan, 1), t + i * 0.025, { type: 'highpass', freq: 2500, level: 0.07, decay: 0.006 });
     if (element === 'fire') for (let i = 0; i < 4; i++) this.noise(this.out(pan, 1), t + rand(0, 0.25), { type: 'bandpass', freq: rand(1500, 4000), q: 1.5, level: 0.05, decay: 0.008 });
   }
@@ -821,13 +887,16 @@ export class SoundEffects {
     const n = ELEMENT_NOISE[element];
     this.thump(t, 0.6, 80, 32, 0.25);
     this.noise(this.out(0, 1), t, { type: 'lowpass', freq: 1600, to: 200, glide: 0.6, level: 0.4, attack: 0.01, decay: 0.3, brown: true });
-    this.noise(this.out(0, 1), t + 0.02, { type: 'bandpass', freq: n.freq, q: n.q, level: 0.12, attack: 0.02, decay: 0.25, brown: n.brown });
+    this.noise(this.out(0, 1), t + 0.02, { type: 'bandpass', freq: n.freq, q: n.q, level: 0.12 * (n.gain ?? 1), attack: 0.02, decay: 0.25, brown: n.brown });
+    this.noise(this.out(0, 1), t, { type: 'highpass', freq: 1800, level: 0.2, decay: 0.015 });
+    for (let i = 0; i < 6; i++) this.noise(this.out(rand(-0.5, 0.5), 1), t + rand(0.05, 0.4), { type: 'bandpass', freq: rand(1200, 3500), q: 1.5, level: 0.06, decay: 0.01 });
   }
 
   /* Warnings and feelings */
 
   private danger(t: number): void {
-    this.chord(t, [0, 1], 0.9, 0.55, 'brass', 0);
+    this.chord(t, [0, 1], 0.9, 1.1, 'brass', 1);
+    this.chord(t, [0, 1], 0.9, 0.5, 'brass', 2);
     playVoice(this.core, 'timpani', this.out(0, 1), t, 0.5, this.key.root - 12, 0.7, { bright: 0.6, sustained: false });
   }
 
@@ -851,47 +920,57 @@ export class SoundEffects {
   }
 
   private sickly(t: number): void {
-    for (let i = 0; i < 3; i++) {
-      const f = rand(180, 300);
-      this.tone(this.out(rand(-0.3, 0.3), 1), t + i * 0.12, { type: 'triangle', freq: f, to: f * 0.6, glide: 0.15, level: 0.05, attack: 0.02, decay: 0.08 });
+    for (let i = 0; i < 4; i++) {
+      const f = rand(500, 900);
+      this.noise(this.out(rand(-0.3, 0.3), 1), t + i * rand(0.08, 0.13), { type: 'bandpass', freq: f, to: f * 0.6, glide: 0.12, q: 6, level: 0.63, attack: 0.02, decay: 0.06, brown: true });
     }
   }
 
+  /** A reeling head: breathy noise whose pitch sways ever wider at `rate` times a second. */
   private warble(t: number, rate: number): void {
     const ctx = this.core.ctx;
-    const o = ctx.createOscillator();
-    o.frequency.value = midiToFrequency(this.midi(4, 1));
+    const source = this.core.noiseSource(false);
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = midiToFrequency(this.midi(4, 1));
+    f.Q.value = 9;
     const lfo = ctx.createOscillator();
     lfo.frequency.value = rate;
     const depth = ctx.createGain();
-    depth.gain.value = 60;
-    lfo.connect(depth);
-    depth.connect(o.detune);
     depth.gain.setValueAtTime(0, t);
-    depth.gain.linearRampToValueAtTime(220, t + 0.6);
+    depth.gain.linearRampToValueAtTime(900, t + 0.6);
+    lfo.connect(depth);
+    depth.connect(f.detune);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.05, t + 0.2);
+    g.gain.linearRampToValueAtTime(0.9, t + 0.2);
     g.gain.setTargetAtTime(0, t + 0.6, 0.15);
-    o.connect(g);
+    source.connect(f);
+    f.connect(g);
     g.connect(this.out(0, 1));
-    o.start(t);
+    source.start(t, Math.random() * 1.5);
     lfo.start(t);
-    o.stop(t + 1.6);
+    source.stop(t + 1.6);
     lfo.stop(t + 1.6);
   }
 
+  /** Held fast: chains drawn tight, cut off dead, and a caught breath. */
   private freeze(t: number): void {
-    this.ring(this.out(0, 1), t, 3600, 1.41, 1.5, 0.05, 0.25);
-    this.noise(this.out(0, 1), t, { type: 'highpass', freq: 4000, level: 0.12, decay: 0.04 });
+    for (let i = 0; i < 4; i++) this.ring(this.out(rand(-0.3, 0.3), 1), t + i * rand(0.04, 0.06), rand(900, 1400), 2.76, 2, 0.05, 0.05);
+    this.thump(t + 0.24, 0.12, 110, 60, 0.06);
+    this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 1600, to: 900, glide: 0.2, q: 2, level: 0.25, attack: 0.03, decay: 0.08 });
   }
 
+  /** Fear: low strings a step apart and a held breath. */
   private shiver(t: number): void {
-    const dest = this.out(0, 1);
-    for (let i = 0; i < 10; i++) {
-      const f = midiToFrequency(this.midi(i % 2 ? 1 : 0, 2));
-      this.tone(dest, t + i * 0.07, { type: 'triangle', freq: f, level: 0.025, attack: 0.01, decay: 0.04 });
-    }
+    this.chord(t, [0, 1], 0.9, 0.09, 'strings', 1);
+    this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 1800, to: 900, glide: 0.5, q: 2, level: 0.015, attack: 0.15, decay: 0.15 });
+  }
+
+  /** Slowed: a low groan dragging down. */
+  private slow(t: number): void {
+    this.noise(this.out(0, 1), t, { type: 'lowpass', freq: 1800, to: 250, glide: 0.7, level: 0.25, attack: 0.05, decay: 0.3, brown: true });
+    this.tone(this.out(0, 1), t, { freq: 95, to: 55, glide: 0.6, level: 0.04, attack: 0.05, decay: 0.3 });
   }
 
   private stun(t: number): void {
@@ -904,7 +983,7 @@ export class SoundEffects {
     const source = this.core.noiseSource(true);
     const f = ctx.createBiquadFilter();
     f.type = 'lowpass';
-    f.frequency.value = 180;
+    f.frequency.value = 380;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(0.35, t + 0.3);
@@ -933,7 +1012,7 @@ export class SoundEffects {
   private levelUp(t: number): void {
     this.chord(t, [0, 4, 7], 1.6, 0.45, 'strings', 1);
     this.arpeggio(t, [0, 2, 4, 7, 9, 11, 14], 0.08, 0.13, 'harp', 1);
-    this.arpeggio(t + 0.56, [14], 0.1, 0.12, 'celesta', 1);
+    this.arpeggio(t + 0.56, [14], 0.1, 0.12, 'bell', 1);
     this.noise(this.out(0, 1), t + 0.2, { type: 'highpass', freq: 4000, to: 10000, glide: 1, level: 0.03, attack: 0.5, decay: 0.4 });
   }
 

@@ -4,14 +4,13 @@ import {
   SAVE_FORMAT,
   base64ToBytes,
   bytesToBase64,
-  bundleConflict,
   collectFiles,
   decodeBundle,
   encodeBundle,
   exportFilename,
   findSaveIndex,
   isSafeRelativePath,
-  writeFiles,
+  restoreFiles,
   type EmscriptenFS,
 } from '../../web/src/saves.ts';
 import { deleteHeroSave, heroLine, nextRunName, placeLine, saveBase } from '../../web/src/play/adventurers.ts';
@@ -51,6 +50,10 @@ class MemoryFS implements EmscriptenFS {
 
   unlink(path: string): void {
     if (!this.files.delete(path)) throw new Error(`ENOENT ${path}`);
+  }
+
+  rmdir(path: string): void {
+    if (this.readdir(path).length > 2 || !this.dirs.delete(path)) throw new Error(`ENOTEMPTY ${path}`);
   }
 
   mkdirTree(path: string): void {
@@ -116,37 +119,47 @@ describe('bundle encoding', () => {
 });
 
 describe('filesystem helpers', () => {
-  it('collects and writes files beneath a root', () => {
-    const source = new MemoryFS();
-    source.mkdirTree('/home/web_user/.tome/2.4/save');
-    source.writeFile('/home/web_user/.tome/2.4/save/Frodo', new Uint8Array([1, 2, 3]));
-    source.writeFile('/home/web_user/.tome/2.4/scores.raw', new Uint8Array([9]));
+  const root = '/home/web_user/.tome';
+  const names = (fs: MemoryFS) => [...fs.files.keys()].map((p) => p.slice(root.length + 1)).sort();
 
-    const files = collectFiles(source, '/home/web_user/.tome');
+  it('collects files beneath a root and restores them elsewhere', () => {
+    const source = new MemoryFS();
+    source.mkdirTree(`${root}/2.4/save`);
+    source.writeFile(`${root}/2.4/save/Frodo`, new Uint8Array([1, 2, 3]));
+    source.writeFile(`${root}/2.4/scores.raw`, new Uint8Array([9]));
+
+    const files = collectFiles(source, root);
     assert.deepEqual(files.map((f) => f.path).sort(), ['2.4/save/Frodo', '2.4/scores.raw']);
 
     const target = new MemoryFS();
-    writeFiles(target, '/home/web_user/.tome', files);
-    assert.deepEqual(target.readFile('/home/web_user/.tome/2.4/save/Frodo'), new Uint8Array([1, 2, 3]));
-    assert.ok(target.dirs.has('/home/web_user/.tome/2.4/save'));
+    target.mkdirTree(root);
+    restoreFiles(target, root, files);
+    assert.deepEqual(target.readFile(`${root}/2.4/save/Frodo`), new Uint8Array([1, 2, 3]));
+    assert.ok(target.dirs.has(`${root}/2.4/save`));
   });
 
-  it('refuses to write unsafe paths', () => {
-    assert.throws(() => writeFiles(new MemoryFS(), '/root', [{ path: '../evil', data: new Uint8Array() }]), /Unsafe/);
-  });
-
-  it('rejects a bundle that cannot be written whole, before touching anything', () => {
+  it('replaces everything that was there, heroes of other names and shared files included', () => {
     const fs = new MemoryFS();
-    fs.mkdirTree('/root/2.4/save');
-    fs.writeFile('/root/2.4/save/Hero', new Uint8Array([1]));
-    const data = new Uint8Array([2]);
-    assert.match(bundleConflict(fs, '/root', [{ path: '2.4/save/Hero', data }, { path: '2.4/save/Hero/child', data }])!, /file and a directory/);
-    assert.match(bundleConflict(fs, '/root', [{ path: '2.4/save/Hero/child', data }])!, /exists as a file/);
-    assert.match(bundleConflict(fs, '/root', [{ path: '2.4/save', data }])!, /as a directory/);
-    assert.match(bundleConflict(fs, '/root', [{ path: 'a', data }, { path: 'a', data }])!, /twice/);
-    assert.equal(bundleConflict(fs, '/root', [{ path: '2.4/save/Hero', data }, { path: '2.4/save/Sam', data }]), null);
-    assert.throws(() => writeFiles(fs, '/root', [{ path: '2.4/save/Hero', data }, { path: '2.4/save/Hero/child', data }]));
-    assert.deepEqual(fs.readFile('/root/2.4/save/Hero'), new Uint8Array([1]));
+    fs.mkdirTree(`${root}/2.4/save/old`);
+    for (const file of ['2.4/save/Sam', '2.4/save/Sam.lvl1_3', '2.4/save/Frodo.lvl4_2', '2.4/save/global.svg', '2.4/scores.raw', 'chronicle.json']) {
+      fs.writeFile(`${root}/${file}`, new Uint8Array([1]));
+    }
+    restoreFiles(fs, root, [
+      { path: '2.4/save/Frodo', data: new Uint8Array([2]) },
+      { path: '2.4/save/global.svg', data: new Uint8Array([2]) },
+    ]);
+    assert.deepEqual(names(fs), ['2.4/save/Frodo', '2.4/save/global.svg']);
+    assert.deepEqual(fs.readFile(`${root}/2.4/save/global.svg`), new Uint8Array([2]));
+    assert.ok(!fs.dirs.has(`${root}/2.4/save/old`));
+    assert.ok(fs.dirs.has(root));
+  });
+
+  it('refuses to write unsafe paths, keeping what was there', () => {
+    const fs = new MemoryFS();
+    fs.mkdirTree(root);
+    fs.writeFile(`${root}/chronicle.json`, new Uint8Array([1]));
+    assert.throws(() => restoreFiles(fs, root, [{ path: '../evil', data: new Uint8Array() }]), /Unsafe/);
+    assert.deepEqual(names(fs), ['chronicle.json']);
   });
 });
 

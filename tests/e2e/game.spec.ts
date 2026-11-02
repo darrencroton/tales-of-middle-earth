@@ -156,7 +156,7 @@ test('help opens from the title screen, with races and classes from the game its
   await expect(page.locator('.sheet-layer')).toBeHidden();
 });
 
-test('game data exported from the title screen imports back, and is kept after the restart', async ({ page }) => {
+test('game data exported from the title screen imports back in place of what is there, and is kept after the restart', async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await page.evaluate(() => {
@@ -178,16 +178,22 @@ test('game data exported from the title screen imports back, and is kept after t
   const exported = bundle.files.find((f: { path: string }) => f.path === '2.4/save/Exported');
   expect(exported).toBeTruthy();
   exported.path = '2.4/save/Imported';
+  await page.evaluate(() => {
+    const engine = window.__tome!.engine;
+    engine.fs!.writeFile(`${engine.savePath}/2.4/save/Later`, new Uint8Array([4]));
+  });
   await page.locator('#import-file').setInputFiles({ name: 'backup.tome2save', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bundle)) });
   const reloaded = page.waitForEvent('load');
-  await page.locator('.sheet-action', { hasText: 'Import' }).click();
+  await page.locator('.sheet-action', { hasText: 'Replace' }).click();
   await reloaded;
   await waitForEngine(page);
-  const data = await page.evaluate(() => {
+  const saves = await page.evaluate(() => {
     const engine = window.__tome!.engine;
-    return Array.from(engine.fs!.readFile(`${engine.savePath}/2.4/save/Imported`));
+    return { names: engine.fs!.readdir(`${engine.savePath}/2.4/save`), imported: Array.from(engine.fs!.readFile(`${engine.savePath}/2.4/save/Imported`)) };
   });
-  expect(data).toEqual([1, 2, 3]);
+  expect(saves.imported).toEqual([1, 2, 3]);
+  expect(saves.names).not.toContain('Exported');
+  expect(saves.names).not.toContain('Later');
 });
 
 test.describe('iOS home-screen app', () => {

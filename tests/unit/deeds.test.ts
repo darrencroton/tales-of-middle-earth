@@ -17,6 +17,7 @@ function memoryFs(files: Record<string, string> = {}): EmscriptenFS {
     },
     writeFile: (path, bytes) => void data.set(path, bytes),
     unlink: (path) => void data.delete(path),
+    rmdir: () => undefined,
     mkdirTree: () => undefined,
     syncfs: (_populate, done) => done(null),
   };

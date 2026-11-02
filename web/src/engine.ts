@@ -125,6 +125,8 @@ export class Engine {
   private module: EmscriptenModule | null = null;
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
   private syncChain: Promise<void> = Promise.resolve();
+  /** Set once storage is to be left as it is for the rest of the page (`holdStorage`). */
+  private storageHeld = false;
   private quitMessage: string | null = null;
   private cursorDrawn = false;
   private readonly buffer: TerminalBuffer;
@@ -412,10 +414,17 @@ export class Engine {
       this.syncTimer = null;
     }
     const fs = this.fs;
-    if (!fs || !this.savePath || this.storageError) return Promise.resolve();
+    if (!fs || !this.savePath || this.storageError || this.storageHeld) return Promise.resolve();
     const run = this.syncChain.catch(() => undefined).then(() => syncToStorage(fs));
     this.syncChain = run;
     return run;
+  }
+
+  /** Stops every later sync, so storage keeps what it has until the page reloads. */
+  holdStorage(): void {
+    this.storageHeld = true;
+    if (this.syncTimer) clearTimeout(this.syncTimer);
+    this.syncTimer = null;
   }
 
   private scheduleSync(): void {

@@ -1,15 +1,18 @@
 // Renders sound-effect scenarios offline in headless Chromium and prints, for each sound, its peak level and how far it
-// stands out of everything else playing in its moment (the other sounds and, optionally, a music theme at medium volume),
-// over its whole length and over its onset.
-// Usage: npm run dev, then node scripts/measure-sfx.mjs scenarios.json
+// stands out of everything else playing in its moment (the other sounds and, optionally, a music theme at medium volume):
+// its loudest 200 ms over the rest's mean while it sounds, K-weighted as ITU-R BS.1770 hears loudness, so a sound that
+// rings on is judged by its loudest moment, not its average.
+// Usage: npm run dev, then node scripts/measure-sfx.mjs scenarios.json [--phone]
+// --phone hears it through a 250 Hz high-pass, as a phone speaker does, which cannot play the lows.
 // scenarios.json: [{ "name": "...", "music": "theme-id"?, "offset": 4?, "duration": 2.5?, "events": [{ "cue": { "id": "cast", "variant": "arcane" }, "at": 0 }] }]
 // With music, events start `offset` seconds in (default 4), once the theme is under way; `duration` is counted from there.
 import { readFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
 const file = process.argv[2];
+const phone = process.argv.includes('--phone');
 if (!file) {
-  console.error('Usage: node scripts/measure-sfx.mjs scenarios.json');
+  console.error('Usage: node scripts/measure-sfx.mjs scenarios.json [--phone]');
   process.exit(1);
 }
 const scenarios = JSON.parse(readFileSync(file, 'utf8'));
@@ -18,7 +21,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(process.env.URL ?? 'http://localhost:5173/');
-const results = await page.evaluate(async (scenarios) => {
+const results = await page.evaluate(async ({ scenarios, phone }) => {
   const { AudioCore } = await import('/src/audio/core.ts');
   const { SoundEffects } = await import('/src/audio/sfx.ts');
   const { MusicPlayer } = await import('/src/audio/music.ts');
@@ -31,6 +34,21 @@ const results = await page.evaluate(async (scenarios) => {
     const random = Math.random;
     try {
       const ctx = new OfflineAudioContext(2, Math.ceil(SR * dur), SR);
+      /* BS.1770's K-weighting: a high shelf for the head, then a high-pass for the ear's low end. */
+      const head = ctx.createIIRFilter([1.53512485958697, -2.69169618940638, 1.19839281085285], [1, -1.69065929318241, 0.73248077421585]);
+      const ear = ctx.createIIRFilter([1, -2, 1], [1, -1.99004745483398, 0.99007225036621]);
+      head.connect(ear);
+      ear.connect(ctx.destination);
+      let input = head;
+      if (phone) {
+        const speaker = ctx.createBiquadFilter();
+        speaker.type = 'highpass';
+        speaker.frequency.value = 250;
+        speaker.Q.value = 0.7;
+        speaker.connect(head);
+        input = speaker;
+      }
+      Object.defineProperty(ctx, 'destination', { value: input });
       const core = new AudioCore(ctx);
       core.musicVolume.gain.value = 0.6 * 0.75;
       core.soundVolume.gain.value = 0.6;
@@ -59,8 +77,8 @@ const results = await page.evaluate(async (scenarios) => {
     }
   }
   const W = Math.round(SR * 0.02);
-  /* The first 160 ms of a sound, where the ear places it. */
-  const ONSET_FRAMES = 8;
+  /* 200 ms, in frames of 20 ms. */
+  const MOMENT = 10;
   const power = (x) => {
     const out = [];
     for (let i = 0; i + W <= x.length; i += W) {
@@ -84,22 +102,18 @@ const results = await page.evaluate(async (scenarios) => {
       const rest = full.map((v, i) => v - aloneWave[i]);
       const others = power(rest);
       const peak = Math.max(...alone);
-      let eCue = 0;
       let eOthers = 0;
       let n = 0;
-      let first = -1;
-      let onCue = 0;
-      let onOthers = 0;
       for (let f = 0; f < alone.length; f++) {
         if (alone[f] < peak * 0.03) continue;
-        if (first < 0) first = f;
-        eCue += alone[f];
         eOthers += others[f];
         n++;
-        if (f - first < ONSET_FRAMES) {
-          onCue += alone[f];
-          onOthers += others[f];
-        }
+      }
+      let loudest = 0;
+      for (let f = 0; f + MOMENT <= alone.length; f++) {
+        let sum = 0;
+        for (let k = f; k < f + MOMENT; k++) sum += alone[k];
+        loudest = Math.max(loudest, sum / MOMENT);
       }
       const measured = events.length > 1 || sc.music;
       rows.push({
@@ -107,18 +121,17 @@ const results = await page.evaluate(async (scenarios) => {
         at: Math.round((event.at - offset) * 1000) / 1000,
         peak: db(peak),
         active: n * 20,
-        over: measured ? db(eCue) - db(eOthers) : null,
-        onset: measured ? db(onCue) - db(onOthers) : null,
+        over: measured ? db(loudest) - db(eOthers / n) : null,
       });
     }
     out.push({ name: sc.name, rows });
   }
   return out;
-}, scenarios);
+}, { scenarios, phone });
 for (const sc of results) {
   console.log(`\n${sc.name}`);
   for (const r of sc.rows) {
-    const over = r.over === null ? '' : `  over the rest ${r.over.toFixed(1).padStart(6)} dB, onset ${r.onset.toFixed(1).padStart(6)} dB`;
+    const over = r.over === null ? '' : `  over the rest ${r.over.toFixed(1).padStart(6)} dB`;
     console.log(`  ${r.cue.padEnd(20)} at ${String(r.at).padEnd(5)} peak ${r.peak.toFixed(1).padStart(6)} dB  active ${String(r.active).padStart(4)} ms${over}`);
   }
 }
