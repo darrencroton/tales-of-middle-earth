@@ -210,7 +210,6 @@ export class Explore {
 
   step(ctx: TravelContext): TravelStep {
     const { snap } = ctx;
-    if (this.travel?.answering) return this.travel.step(ctx);
     if (this.lastHp !== null && ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };
     if (robbed(ctx.gold, this.lastGold)) return { kind: 'stop', reason: 'robbed' };
     if (lightWentOut(snap, this.lastLight)) return { kind: 'stop', reason: 'dark' };

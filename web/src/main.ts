@@ -1916,7 +1916,8 @@ function updateActionBar(force = false): void {
     (shownShop ? shopActions() : null) ??
     contextActions({
       mode,
-      prompt,
+      /* tome2's question of which door travel is opening is answered by travel, not the player. */
+      prompt: travel?.answering ? 'none' : prompt,
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
@@ -2137,6 +2138,7 @@ function companionCells(snap: LevelSnapshot): Set<number> {
 
 function stopAutomation(message: string | null, cause: string): void {
   if (travel || picker) lastStopCause = cause;
+  const answering = !!travel?.answering;
   if (travel instanceof Explore && lastSnap) {
     exploreAnchor = travel.anchor;
     exploreLastStop = { x: lastSnap.px, y: lastSnap.py };
@@ -2147,6 +2149,8 @@ function stopAutomation(message: string | null, cause: string): void {
   picker = null;
   map.setPath(null);
   if (message) showToast(message);
+  /* A door's question travel was to answer is left to the player. */
+  if (answering) updatePromptCard();
   updateActionBar();
   requestFrame();
 }
