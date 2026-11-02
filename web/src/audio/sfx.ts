@@ -38,7 +38,7 @@ const TRIM_DB: Partial<Record<CueId, number>> = {
   hit: 5,
   miss: 17,
   hurt: 3,
-  ail: 24,
+  ail: 18,
   parry: 19,
   kill: 7,
   impact: 12,
@@ -469,10 +469,10 @@ export class SoundEffects {
     if (s > 0.35) this.tone(this.out(0, 1), t + 0.02, { freq: 3100, level: 0.012 + 0.02 * s, attack: 0.02, decay: 0.4 });
   }
 
-  /** Health draining from within (poison, bleeding): a soft, short wince with no blow behind it. */
+  /** Health draining from within (poison, bleeding): a soft, brief, muffled breath under the music, with no blow behind it. */
   private ail(t: number): void {
     const pitch = rand(0.85, 1.15);
-    this.noise(this.out(rand(-0.1, 0.1), 1), t, { type: 'bandpass', freq: 1100 * pitch, to: 750 * pitch, glide: 0.1, q: 2.5, level: 0.2, attack: 0.02, decay: 0.05 });
+    this.noise(this.out(rand(-0.1, 0.1), 1), t, { type: 'lowpass', freq: 900 * pitch, to: 500 * pitch, glide: 0.06, q: 0.5, level: 0.2, attack: 0.012, decay: 0.022 });
   }
 
   private claw(t: number, s: number): void {
