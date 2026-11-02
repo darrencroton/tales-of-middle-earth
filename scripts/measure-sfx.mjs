@@ -1,15 +1,17 @@
 // Renders sound-effect scenarios offline in headless Chromium and prints, for each sound, its peak level and how far it
 // stands out of everything else playing in its moment (the other sounds and, optionally, a music theme at medium volume),
 // over its whole length and over its onset.
-// Usage: npm run dev, then node scripts/measure-sfx.mjs scenarios.json
+// Usage: npm run dev, then node scripts/measure-sfx.mjs scenarios.json [--phone]
+// --phone hears it through a 250 Hz high-pass, as a phone speaker does, which cannot play the lows.
 // scenarios.json: [{ "name": "...", "music": "theme-id"?, "offset": 4?, "duration": 2.5?, "events": [{ "cue": { "id": "cast", "variant": "arcane" }, "at": 0 }] }]
 // With music, events start `offset` seconds in (default 4), once the theme is under way; `duration` is counted from there.
 import { readFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
 const file = process.argv[2];
+const phone = process.argv.includes('--phone');
 if (!file) {
-  console.error('Usage: node scripts/measure-sfx.mjs scenarios.json');
+  console.error('Usage: node scripts/measure-sfx.mjs scenarios.json [--phone]');
   process.exit(1);
 }
 const scenarios = JSON.parse(readFileSync(file, 'utf8'));
@@ -18,7 +20,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(process.env.URL ?? 'http://localhost:5173/');
-const results = await page.evaluate(async (scenarios) => {
+const results = await page.evaluate(async ({ scenarios, phone }) => {
   const { AudioCore } = await import('/src/audio/core.ts');
   const { SoundEffects } = await import('/src/audio/sfx.ts');
   const { MusicPlayer } = await import('/src/audio/music.ts');
@@ -31,6 +33,14 @@ const results = await page.evaluate(async (scenarios) => {
     const random = Math.random;
     try {
       const ctx = new OfflineAudioContext(2, Math.ceil(SR * dur), SR);
+      if (phone) {
+        const speaker = ctx.createBiquadFilter();
+        speaker.type = 'highpass';
+        speaker.frequency.value = 250;
+        speaker.Q.value = 0.7;
+        speaker.connect(ctx.destination);
+        Object.defineProperty(ctx, 'destination', { value: speaker });
+      }
       const core = new AudioCore(ctx);
       core.musicVolume.gain.value = 0.6 * 0.75;
       core.soundVolume.gain.value = 0.6;
@@ -114,7 +124,7 @@ const results = await page.evaluate(async (scenarios) => {
     out.push({ name: sc.name, rows });
   }
   return out;
-}, scenarios);
+}, { scenarios, phone });
 for (const sc of results) {
   console.log(`\n${sc.name}`);
   for (const r of sc.rows) {
