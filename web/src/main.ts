@@ -15,7 +15,7 @@ import { commandGroups, commandKeys, contextActions, contextualAction, GAME_OPTI
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { approachTarget, goAction, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
+import { approachTarget, goAction, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type StopNotice, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, questKey, type HeroMemory } from './play/mapmemory.ts';
 import { CAVE_MARK, isHostile, isNeutral, LAYER_MASK, LEAD_LINES, leadInMessages, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
@@ -39,7 +39,7 @@ import { openHelp } from './ui/help.ts';
 import { openMagic, openSpell, RecentStore } from './ui/magic.ts';
 import { CastWatcher, fireMacro, hasActivePowers, hasMagic, hasPowers, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
 import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
-import { GameFeel, type FeelEvent } from './feel.ts';
+import { GameFeel, NOTICE_MS, type FeelEvent, type NoticeWeight } from './feel.ts';
 import { Coach } from './ui/coach.ts';
 import {
   fightingStyle,
@@ -288,10 +288,9 @@ function setCtrlLatched(value: boolean): void {
   for (const node of document.querySelectorAll('[data-ctrl-toggle]')) node.setAttribute('aria-pressed', String(value));
 }
 
-const TOAST_MS = 2000;
 let toastTimer = 0;
-/** Shows a short message over the foot of the map; unless it repeats one of tome2's (`log` false), it also goes in the message log. */
-function showToast(text: string, log = true): void {
+/** Shows a short message over the foot of the map for as long as its weight asks; unless it repeats one of tome2's (`log` false), it also goes in the message log. */
+function showToast(text: string, { log = true, weight = 'brief' }: { log?: boolean; weight?: NoticeWeight } = {}): void {
   if (log && inGame()) {
     engine.addNotice(text);
     dirty = true;
@@ -304,7 +303,7 @@ function showToast(text: string, log = true): void {
   toast.textContent = text;
   toast.classList.add('visible');
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove('visible'), TOAST_MS);
+  toastTimer = window.setTimeout(() => toast.classList.remove('visible'), NOTICE_MS[weight]);
 }
 
 /** Clears a toast the player has moved on from. */
@@ -461,7 +460,7 @@ function settleConversation(): void {
   const { title, messages } = conversation;
   conversation = null;
   if (messages.length > 1) openMessage(sheets, title, messages.join(' '));
-  else if (messages.length === 1) showToast(messages[0], false);
+  else if (messages.length === 1) showToast(messages[0], { log: false, weight: 'major' });
 }
 
 /** Once a watched action has ended (its macro done, tome2 back at the command prompt), tells the player when tome2 refused it or it failed. */
@@ -470,7 +469,7 @@ function settleAttempt(): void {
   if (!attempt || !snap?.atCommand || snap.icky || macros.running) return;
   const outcome = attemptOutcome(snap.turn !== attempt.turn, attempt.messages);
   attempt = null;
-  if (outcome) showToast(outcome.message, false);
+  if (outcome) showToast(outcome.message, { log: false });
 }
 
 /* Spells, powers and skill actions, read again each game turn and whenever skill points are spent (a skill raised or an ability learnt takes no turn). */
@@ -696,7 +695,7 @@ function setOverview(on: boolean): void {
   if (on) {
     setLooking(false);
     recentreMap();
-    showToast('Tap a place to travel there', false);
+    showToast('Tap a place to travel there', { log: false });
   }
   updateActionBar(true);
   dirty = true;
@@ -1508,10 +1507,10 @@ function chronicleUpdate(player: PlayerState, slain: readonly Slain[], turn: num
   record(hero, chronicles.career, player, slain, streak.count, hurt);
   const legend = slain.find((s) => s.unique);
   if (legend) {
-    feel.announce(titleName(legend.name), 'A legend falls', 'legend');
+    feel.announce(titleName(legend.name), 'A legend falls', 'legend', 'major');
     feel.shake(0.7);
   } else if (next.name) {
-    feel.announce(next.name, `${streak.count} foes in quick succession`, 'streak');
+    feel.announce(next.name, `${streak.count} foes in quick succession`, 'streak', 'brief');
   }
   const deeds = newDeeds(hero, chronicles.career, chronicles.earned);
   if (deeds.length) {
@@ -1603,7 +1602,7 @@ function removeFameEntry(entry: ScoreEntry): void {
   const same = (e: ScoreEntry) => entryKey(e) === entryKey(entry) && e.points === entry.points && e.day === entry.day;
   const index = engine.scores().findIndex(same);
   if (index < 0 || !engine.removeScore(index)) {
-    showToast('The Hall of Fame could not be changed.', false);
+    showToast('The Hall of Fame could not be changed.', { log: false, weight: 'major' });
     return;
   }
   if (chronicles.forgetMemorial(entryKey(entry))) chronicles.save();
@@ -1611,10 +1610,10 @@ function removeFameEntry(entry: ScoreEntry): void {
   const shown = fameSheet;
   if (shown) sheets.update(hallOfFameSheet(), shown);
   engine.syncNow().then(
-    () => showToast(`${entry.name} was removed from the Hall of Fame.`, false),
+    () => showToast(`${entry.name} was removed from the Hall of Fame.`, { log: false }),
     (err) => {
       console.error('Saving to browser storage failed', err);
-      showToast('Browser storage could not be updated.', false);
+      showToast('Browser storage could not be updated.', { log: false, weight: 'major' });
     },
   );
 }
@@ -1673,13 +1672,13 @@ function settleTrade(): void {
   const { done, before, state } = trade;
   trade = null;
   if (tradeState() !== before) {
-    if (done) showToast(done, false);
+    if (done) showToast(done, { log: false });
     return;
   }
   const next = engine.gameState(20);
   const said = state && next ? newMessages(state, next)[0]?.text : undefined;
   if (!said && !done) return;
-  showToast(said ? said.replace(/\s*-more-\s*$/, '') : 'Nothing changed.', false);
+  showToast(said ? said.replace(/\s*-more-\s*$/, '') : 'Nothing changed.', { log: false });
   audio.cue('deny');
 }
 
@@ -2099,7 +2098,7 @@ function companionCells(snap: LevelSnapshot): Set<number> {
   });
 }
 
-function stopAutomation(message: string | null, cause: string): void {
+function stopAutomation(message: string | null, cause: string, weight: NoticeWeight = 'brief'): void {
   if (travel || picker) lastStopCause = cause;
   if (travel instanceof Explore && lastSnap) {
     exploreAnchor = travel.anchor;
@@ -2110,7 +2109,7 @@ function stopAutomation(message: string | null, cause: string): void {
   travel = null;
   picker = null;
   map.setPath(null);
-  if (message) showToast(message);
+  if (message) showToast(message, { weight });
   updateActionBar();
   requestFrame();
 }
@@ -2124,8 +2123,9 @@ function stepTravel(): void {
   const step = travel.step(ctx);
   if (step.kind === 'stop') {
     const spotted = travel instanceof Explore ? spottedText() : null;
-    const message = [stopMessage(travel, step, ctx.snap), spotted].filter(Boolean).join(' ');
-    stopAutomation(message || null, step.reason);
+    const stop = stopMessage(travel, step, ctx.snap);
+    const message = [stop?.text, spotted].filter(Boolean).join(' ');
+    stopAutomation(message || null, step.reason, stop?.weight);
     return;
   }
   map.setPath(step.path);
@@ -2153,7 +2153,7 @@ function changingButton(snap: LevelSnapshot): Action {
 }
 
 /** What to tell the player when travel or exploring stops. */
-function stopMessage(journey: Travel | Explore, step: Extract<TravelStep, { kind: 'stop' }>, snap: LevelSnapshot): string | null {
+function stopMessage(journey: Travel | Explore, step: Extract<TravelStep, { kind: 'stop' }>, snap: LevelSnapshot): StopNotice | null {
   return stopText(step, {
     light: changingButton(snap).id === 'equip' && gearSuggestion()?.kind === 'light',
     exploring: journey instanceof Explore,
@@ -2597,12 +2597,12 @@ const engine = new Engine(buffer, {
       engine.syncNow().then(
         () => {
           if (!notify) return;
-          showToast(engine.storageError ? 'Saved for this session only' : 'Game saved');
+          showToast(engine.storageError ? 'Saved for this session only' : 'Game saved', { weight: engine.storageError ? 'major' : 'brief' });
           audio.cue('save');
         },
         (err) => {
           console.error('Save sync failed', err);
-          showToast('Saving to browser storage failed');
+          showToast('Saving to browser storage failed', { weight: 'major' });
         },
       );
     }
@@ -3015,7 +3015,7 @@ function saveAndQuit(): void {
   quitting = true;
   stopAutomation(null, 'quit');
   persistMapMemory();
-  showToast('Saving…', false);
+  showToast('Saving…', { log: false });
   runMacro(quitMacro());
 }
 
@@ -3218,10 +3218,10 @@ const adventurerHandlers: AdventurerHandlers = {
     deleteAdventurer(name);
     director.forgetSave(save.name);
     engine.syncNow().then(
-      () => showToast(`${name}'s adventure was deleted.`, false),
+      () => showToast(`${name}'s adventure was deleted.`, { log: false }),
       (err) => {
         console.error('Saving to browser storage failed', err);
-        showToast('Browser storage could not be updated.', false);
+        showToast('Browser storage could not be updated.', { log: false, weight: 'major' });
       },
     );
   },
@@ -3268,7 +3268,7 @@ function abandonAdventure(): void {
   quitting = true;
   abandoning = name;
   stopAutomation(null, 'quit');
-  showToast('Leaving…', false);
+  showToast('Leaving…', { log: false });
   runMacro(abandonMacro());
 }
 

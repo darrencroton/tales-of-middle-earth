@@ -1,3 +1,4 @@
+import type { NoticeWeight } from '../feel.ts';
 import type { Material } from '../render/materials.ts';
 import {
   CAVE_MARK,
@@ -95,15 +96,25 @@ export interface StopContext {
   lightRadius: number;
 }
 
+/** What travel or exploring stopping tells the player, and how much it matters. */
+export interface StopNotice {
+  text: string;
+  weight: NoticeWeight;
+}
+
+/** Stops the player is to read: the light gone out, a purse lighter. */
+const MAJOR_STOPS: ReadonlySet<TravelStopReason> = new Set(['dark', 'robbed']);
+
 /** What to tell the player when travel or exploring stops. */
-export function stopMessage(step: Extract<TravelStep, { kind: 'stop' }>, ctx: StopContext): string | null {
+export function stopMessage(step: Extract<TravelStep, { kind: 'stop' }>, ctx: StopContext): StopNotice | null {
   if (step.reason === 'explored' && ctx.exploring && ctx.depth > 0 && ctx.lightRadius <= 0) {
-    return ctx.light ? 'It is too dark to explore. Tap Light to light your way.' : 'It is too dark to explore further without a light.';
+    return { text: ctx.light ? 'It is too dark to explore. Tap Light to light your way.' : 'It is too dark to explore further without a light.', weight: 'major' };
   }
-  if (step.reason === 'dark' && ctx.light) return 'Your light has gone out. Tap Light to light your way again.';
-  if (step.creature) return `You stop: ${titleName(step.creature)} in sight${step.asleep ? ', asleep' : ''}.`;
-  if (step.reason === 'arrived' && ctx.approximate) return !ctx.exploring && ctx.walked >= FAR_WALK_STEPS ? STOP_MESSAGES.closest : null;
-  return STOP_MESSAGES[step.reason];
+  const weight: NoticeWeight = MAJOR_STOPS.has(step.reason) ? 'major' : 'brief';
+  if (step.reason === 'dark' && ctx.light) return { text: 'Your light has gone out. Tap Light to light your way again.', weight };
+  if (step.creature) return { text: `You stop: ${titleName(step.creature)} in sight${step.asleep ? ', asleep' : ''}.`, weight };
+  const text = step.reason === 'arrived' && ctx.approximate ? (!ctx.exploring && ctx.walked >= FAR_WALK_STEPS ? STOP_MESSAGES.closest : null) : STOP_MESSAGES[step.reason];
+  return text ? { text, weight } : null;
 }
 
 function isKnownIndex(snap: LevelSnapshot, i: number): boolean {

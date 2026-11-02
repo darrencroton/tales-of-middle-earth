@@ -59,9 +59,10 @@ export function isLowHealth(player: Pick<PlayerState, 'chp' | 'mhp'>): boolean {
   return player.mhp > 0 && player.chp / player.mhp < LOW_HEALTH;
 }
 
-const BANNER_MS = 2600;
-/* A quest's banner stays a little longer, to be read. */
-const QUEST_BANNER_MS = 4200;
+/** How much a notice matters: `brief` passes by (a refusal, a stop, a new depth), `major` is to be read or marks a milestone (a quest, a legend slain, a level gained, a deed, a creature's words, a warning). */
+export type NoticeWeight = 'brief' | 'major';
+/** How long a toast, banner or deed card of each weight stays. */
+export const NOTICE_MS: Readonly<Record<NoticeWeight, number>> = { brief: 2000, major: 4400 };
 /* Between a banner going and one that waited for it. */
 const BANNER_GAP_MS = 400;
 /* The most banners kept waiting. */
@@ -71,7 +72,7 @@ interface Banner {
   title: string;
   subtitle: string;
   kind: string;
-  ms: number;
+  weight: NoticeWeight;
 }
 
 function isQuest(banner: Banner): boolean {
@@ -82,7 +83,6 @@ const FLOAT_MS = 1400;
 const FLOAT_AT_MS = 1650;
 const RING_MS = 700;
 const SHAKE_MS = 420;
-const DEED_MS = 3600;
 /* A hit taking at least this fraction of maximum health shakes the screen. */
 const SHAKE_HURT = 0.2;
 
@@ -135,8 +135,8 @@ export class GameFeel {
   }
 
   /** A banner for a moment worth marking: a kill streak, a legend slain. */
-  announce(title: string, subtitle: string, kind: string): void {
-    this.showBanner(title, subtitle, kind);
+  announce(title: string, subtitle: string, kind: string, weight: NoticeWeight): void {
+    this.showBanner(title, subtitle, kind, weight);
   }
 
   /**
@@ -189,7 +189,7 @@ export class GameFeel {
     void this.deed.offsetWidth;
     this.deed.classList.add('visible');
     vibrate([20, 40, 20]);
-    this.deedTimer = window.setTimeout(() => this.nextDeed(), DEED_MS);
+    this.deedTimer = window.setTimeout(() => this.nextDeed(), NOTICE_MS.major);
   }
 
   /** Forgets the last hero, for a new game in the same page. */
@@ -240,6 +240,7 @@ export class GameFeel {
           `Level ${event.level}`,
           event.skillPoints > 0 ? `${event.skillPoints} skill point${event.skillPoints === 1 ? '' : 's'} to spend` : 'Your hero grows stronger',
           'levelup',
+          'major',
         );
         vibrate([30, 60, 30]);
         break;
@@ -258,14 +259,14 @@ export class GameFeel {
         break;
       }
       case 'quest':
-        this.showBanner(event.title, [event.place, event.feet ? `${event.feet} ft` : ''].filter(Boolean).join(' · '), 'quest', QUEST_BANNER_MS);
+        this.showBanner(event.title, [event.place, event.feet ? `${event.feet} ft` : ''].filter(Boolean).join(' · '), 'quest', 'major');
         vibrate([20, 40, 20]);
         break;
       case 'questProgress':
         this.float(`${iconText('⚑')} ${event.slain} of ${event.count}`, 'quest');
         break;
       case 'questEnd':
-        this.showBanner(event.title, event.failed ? 'Quest failed' : 'Quest complete', event.failed ? 'quest failed' : 'quest', QUEST_BANNER_MS);
+        this.showBanner(event.title, event.failed ? 'Quest failed' : 'Quest complete', event.failed ? 'quest failed' : 'quest', 'major');
         if (!event.failed) vibrate([30, 60, 30]);
         break;
       case 'gold':
@@ -283,8 +284,8 @@ export class GameFeel {
   }
 
   /** Shows a banner; while a quest's banner shows, others wait for it, and one shown just before it comes back after. */
-  private showBanner(title: string, subtitle: string, kind: string, ms = BANNER_MS): void {
-    const banner: Banner = { title, subtitle, kind, ms };
+  private showBanner(title: string, subtitle: string, kind: string, weight: NoticeWeight = 'brief'): void {
+    const banner: Banner = { title, subtitle, kind, weight };
     const now = performance.now();
     const current = this.shown && now < this.shown.until ? this.shown : null;
     if (current && isQuest(current.banner)) {
@@ -301,7 +302,7 @@ export class GameFeel {
   private display(banner: Banner): void {
     if (this.next && this.next !== banner) this.waiting.unshift(this.next);
     this.next = null;
-    this.shown = { banner, until: performance.now() + banner.ms };
+    this.shown = { banner, until: performance.now() + NOTICE_MS[banner.weight] };
     this.banner.className = `feel-banner ${banner.kind}`;
     this.banner.replaceChildren(el('strong', undefined, banner.title), el('span', undefined, banner.subtitle));
     void this.banner.offsetWidth;
@@ -313,7 +314,7 @@ export class GameFeel {
       if (!next) return;
       this.next = next;
       this.bannerTimer = window.setTimeout(() => this.display(next), BANNER_GAP_MS);
-    }, banner.ms);
+    }, NOTICE_MS[banner.weight]);
   }
 
   private float(text: string, kind: string): void {
