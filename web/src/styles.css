@@ -327,6 +327,10 @@ html.keyboard-open .sheet-layer {
   margin-left: auto;
 }
 
+.look-button.unavailable {
+  color: var(--faint);
+}
+
 /* Native card for tome2's questions (yes/no, how many, text, direction, target). */
 
 .prompt-card {
@@ -1976,6 +1980,11 @@ html.keyboard-open .tv-layer.panel {
 }
 
 .row-button.unavailable .row-label {
+  opacity: 0.5;
+}
+
+.recent-button.unavailable .row-label,
+.recent-button.unavailable .row-hint {
   opacity: 0.5;
 }
 

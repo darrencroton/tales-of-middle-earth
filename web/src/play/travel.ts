@@ -283,7 +283,7 @@ export function goAction(
  * it stands, or null out of sight): one step of the creature towards the
  * place tapped, as tome2 moves it with the walking keys.
  */
-export function steerAction(steered: Point | null, cell: Point): TapAction {
+function steerAction(steered: Point | null, cell: Point): TapAction {
   if (!steered) return { kind: 'refuse', why: 'The creature you control is out of sight.' };
   const digit = directionDigit(cell.x - steered.x, cell.y - steered.y);
   return digit && digit !== '5' ? { kind: 'steer', digit } : { kind: 'none' };

@@ -22,6 +22,12 @@ export interface GameApi {
   command(command: string): void;
   /** Runs a scripted exchange with the engine (closing any sheets, or covering them when `comeBack`). */
   runMacro(macro: Macro, comeBack?: boolean): void;
+  /** Why tome2 will not take one of the hero's commands now (on the world map, or while they control another creature), or null. */
+  refusal(command: string): string | null;
+  /** Why the hero cannot set off for somewhere now, or null. */
+  travelRefusal(): string | null;
+  /** Says why something cannot be done (a toast and the refusal sound). */
+  refuse(reason: string): void;
   /** Talks to (`Y`) or gives to (`y`) the creature in a keypad direction (closing any sheets). */
   converse(command: 'Y' | 'y', digit: string): void;
   travelTo(point: MapPoint): void;

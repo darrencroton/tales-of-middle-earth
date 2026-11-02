@@ -1,4 +1,3 @@
-import { CONTROLLING } from '../play/actions.ts';
 import { directionDigit } from '../play/prompts.ts';
 import { readableColour } from '../render/colour.ts';
 import type { MapPoint } from '../render/map.ts';
@@ -47,12 +46,11 @@ export function openMonster(api: GameApi, m: MonsterState): void {
   const friendly = !isHostile(m);
   const near = snap ? distance({ x: snap.px, y: snap.py }, m) : 99;
   /* Beside the hero, someone neutral can be talked to, and anyone not hostile given something (tome2's Y and y, with its direction). */
-  const busy = !snap?.atCommand ? 'Finish what you are doing first.' : api.state()?.player?.control ? CONTROLLING : null;
   const towards = (id: string, label: string, command: 'Y' | 'y', primary: boolean): SheetAction => ({
     id,
     label,
     primary,
-    unavailable: busy,
+    unavailable: snap?.atCommand ? api.refusal(command) : 'Finish what you are doing first.',
     run: () => {
       const digit = snap && directionDigit(m.x - snap.px, m.y - snap.py);
       if (digit) api.converse(command, digit);
@@ -63,7 +61,7 @@ export function openMonster(api: GameApi, m: MonsterState): void {
     : [
         ...(friendly && near === 1
           ? [...(isNeutral(m) ? [towards('talk', 'Talk', 'Y', true)] : []), towards('give', 'Give', 'y', !isNeutral(m))]
-          : [{ id: 'approach', label: friendly ? 'Go to' : near <= 1 ? 'Attack' : 'Approach', primary: true, unavailable: busy, run: () => api.travelTo({ x: m.x, y: m.y }) }]),
+          : [{ id: 'approach', label: friendly ? 'Go to' : near <= 1 ? 'Attack' : 'Approach', primary: true, unavailable: api.travelRefusal(), run: () => api.travelTo({ x: m.x, y: m.y }) }]),
         {
           id: 'show',
           label: 'Show on map',
@@ -120,7 +118,7 @@ export function openFloorObject(api: GameApi, o: ObjectState): void {
   const actions: SheetAction[] = api.state()?.player?.dead
     ? []
     : [
-        { id: 'goto', label: 'Go there', primary: true, run: () => api.travelTo({ x: o.x, y: o.y }) },
+        { id: 'goto', label: 'Go there', primary: true, unavailable: api.travelRefusal(), run: () => api.travelTo({ x: o.x, y: o.y }) },
         {
           id: 'show',
           label: 'Show on map',

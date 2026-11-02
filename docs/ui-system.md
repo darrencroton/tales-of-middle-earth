@@ -11,7 +11,7 @@ taps from the map. **Type** refers to the taxonomy in section 3.
 
 ```
 Map (toolbar, HUD, gestures)
-├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Descend/Ascend/Enter rift, Enter shop/home,
+├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Release, Descend/Ascend/Enter rift, Enter shop/home,
 │   Attack, Talk, Pick up, Drink, Wield/Light/Eat, Explore/Way down/Way up/World map — then the hero's
 │   own buttons in fixed places: quick spell or aimed item, Cast/Powers, Fire, Items, Rest, More,
 │   Menu; while exploring: Stop, Speed, Menu)
@@ -27,6 +27,8 @@ Map (toolbar, HUD, gestures)
 │   │   ├── Magic, Powers ─── the Magic panel on that tab, in the same frame (Back returns to Commands)
 │   │   ├── item commands (Drink potion, Read scroll…) → tome2 item prompt (TermView panel, tabs)
 │   │   ├── Talk, Give, Steal, doors → direction card on the map (Give then asks which item)
+│   │   ├── while controlling a creature: Release creature, Creature powers (its powers, TermView panel),
+│   │   │   Creature's pack (tome2 screen), Creature picks up, Creature drops all
 │   │   └── Game options ──── tome2 screen; Commands reopens after
 │   └── Menu ──────────────── Menu                 menu                                     depth 1
 │       ├── Character ─────── Character            panel, tabs Summary · Skills · Abilities · Full sheet

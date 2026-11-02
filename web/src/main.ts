@@ -11,7 +11,7 @@ import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
-import { commandGroups, commandKeys, contextActions, contextualAction, CONTROLLING, creaturePowersMacro, GAME_OPTIONS, converseMacro, releaseMacro, restMacro, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
+import { commandGroups, commandKeys, contextActions, contextualAction, commandRefusal, CONTROLLING, creaturePowersMacro, GAME_OPTIONS, converseMacro, releaseMacro, restMacro, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
@@ -362,6 +362,9 @@ const api: GameApi = {
   askQuantity: (question) => askQuantity(sheets, question),
   recent: () => recents.list(lastState?.player?.name ?? ''),
   remember: (entry) => recents.remember(lastState?.player?.name ?? '', entry),
+  refusal: (command) => commandRefusal(command, { worldMap: !!lastSnap?.inDungeon && lastSnap.depth === 0 && lastSnap.wild, controlling: controlling() }),
+  travelRefusal,
+  refuse,
 };
 
 const recents = new RecentStore();
@@ -453,7 +456,7 @@ function beginConversation(command: number, creature: MonsterState | undefined):
  * button or tap, giving the direction only once tome2 asks for it.
  */
 function converse(command: 'Y' | 'y', digit: string): void {
-  if (!lastSnap?.atCommand) return;
+  if (!lastSnap?.atCommand || heroHeld()) return;
   hideToast();
   beginConversation(command.charCodeAt(0), creatureTowards(digit.charCodeAt(0)));
   runMacro(converseMacro(command, digit));
@@ -676,6 +679,7 @@ function openNative(view: NativeView): void {
       runMacro(releaseMacro());
       break;
     case 'creaturePowers':
+      watchAttempt();
       runMacro(creaturePowersMacro());
       break;
     case 'talk': {
@@ -782,19 +786,24 @@ function showLookCard(point: MapPoint): void {
   if (description.blurred) rows.append(el('p', 'look-text', 'You cannot make out what is there.'));
   else if (!description.known && !rows.childElementCount) rows.append(el('p', 'look-text', 'You have not explored there.'));
   const buttons = el('div', 'look-buttons');
-  const add = (label: string, run: () => void) => {
-    const button = el('button', 'look-button', label);
+  const add = (label: string, run: () => void, unavailable: string | null = null) => {
+    const button = el('button', unavailable ? 'look-button unavailable' : 'look-button', label);
     button.type = 'button';
     button.dataset.nav = '';
-    button.addEventListener('click', run);
+    if (unavailable) button.setAttribute('aria-description', unavailable);
+    button.addEventListener('click', () => (unavailable ? refuse(unavailable) : run()));
     buttons.append(button);
   };
   const monster = description.monsters[0];
-  if (!description.player && description.known && lastSnap?.atCommand && !controlling()) {
-    add(monster && isHostile(monster) ? 'Attack' : 'Go there', () => {
-      setLooking(false);
-      startTravel(point);
-    });
+  if (!description.player && description.known && lastSnap?.atCommand) {
+    add(
+      monster && isHostile(monster) ? 'Attack' : 'Go there',
+      () => {
+        setLooking(false);
+        startTravel(point);
+      },
+      travelRefusal(),
+    );
   }
   add('✕', () => hideLookCard());
   lookCard.replaceChildren(head, ...(rows.childElementCount ? [rows] : []), buttons);
@@ -1872,10 +1881,10 @@ function gearSuggestion(): GearSuggestion | null {
   });
 }
 
-/** The weakest hostile creature next to the player, if any. */
+/** The weakest hostile creature next to the player, if any (none while the hero controls another creature, who cannot fight then). */
 function adjacentFoe(): MonsterState | null {
   const snap = lastSnap;
-  if (!snap?.inDungeon || !snap.atCommand) return null;
+  if (!snap?.inDungeon || !snap.atCommand || controlling()) return null;
   const foes = (lastState?.monsters ?? []).filter((m) => isHostile(m) && isAdjacent(m.x, m.y, snap.px, snap.py));
   foes.sort((a, b) => a.hp / Math.max(1, a.maxhp) - b.hp / Math.max(1, b.maxhp));
   return foes[0] ?? null;
@@ -2080,6 +2089,12 @@ function steered(): MapPoint | null | undefined {
   if (!id) return undefined;
   const creature = lastState?.monsters?.find((m) => m.id === id);
   return creature ? { x: creature.x, y: creature.y } : null;
+}
+
+/** Why the hero cannot set off for somewhere now, or null. */
+function travelRefusal(): string | null {
+  if (!lastSnap?.atCommand) return 'Finish what you are doing first.';
+  return controlling() ? CONTROLLING : null;
 }
 
 /** Refuses a journey of the hero's own while they control another creature. */
@@ -2737,7 +2752,8 @@ const engine = new Engine(buffer, {
 function send(codes: number[] | null): void {
   if (!codes || codes.length === 0) return;
   const key = codes.length === 1 ? codes[0] : codes.length === 2 && codes[0] === BACKSLASH ? codes[1] : null;
-  if (key !== null && lastSnap?.inDungeon) {
+  /* A typed m while the hero controls a creature uses its powers, not the hero's. */
+  if (key !== null && lastSnap?.inDungeon && !controlling()) {
     castWatcher.note(rowZeroText(), buffer.screenText(), key, !!lastSnap.atCommand);
     if (castWatcher.casting) audio.castingTone(castingTone(castWatcher.casting));
   }

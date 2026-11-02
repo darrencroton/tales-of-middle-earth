@@ -126,7 +126,9 @@ export class CharacterPanel {
       return;
     }
     if (!this.api.state()?.player) return;
-    this.want = tab;
+    const why = tab === 'summary' ? null : this.api.refusal(COMMANDS[tab]);
+    if (why) this.deps.refuse(why);
+    this.want = why ? 'summary' : tab;
     this.requested = null;
     this.renderedKey = '';
     const content = this.build(null);
@@ -152,9 +154,12 @@ export class CharacterPanel {
       this.confirmSkills(() => this.select(tab));
       return;
     }
-    if (tab !== 'summary' && !this.shown && !this.api.snapshot()?.atCommand) {
-      this.deps.refuse('Finish what you are doing first.');
-      return;
+    if (tab !== 'summary' && !this.shown) {
+      const why = this.api.snapshot()?.atCommand ? this.api.refusal(COMMANDS[tab]) : 'Finish what you are doing first.';
+      if (why) {
+        this.deps.refuse(why);
+        return;
+      }
     }
     this.want = tab;
     this.requested = null;

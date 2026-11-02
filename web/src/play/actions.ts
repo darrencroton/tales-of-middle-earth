@@ -143,14 +143,15 @@ const NOT_ON_WORLD_MAP = new Set(['o', 'c', 'B', 'j', 'T', 'y', 'Y', 'Z', 'P', '
 /*
  * The hero's own commands while they control another creature
  * (process_command's p_ptr->control): tome2 ignores these, or gives them to
- * the creature (`m` its powers, `d` and `,` its pack).
+ * the creature (`m` its powers, `d` and `,` its pack; also `i` and the
+ * walking keys, which the app never sends for the hero).
  */
 const NOT_WHILE_CONTROLLING = new Set(['w', 't', 'd', 'k', 'e', '+', 'T', '.', ',', 'g', 'R', '_', '<', '>', 'o', 'c', 'y', 'Y', 'j', 'B', 'G', 'N', 'b', 'm', 'p', 'P', 'h', 'K', 'Z', '{', '}', 'A', 'E', 'F', 'f', 'v', 'a', 'z', 'q', 'H', 'r', 'u', 'U', 'O', '*', 'x']);
 
 export const CONTROLLING = 'Not while you control another creature.';
 
 /** Where the hero is and what holds them, for the commands tome2 will take. */
-export interface CommandSituation {
+interface CommandSituation {
   worldMap: boolean;
   /** The hero controls another creature. */
   controlling: boolean;
@@ -162,7 +163,7 @@ export function commandRefusal(command: string, situation: CommandSituation): st
   return situation.worldMap && NOT_ON_WORLD_MAP.has(command) ? 'Not on the world map.' : null;
 }
 
-/** Lets go of the creature the hero controls (not for good: a golem stays, and casting Fire Golem again takes it back). */
+/** Lets go of the creature the hero controls, for now (tome2's abandon, not for good: control comes back with Fire Golem cast again, a load or a return to its level). */
 export function* releaseMacro(): Macro {
   let s: MacroScreen = yield [KEY_BACKSLASH, ...keyCodes('m')];
   if (/abandon the creature/.test(s.prompt)) s = yield keyCodes('y');
