@@ -331,9 +331,11 @@ export class GameAudio {
           cues.push(cue);
         }
       }
-      if (prev.player) cues.push(...playerCues(prev.player, player, heard, inStore));
+      const ticks = Math.max(1, Math.floor(snap.turn / 10) - Math.floor(this.turn / 10));
+      if (prev.player) cues.push(...playerCues(prev.player, player, heard, inStore, ticks));
       if (sameLevel && this.prevFeat && this.doors) cues.push(...doorCues(this.prevFeat, snap.feat, snap.width, snap.px, snap.py, this.doors));
-      if (!heard.has('hit') && !heard.has('kill') && !heard.has('crit')) {
+      /* A creature hurt by the hero's spell, shot or throw; not one bleeding, poisoned or fighting another. */
+      if (ranged && !heard.has('hit') && !heard.has('kill') && !heard.has('crit')) {
         const before = new Map((prev.monsters ?? []).map((m) => [m.id, m.hp]));
         if ((state.monsters ?? []).some((m) => (before.get(m.id) ?? m.hp) > m.hp)) cues.push({ id: 'impact', strength: 0.6 });
       }
@@ -342,7 +344,7 @@ export class GameAudio {
       for (const m of [...threats.unique, ...threats.strong]) this.announced.add(m.id);
       if (threats.unique.length) cues.push({ id: 'unique' });
       else if (threats.strong.length) cues.push({ id: 'danger' });
-      if (cues.some((c) => c.id === 'hurt' || c.id === 'bite' || c.id === 'claw')) this.hurtAt = performance.now();
+      if (cues.some((c) => c.id === 'hurt' || c.id === 'ail' || c.id === 'bite' || c.id === 'claw')) this.hurtAt = performance.now();
       if (cues.some((c) => c.id === 'kill') && prev.monsters?.some((m) => m.unique && !(state.monsters ?? []).some((n) => n.id === m.id))) {
         const index = cues.findIndex((c) => c.id === 'kill');
         cues[index] = { id: 'kill-unique' };

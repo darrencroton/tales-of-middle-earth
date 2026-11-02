@@ -7,6 +7,7 @@ export type CueId =
   | 'crit'
   | 'miss'
   | 'hurt'
+  | 'ail'
   | 'claw'
   | 'bite'
   | 'parry'
@@ -144,7 +145,7 @@ export function elementFromColour(attr: number): Element {
   }
 }
 
-const HURT_VERBS = /\b(hits|touches|punches|kicks|butts|crushes|engulfs|charges|crawls on|stings) you\b/;
+const HURT_VERBS = /\b(hits|touches|punches|kicks|butts|crushes|engulfs|charges|crawls on|stings|drools on|spits on) you\b|\b(gazes|wails|releases spores|projects .+) at you\b/;
 
 /** Sounds for one message, if it describes something with a sound. */
 export function messageCues(text: string): Cue[] {
@@ -284,12 +285,15 @@ const STATUS_CUES: [string, CueId][] = [
   ['slow', 'slow'],
 ];
 const AILMENTS = ['poisoned', 'confused', 'blind', 'paralyzed', 'afraid', 'stun', 'cut', 'hallucinating'];
+/** Health tome2 takes each world turn (ten game turns) from poison (1) and bleeding (1 to 3) at most. */
+const AILING_LOSS = 4;
 
 /**
  * Sounds for changes in the player's state. `heard` lists cues already
- * found in messages, so the same event is not played twice.
+ * found in messages, so the same event is not played twice; `ticks` is how
+ * many world turns have passed since `prev`.
  */
-export function playerCues(prev: Tracked | null, next: Tracked, heard: ReadonlySet<CueId>, inStore: boolean): Cue[] {
+export function playerCues(prev: Tracked | null, next: Tracked, heard: ReadonlySet<CueId>, inStore: boolean, ticks = 1): Cue[] {
   if (!prev || prev.name !== next.name) return [];
   const cues: Cue[] = [];
   const moved = next.depth !== prev.depth || next.dungeon !== prev.dungeon || next.wild !== prev.wild;
@@ -302,7 +306,12 @@ export function playerCues(prev: Tracked | null, next: Tracked, heard: ReadonlyS
     const lost = prev.chp - next.chp;
     const gained = next.chp - prev.chp;
     if (lost > 0 && !['hurt', 'bite', 'claw', 'trap', 'death'].some((id) => heard.has(id as CueId))) {
-      cues.push({ id: 'hurt', strength: Math.min(1, lost / next.mhp + 0.2) });
+      const ailing =
+        lost <= AILING_LOSS * ticks &&
+        ((prev.status.poisoned ?? 0) > 0 || (prev.status.cut ?? 0) > 0) &&
+        !heard.has('spell-monster') &&
+        !heard.has('breath');
+      cues.push(ailing ? { id: 'ail' } : { id: 'hurt', strength: Math.min(1, lost / next.mhp + 0.2) });
     }
     if (gained > next.mhp * 0.15 && next.lev === prev.lev && !heard.has('heal')) cues.push({ id: 'heal' });
   }
