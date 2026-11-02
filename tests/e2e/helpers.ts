@@ -129,11 +129,9 @@ export async function createCharacter(
   picks: { race?: string; cls?: string; beforeBegin?: () => Promise<void> } = {},
 ): Promise<void> {
   await beginNewCharacter(page, name);
-  /* The intro takes a tap once it has begun to rise. */
-  await expect(async () => {
-    if (await page.locator('#title-screen').isVisible()) await page.locator('#title-screen').click({ position: { x: 20, y: 20 }, timeout: 1_000 });
-    await expect(page.locator('#title-screen')).toBeHidden({ timeout: 1_000 });
-  }).toPass({ timeout: 30_000 });
+  /* Enter (or a tap) ends the intro. */
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
 
   const candidates = [
     '.prompt-card .card-button.primary',

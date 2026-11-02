@@ -3891,7 +3891,7 @@ html.keyboard-tight .prompt-card.text .card-title {
 
 .feel-deed {
   position: absolute;
-  bottom: 0.75rem;
+  bottom: calc(0.75rem + var(--toast-lift, 0px));
   left: 50%;
   display: grid;
   grid-template-columns: auto 1fr;
@@ -3908,7 +3908,8 @@ html.keyboard-tight .prompt-card.text .card-title {
   transform: translate(-50%, 0.8rem);
   transition:
     opacity 300ms ease,
-    transform 300ms ease;
+    transform 300ms ease,
+    bottom 200ms ease;
 }
 
 .feel-deed.visible {

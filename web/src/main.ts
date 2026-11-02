@@ -39,7 +39,7 @@ import { openHelp } from './ui/help.ts';
 import { openMagic, openSpell, RecentStore } from './ui/magic.ts';
 import { CastWatcher, fireMacro, hasActivePowers, hasMagic, hasPowers, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
 import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
-import { GameFeel, type FeelEvent } from './feel.ts';
+import { GameFeel, READ_MS, type FeelEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
 import {
   fightingStyle,
@@ -290,8 +290,8 @@ function setCtrlLatched(value: boolean): void {
 
 const TOAST_MS = 2000;
 let toastTimer = 0;
-/** Shows a short message over the foot of the map; unless it repeats one of tome2's (`log` false), it also goes in the message log. */
-function showToast(text: string, log = true): void {
+/** Shows a short message over the foot of the map, longer when it is to be `read`; unless it repeats one of tome2's (`log` false), it also goes in the message log. */
+function showToast(text: string, { log = true, read = false }: { log?: boolean; read?: boolean } = {}): void {
   if (log && inGame()) {
     engine.addNotice(text);
     dirty = true;
@@ -303,14 +303,17 @@ function showToast(text: string, log = true): void {
   toast.style.setProperty('--toast-width', `calc(${area.width}px - 2rem)`);
   toast.textContent = text;
   toast.classList.add('visible');
+  /* The deed card at the foot of the map rises above the toast. */
+  stage.style.setProperty('--toast-lift', `calc(${toast.offsetHeight}px + 0.75rem)`);
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove('visible'), TOAST_MS);
+  toastTimer = window.setTimeout(hideToast, read ? READ_MS : TOAST_MS);
 }
 
 /** Clears a toast the player has moved on from. */
 function hideToast(): void {
   window.clearTimeout(toastTimer);
   toast.classList.remove('visible');
+  stage.style.removeProperty('--toast-lift');
 }
 
 /** Says why something cannot be done, with the refusal sound. */
@@ -461,7 +464,7 @@ function settleConversation(): void {
   const { title, messages } = conversation;
   conversation = null;
   if (messages.length > 1) openMessage(sheets, title, messages.join(' '));
-  else if (messages.length === 1) showToast(messages[0], false);
+  else if (messages.length === 1) showToast(messages[0], { log: false, read: true });
 }
 
 /** Once a watched action has ended (its macro done, tome2 back at the command prompt), tells the player when tome2 refused it or it failed. */
@@ -470,7 +473,7 @@ function settleAttempt(): void {
   if (!attempt || !snap?.atCommand || snap.icky || macros.running) return;
   const outcome = attemptOutcome(snap.turn !== attempt.turn, attempt.messages);
   attempt = null;
-  if (outcome) showToast(outcome.message, false);
+  if (outcome) showToast(outcome.message, { log: false });
 }
 
 /* Spells, powers and skill actions, read again each game turn and whenever skill points are spent (a skill raised or an ability learnt takes no turn). */
@@ -696,7 +699,7 @@ function setOverview(on: boolean): void {
   if (on) {
     setLooking(false);
     recentreMap();
-    showToast('Tap a place to travel there', false);
+    showToast('Tap a place to travel there', { log: false });
   }
   updateActionBar(true);
   dirty = true;
@@ -1603,7 +1606,7 @@ function removeFameEntry(entry: ScoreEntry): void {
   const same = (e: ScoreEntry) => entryKey(e) === entryKey(entry) && e.points === entry.points && e.day === entry.day;
   const index = engine.scores().findIndex(same);
   if (index < 0 || !engine.removeScore(index)) {
-    showToast('The Hall of Fame could not be changed.', false);
+    showToast('The Hall of Fame could not be changed.', { log: false, read: true });
     return;
   }
   if (chronicles.forgetMemorial(entryKey(entry))) chronicles.save();
@@ -1611,10 +1614,10 @@ function removeFameEntry(entry: ScoreEntry): void {
   const shown = fameSheet;
   if (shown) sheets.update(hallOfFameSheet(), shown);
   engine.syncNow().then(
-    () => showToast(`${entry.name} was removed from the Hall of Fame.`, false),
+    () => showToast(`${entry.name} was removed from the Hall of Fame.`, { log: false }),
     (err) => {
       console.error('Saving to browser storage failed', err);
-      showToast('Browser storage could not be updated.', false);
+      showToast('Browser storage could not be updated.', { log: false, read: true });
     },
   );
 }
@@ -1673,13 +1676,13 @@ function settleTrade(): void {
   const { done, before, state } = trade;
   trade = null;
   if (tradeState() !== before) {
-    if (done) showToast(done, false);
+    if (done) showToast(done, { log: false });
     return;
   }
   const next = engine.gameState(20);
   const said = state && next ? newMessages(state, next)[0]?.text : undefined;
   if (!said && !done) return;
-  showToast(said ? said.replace(/\s*-more-\s*$/, '') : 'Nothing changed.', false);
+  showToast(said ? said.replace(/\s*-more-\s*$/, '') : 'Nothing changed.', { log: false });
   audio.cue('deny');
 }
 
@@ -2597,12 +2600,12 @@ const engine = new Engine(buffer, {
       engine.syncNow().then(
         () => {
           if (!notify) return;
-          showToast(engine.storageError ? 'Saved for this session only' : 'Game saved');
+          showToast(engine.storageError ? 'Saved for this session only' : 'Game saved', { read: !!engine.storageError });
           audio.cue('save');
         },
         (err) => {
           console.error('Save sync failed', err);
-          showToast('Saving to browser storage failed');
+          showToast('Saving to browser storage failed', { read: true });
         },
       );
     }
@@ -3015,7 +3018,7 @@ function saveAndQuit(): void {
   quitting = true;
   stopAutomation(null, 'quit');
   persistMapMemory();
-  showToast('Saving…', false);
+  showToast('Saving…', { log: false });
   runMacro(quitMacro());
 }
 
@@ -3218,10 +3221,10 @@ const adventurerHandlers: AdventurerHandlers = {
     deleteAdventurer(name);
     director.forgetSave(save.name);
     engine.syncNow().then(
-      () => showToast(`${name}'s adventure was deleted.`, false),
+      () => showToast(`${name}'s adventure was deleted.`, { log: false }),
       (err) => {
         console.error('Saving to browser storage failed', err);
-        showToast('Browser storage could not be updated.', false);
+        showToast('Browser storage could not be updated.', { log: false, read: true });
       },
     );
   },
@@ -3268,7 +3271,7 @@ function abandonAdventure(): void {
   quitting = true;
   abandoning = name;
   stopAutomation(null, 'quit');
-  showToast('Leaving…', false);
+  showToast('Leaving…', { log: false });
   runMacro(abandonMacro());
 }
 
