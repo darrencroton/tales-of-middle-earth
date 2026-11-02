@@ -58,6 +58,8 @@ export interface TravelContext {
   gold?: number;
   /** Cells of companions the hero can push past (`pushPast`). */
   passing?: ReadonlySet<number>;
+  /** What tome2 is asking, if anything. */
+  prompt?: PromptKind;
 }
 
 export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
@@ -362,6 +364,8 @@ export class Travel {
   private lastPos: Point | null = null;
   private lastWasMove = false;
   private lastDoor: Point | null = null;
+  /* The direction of a door being opened, given once tome2 asks which door (it does not when only one is beside the hero). */
+  private doorAnswer: { digit: number; path: Point[] } | null = null;
   private steps = 0;
   private finishing = false;
   private readonly visits = new Map<number, number>();
@@ -374,6 +378,11 @@ export class Travel {
   /** Only the one step (see `TravelOptions`). */
   get oneStep(): boolean {
     return this.single;
+  }
+
+  /** Waiting to tell tome2 which door to open. */
+  get answering(): boolean {
+    return this.doorAnswer !== null;
   }
 
   constructor(goal: Point, start: TravelContext, options: TravelOptions = {}) {
@@ -389,6 +398,9 @@ export class Travel {
     const { snap } = ctx;
     const pos = { x: snap.px, y: snap.py };
 
+    const door = this.doorAnswer;
+    this.doorAnswer = null;
+    if (door && ctx.prompt === 'direction') return { kind: 'keys', keys: [door.digit], path: door.path };
     if (!snap.atCommand || snap.icky) return { kind: 'stop', reason: 'interrupted' };
     if (this.finishing || (pos.x === this.goal.x && pos.y === this.goal.y)) return { kind: 'stop', reason: 'arrived' };
     if (this.single && this.steps > 0) return { kind: 'stop', reason: 'interrupted' };
@@ -441,7 +453,8 @@ export class Travel {
     if (closedDoor) {
       this.lastWasMove = false;
       this.lastDoor = next;
-      return { kind: 'keys', keys: [BACKSLASH, OPEN, digit], path };
+      this.doorAnswer = { digit, path };
+      return { kind: 'keys', keys: [BACKSLASH, OPEN], path };
     }
 
     this.lastWasMove = true;

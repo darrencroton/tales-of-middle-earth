@@ -460,8 +460,8 @@ function converse(command: 'Y' | 'y', digit: string): void {
 }
 
 /**
- * Begins a conversation when Talk or Give is typed at the command prompt,
- * named for the creature in the direction answered next.
+ * Begins a conversation when Talk or Give is typed at the command prompt, or
+ * sent from More, named for the creature in the direction answered next.
  */
 function noteConversation(codes: readonly number[]): void {
   if (conversation && !conversation.named && codes.length === 1 && currentPrompt() === 'direction') {
@@ -471,7 +471,7 @@ function noteConversation(codes: readonly number[]): void {
   }
   const command = codes[0] === BACKSLASH ? codes.slice(1) : codes;
   if ((command[0] !== TALK && command[0] !== GIVE) || !lastSnap?.atCommand) return;
-  beginConversation(command[0], creatureTowards(command[1]));
+  beginConversation(command[0], undefined);
 }
 
 /** Once tome2 is back at the command prompt: what was said in a card, or a single line as a toast, so a long answer is not lost as messages flow past. */
@@ -1104,7 +1104,7 @@ function updatePromptCard(): void {
   }
   const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
   const show =
-    CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !picker && !title.isVisible && engine.pendingKeys === 0;
+    CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !picker && !travel?.answering && !title.isVisible && engine.pendingKeys === 0;
   if (show) {
     promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()), leadMessages.map((m) => m.text));
     if (leadMessages.length) noteLeadShown();
@@ -2118,7 +2118,7 @@ function openCommands(): void {
 
 function travelContext(): TravelContext | null {
   if (!lastSnap || !lastState?.player) return null;
-  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au, passing: companionCells(lastSnap) };
+  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au, passing: companionCells(lastSnap), prompt: currentPrompt() };
 }
 
 /** Cells of the companions travel and exploring walk through, swapping places as tome2 lets the hero (`pushPast`). */
