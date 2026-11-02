@@ -460,16 +460,18 @@ export class SoundEffects {
 
   private hurt(t: number, s: number): void {
     const pan = rand(-0.15, 0.15);
-    this.thump(t, 0.35 + 0.4 * s, 110, 42, 0.12 + 0.08 * s, pan);
-    this.noise(this.out(pan, 1), t, { type: 'bandpass', freq: 420, q: 2.5, level: 0.12 + 0.18 * s, attack: 0.01, decay: 0.07 });
+    const pitch = rand(0.9, 1.1);
+    this.thump(t, 0.35 + 0.4 * s, 110 * pitch, 42, 0.12 + 0.08 * s, pan);
+    this.noise(this.out(pan, 1), t, { type: 'bandpass', freq: 420 * pitch, q: 2.5, level: 0.12 + 0.18 * s, attack: 0.01, decay: 0.07 });
     this.noise(this.out(pan, 1), t, { type: 'lowpass', freq: 1200, level: 0.12 * s, decay: 0.05 });
-    this.noise(this.out(pan, 1), t, { type: 'bandpass', freq: 1500, q: 0.9, level: 0.45 + 0.6 * s, decay: 0.03 });
+    this.noise(this.out(pan, 1), t, { type: 'bandpass', freq: 1500 * pitch, q: 0.9, level: 0.45 + 0.6 * s, decay: 0.03 });
     if (s > 0.35) this.tone(this.out(0, 1), t + 0.02, { freq: 3100, level: 0.012 + 0.02 * s, attack: 0.02, decay: 0.4 });
   }
 
   /** Health draining from within (poison, bleeding): a soft, short wince with no blow behind it. */
   private ail(t: number): void {
-    this.noise(this.out(rand(-0.1, 0.1), 1), t, { type: 'bandpass', freq: 1100, to: 750, glide: 0.1, q: 2.5, level: 0.2, attack: 0.02, decay: 0.05 });
+    const pitch = rand(0.85, 1.15);
+    this.noise(this.out(rand(-0.1, 0.1), 1), t, { type: 'bandpass', freq: 1100 * pitch, to: 750 * pitch, glide: 0.1, q: 2.5, level: 0.2, attack: 0.02, decay: 0.05 });
   }
 
   private claw(t: number, s: number): void {
