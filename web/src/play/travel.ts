@@ -132,7 +132,7 @@ export function inferredFloor(snap: LevelSnapshot, materials: readonly Material[
   return (barrier(0, -1) && barrier(0, 1)) || (barrier(-1, 0) && barrier(1, 0));
 }
 
-/** Creatures a way may lead through: those at these cells (companions the hero pushes past), or all of them ('all', to ask whether creatures alone stand in the way). */
+/** Creatures a way may lead through: those at these cells (companions the hero pushes past, creatures not in sight), or all of them ('all', to ask whether creatures alone stand in the way). */
 export type Passing = ReadonlySet<number> | 'all';
 
 const NOBODY: ReadonlySet<number> = new Set();
@@ -403,6 +403,8 @@ export class Travel {
   private doorAnswer: { digit: number; path: Point[] } | null = null;
   private steps = 0;
   private finishing = false;
+  /* The journey is to a creature (a tap on it): the creature at the goal neither stops it nor stands in its way. */
+  private readonly quarry: boolean;
   private readonly visits = new Map<number, number>();
 
   /** Steps taken so far. */
@@ -427,6 +429,7 @@ export class Travel {
     this.lastHp = start.hp;
     this.lastGold = start.gold;
     this.lastLight = start.snap.lightRadius;
+    this.quarry = start.monsters.some((m) => m.x === goal.x && m.y === goal.y);
   }
 
   step(ctx: TravelContext): TravelStep {
@@ -457,12 +460,13 @@ export class Travel {
     }
     if (this.steps >= MAX_STEPS) return { kind: 'stop', reason: 'limit' };
 
-    const goalIsMonster = ctx.monsters.some((m) => m.x === this.goal.x && m.y === this.goal.y);
+    const atGoal = ctx.monsters.find((m) => m.x === this.goal.x && m.y === this.goal.y);
     const hostiles = hostilesInSight(ctx.monsters);
-    const arrival = hostiles.find((m) => !this.inSight.has(m.id) && (m.x !== this.goal.x || m.y !== this.goal.y));
+    const arrival = hostiles.find((m) => !this.inSight.has(m.id) && !(this.quarry && m === atGoal));
     this.inSight.clear();
     for (const m of hostiles) this.inSight.add(m.id);
     if (arrival && !this.single) return { kind: 'stop', reason: 'monster', creature: arrival.name, asleep: !!arrival.asleep };
+    if (atGoal?.view && !this.quarry) return { kind: 'stop', reason: 'creatureInWay' };
 
     const path = findPath(travelGrid(snap, ctx.materials, ctx.passing), pos, this.goal);
     if (!path || path.length === 0) return { kind: 'stop', reason: 'unreachable' };
@@ -495,7 +499,7 @@ export class Travel {
 
     this.lastWasMove = true;
     this.lastDoor = null;
-    if (goalIsMonster && path.length === 1) this.finishing = true;
+    if (this.quarry && atGoal && path.length === 1) this.finishing = true;
     return { kind: 'keys', keys: [BACKSLASH, WALK, digit], path };
   }
 

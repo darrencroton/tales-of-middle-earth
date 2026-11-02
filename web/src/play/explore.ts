@@ -234,7 +234,7 @@ export class Explore {
       }
       const step = this.travel.step(ctx);
       if (step.kind === 'keys') return step;
-      if (step.reason !== 'arrived' && step.reason !== 'unreachable' && step.reason !== 'blocked' && step.reason !== 'shut') return step;
+      if (step.reason !== 'arrived' && step.reason !== 'unreachable' && step.reason !== 'blocked' && step.reason !== 'shut' && step.reason !== 'creatureInWay') return step;
       const stop = this.stop!;
       this.travel = null;
       const arrived = step.reason === 'arrived';

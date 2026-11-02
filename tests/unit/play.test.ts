@@ -356,6 +356,20 @@ describe('travel', () => {
     assert.equal(new Travel({ x: 4, y: 0 }, ctx(snap, friend)).step(ctx(snap, friend)).kind, 'stop');
   });
 
+  it('walks into a creature only on a journey to it; one found at another goal stands in the way', () => {
+    const snap = level(['...'], { x: 0, y: 0 });
+    const foe = monster(1, 2, 0, { asleep: 1 });
+    const hunt = new Travel({ x: 2, y: 0 }, ctx(snap, [foe]));
+    assert.equal(hunt.step(ctx(snap, [foe])).kind, 'keys');
+    const there = { ...snap, px: 1 };
+    assert.deepEqual(hunt.step(ctx(there, [foe])).kind, 'keys');
+    assert.deepEqual(hunt.step(ctx(there, [foe])), { kind: 'stop', reason: 'arrived' });
+    const walk = new Travel({ x: 2, y: 0 }, ctx(snap));
+    walk.step(ctx(snap));
+    const neutral = monster(2, 2, 0, { status: 0 });
+    assert.deepEqual(walk.step(ctx(there, [neutral])), { kind: 'stop', reason: 'creatureInWay' });
+  });
+
   it('plans through a creature shown but not in sight, which cannot then turn the way back and forth', () => {
     const snap = level(['.....k.'], { x: 0, y: 0 });
     const passing = outOfSight(snap, [monster(1, 5, 0, { view: 0 })]);
