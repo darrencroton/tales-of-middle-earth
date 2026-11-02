@@ -485,6 +485,10 @@ describe('sound cues', () => {
     assert.deepEqual(ids({ lev: 2 }), ['levelup']);
     assert.deepEqual(ids({ chp: 15 }), ['hurt']);
     assert.deepEqual(ids({ chp: 15 }, ['hurt']), []);
+    const ailing = (status: Record<string, number>, chp: number) => playerCues({ ...base, status }, { ...base, status, chp }, new Set(), false).map((c) => c.id);
+    assert.deepEqual(ailing({ poisoned: 5 }, 19), ['ail']);
+    assert.deepEqual(ailing({ cut: 150 }, 17), ['ail']);
+    assert.deepEqual(ailing({ poisoned: 5 }, 10), ['hurt']);
     assert.deepEqual(ids({ au: 150 }), ['gold']);
     assert.deepEqual(ids({ au: 50 }, [], true), ['buy']);
     assert.deepEqual(ids({ status: { poisoned: 5 } }), ['poisoned']);

@@ -7,6 +7,7 @@ export type CueId =
   | 'crit'
   | 'miss'
   | 'hurt'
+  | 'ail'
   | 'claw'
   | 'bite'
   | 'parry'
@@ -284,6 +285,8 @@ const STATUS_CUES: [string, CueId][] = [
   ['slow', 'slow'],
 ];
 const AILMENTS = ['poisoned', 'confused', 'blind', 'paralyzed', 'afraid', 'stun', 'cut', 'hallucinating'];
+/** Health tome2 takes each turn from poison (1) and bleeding (1 to 3) at most. */
+const AILING_LOSS = 4;
 
 /**
  * Sounds for changes in the player's state. `heard` lists cues already
@@ -302,7 +305,8 @@ export function playerCues(prev: Tracked | null, next: Tracked, heard: ReadonlyS
     const lost = prev.chp - next.chp;
     const gained = next.chp - prev.chp;
     if (lost > 0 && !['hurt', 'bite', 'claw', 'trap', 'death'].some((id) => heard.has(id as CueId))) {
-      cues.push({ id: 'hurt', strength: Math.min(1, lost / next.mhp + 0.2) });
+      const ailing = lost <= AILING_LOSS && ((prev.status.poisoned ?? 0) > 0 || (prev.status.cut ?? 0) > 0);
+      cues.push(ailing ? { id: 'ail' } : { id: 'hurt', strength: Math.min(1, lost / next.mhp + 0.2) });
     }
     if (gained > next.mhp * 0.15 && next.lev === prev.lev && !heard.has('heal')) cues.push({ id: 'heal' });
   }

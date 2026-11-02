@@ -342,7 +342,7 @@ export class GameAudio {
       for (const m of [...threats.unique, ...threats.strong]) this.announced.add(m.id);
       if (threats.unique.length) cues.push({ id: 'unique' });
       else if (threats.strong.length) cues.push({ id: 'danger' });
-      if (cues.some((c) => c.id === 'hurt' || c.id === 'bite' || c.id === 'claw')) this.hurtAt = performance.now();
+      if (cues.some((c) => c.id === 'hurt' || c.id === 'ail' || c.id === 'bite' || c.id === 'claw')) this.hurtAt = performance.now();
       if (cues.some((c) => c.id === 'kill') && prev.monsters?.some((m) => m.unique && !(state.monsters ?? []).some((n) => n.id === m.id))) {
         const index = cues.findIndex((c) => c.id === 'kill');
         cues[index] = { id: 'kill-unique' };
