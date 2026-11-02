@@ -288,7 +288,7 @@ function setCtrlLatched(value: boolean): void {
   for (const node of document.querySelectorAll('[data-ctrl-toggle]')) node.setAttribute('aria-pressed', String(value));
 }
 
-const TOAST_MS = 4400;
+const TOAST_MS = 2400;
 let toastTimer = 0;
 /** Shows a short message over the foot of the map; unless it repeats one of tome2's (`log` false), it also goes in the message log. */
 function showToast(text: string, log = true): void {
