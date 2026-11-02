@@ -255,8 +255,9 @@ While the hero controls a creature, tome2 gives it the walking keys, `m`
 hero's other commands. A map tap steps the creature towards the place
 tapped; the changing button is *Release*; More adds *Release creature*,
 *Creature powers*, *Creature's pack*, *Creature picks up* and *Creature drops
-all*; the hero's own actions (toolbar, More, item and creature cards,
-journeys) are dimmed with why.
+all*; the hero's own actions (toolbar, More, item, creature and look cards,
+*Recently used*, the character sheet's Skills and Abilities) are dimmed
+with why, and journeys are refused.
 
 | tome2 | Command | Reached from |
 |---|---|---|

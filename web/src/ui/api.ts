@@ -24,7 +24,7 @@ export interface GameApi {
   runMacro(macro: Macro, comeBack?: boolean): void;
   /** Why tome2 will not take one of the hero's commands now (on the world map, or while they control another creature), or null. */
   refusal(command: string): string | null;
-  /** Why the hero cannot set off for somewhere now, or null. */
+  /** Why the hero cannot set off for somewhere while things stay as they are, or null. */
   travelRefusal(): string | null;
   /** Says why something cannot be done (a toast and the refusal sound). */
   refuse(reason: string): void;

@@ -353,9 +353,13 @@ const api: GameApi = {
     converse(command, digit);
   },
   travelTo: (point) => {
+    if (!lastSnap?.atCommand) {
+      refuse('Finish what you are doing first.');
+      return;
+    }
     sheets.closeAll();
     hideLookCard();
-    if (lastSnap?.atCommand) startTravel(point);
+    startTravel(point);
   },
   highlight: (point) => flash(point),
   askText: (title, label, initial) => askText(sheets, title, label, initial),
@@ -1881,7 +1885,7 @@ function gearSuggestion(): GearSuggestion | null {
   });
 }
 
-/** The weakest hostile creature next to the player, if any (none while the hero controls another creature, who cannot fight then). */
+/** The weakest hostile creature next to the player, if any (none while the hero controls another creature, as the hero cannot fight then). */
 function adjacentFoe(): MonsterState | null {
   const snap = lastSnap;
   if (!snap?.inDungeon || !snap.atCommand || controlling()) return null;
@@ -2091,9 +2095,8 @@ function steered(): MapPoint | null | undefined {
   return creature ? { x: creature.x, y: creature.y } : null;
 }
 
-/** Why the hero cannot set off for somewhere now, or null. */
+/** Why the hero cannot set off for somewhere while things stay as they are, or null (busy is told when tapped). */
 function travelRefusal(): string | null {
-  if (!lastSnap?.atCommand) return 'Finish what you are doing first.';
   return controlling() ? CONTROLLING : null;
 }
 
@@ -2752,7 +2755,7 @@ const engine = new Engine(buffer, {
 function send(codes: number[] | null): void {
   if (!codes || codes.length === 0) return;
   const key = codes.length === 1 ? codes[0] : codes.length === 2 && codes[0] === BACKSLASH ? codes[1] : null;
-  /* A typed m while the hero controls a creature uses its powers, not the hero's. */
+  /* Keys are not followed as the hero's magic while they control another creature. */
   if (key !== null && lastSnap?.inDungeon && !controlling()) {
     castWatcher.note(rowZeroText(), buffer.screenText(), key, !!lastSnap.atCommand);
     if (castWatcher.casting) audio.castingTone(castingTone(castWatcher.casting));

@@ -490,9 +490,13 @@ describe('full character sheet', () => {
 });
 
 describe('file viewer headings', () => {
+  it('heads the power list of a controlled creature as its powers', () => {
+    assert.equal(cleanPrompt('(Powers a-b, *=List, ESC=exit) Use which power of your golem? '), 'Creature powers');
+    assert.notEqual(cleanPrompt('(Powers a-b, *=List, ESC=exit) Use which power of your body? '), 'Creature powers');
+  });
+
   it('titles knowledge and help files', () => {
     assert.equal(cleanPrompt('[ToME 2.4.1 (ah, git), Artifacts Seen, Line 0/0]'), 'Artifacts Seen');
-    assert.equal(cleanPrompt('(Powers a-b, *=List, ESC=exit) Use which power of your golem? '), 'Creature powers');
     assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), Help file 'help.hlp', Line 1/33]"), 'Help');
     assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), Help file 'ability.txt', Line 68/113]"), 'Help');
     assert.equal(cleanPrompt("[ToME 2.4.1 (ah, git), File 'book-20.txt', Line 0/139]"), 'Reading');

@@ -154,8 +154,8 @@ export class CharacterPanel {
       this.confirmSkills(() => this.select(tab));
       return;
     }
-    if (tab !== 'summary' && !this.shown) {
-      const why = this.api.snapshot()?.atCommand ? this.api.refusal(COMMANDS[tab]) : 'Finish what you are doing first.';
+    if (tab !== 'summary') {
+      const why = !this.shown && !this.api.snapshot()?.atCommand ? 'Finish what you are doing first.' : this.api.refusal(COMMANDS[tab]);
       if (why) {
         this.deps.refuse(why);
         return;
