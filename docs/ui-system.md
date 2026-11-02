@@ -242,15 +242,15 @@ original keyset) and where a player reaches it. The More sheet groups what is
 left by what the player means to do. It leaves out what the hero cannot ever
 do (Pray without a god, Engrave without runes, Steal without the skill) and
 dims, saying why, what cannot be done here: a fountain's or altar's command
-off one, Talk, Give and Steal with no one beside the hero, and on the world
-map whatever tome2 ignores there. What Talk or Give brings out is shown in a
-card named for the creature.
+off one, Rest on a Void Jumpgate, Talk, Give and Steal with no one beside the
+hero, and on the world map whatever tome2 ignores there. What Talk or Give
+brings out is shown in a card named for the creature.
 
 | tome2 | Command | Reached from |
 |---|---|---|
 | `;` `-` `.` | walk, run | tap, travel, Explore |
 | `,` `g` | stay, pick up | tap yourself (wait); changing button *Pick up*; Items → Floor |
-| `R` | rest | toolbar *Rest*; More |
+| `R` | rest | toolbar *Rest*; More (both answer *how long?* only when tome2 asks) |
 | `<` `>` | stairs, world map | changing button (Descend, Ascend, Walk here…); More (*Go down*, *Go up* / *World map*) |
 | `_` | enter a building | walk in; changing button *Enter shop* |
 | `o` `c` `B` `j` `T` | open, close, bash, jam (spikes), tunnel | tap a door (opens it); More → Doors and walls |

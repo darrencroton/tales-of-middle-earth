@@ -1,4 +1,5 @@
-import { KEY_BACKSLASH, keyCodes } from '../input/keys.ts';
+import { KEY_BACKSLASH, keyCodes, typedAnswer } from '../input/keys.ts';
+import type { Macro, MacroScreen } from './macro.ts';
 import type { PromptKind } from './prompts.ts';
 
 export type NativeView =
@@ -11,6 +12,7 @@ export type NativeView =
   | 'powers'
   | 'recast'
   | 'fire'
+  | 'rest'
   | 'overview'
   | 'overviewDone'
   | 'finish'
@@ -51,8 +53,6 @@ export interface CommandDef {
   icon: string;
   /** Underlying original-keyset command, sent after '\' so keymaps cannot interfere. */
   command: string;
-  /** Extra keys sent after the command (e.g. rest duration). */
-  then?: string;
   /** Opens a native view instead of sending the command. */
   native?: NativeView;
   /** Shows a tome2 screen to read; the Commands sheet reopens when it closes. */
@@ -71,8 +71,22 @@ export function waitCommand(alwaysPickup: boolean): string {
   return alwaysPickup ? 'g' : ',';
 }
 
-export function commandKeys(def: Pick<CommandDef, 'command' | 'then'>): number[] {
-  return [KEY_BACKSLASH, ...keyCodes(def.command), ...keyCodes(def.then ?? '')];
+export function commandKeys(def: Pick<CommandDef, 'command'>): number[] {
+  return [KEY_BACKSLASH, ...keyCodes(def.command)];
+}
+
+/* tome2's FEAT_BETWEEN: the one of its two Void Jumpgates that do_cmd_rest refuses. */
+const FEAT_BETWEEN = 160;
+
+/** Why tome2 will not let the hero rest on the terrain underfoot (its feature index), or null. */
+export function restRefusal(feat: number | undefined): string | null {
+  return feat === FEAT_BETWEEN ? 'Resting on a Void Jumpgate is too dangerous.' : null;
+}
+
+/** Rests as long as needed, answering tome2's question of how long only when it asks (it may refuse first). */
+export function* restMacro(): Macro {
+  const s: MacroScreen = yield [KEY_BACKSLASH, ...keyCodes('R')];
+  if (/^Rest \(/.test(s.prompt)) yield typedAnswer('&', '&');
 }
 
 const text = keyCodes;
@@ -85,6 +99,8 @@ export interface CommandContext {
   where: Surroundings;
   /** Name of the terrain under the player, lower case. */
   underfoot: string;
+  /** tome2's feature index of the terrain under the player. */
+  feat: number;
   /** A creature the hero can see stands beside them. */
   beside: boolean;
   /** 0 without a god, 1 when the hero may pray, 2 while praying. */
@@ -126,7 +142,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
     title: 'Get around',
     commands: [
       { label: 'Explore', icon: '⇢', command: '', native: 'explore' },
-      { label: 'Rest', icon: '☾', command: 'R', then: '&\r' },
+      { label: 'Rest', icon: '☾', command: 'R', native: 'rest', refuse: (c) => restRefusal(c.feat) },
       { label: 'Look', icon: '◉', command: 'l', native: 'look' },
       { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
       { label: 'Go down', icon: '>', command: '>' },
@@ -250,6 +266,8 @@ export interface ActionContext {
   atCommand: boolean;
   /** Name of the terrain under the player, lower case. */
   underfoot: string;
+  /** tome2's feature index of the terrain under the player. */
+  feat?: number;
   floorObjects: number;
   alwaysPickup: boolean;
   /** On the world map, travelling between places. */
@@ -291,7 +309,7 @@ const ENTER: Action = { id: 'enter', label: 'Enter', icon: '⏎', effect: { kind
 const UP: Action = { id: 'up', label: 'Up', icon: '▲', effect: { kind: 'nav', direction: 'up' } };
 const DOWN: Action = { id: 'down', label: 'Down', icon: '▼', effect: { kind: 'nav', direction: 'down' } };
 
-function command(id: string, label: string, icon: string, def: Pick<CommandDef, 'command' | 'then'>, primary = false): Action {
+function command(id: string, label: string, icon: string, def: Pick<CommandDef, 'command'>, primary = false): Action {
   return { id, label, icon, effect: { kind: 'keys', keys: commandKeys(def) }, primary };
 }
 
@@ -368,8 +386,12 @@ export function contextualAction(ctx: ActionContext): Action {
   return { id: 'explore', label, icon, effect: { kind: 'native', view: 'explore' }, primary: true };
 }
 
+function unavailable(why: string | null | undefined): Pick<Action, 'unavailable'> {
+  return why ? { unavailable: why } : {};
+}
+
 function slotAction(id: string, slot: Slot, label: string, icon: string, effect: ActionEffect): Action {
-  return { id, label: slot.label ?? label, icon, effect, ...(slot.unavailable ? { unavailable: slot.unavailable } : {}) };
+  return { id, label: slot.label ?? label, icon, effect, ...unavailable(slot.unavailable) };
 }
 
 /** The hero's own buttons, which keep their places: quick repeat, magic, Fire, Items, Rest, More and Menu. */
@@ -379,7 +401,7 @@ function heroActions(ctx: ActionContext): Action[] {
     ...(ctx.magic ? [{ id: 'cast', label: ctx.magic, icon: '✦', effect: { kind: 'native', view: ctx.magic === 'Powers' ? 'powers' : 'magic' } } as Action] : []),
     ...(ctx.fire ? [slotAction('fire', ctx.fire, 'Fire', '➶', { kind: 'native', view: 'fire' })] : []),
     { id: 'inventory', label: 'Items', icon: '≡', effect: { kind: 'native', view: 'inventory' } },
-    command('rest', 'Rest', '☾', { command: 'R', then: '&\r' }),
+    { id: 'rest', label: 'Rest', icon: '☾', effect: { kind: 'native', view: 'rest' }, ...unavailable(restRefusal(ctx.feat)) },
     COMMANDS,
     MENU,
   ];
