@@ -1,6 +1,6 @@
 import { KEY_BACKSLASH, keyCodes, typedAnswer } from '../input/keys.ts';
 import type { Macro, MacroScreen } from './macro.ts';
-import type { PromptKind } from './prompts.ts';
+import { classifyPrompt, type PromptKind } from './prompts.ts';
 
 export type NativeView =
   | 'inventory'
@@ -13,6 +13,7 @@ export type NativeView =
   | 'recast'
   | 'fire'
   | 'rest'
+  | 'talk'
   | 'overview'
   | 'overviewDone'
   | 'finish'
@@ -81,6 +82,12 @@ const FEAT_BETWEEN = 160;
 /** Why tome2 will not let the hero rest on the terrain underfoot (its feature index), or null. */
 export function restRefusal(feat: number | undefined): string | null {
   return feat === FEAT_BETWEEN ? 'Resting on a Void Jumpgate is too dangerous.' : null;
+}
+
+/** Talks to (`Y`) or gives to (`y`) the creature in a direction, giving the direction only when tome2 asks (it ignores both at times). */
+export function* converseMacro(command: 'Y' | 'y', digit: string): Macro {
+  const s: MacroScreen = yield [KEY_BACKSLASH, ...keyCodes(command)];
+  if (classifyPrompt(s.prompt) === 'direction') yield keyCodes(digit);
 }
 
 /** Rests as long as needed, answering tome2's question of how long only when it asks (it may refuse first). */
@@ -282,8 +289,8 @@ export interface ActionContext {
   entrance?: string | null;
   /** Direction digit of the weakest hostile creature next to the player. */
   foe?: string | null;
-  /** Direction digit of a neutral creature next to the player (someone to talk to). */
-  talk?: string | null;
+  /** A neutral creature stands next to the player (someone to talk to). */
+  talk?: boolean;
   /** The hero's one-tap repeat: their last (or first) spell or power, or the last aimed thing they used. */
   quick?: Slot | null;
   /** Label for the magic button ('Powers' without spell books), or null when the hero has no magic or powers to use. */
@@ -381,7 +388,7 @@ export function contextualAction(ctx: ActionContext): Action {
     const [label, icon] = GEAR_ACTIONS[ctx.gear];
     return { id: 'equip', label, icon, effect: { kind: 'native', view: 'equip' }, primary: true };
   }
-  if (ctx.talk) return command('talk', 'Talk', '❝', { command: `Y${ctx.talk}` }, true);
+  if (ctx.talk) return { id: 'talk', label: 'Talk', icon: '❝', effect: { kind: 'native', view: 'talk' }, primary: true };
   const [label, icon] = EXPLORE_LABELS[ctx.exploreNext ?? 'explore'];
   return { id: 'explore', label, icon, effect: { kind: 'native', view: 'explore' }, primary: true };
 }

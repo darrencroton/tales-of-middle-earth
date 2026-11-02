@@ -11,7 +11,7 @@ import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
-import { commandGroups, commandKeys, contextActions, contextualAction, GAME_OPTIONS, restMacro, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
+import { commandGroups, commandKeys, contextActions, contextualAction, GAME_OPTIONS, converseMacro, restMacro, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
@@ -348,6 +348,10 @@ const api: GameApi = {
     coverSheets(comeBack);
     runMacro(macro);
   },
+  converse: (command, digit) => {
+    coverSheets(false);
+    converse(command, digit);
+  },
   travelTo: (point) => {
     sheets.closeAll();
     hideLookCard();
@@ -439,10 +443,25 @@ function creatureTowards(code: number | undefined): MonsterState | undefined {
   return lastState?.monsters?.find((m) => m.x === snap.px + dx && m.y === snap.py + dy);
 }
 
+/** Begins gathering what tome2 says to Talk (`Y`) or Give (`y`), named for the creature when it is known. */
+function beginConversation(command: number, creature: MonsterState | undefined): void {
+  conversation = { title: creature ? titleName(creature.name) : command === TALK ? 'Talk' : 'Give', named: !!creature, messages: [] };
+}
+
 /**
- * Begins a conversation when Talk or Give is sent at the command prompt
- * (from a button, or typed), named for the creature in the direction sent
- * with it, or in the direction answered next.
+ * Talks to (`Y`) or gives to (`y`) the creature in a keypad direction from a
+ * button or tap, giving the direction only once tome2 asks for it.
+ */
+function converse(command: 'Y' | 'y', digit: string): void {
+  if (!lastSnap?.atCommand) return;
+  hideToast();
+  beginConversation(command.charCodeAt(0), creatureTowards(digit.charCodeAt(0)));
+  runMacro(converseMacro(command, digit));
+}
+
+/**
+ * Begins a conversation when Talk or Give is typed at the command prompt, or
+ * sent from More, named for the creature in the direction answered next.
  */
 function noteConversation(codes: readonly number[]): void {
   if (conversation && !conversation.named && codes.length === 1 && currentPrompt() === 'direction') {
@@ -452,8 +471,7 @@ function noteConversation(codes: readonly number[]): void {
   }
   const command = codes[0] === BACKSLASH ? codes.slice(1) : codes;
   if ((command[0] !== TALK && command[0] !== GIVE) || !lastSnap?.atCommand) return;
-  const creature = creatureTowards(command[1]);
-  conversation = { title: creature ? titleName(creature.name) : command[0] === TALK ? 'Talk' : 'Give', named: !!creature, messages: [] };
+  beginConversation(command[0], undefined);
 }
 
 /** Once tome2 is back at the command prompt: what was said in a card, or a single line as a toast, so a long answer is not lost as messages flow past. */
@@ -654,6 +672,12 @@ function openNative(view: NativeView): void {
       watchAttempt();
       runMacro(restMacro());
       break;
+    case 'talk': {
+      const partner = talkPartner();
+      const digit = partner && lastSnap ? directionDigit(partner.x - lastSnap.px, partner.y - lastSnap.py) : null;
+      if (digit) converse('Y', digit);
+      break;
+    }
     case 'halt':
       break;
     case 'pace':
@@ -1868,9 +1892,8 @@ function mapSituation(snap: LevelSnapshot): Partial<ActionContext> {
   if (travel instanceof Explore) return { exploring: settings.explorePace };
   if (!snap.atCommand) return {};
   const quick = quickEntry();
-  const partner = talkPartner();
   return {
-    talk: partner ? directionDigit(partner.x - snap.px, partner.y - snap.py) : null,
+    talk: !!talkPartner(),
     exploreNext: exploreNext(snap),
     entrance: entranceHere(snap),
     gear: gearSuggestion()?.kind ?? null,
@@ -2405,9 +2428,7 @@ function doTap(action: TapAction): void {
       startStep(action.cell);
       break;
     case 'talk':
-      stopAutomation(null, 'talk');
-      hideToast();
-      send([BACKSLASH, ...keyCodes(`Y${action.digit}`)]);
+      converse('Y', action.digit);
       break;
     case 'none':
       break;

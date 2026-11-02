@@ -10,16 +10,18 @@ import { CAVE_MARK, LAYER_MONSTER, LAYER_OBJECT, LAYER_TERRAIN, type EquipSlot, 
 const FLOOR = 1;
 const WALL = 2;
 const TREE = 3;
+const DOOR = 4;
 const materials = [
   undefined,
   { walkable: true, door: false },
   { walkable: false, door: false },
   { walkable: true, door: false, blocksLight: true },
+  { walkable: false, door: true, blocksLight: true },
 ] as unknown as Material[];
 
 /**
  * '.' known floor, '#' known wall, '?' unknown, ',' unknown floor, '$' known floor with an item,
- * '@' player, 'T' known walkable thicket, '>' '<' 'F' known floor tiles named by the test.
+ * '@' player, 'T' known walkable thicket, '+' known closed door, '>' '<' 'F' known floor tiles named by the test.
  */
 function level(rows: string[]): LevelSnapshot {
   const height = rows.length;
@@ -33,7 +35,7 @@ function level(rows: string[]): LevelSnapshot {
     [...row].forEach((ch, x) => {
       const i = y * width + x;
       if (ch === '?') return;
-      feat[i] = ch === '#' ? WALL : ch === 'T' ? TREE : FLOOR;
+      feat[i] = ch === '#' ? WALL : ch === 'T' ? TREE : ch === '+' ? DOOR : FLOOR;
       if (ch === ',') return;
       info[i] = CAVE_MARK;
       layer[i] = ch === '$' ? LAYER_OBJECT : LAYER_TERRAIN;
@@ -108,6 +110,16 @@ describe('explore', () => {
   it('does not count walkable thickets that hide the view as unexplored edges', () => {
     const snap = level(['#####', '#@.T?', '#####']);
     assert.equal(frontier(snap), null);
+  });
+
+  it('goes elsewhere when a door on the way stays shut', () => {
+    const snap = level(['#?...@+.?#']);
+    const explore = new Explore(plan(-1));
+    const ctx = { snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp: 10 };
+    const open = explore.step(ctx);
+    assert.deepEqual(open.kind === 'keys' && open.keys, [92, ';'.charCodeAt(0), '6'.charCodeAt(0)]);
+    const next = explore.step(ctx);
+    assert.deepEqual(next.kind === 'keys' && next.keys, [92, ';'.charCodeAt(0), '4'.charCodeAt(0)]);
   });
 
   it('moves its anchor to the hero once nothing is left within reach of the old one', () => {

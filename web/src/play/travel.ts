@@ -19,7 +19,6 @@ const MAX_STEPS = 400;
 /* Visits to one cell that end a journey as going round in circles. */
 const MAX_VISITS = 3;
 const WALK = ';'.charCodeAt(0);
-const OPEN = 'o'.charCodeAt(0);
 
 export type TravelStopReason =
   | 'arrived'
@@ -438,15 +437,10 @@ export class Travel {
     this.lastLight = snap.lightRadius;
     this.lastPos = pos;
 
-    if (closedDoor) {
-      this.lastWasMove = false;
-      this.lastDoor = next;
-      return { kind: 'keys', keys: [BACKSLASH, OPEN, digit], path };
-    }
-
-    this.lastWasMove = true;
-    this.lastDoor = null;
-    if (goalIsMonster && path.length === 1) this.finishing = true;
+    /* Walking into a closed door opens it (tome2's easy_open_door, which asks nothing), and the next step goes through. */
+    this.lastWasMove = !closedDoor;
+    this.lastDoor = closedDoor ? next : null;
+    if (!closedDoor && goalIsMonster && path.length === 1) this.finishing = true;
     return { kind: 'keys', keys: [BACKSLASH, WALK, digit], path };
   }
 
