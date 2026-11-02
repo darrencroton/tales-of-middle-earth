@@ -1,4 +1,3 @@
-import { KEY_BACKSLASH, keyCodes } from '../input/keys.ts';
 import { directionDigit } from '../play/prompts.ts';
 import { readableColour } from '../render/colour.ts';
 import type { MapPoint } from '../render/map.ts';
@@ -48,13 +47,14 @@ export function openMonster(api: GameApi, m: MonsterState): void {
   const near = snap ? distance({ x: snap.px, y: snap.py }, m) : 99;
   /* Beside the hero, someone neutral can be talked to, and anyone not hostile given something (tome2's Y and y, with its direction). */
   const busy = snap?.atCommand ? null : 'Finish what you are doing first.';
-  const towards = (id: string, label: string, command: string, primary: boolean): SheetAction => ({
+  const towards = (id: string, label: string, command: 'Y' | 'y', primary: boolean): SheetAction => ({
     id,
     label,
     primary,
     unavailable: busy,
     run: () => {
-      if (snap) api.send([KEY_BACKSLASH, ...keyCodes(`${command}${directionDigit(m.x - snap.px, m.y - snap.py)}`)]);
+      const digit = snap && directionDigit(m.x - snap.px, m.y - snap.py);
+      if (digit) api.converse(command, digit);
     },
   });
   const actions: SheetAction[] = fallen

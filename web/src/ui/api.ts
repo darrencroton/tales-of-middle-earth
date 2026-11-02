@@ -22,6 +22,8 @@ export interface GameApi {
   command(command: string): void;
   /** Runs a scripted exchange with the engine (closing any sheets, or covering them when `comeBack`). */
   runMacro(macro: Macro, comeBack?: boolean): void;
+  /** Talks to (`Y`) or gives to (`y`) the creature in a keypad direction (closing any sheets). */
+  converse(command: 'Y' | 'y', digit: string): void;
   travelTo(point: MapPoint): void;
   highlight(point: MapPoint): void;
   /** Asks the player for a line of text in a native sheet. */

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { commandGroups, commandKeys, contextActions, contextualAction, pickupCommand, restMacro, speedAction, transitionUnderfoot, waitCommand, type CommandContext } from '../../web/src/play/actions.ts';
+import { commandGroups, commandKeys, contextActions, contextualAction, converseMacro, pickupCommand, restMacro, speedAction, transitionUnderfoot, waitCommand, type CommandContext } from '../../web/src/play/actions.ts';
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
@@ -483,6 +483,15 @@ describe('actions', () => {
     assert.ok(refused.next({ prompt: 'Resting is impossible while undead!', screen: '', atCommand: true }).done);
   });
 
+  it('talks or gives in a direction only once tome2 asks for it', () => {
+    const asked = converseMacro('y', '6');
+    assert.deepEqual(asked.next().value, [92, ...keys('y')]);
+    assert.deepEqual(asked.next({ prompt: 'Direction (Escape to cancel)?', screen: '', atCommand: false }).value, keys('6'));
+    const ignored = converseMacro('Y', '6');
+    ignored.next();
+    assert.ok(ignored.next({ prompt: '', screen: '', atCommand: true }).done);
+  });
+
   it('puts the most pressing thing first, else Explore named for what it will do', () => {
     const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
     const first = (ctx: Partial<Parameters<typeof contextualAction>[0]>) => {
@@ -573,12 +582,12 @@ describe('actions', () => {
 
   it('talks to a neutral creature beside the hero once nothing more pressing applies', () => {
     const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
-    const talk = contextualAction({ ...base, talk: '4', exploreNext: 'down' });
+    const talk = contextualAction({ ...base, talk: true, exploreNext: 'down' });
     assert.deepEqual([talk.id, talk.label], ['talk', 'Talk']);
-    assert.deepEqual(talk.effect, { kind: 'keys', keys: [92, ...keys('Y4')] });
-    assert.equal(contextualAction({ ...base, talk: '4', foe: '6' }).id, 'attack');
-    assert.equal(contextualAction({ ...base, talk: '4', floorObjects: 1 }).id, 'pickup');
-    assert.equal(contextualAction({ ...base, talk: '4', gear: 'eat' }).id, 'equip');
+    assert.deepEqual(talk.effect, { kind: 'native', view: 'talk' });
+    assert.equal(contextualAction({ ...base, talk: true, foe: '6' }).id, 'attack');
+    assert.equal(contextualAction({ ...base, talk: true, floorObjects: 1 }).id, 'pickup');
+    assert.equal(contextualAction({ ...base, talk: true, gear: 'eat' }).id, 'equip');
   });
 
   it('names the way to and from the world map on the surface', () => {
