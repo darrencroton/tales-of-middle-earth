@@ -154,21 +154,6 @@ describe('filesystem helpers', () => {
     assert.ok(fs.dirs.has(root));
   });
 
-  it('puts back what was there when a file cannot be written', () => {
-    const fs = new MemoryFS();
-    fs.mkdirTree(`${root}/2.4/save`);
-    fs.writeFile(`${root}/2.4/save/Sam`, new Uint8Array([1]));
-    const write = fs.writeFile.bind(fs);
-    fs.writeFile = (path, data) => {
-      if (path.endsWith('/Bad')) throw new Error('ENOSPC');
-      write(path, data);
-    };
-    const data = new Uint8Array([2]);
-    assert.throws(() => restoreFiles(fs, root, [{ path: '2.4/save/Frodo', data }, { path: '2.4/save/Bad', data }]), /ENOSPC/);
-    assert.deepEqual(names(fs), ['2.4/save/Sam']);
-    assert.deepEqual(fs.readFile(`${root}/2.4/save/Sam`), new Uint8Array([1]));
-  });
-
   it('refuses to write unsafe paths, keeping what was there', () => {
     const fs = new MemoryFS();
     fs.mkdirTree(root);

@@ -115,7 +115,7 @@ export function collectFiles(fs: EmscriptenFS, root: string): SaveFile[] {
 }
 
 /** Removes everything beneath a root, keeping the root itself. */
-export function clearTree(fs: Pick<EmscriptenFS, 'readdir' | 'stat' | 'isDir' | 'unlink' | 'rmdir'>, root: string): void {
+function clearTree(fs: EmscriptenFS, root: string): void {
   for (const name of fs.readdir(root)) {
     if (name === '.' || name === '..') continue;
     const path = `${root}/${name}`;
@@ -128,28 +128,18 @@ export function clearTree(fs: Pick<EmscriptenFS, 'readdir' | 'stat' | 'isDir' | 
   }
 }
 
-function writeAll(fs: EmscriptenFS, root: string, files: readonly SaveFile[]): void {
+/**
+ * Replaces everything beneath a root with a bundle's files. Only the
+ * in-memory tree changes: storage keeps what it had until the next sync.
+ */
+export function restoreFiles(fs: EmscriptenFS, root: string, files: readonly SaveFile[]): void {
+  const unsafe = files.find((file) => !isSafeRelativePath(file.path));
+  if (unsafe) throw new Error(`Unsafe path: ${unsafe.path}`);
+  clearTree(fs, root);
   for (const file of files) {
-    if (!isSafeRelativePath(file.path)) throw new Error(`Unsafe path: ${file.path}`);
     const absolute = `${root}/${file.path}`;
     fs.mkdirTree(absolute.slice(0, absolute.lastIndexOf('/')));
     fs.writeFile(absolute, file.data);
-  }
-}
-
-/**
- * Replaces everything beneath a root with a bundle's files. When a file
- * cannot be written, what was there before is put back and the error thrown.
- */
-export function restoreFiles(fs: EmscriptenFS, root: string, files: readonly SaveFile[]): void {
-  const before = collectFiles(fs, root);
-  clearTree(fs, root);
-  try {
-    writeAll(fs, root, files);
-  } catch (err) {
-    clearTree(fs, root);
-    writeAll(fs, root, before);
-    throw err;
   }
 }
 
