@@ -129,9 +129,9 @@ export async function createCharacter(
   picks: { race?: string; cls?: string; beforeBegin?: () => Promise<void> } = {},
 ): Promise<void> {
   await beginNewCharacter(page, name);
-  /* The intro takes a tap once it has begun to rise. */
+  /* The intro takes Enter (or a tap) once it has begun to rise; a key does not wait for the flames to be drawn. */
   await expect(async () => {
-    if (await page.locator('#title-screen').isVisible()) await page.locator('#title-screen').click({ position: { x: 20, y: 20 }, timeout: 1_000 });
+    if (await page.locator('#title-screen').isVisible()) await page.keyboard.press('Enter');
     await expect(page.locator('#title-screen')).toBeHidden({ timeout: 1_000 });
   }).toPass({ timeout: 30_000 });
 

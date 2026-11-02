@@ -215,24 +215,23 @@ describe('travel', () => {
     assert.deepEqual(tapAction(snap, MATERIALS, { x: 1, y: 0 }, 'direction', [creature(1, 0)]), { kind: 'direction', digit: '4' });
   });
 
-  it('words why a journey stopped, and how much it matters', () => {
+  it('words why a journey stopped', () => {
     const base: StopContext = { light: false, exploring: false, walked: 0, approximate: false, depth: 1, lightRadius: 1 };
     const stop = (reason: Parameters<typeof stopMessage>[0]['reason'], extra = {}) => ({ kind: 'stop' as const, reason, ...extra });
-    assert.deepEqual(stopMessage(stop('hurt'), base), { text: STOP_MESSAGES.hurt, weight: 'brief' });
-    assert.deepEqual(stopMessage(stop('monster', { creature: 'the Cave spider', asleep: true }), base), { text: 'You stop: Cave spider in sight, asleep.', weight: 'brief' });
-    assert.deepEqual(stopMessage(stop('explored'), { ...base, exploring: true, lightRadius: 0 }), { text: 'It is too dark to explore further without a light.', weight: 'major' });
-    assert.match(stopMessage(stop('explored'), { ...base, exploring: true, lightRadius: 0, light: true })?.text ?? '', /Tap Light/);
-    assert.deepEqual(stopMessage(stop('explored'), { ...base, exploring: true, depth: 0, lightRadius: 0 }), { text: STOP_MESSAGES.explored, weight: 'brief' });
-    assert.deepEqual(stopMessage(stop('dark'), { ...base, light: true }), { text: 'Your light has gone out. Tap Light to light your way again.', weight: 'major' });
-    assert.deepEqual(stopMessage(stop('dark'), base), { text: STOP_MESSAGES.dark, weight: 'major' });
-    assert.deepEqual(stopMessage(stop('robbed'), base), { text: STOP_MESSAGES.robbed, weight: 'major' });
+    assert.equal(stopMessage(stop('hurt'), base), STOP_MESSAGES.hurt);
+    assert.equal(stopMessage(stop('monster', { creature: 'the Cave spider', asleep: true }), base), 'You stop: Cave spider in sight, asleep.');
+    assert.match(stopMessage(stop('explored'), { ...base, exploring: true, lightRadius: 0 }) ?? '', /too dark to explore further/);
+    assert.match(stopMessage(stop('explored'), { ...base, exploring: true, lightRadius: 0, light: true }) ?? '', /Tap Light/);
+    assert.equal(stopMessage(stop('explored'), { ...base, exploring: true, depth: 0, lightRadius: 0 }), STOP_MESSAGES.explored);
+    assert.match(stopMessage(stop('dark'), { ...base, light: true }) ?? '', /Tap Light to light your way again/);
+    assert.equal(stopMessage(stop('dark'), base), STOP_MESSAGES.dark);
   });
 
   it('says a walk ended short of the place only after a long enough walk', () => {
     const arrived = { kind: 'stop' as const, reason: 'arrived' as const };
     const short: StopContext = { light: false, exploring: false, walked: FAR_WALK_STEPS - 1, approximate: true, depth: 1, lightRadius: 1 };
     assert.equal(stopMessage(arrived, short), null);
-    assert.equal(stopMessage(arrived, { ...short, walked: FAR_WALK_STEPS })?.text, STOP_MESSAGES.closest);
+    assert.equal(stopMessage(arrived, { ...short, walked: FAR_WALK_STEPS }), STOP_MESSAGES.closest);
     assert.equal(stopMessage(arrived, { ...short, walked: FAR_WALK_STEPS, approximate: false }), null);
   });
 

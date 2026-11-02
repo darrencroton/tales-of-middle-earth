@@ -15,7 +15,7 @@ import { commandGroups, commandKeys, contextActions, contextualAction, GAME_OPTI
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
-import { approachTarget, goAction, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type StopNotice, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
+import { approachTarget, goAction, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
 import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, questKey, type HeroMemory } from './play/mapmemory.ts';
 import { CAVE_MARK, isHostile, isNeutral, LAYER_MASK, LEAD_LINES, leadInMessages, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
@@ -39,7 +39,7 @@ import { openHelp } from './ui/help.ts';
 import { openMagic, openSpell, RecentStore } from './ui/magic.ts';
 import { CastWatcher, fireMacro, hasActivePowers, hasMagic, hasPowers, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
 import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
-import { GameFeel, NOTICE_MS, type FeelEvent, type NoticeWeight } from './feel.ts';
+import { GameFeel, READ_MS, type FeelEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
 import {
   fightingStyle,
@@ -288,9 +288,10 @@ function setCtrlLatched(value: boolean): void {
   for (const node of document.querySelectorAll('[data-ctrl-toggle]')) node.setAttribute('aria-pressed', String(value));
 }
 
+const TOAST_MS = 2000;
 let toastTimer = 0;
-/** Shows a short message over the foot of the map for as long as its weight asks; unless it repeats one of tome2's (`log` false), it also goes in the message log. */
-function showToast(text: string, { log = true, weight = 'brief' }: { log?: boolean; weight?: NoticeWeight } = {}): void {
+/** Shows a short message over the foot of the map, longer when it is to be `read`; unless it repeats one of tome2's (`log` false), it also goes in the message log. */
+function showToast(text: string, { log = true, read = false }: { log?: boolean; read?: boolean } = {}): void {
   if (log && inGame()) {
     engine.addNotice(text);
     dirty = true;
@@ -302,14 +303,17 @@ function showToast(text: string, { log = true, weight = 'brief' }: { log?: boole
   toast.style.setProperty('--toast-width', `calc(${area.width}px - 2rem)`);
   toast.textContent = text;
   toast.classList.add('visible');
+  /* The deed card at the foot of the map rises above the toast. */
+  stage.style.setProperty('--toast-lift', `calc(${toast.offsetHeight}px + 0.75rem)`);
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove('visible'), NOTICE_MS[weight]);
+  toastTimer = window.setTimeout(hideToast, read ? READ_MS : TOAST_MS);
 }
 
 /** Clears a toast the player has moved on from. */
 function hideToast(): void {
   window.clearTimeout(toastTimer);
   toast.classList.remove('visible');
+  stage.style.removeProperty('--toast-lift');
 }
 
 /** Says why something cannot be done, with the refusal sound. */
@@ -460,7 +464,7 @@ function settleConversation(): void {
   const { title, messages } = conversation;
   conversation = null;
   if (messages.length > 1) openMessage(sheets, title, messages.join(' '));
-  else if (messages.length === 1) showToast(messages[0], { log: false, weight: 'major' });
+  else if (messages.length === 1) showToast(messages[0], { log: false, read: true });
 }
 
 /** Once a watched action has ended (its macro done, tome2 back at the command prompt), tells the player when tome2 refused it or it failed. */
@@ -1507,10 +1511,10 @@ function chronicleUpdate(player: PlayerState, slain: readonly Slain[], turn: num
   record(hero, chronicles.career, player, slain, streak.count, hurt);
   const legend = slain.find((s) => s.unique);
   if (legend) {
-    feel.announce(titleName(legend.name), 'A legend falls', 'legend', 'major');
+    feel.announce(titleName(legend.name), 'A legend falls', 'legend');
     feel.shake(0.7);
   } else if (next.name) {
-    feel.announce(next.name, `${streak.count} foes in quick succession`, 'streak', 'brief');
+    feel.announce(next.name, `${streak.count} foes in quick succession`, 'streak');
   }
   const deeds = newDeeds(hero, chronicles.career, chronicles.earned);
   if (deeds.length) {
@@ -1602,7 +1606,7 @@ function removeFameEntry(entry: ScoreEntry): void {
   const same = (e: ScoreEntry) => entryKey(e) === entryKey(entry) && e.points === entry.points && e.day === entry.day;
   const index = engine.scores().findIndex(same);
   if (index < 0 || !engine.removeScore(index)) {
-    showToast('The Hall of Fame could not be changed.', { log: false, weight: 'major' });
+    showToast('The Hall of Fame could not be changed.', { log: false, read: true });
     return;
   }
   if (chronicles.forgetMemorial(entryKey(entry))) chronicles.save();
@@ -1613,7 +1617,7 @@ function removeFameEntry(entry: ScoreEntry): void {
     () => showToast(`${entry.name} was removed from the Hall of Fame.`, { log: false }),
     (err) => {
       console.error('Saving to browser storage failed', err);
-      showToast('Browser storage could not be updated.', { log: false, weight: 'major' });
+      showToast('Browser storage could not be updated.', { log: false, read: true });
     },
   );
 }
@@ -2098,7 +2102,7 @@ function companionCells(snap: LevelSnapshot): Set<number> {
   });
 }
 
-function stopAutomation(message: string | null, cause: string, weight: NoticeWeight = 'brief'): void {
+function stopAutomation(message: string | null, cause: string): void {
   if (travel || picker) lastStopCause = cause;
   if (travel instanceof Explore && lastSnap) {
     exploreAnchor = travel.anchor;
@@ -2109,7 +2113,7 @@ function stopAutomation(message: string | null, cause: string, weight: NoticeWei
   travel = null;
   picker = null;
   map.setPath(null);
-  if (message) showToast(message, { weight });
+  if (message) showToast(message);
   updateActionBar();
   requestFrame();
 }
@@ -2123,9 +2127,8 @@ function stepTravel(): void {
   const step = travel.step(ctx);
   if (step.kind === 'stop') {
     const spotted = travel instanceof Explore ? spottedText() : null;
-    const stop = stopMessage(travel, step, ctx.snap);
-    const message = [stop?.text, spotted].filter(Boolean).join(' ');
-    stopAutomation(message || null, step.reason, stop?.weight);
+    const message = [stopMessage(travel, step, ctx.snap), spotted].filter(Boolean).join(' ');
+    stopAutomation(message || null, step.reason);
     return;
   }
   map.setPath(step.path);
@@ -2153,7 +2156,7 @@ function changingButton(snap: LevelSnapshot): Action {
 }
 
 /** What to tell the player when travel or exploring stops. */
-function stopMessage(journey: Travel | Explore, step: Extract<TravelStep, { kind: 'stop' }>, snap: LevelSnapshot): StopNotice | null {
+function stopMessage(journey: Travel | Explore, step: Extract<TravelStep, { kind: 'stop' }>, snap: LevelSnapshot): string | null {
   return stopText(step, {
     light: changingButton(snap).id === 'equip' && gearSuggestion()?.kind === 'light',
     exploring: journey instanceof Explore,
@@ -2597,12 +2600,12 @@ const engine = new Engine(buffer, {
       engine.syncNow().then(
         () => {
           if (!notify) return;
-          showToast(engine.storageError ? 'Saved for this session only' : 'Game saved', { weight: engine.storageError ? 'major' : 'brief' });
+          showToast(engine.storageError ? 'Saved for this session only' : 'Game saved', { read: !!engine.storageError });
           audio.cue('save');
         },
         (err) => {
           console.error('Save sync failed', err);
-          showToast('Saving to browser storage failed', { weight: 'major' });
+          showToast('Saving to browser storage failed', { read: true });
         },
       );
     }
@@ -3221,7 +3224,7 @@ const adventurerHandlers: AdventurerHandlers = {
       () => showToast(`${name}'s adventure was deleted.`, { log: false }),
       (err) => {
         console.error('Saving to browser storage failed', err);
-        showToast('Browser storage could not be updated.', { log: false, weight: 'major' });
+        showToast('Browser storage could not be updated.', { log: false, read: true });
       },
     );
   },
