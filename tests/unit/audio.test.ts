@@ -420,6 +420,7 @@ describe('sound cues', () => {
     assert.deepEqual(ids('The jackal bites you.'), ['bite']);
     assert.deepEqual(ids('The wolf misses you.'), ['parry']);
     assert.deepEqual(ids('The cave orc hits you.'), ['hurt']);
+    assert.deepEqual(ids('The disenchanter eye gazes at you.'), ['hurt']);
     assert.deepEqual(ids('The kobold dies.'), ['kill']);
     assert.deepEqual(ids('The baby red dragon breathes fire.'), ['breath']);
     assert.equal(messageCues('The baby blue dragon breathes lightning.')[0].element, 'lightning');
@@ -489,6 +490,8 @@ describe('sound cues', () => {
     assert.deepEqual(ailing({ poisoned: 5 }, 19), ['ail']);
     assert.deepEqual(ailing({ cut: 150 }, 17), ['ail']);
     assert.deepEqual(ailing({ poisoned: 5 }, 10), ['hurt']);
+    assert.deepEqual(playerCues({ ...base, status: { poisoned: 5 } }, { ...base, status: { poisoned: 5 }, chp: 13 }, new Set(), false, 2).map((c) => c.id), ['ail']);
+    assert.deepEqual(playerCues({ ...base, status: { poisoned: 5 } }, { ...base, status: { poisoned: 5 }, chp: 18 }, new Set(['spell-monster'] as never[]), false).map((c) => c.id), ['hurt']);
     assert.deepEqual(ids({ au: 150 }), ['gold']);
     assert.deepEqual(ids({ au: 50 }, [], true), ['buy']);
     assert.deepEqual(ids({ status: { poisoned: 5 } }), ['poisoned']);
