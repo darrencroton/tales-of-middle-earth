@@ -251,6 +251,8 @@ export type TapAction =
   | { kind: 'travel'; cell: Point }
   | { kind: 'step'; cell: Point }
   | { kind: 'talk'; digit: string }
+  | { kind: 'steer'; digit: string }
+  | { kind: 'refuse'; why: string }
   | { kind: 'none' };
 
 /**
@@ -277,16 +279,36 @@ export function goAction(
 }
 
 /**
- * What a tap on a map cell does for the question tome2 is asking: choose a
- * direction or target, interrupt a rest or run, wait in place, or go there.
+ * What a tap does while the hero controls another creature (`steered`, where
+ * it stands, or null out of sight): one step of the creature towards the
+ * place tapped, as tome2 moves it with the walking keys.
  */
-export function tapAction(snap: LevelSnapshot, materials: readonly Material[], cell: Point, prompt: PromptKind, monsters: readonly MonsterState[] = []): TapAction {
+export function steerAction(steered: Point | null, cell: Point): TapAction {
+  if (!steered) return { kind: 'refuse', why: 'The creature you control is out of sight.' };
+  const digit = directionDigit(cell.x - steered.x, cell.y - steered.y);
+  return digit && digit !== '5' ? { kind: 'steer', digit } : { kind: 'none' };
+}
+
+/**
+ * What a tap on a map cell does for the question tome2 is asking: choose a
+ * direction or target, interrupt a rest or run, steer the creature the hero
+ * controls (`steered`, given only then), wait in place, or go there.
+ */
+export function tapAction(
+  snap: LevelSnapshot,
+  materials: readonly Material[],
+  cell: Point,
+  prompt: PromptKind,
+  monsters: readonly MonsterState[] = [],
+  steered?: Point | null,
+): TapAction {
   const near = isAdjacent(snap.px, snap.py, cell.x, cell.y);
   const direction = (): TapAction => ({ kind: 'direction', digit: directionDigit(cell.x - snap.px, cell.y - snap.py) ?? '5' });
   if (prompt === 'direction') return near ? direction() : { kind: 'none' };
   if (prompt === 'aim') return near ? direction() : { kind: 'target', cell };
   /* Resting, running or repeating: a tap interrupts it. */
   if (!snap.atCommand) return prompt === 'none' ? { kind: 'interrupt' } : { kind: 'none' };
+  if (steered !== undefined) return steerAction(steered, cell);
   if (cell.x === snap.px && cell.y === snap.py) return { kind: 'wait' };
   return goAction(snap, materials, cell, monsters);
 }

@@ -11,7 +11,7 @@ import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
-import { commandGroups, commandKeys, contextActions, contextualAction, GAME_OPTIONS, converseMacro, restMacro, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
+import { commandGroups, commandKeys, contextActions, contextualAction, CONTROLLING, creaturePowersMacro, GAME_OPTIONS, converseMacro, releaseMacro, restMacro, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
 import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
@@ -672,6 +672,12 @@ function openNative(view: NativeView): void {
       watchAttempt();
       runMacro(restMacro());
       break;
+    case 'release':
+      runMacro(releaseMacro());
+      break;
+    case 'creaturePowers':
+      runMacro(creaturePowersMacro());
+      break;
     case 'talk': {
       const partner = talkPartner();
       const digit = partner && lastSnap ? directionDigit(partner.x - lastSnap.px, partner.y - lastSnap.py) : null;
@@ -784,7 +790,7 @@ function showLookCard(point: MapPoint): void {
     buttons.append(button);
   };
   const monster = description.monsters[0];
-  if (!description.player && description.known && lastSnap?.atCommand) {
+  if (!description.player && description.known && lastSnap?.atCommand && !controlling()) {
     add(monster && isHostile(monster) ? 'Attack' : 'Go there', () => {
       setLooking(false);
       startTravel(point);
@@ -1932,6 +1938,7 @@ function updateActionBar(force = false): void {
       ...(mode === 'map' && snap ? mapSituation(snap) : {}),
       foe: foe && snap ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
       worldMap: !!snap?.inDungeon && snap.depth === 0 && snap.wild,
+      controlling: controlling(),
     });
   currentActions = actions;
   termView.setActions(mode === 'overlay' ? panelActions(actions) : []);
@@ -2058,7 +2065,28 @@ function commandContext(): CommandContext {
     steals: heroSteals(),
     magic: hasMagic(currentSpells()),
     powers: hasPowers(currentSpells()),
+    controlling: controlling(),
   };
+}
+
+/** The hero controls another creature (a Fire Golem, or one taken by Mind Steal). */
+function controlling(): boolean {
+  return !!lastState?.player?.control;
+}
+
+/** Where the creature the hero controls stands: undefined when they control none, null when it is out of sight. */
+function steered(): MapPoint | null | undefined {
+  const id = lastState?.player?.control;
+  if (!id) return undefined;
+  const creature = lastState?.monsters?.find((m) => m.id === id);
+  return creature ? { x: creature.x, y: creature.y } : null;
+}
+
+/** Refuses a journey of the hero's own while they control another creature. */
+function heroHeld(): boolean {
+  if (!controlling()) return false;
+  refuse(CONTROLLING);
+  return true;
 }
 
 /** A button of the More sheet; one that cannot be done now is dimmed and says why. */
@@ -2206,7 +2234,7 @@ function stopMessage(journey: Travel | Explore, step: Extract<TravelStep, { kind
  */
 function startTravel(goal: MapPoint): void {
   const ctx = travelContext();
-  if (!ctx) return;
+  if (!ctx || heroHeld()) return;
   stopAutomation(null, 'new travel');
   hideToast();
   recentreMap();
@@ -2257,7 +2285,7 @@ function spottedText(): string | null {
  */
 function startExplore(): void {
   const ctx = travelContext();
-  if (!ctx) return;
+  if (!ctx || heroHeld()) return;
   stopAutomation(null, 'explore');
   recentreMap();
   const here = { x: ctx.snap.px, y: ctx.snap.py };
@@ -2399,7 +2427,7 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
 }
 
 function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
-  doTap(tapAction(snap, materials, cell, prompt, lastState?.monsters));
+  doTap(tapAction(snap, materials, cell, prompt, lastState?.monsters, steered()));
 }
 
 function goTowards(snap: LevelSnapshot, point: MapPoint): void {
@@ -2430,6 +2458,12 @@ function doTap(action: TapAction): void {
     case 'talk':
       converse('Y', action.digit);
       break;
+    case 'steer':
+      send([BACKSLASH, ...keyCodes(`;${action.digit}`)]);
+      break;
+    case 'refuse':
+      refuse(action.why);
+      break;
     case 'none':
       break;
   }
@@ -2438,7 +2472,7 @@ function doTap(action: TapAction): void {
 /** One step to a neighbouring cell (a closed door there is opened, then walked through). */
 function startStep(cell: MapPoint): void {
   const ctx = travelContext();
-  if (!ctx) return;
+  if (!ctx || heroHeld()) return;
   stopAutomation(null, 'step');
   hideToast();
   const mat = materials[ctx.snap.feat[cell.y * ctx.snap.width + cell.x]];

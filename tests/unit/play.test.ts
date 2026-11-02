@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { commandGroups, commandKeys, contextActions, contextualAction, converseMacro, pickupCommand, restMacro, speedAction, transitionUnderfoot, waitCommand, type CommandContext } from '../../web/src/play/actions.ts';
+import { commandGroups, commandKeys, commandRefusal, contextActions, contextualAction, CONTROLLING, converseMacro, creaturePowersMacro, pickupCommand, releaseMacro, restMacro, speedAction, transitionUnderfoot, waitCommand, type CommandContext } from '../../web/src/play/actions.ts';
 import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
@@ -215,6 +215,14 @@ describe('travel', () => {
     assert.deepEqual(tapAction(snap, MATERIALS, { x: 1, y: 0 }, 'direction', [creature(1, 0)]), { kind: 'direction', digit: '4' });
   });
 
+  it('steers the creature the hero controls a step towards the place tapped', () => {
+    const snap = level(['.....', '.....', '.....'], { x: 0, y: 0 });
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 4, y: 2 }, 'none', [], { x: 2, y: 1 }), { kind: 'steer', digit: '3' });
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 0, y: 0 }, 'none', [], { x: 2, y: 1 }), { kind: 'steer', digit: '7' });
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 2, y: 1 }, 'none', [], { x: 2, y: 1 }), { kind: 'none' });
+    assert.equal(tapAction(snap, MATERIALS, { x: 4, y: 2 }, 'none', [], null).kind, 'refuse');
+  });
+
   it('words why a journey stopped', () => {
     const base: StopContext = { light: false, exploring: false, walked: 0, approximate: false, depth: 1, lightRadius: 1 };
     const stop = (reason: Parameters<typeof stopMessage>[0]['reason'], extra = {}) => ({ kind: 'stop' as const, reason, ...extra });
@@ -393,7 +401,7 @@ describe('targeting', () => {
   });
 });
 
-const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', feat: 1, beside: false, pray: 0, runes: false, steals: false, magic: false, powers: false };
+const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', feat: 1, beside: false, pray: 0, runes: false, steals: false, magic: false, powers: false, controlling: false };
 
 describe('actions', () => {
   it('prefixes commands with a keymap bypass', () => {
@@ -481,6 +489,38 @@ describe('actions', () => {
     const refused = restMacro();
     refused.next();
     assert.ok(refused.next({ prompt: 'Resting is impossible while undead!', screen: '', atCommand: true }).done);
+  });
+
+  it('holds the hero\'s own actions while they control another creature, and offers its own', () => {
+    const held = { worldMap: false, controlling: true };
+    assert.equal(commandRefusal('q', held), CONTROLLING);
+    assert.equal(commandRefusal('d', held), CONTROLLING);
+    assert.equal(commandRefusal('l', held), null);
+    assert.equal(commandRefusal('q', { worldMap: true, controlling: false }), 'Not on the world map.');
+    const sheet = (controlling: boolean) => commandGroups({ ...COMMANDS, beside: true, controlling }).flatMap((g) => g.commands);
+    const why = (label: string) => sheet(true).find((c) => c.label === label)?.unavailable;
+    assert.equal(why('Talk'), CONTROLLING);
+    assert.equal(why('Explore'), CONTROLLING);
+    assert.equal(why('Rest'), CONTROLLING);
+    assert.equal(why('Look'), undefined);
+    assert.equal(why('Release creature'), undefined);
+    assert.equal(why('Creature drops all'), undefined);
+    assert.ok(!sheet(false).some((c) => c.label === 'Release creature'));
+    const base = { mode: 'map' as const, atCommand: true, underfoot: 'down staircase', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const bar = contextActions({ ...base, quick: { label: 'Manathrust' }, magic: 'Cast', controlling: true });
+    assert.deepEqual(bar[0].effect, { kind: 'native', view: 'release' });
+    assert.deepEqual(
+      bar.filter((a) => a.unavailable).map((a) => a.id),
+      ['recast', 'cast', 'rest'],
+    );
+    const release = releaseMacro();
+    assert.deepEqual(release.next().value, [92, ...keys('m')]);
+    assert.deepEqual(release.next({ prompt: 'Do you want to abandon the creature? [y/n]', screen: '', atCommand: false }).value, keys('y'));
+    assert.deepEqual(release.next({ prompt: 'Abandon it permanently? [y/n]', screen: '', atCommand: false }).value, keys('n'));
+    const powers = creaturePowersMacro();
+    powers.next();
+    assert.deepEqual(powers.next({ prompt: 'Do you want to abandon the creature? [y/n]', screen: '', atCommand: false }).value, keys('n'));
+    assert.deepEqual(powers.next({ prompt: '(Powers a-b, *=List, ESC=exit) Use which power of your golem?', screen: '', atCommand: false }).value, keys('*'));
   });
 
   it('talks or gives in a direction only once tome2 asks for it', () => {

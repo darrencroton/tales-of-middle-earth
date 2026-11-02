@@ -243,8 +243,18 @@ left by what the player means to do. It leaves out what the hero cannot ever
 do (Pray without a god, Engrave without runes, Steal without the skill) and
 dims, saying why, what cannot be done here: a fountain's or altar's command
 off one, Rest on a Void Jumpgate, Talk, Give and Steal with no one beside the
-hero, and on the world map whatever tome2 ignores there. What Talk or Give
-brings out is shown in a card named for the creature.
+hero, on the world map whatever tome2 ignores there, and every command of
+the hero's own while they control another creature (Fire Golem, Mind
+Steal). What Talk or Give brings out is shown in a card named for the
+creature.
+
+While the hero controls a creature, tome2 gives it the walking keys, `m`
+(its powers, or letting it go), `i`, `d` and `,` (its pack), and ignores the
+hero's other commands. A map tap steps the creature towards the place
+tapped; the changing button is *Release*; More adds *Release creature*,
+*Creature powers*, *Creature's pack*, *Creature picks up* and *Creature drops
+all*; the hero's own actions (toolbar, More, item and creature cards,
+journeys) are dimmed with why.
 
 | tome2 | Command | Reached from |
 |---|---|---|
@@ -272,6 +282,7 @@ brings out is shown in a card named for the creature.
 | `^S` `^X` `Q` | save, save and quit, quit | Menu (*Save game*, *Save and quit*, *Abandon adventure*) |
 | `=` | options | More → *Game options*; our own in Settings |
 | `?` `V` | help, version | Menu → Help, About |
+| `;` `m` `i` `d` `,` while controlling a creature | move it, its powers or let it go, its pack | a map tap; changing button *Release*; More → People and creatures |
 
 Left out on purpose: `/` (identify a symbol: Look and creature cards tell
 more), `^R` redraw, `^I` window toggles, `@` `%` `&` `"` `$` and the
