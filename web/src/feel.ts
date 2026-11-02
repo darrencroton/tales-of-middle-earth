@@ -297,20 +297,30 @@ export class GameFeel {
   private showBanner(title: string, subtitle: string, kind: string): void {
     const banner: Banner = { title, subtitle, kind, rank: rankOf(kind) };
     const now = performance.now();
-    const current = this.shown && now < this.shown.until ? this.shown.banner : null;
+    const current = (this.shown && now < this.shown.until ? this.shown.banner : null) ?? this.next;
     if (current) {
       const order = RANK_ORDER[banner.rank] - RANK_ORDER[current.rank];
       if (order < 0 || (order === 0 && banner.rank !== 'passing')) {
-        if (this.waiting.length < MAX_WAITING) this.waiting.push(banner);
+        this.enqueue(banner);
         return;
       }
-      if (order > 0) this.waiting.unshift(current);
+      if (order > 0) this.enqueue(current);
     }
     this.display(banner);
   }
 
+  /** Queues a banner after those of its rank or higher; a passing one replaces any passing one waiting, and the lowest goes when the queue is full. */
+  private enqueue(banner: Banner): void {
+    if (banner.rank === 'passing') {
+      const stale = this.waiting.findIndex((b) => b.rank === 'passing');
+      if (stale >= 0) this.waiting.splice(stale, 1);
+    }
+    const at = this.waiting.findIndex((b) => RANK_ORDER[b.rank] < RANK_ORDER[banner.rank]);
+    this.waiting.splice(at < 0 ? this.waiting.length : at, 0, banner);
+    this.waiting.length = Math.min(this.waiting.length, MAX_WAITING);
+  }
+
   private display(banner: Banner): void {
-    if (this.next && this.next !== banner) this.waiting.unshift(this.next);
     this.next = null;
     this.shown = { banner, until: performance.now() + BANNER_MS[banner.rank] };
     this.banner.className = `feel-banner ${banner.kind}`;
