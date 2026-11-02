@@ -473,16 +473,19 @@ html.keyboard-open .sheet-layer {
   font-size: var(--fs-small);
 }
 
-.between-choices {
+.prompt-card > .between-choices {
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 0.45rem;
+  min-height: var(--touch);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
 .between-choice {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.1rem;

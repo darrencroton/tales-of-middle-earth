@@ -2718,7 +2718,6 @@ const engine = new Engine(buffer, {
       hasEffects = false;
     }
     hud.tick();
-    if (saveOnReturn && engine.pendingKeys === 0 && saveGame('silent')) saveOnReturn = false;
     if (pendingSync && lastSnap?.atCommand) {
       const notify = pendingSync === 'toast';
       pendingSync = null;
@@ -2735,6 +2734,8 @@ const engine = new Engine(buffer, {
         },
       );
     }
+    /* After the sync above, which is for a save already written: this one syncs at the next command prompt. */
+    if (saveOnReturn && engine.pendingKeys === 0 && saveGame('silent')) saveOnReturn = false;
     if (engine.pendingKeys > 0) {
       requestFrame();
       return;
