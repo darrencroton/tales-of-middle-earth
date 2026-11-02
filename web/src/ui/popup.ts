@@ -19,6 +19,8 @@ export interface PopTab {
   label: string;
   icon?: string;
   active: boolean;
+  /** Why its view cannot be shown now: the tab stays, dimmed, and a tap says so instead. */
+  unavailable?: string | null;
   run(): void;
 }
 
@@ -71,7 +73,7 @@ export function defaultItem(body: HTMLElement, footer: HTMLElement): HTMLElement
 }
 
 function tabButton(tab: PopTab): HTMLButtonElement {
-  const button = el('button', `pop-tab${tab.active ? ' selected' : ''}`);
+  const button = el('button', `pop-tab${tab.active ? ' selected' : ''}${tab.unavailable ? ' unavailable' : ''}`);
   button.type = 'button';
   button.dataset.nav = '';
   if (tab.id) button.dataset.tab = tab.id;
@@ -79,8 +81,10 @@ function tabButton(tab: PopTab): HTMLButtonElement {
   button.setAttribute('aria-selected', String(tab.active));
   if (tab.icon) button.append(el('span', 'pop-icon', iconText(tab.icon)));
   button.append(el('span', 'pop-label', tab.label));
+  if (tab.unavailable) button.setAttribute('aria-description', tab.unavailable);
   button.addEventListener('click', () => {
-    if (!tab.active) tab.run();
+    if (tab.unavailable) refusal(tab.unavailable);
+    else if (!tab.active) tab.run();
   });
   return button;
 }

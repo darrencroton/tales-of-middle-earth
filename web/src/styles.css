@@ -1707,7 +1707,9 @@ html.keyboard-open .tv-layer.panel {
 }
 
 .sheet-action.unavailable .pop-icon,
-.sheet-action.unavailable .pop-label {
+.sheet-action.unavailable .pop-label,
+.pop-tab.unavailable .pop-icon,
+.pop-tab.unavailable .pop-label {
   opacity: 0.45;
 }
 

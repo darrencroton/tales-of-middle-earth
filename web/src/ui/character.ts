@@ -272,7 +272,14 @@ export class CharacterPanel {
   }
 
   private tabs(): SheetTab[] {
-    return TABS.map(([tab, label, icon]) => ({ id: tab, label, icon, active: tab === this.want, run: () => this.select(tab) }));
+    return TABS.map(([tab, label, icon]) => ({
+      id: tab,
+      label,
+      icon,
+      active: tab === this.want,
+      unavailable: tab === 'summary' ? null : this.api.refusal(COMMANDS[tab]),
+      run: () => this.select(tab),
+    }));
   }
 
   private onClose(): void {
