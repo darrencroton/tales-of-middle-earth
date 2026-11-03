@@ -49,13 +49,13 @@ export class RecentStore {
   }
 }
 
-interface MagicHandlers {
+export interface MagicHandlers {
   /** Casts a spell or uses a power (and remembers it); `anyway` tries a spell the hero lacks the mana for. */
   run(entry: RecentAction, anyway?: boolean): void;
 }
 
-/** A school spell as a tappable row (one tap casts it when it can be cast), with ⓘ for its card. */
-function magicSpellRow(api: GameApi, spell: SpellInfo, handlers: MagicHandlers): HTMLElement {
+/** A school spell as a tappable row (one tap casts it when it can be cast), with ⓘ for its card: in the Magic panel and on the god's card. */
+export function magicSpellRow(api: GameApi, spell: SpellInfo, handlers: MagicHandlers): HTMLElement {
   const row = el('div', 'spell-line');
   const button = spellRow(spell, `${spell.ok ? '' : 'unavailable'}${spell.short ? ' short' : ''}`);
   const open = () => openSpellCard(api, spell, (s, anyway) => handlers.run({ kind: 'spell', name: s.name }, anyway));

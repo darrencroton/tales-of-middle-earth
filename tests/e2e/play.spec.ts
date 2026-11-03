@@ -623,6 +623,8 @@ test('dragging pans the map without moving, long press describes (an altar\'s go
   await page.locator('#hud .hud-player').click();
   await page.locator('.sheet .row-button', { hasText: 'Eru Ilúvatar' }).click();
   await expect(god.locator('.sheet-subtitle')).toContainText('not praying');
+  /* Without his book, the card says where his prayers are written. */
+  await expect(god.locator('.god-note', { hasText: 'You carry no book of these prayers' })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();

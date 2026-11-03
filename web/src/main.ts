@@ -1663,7 +1663,6 @@ const abilities = new Abilities({
   runMacro,
   watchAttempt: () => conversation.watchAttempt(),
   send,
-  showToast: (text) => showToast(text),
   alwaysPickup,
 });
 const look = new LookCard({

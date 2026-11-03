@@ -26,7 +26,7 @@ Map (toolbar, HUD, gestures)
 │   ├── More ──────────────── Commands             panel: commands by intent (section 7)   depth 1
 │   │   ├── Look ──────────── look mode: banner + look card on the map (each creature and item → its card)
 │   │   ├── Magic, Powers ─── the Magic panel on that tab, in the same frame (Back returns to Commands)
-│   │   ├── Kneel at altar ── the altar's god card (Worship; Melkor's offerings for his own; why not, else)
+│   │   ├── Kneel at altar ── the altar's god card (Worship; Melkor's offerings for his own; why not, else; a follower's prayers carried)
 │   │   ├── item commands (Drink potion, Read scroll…) → tome2 item prompt (TermView panel, tabs)
 │   │   ├── Talk, Give, Steal, doors → direction card on the map (Give then asks which item)
 │   │   ├── while controlling a creature: Release creature, Creature powers (its powers, TermView panel),
@@ -34,7 +34,7 @@ Map (toolbar, HUD, gestures)
 │   │   └── Game options ──── tome2 screen; Commands reopens after
 │   └── Menu ──────────────── Menu                 menu                                     depth 1
 │       ├── Character ─────── Character            panel, tabs Summary · Skills · Abilities · Full sheet
-│       │                     ├── Faith (Summary) ─ God card over Character (gifts lit; Pray · Stop praying)
+│       │                     ├── Faith (Summary) ─ God card over Character (gifts lit; prayers carried, a tap prays; Pray · Stop praying)
 │       │                     └── Save skill points? card over Character (Discard · Save)
 │       ├── Messages ──────── Messages             panel (log, newest at the foot)
 │       ├── Knowledge ─────── Knowledge            menu                                     depth 2
@@ -54,7 +54,7 @@ Map (toolbar, HUD, gestures)
 │   ├── hero name ─────────── Character (or Fallen hero after death)
 │   ├── quest chip ────────── Quest                card (what the level's quest asks, how many are slain);
 │   │                         while it lasts the map's edges glow violet and its foes' chips are marked ⚑
-│   ├── Praying chip ──────── God                  card (gifts lit as the hero has them; Stop praying)
+│   ├── Praying chip ──────── God                  card (gifts lit as the hero has them; prayers carried, a tap prays; Stop praying)
 │   ├── creature / item chip ─ Creature / Item     card (a creature beside you, not hostile: Talk · Give)
 │   └── message log ───────── Messages             panel
 ├── Map tap / long-press ───── travel (a neutral creature beside you: talk) / look card (terrain; an altar's god, each creature and item there → its card)

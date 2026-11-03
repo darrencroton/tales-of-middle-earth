@@ -18,7 +18,6 @@ interface AbilitiesDeps {
   watchAttempt(): void;
   /** Sends keys as the player's own. */
   send(keys: number[]): void;
-  showToast(text: string): void;
   alwaysPickup(): boolean;
 }
 
@@ -122,11 +121,11 @@ export class Abilities {
       api.refuse(why);
       return;
     }
-    api.sheets.closeAll();
     if (!api.snapshot()?.atCommand) {
-      this.deps.showToast(NOT_NOW);
+      api.refuse(NOT_NOW);
       return;
     }
+    api.sheets.closeAll();
     if (entry.kind === 'item') {
       const item = recentItem(entry, api.engine.inventory()?.pack ?? []);
       const action = item ? recentItemAction(entry, item) : null;
