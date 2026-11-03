@@ -212,7 +212,7 @@ export const HELP: readonly HelpGroup[] = [
         keywords: 'town bree gondolin lothlorien minas anor khazad-dum wilderness world map journey travel',
         body: [
           'Every tale begins in *Bree*. Other towns lie far away: *Gondolin*, *Lothlórien*, *Minas Anor* and *Khazad-dûm*, each with shops of its own.',
-          'Beyond a town, the land goes on area by area: walk off the edge of one into the next. Explore walks a town for you, but the wilds are yours to wander, and finding dungeon entrances and secret places is yours too.',
+          'Beyond a town, the land goes on area by area: walk off the edge of one into the next. Explore walks a town for you, but the wilds are yours to wander, and finding dungeon entrances and secret places is up to you.',
           '*World map* (in More) lifts you up to see the whole land, where each step covers a great distance and time flies. *Walk here* sets you down again. The wilds between the towns are perilous: Explore walks the world map only from level 20.',
           'Carry plenty of food and spare light before a long journey.',
         ],

@@ -455,7 +455,7 @@ export function contextualAction(ctx: ActionContext): Action {
   }
   if (ctx.talk) return { id: 'talk', label: 'Talk', icon: '❝', effect: { kind: 'native', view: 'talk' }, primary: true };
   const [label, icon] = EXPLORE_LABELS[ctx.exploreNext ?? 'explore'];
-  return { id: 'explore', label, icon, effect: { kind: 'native', view: 'explore' }, primary: true, ...unavailable(ctx.exploreRefusal) };
+  return { id: 'explore', label, icon, effect: { kind: 'native', view: 'explore' }, primary: !ctx.exploreRefusal, ...unavailable(ctx.exploreRefusal) };
 }
 
 function unavailable(why: string | null | undefined): Pick<Action, 'unavailable'> {

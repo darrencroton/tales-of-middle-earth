@@ -702,8 +702,8 @@ test('Explore in town never leads to a way down, and the quest level below Bree 
   await expect(page.locator('#toolbar [data-action="inventory"]')).toBeVisible();
   const first = async () => (await page.evaluate(() => window.__tome!.actions()))[0];
   const stop = async () => (await page.evaluate(() => window.__tome!.exploreStop()))?.kind;
-  for (let i = 0; i < 30 && (await stop()) !== 'none'; i++) {
-    expect(await stop()).not.toBe('exit');
+  for (let i = 0, next = await stop(); i < 30 && next !== 'none'; i++, next = await stop()) {
+    expect(next).not.toBe('exit');
     await dismissMore(page);
     await waitAtCommand(page);
     const attack = page.locator('#toolbar [data-action="attack"]');
@@ -717,6 +717,7 @@ test('Explore in town never leads to a way down, and the quest level below Bree 
   }
   /* Explored, the town offers no way off it: Explore stays Explore. */
   await expect(page.locator('#toolbar [data-action="explore"]')).toContainText('Explore');
+  await expect(page.locator('#toolbar [data-action="explore"]')).not.toHaveClass(/unavailable/);
 
   /* The way down is the player's to find: travel to it, and its button takes it. */
   const stairs = await findFeature(page, /down staircase|quest down/i, { known: true });

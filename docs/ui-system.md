@@ -248,11 +248,11 @@ left by what the player means to do. It leaves out what the hero cannot ever
 do (Pray without a god, Engrave without runes, Steal without the skill) and
 dims, saying why, what cannot be done here: a fountain's or altar's command
 off one, Rest on a Void Jumpgate, Talk, Give and Steal with no one beside the
-hero, on the world map whatever tome2 ignores there, Explore on the land
-outside a town or quest (and on the toolbar) and on the world map below
-level 20, and every command of the hero's own while they control another
-creature (Fire Golem, Mind Steal). What Talk or Give brings out is shown in a card named for the
-creature.
+hero, on the world map whatever tome2 ignores there, Explore (here and on
+the toolbar) on the land outside a town or quest and on the world map
+below level 20, and every command of the hero's own while they control
+another creature (Fire Golem, Mind Steal). What Talk or Give brings out is
+shown in a card named for the creature.
 
 While the hero controls a creature, tome2 gives it the walking keys, `m`
 (its powers, or letting it go), `i`, `d` and `,` (its pack), and ignores the

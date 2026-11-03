@@ -604,7 +604,7 @@ describe('actions', () => {
     assert.equal(exploreRefusal({ where: 'dungeon', town: false, level: 1, controlling: true }), CONTROLLING);
     const base = { mode: 'map' as const, atCommand: true, underfoot: 'grass', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
     const dimmed = contextualAction({ ...base, exploreRefusal: 'Explore works in towns and dungeons.' });
-    assert.deepEqual([dimmed.id, dimmed.unavailable], ['explore', 'Explore works in towns and dungeons.']);
+    assert.deepEqual([dimmed.id, dimmed.unavailable, dimmed.primary], ['explore', 'Explore works in towns and dungeons.', false]);
     const explore = commandGroups({ ...COMMANDS, where: 'worldMap', level: 5 }).flatMap((g) => g.commands).find((c) => c.native === 'explore');
     assert.match(explore?.unavailable ?? '', /perilous/);
   });
