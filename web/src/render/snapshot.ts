@@ -190,6 +190,8 @@ export interface PlayerState {
   closed?: 'astral' | 'held' | 'none';
   /** The quest of the level the hero is on, when it holds one. */
   quest?: LevelQuest;
+  /** Every fixed quest the hero has taken, done or failed (a random quest is the level's own `quest`). */
+  quests?: QuestStatus[];
   /** Name of the town or land walked on the surface (set by the frontend from the place). */
   area?: string;
   /** The surface area is a town (set by the frontend from the place). */
@@ -227,6 +229,25 @@ export interface LevelQuest {
   lines?: string[];
   /** A random quest: who holds the princess or took the sword, how many, and how many are slain. */
   random?: { kind: 'princess' | 'sword'; foe: string; count: number; slain: number };
+}
+
+/** A fixed quest the hero has taken, and how it stands. */
+export type QuestStatus = Pick<LevelQuest, 'id' | 'state' | 'title'>;
+
+/** A quest in the hero's quest log (`web_quests_json`). */
+export interface LoggedQuest extends LevelQuest {
+  /** A fixed quest's danger level, as tome2's quest log gives it. */
+  level?: number;
+  /** 1 when the quest is done and its reward is still to be claimed (tome2's "Completed - Unrewarded"). */
+  unclaimed?: number;
+  /** A random quest's depth. */
+  depth?: number;
+}
+
+/** The hero's quest log: every fixed quest taken, done or failed, and the random quests done (with this level's own while under way). */
+export interface QuestLog {
+  quests: LoggedQuest[];
+  random: LoggedQuest[];
 }
 
 /** One entry of the Hall of Fame (tome2's scores file). */

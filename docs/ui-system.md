@@ -38,7 +38,8 @@ Map (toolbar, HUD, gestures)
 │       │                     └── Save skill points? card over Character (Discard · Save)
 │       ├── Messages ──────── Messages             panel (log, newest at the foot)
 │       ├── Knowledge ─────── Knowledge            menu                                     depth 2
-│       │                     └── list ─────────── reader (TermView panel); Knowledge reopens after
+│       │                     ├── list ─────────── reader (TermView panel); Knowledge reopens after
+│       │                     └── Quests ───────── Quests panel (under way, completed, failed) → quest card
 │       ├── Save game (toast)
 │       ├── Save and quit ─── confirmation         card
 │       ├── Settings ──────── Settings             panel                                    depth 2
@@ -257,6 +258,7 @@ Four things look different and never stand for each other:
 | Items → item → look → back | Item replaced the list; ✕ closed both | Item card floats over the list; ✕ / tap outside returns to the list at the same row |
 | Items → item → Drop → how many → Drop | Each step replaced the last | Question floats over the item over the list; Drop closes all and shows the map |
 | Menu → Knowledge → Unique creatures → back | Paged list, Page down × 6, Done | One scrolling list (119 rows); ✕ returns to Knowledge with Unique creatures highlighted |
+| Menu → Knowledge → Quests | tome2's quest status: quests under way only (and "Completed - Unrewarded"); a finished quest vanished | Our quest log: Under way, Completed (a reward still to claim in gold), Failed, random quests done by depth; each row opens the quest's card |
 | Help | tome2's 80×24 help files under More, How to play under Menu; none on the title | One Help (Menu, title): search or browse our own topics; ‹ returns with the search kept; the original manual from Help, which reopens after |
 | Cast → spell ⓘ → Cast | Spell description filled the pop-up | Spell card over Magic; Cast casts, ✕ returns to Magic |
 | Map → creature chip → close | Tall pop-up | Card the size of the recall |

@@ -36,7 +36,7 @@ import { openMagic, RecentStore } from './ui/magic.ts';
 import { CastWatcher, fireMacro, hasMagic, hasPowers, recentLabel } from './play/recent.ts';
 import { NOT_NOW, type GameApi } from './ui/api.ts';
 import { titleName } from './play/text.ts';
-import { GameFeel, READ_MS, type FeelEvent } from './feel.ts';
+import { GameFeel, READ_MS, type QuestEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
 import { INVEN_WIELD, itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { ABANDONED, hasFallen } from './play/memorial.ts';
@@ -574,7 +574,7 @@ function noteLeadShown(): void {
  * arrival what the quest asks. `led`: tome2 asked something meanwhile and
  * showed those words with it (a princess's reward), so the banner suffices.
  */
-let questMoment: { event: Extract<FeelEvent, { kind: 'quest' | 'questEnd' }>; quest: LevelQuest; since: GameState | null; led: boolean } | null = null;
+let questMoment: { event: QuestEvent; quest: LevelQuest; since: GameState | null; led: boolean } | null = null;
 
 const CARD_KINDS = new Set<PromptKind>(['yesno', 'quantity', 'text', 'direction', 'aim', 'choice']);
 
@@ -803,12 +803,14 @@ function refresh(): void {
     memory.level.explore.noteGold(state.objects ?? [], snap);
     hud.update(state, snap.py, snap.px);
     if (state.player) {
-      const quest = state.player.quest ?? previous?.player?.quest;
-      for (const event of feel.update(state.player, (e) => (e.kind === 'quest' || e.kind === 'questEnd') && !!quest)) {
+      for (const event of feel.update(state.player)) {
         if (questMoment) feel.play(questMoment.event);
+        if (event.kind === 'questEnd' && !event.failed) audio.cue('quest');
         /* tome2 can ask (a princess's reward) before it marks the quest done, and with Pause its -more- has shown every word. */
         const led = ledSince || leadShown || (event.kind === 'questEnd' && settings.messages !== 'flow');
-        questMoment = { event: event as NonNullable<typeof questMoment>['event'], quest: quest!, since: lastCommandState, led };
+        const quest: LevelQuest =
+          event.kind === 'quest' ? state.player.quest! : { id: event.id, state: event.failed ? 'failed' : 'done', title: event.title };
+        questMoment = { event, quest, since: lastCommandState, led };
       }
       feel.setQuest(
         state.player.quest?.state === 'active' && !state.player.dead,
@@ -858,14 +860,15 @@ const SCENE_NOISE = /^You have no more /;
  * Tells a held quest moment once tome2 waits for a command on the map with
  * nothing else open: a quest's first arrival as a card with the scene and
  * what it asks; its end as a card with the scene, unless tome2 already showed
- * those words with a question, or said nothing. Otherwise, and on a return
- * to a quest's level, its banner.
+ * those words (with a question, in a creature's words or a building's reply:
+ * it waits for a conversation to be told), or said nothing. Otherwise, and on
+ * a return to a quest's level, its banner.
  */
 function tellQuestMoment(): void {
   const moment = questMoment;
   const snap = game.lastSnap;
   const state = game.lastState;
-  if (!moment || !snap || !state || mode !== 'map' || !snap.atCommand || journeys.travelling || macros.running || sheets.isOpen || promptCard.visible) return;
+  if (!moment || !snap || !state || mode !== 'map' || !snap.atCommand || journeys.travelling || macros.running || conversation.talking || sheets.isOpen || promptCard.visible) return;
   questMoment = null;
   const { event, quest } = moment;
   const arrival = event.kind === 'quest';
@@ -1689,6 +1692,7 @@ const shop = new ShopController({
   steals: () => abilities.steals(),
   redraw,
   restoreEngineSettings: applyEngineSettings,
+  replied: noteLeadShown,
 });
 const heroes = new Heroes({
   engine,
@@ -1751,6 +1755,7 @@ const conversation = new Conversation({
   hideToast,
   showToast,
   openMessage: (title, text) => openMessage(sheets, title, text),
+  told: noteLeadShown,
 });
 const backup = new Backup({ engine, sheets, input: importFile });
 const updates = new Updates(() => director.atTitle);

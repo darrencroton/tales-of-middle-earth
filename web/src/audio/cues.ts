@@ -178,7 +178,6 @@ export function messageCues(text: string): Cue[] {
   if (/\b(ground|cave|dungeon|earth) (shakes|rumbles|quakes)|earthquake/i.test(text)) return [{ id: 'rumble' }];
   if (/^You (feel yourself yanked|float gently|rise up through|sink through|deep breath)|teleport/i.test(text)) return [{ id: 'teleport' }];
   if (/^You are (getting )?(hungry|weak)\b/.test(text)) return [{ id: 'hungry' }];
-  if (/\bquest\b.*\b(completed|done|finished)\b|^You have completed/i.test(text)) return [{ id: 'quest' }];
   return [];
 }
 

@@ -531,7 +531,7 @@ export const HELP: readonly HelpGroup[] = [
       {
         id: 'quests',
         title: 'Quests',
-        icon: '!',
+        icon: '⚑',
         summary: 'People who need your help.',
         keywords: 'quest quests random reward task mission princess sword adventurer talk chat speak give offer hobbit merton melinda maggot mushrooms',
         body: [
@@ -540,7 +540,8 @@ export const HELP: readonly HelpGroup[] = [
           '*Random quests* wait at set depths of the main dungeons (the Barrow-Downs, Mirkwood, Mordor and Angband), spread evenly from the top to the bottom: with 20 of them, one about every five levels. Each is a captured princess, guarded by creatures stronger than the depth, or an adventurer whose sword a band of them took.',
           'When you arrive on a quest level a banner names the quest, its music plays, and the edges of the map glow violet for as long as it waits, more strongly while the creatures it is after are in sight. A ⚑ chip below your hero counts the creatures slain when there are several (tap it to read what the quest asks), and those creatures are marked ⚑ among the others. Leave the level and the quest is there on your next visit, begun again.',
           'Save the princess and she offers a choice of rewards; win back the sword and the adventurer offers to join you, or teaches you a skill.',
-          'Menu → Knowledge → *Quests* lists what you have taken on, and what is done.',
+          'A quest that asks you to clear its level is done only when the last of those creatures falls, wherever it hides: until then the ⚑ chip stays and the edges glow. Whenever a quest ends, on its level, as you leave it or far from it, a card tells you: *Quest complete* or *Quest failed*.',
+          'Menu → Knowledge → *Quests* lists the quests under way, then those completed (*Reward waiting* while a reward is still to be claimed from whoever asked it of you) and those failed.',
         ],
         see: ['welcome', 'knowledge'],
       },
