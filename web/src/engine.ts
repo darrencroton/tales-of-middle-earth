@@ -9,6 +9,7 @@ import {
   type InventoryState,
   type LevelSnapshot,
   type GridState,
+  type ItemInfo,
   type MonsterRecall,
   type ScoreEntry,
   type SkillTable,
@@ -50,8 +51,8 @@ interface EmscriptenModule {
   _web_state_json(maxMessages: number): number;
   _web_grid_json(y: number, x: number): number;
   _web_inventory_json(): number;
-  _web_object_desc(item: number): number;
-  _web_store_object_desc(index: number): number;
+  _web_object_info(item: number): number;
+  _web_store_object_info(index: number): number;
   _web_store_json(): number;
   _web_monster_desc(index: number): number;
   _web_character_json(): number;
@@ -281,18 +282,16 @@ export class Engine {
     }
   }
 
-  /** What the player knows about an item: inventory index, or minus the floor object index. */
-  objectDescription(item: number): string {
-    const mod = this.running();
-    if (!mod) return '';
-    return mod.UTF8ToString(mod._web_object_desc(item));
+  /** What the player knows about an item: inventory index, or minus the floor object index; null when there is none. */
+  itemInfo(item: number): ItemInfo | null {
+    const json = this.callJson<ItemInfo>((mod) => mod._web_object_info(item));
+    return json && Object.keys(json).length ? json : null;
   }
 
-  /** Description of an item on the shelf of the shop the player is in, by stock position. */
-  storeObjectDescription(index: number): string {
-    const mod = this.running();
-    if (!mod) return '';
-    return mod.UTF8ToString(mod._web_store_object_desc(index));
+  /** What the player knows about an item on the shelf of the shop they are in, by stock position. */
+  storeItemInfo(index: number): ItemInfo | null {
+    const json = this.callJson<ItemInfo>((mod) => mod._web_store_object_info(index));
+    return json && Object.keys(json).length ? json : null;
   }
 
   /** The shop (or home) the player stands in or at: its stock, commands and what it takes of what they carry; null elsewhere. */

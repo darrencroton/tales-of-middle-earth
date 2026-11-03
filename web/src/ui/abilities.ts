@@ -7,7 +7,7 @@ import type { Macro } from '../play/macro.ts';
 import { hasActivePowers, hasMagic, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentMagicMacro, thenAim, type CastWatcher, type RecentAction } from '../play/recent.ts';
 import { isHostile, type SpellState } from '../render/snapshot.ts';
 import { NOT_NOW, type GameApi } from './api.ts';
-import { openSpell } from './magic.ts';
+import { openSpellCard } from './inspect.ts';
 
 interface AbilitiesDeps {
   api: GameApi;
@@ -149,11 +149,9 @@ export class Abilities {
     const { api } = this.deps;
     const spell = this.spells()?.books.flatMap((b) => b.spells).find((s) => s.name === name);
     if (!spell) return false;
-    openSpell(api, spell, {
-      run: () => {
-        api.sheets.closeAll();
-        this.deps.send(keyCodes(key));
-      },
+    openSpellCard(api, spell, () => {
+      api.sheets.closeAll();
+      this.deps.send(keyCodes(key));
     });
     return true;
   }

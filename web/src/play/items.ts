@@ -89,8 +89,6 @@ export function useAction(tval: number): ItemAction | null {
       return { id: 'use', label: 'Use', command: 'u' };
     case TV.ROD_MAIN:
       return { id: 'zap', label: 'Zap', command: 'z' };
-    case TV.BOOK:
-      return { id: 'browse', label: 'Browse', command: 'b', reading: true };
     case TV.FLASK:
       return { id: 'refuel', label: 'Refuel light', command: 'F' };
     case TV.SHOT:
@@ -137,7 +135,6 @@ export function itemActions(item: ItemState, place: ItemPlace): ItemAction[] {
   }
 
   if (use) actions.push({ ...use, primary: true });
-  if (item.tval === TV.BOOK) actions.push({ id: 'cast', label: 'Cast a spell', command: 'm' });
   if (corpse) actions.push(corpse);
   if (item.wear) {
     const weapon = WEAPON_TVALS.has(item.tval);
@@ -163,6 +160,30 @@ export function itemLetter(index: number): string {
 }
 
 const ITEM_PROMPT = /^\((Inven|Equip|Floor):/;
+
+/**
+ * The item a row of tome2's item prompt stands for: in the pack and the
+ * equipment its letter is its place (`itemLetter`); on the floor letters
+ * count only the items offered, so it is found by its name.
+ */
+export function listedItem(inventory: InventoryState, prompt: string, letter: string, label: string): { item: ItemState; place: ItemPlace } | null {
+  const mode = ITEM_PROMPT.exec(prompt)?.[1];
+  const offset = letter.charCodeAt(0) - 97;
+  if (mode === 'Inven') {
+    const item = inventory.pack.find((i) => i.i === offset);
+    return item ? { item, place: 'pack' } : null;
+  }
+  if (mode === 'Equip') {
+    const slot = inventory.equip.find((e) => e.i === INVEN_WIELD + offset && !e.empty && !!e.name);
+    return slot ? { item: slot as ItemState, place: 'equip' } : null;
+  }
+  if (mode === 'Floor') {
+    const name = label.trim().toLowerCase();
+    const item = inventory.floor.find((i) => i.name.toLowerCase() === name);
+    return item ? { item, place: 'floor' } : null;
+  }
+  return null;
+}
 
 /** Letter of the listed item whose name matches (exactly, else by prefix), from a menu shown on screen; floor lists carry no symbol. */
 export function findListedItem(screen: string, name: string): string | null {

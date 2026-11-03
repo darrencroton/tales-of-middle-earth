@@ -1,12 +1,12 @@
-import type { Engine } from '../engine.ts';
 import { inPlace } from '../hud.ts';
 import { DEEDS, type Chronicle, type Deed } from '../play/chronicle.ts';
 import { returnsText } from '../play/lives.ts';
 import { ABANDONED, dayOf, skillValue, type Memorial, type MemorialFoe, type MemorialItem, type MemorialLine } from '../play/memorial.ts';
 import { readableColour } from '../render/colour.ts';
 import { FEET_PER_LEVEL, type ScoreEntry } from '../render/snapshot.ts';
-import { description, titleName } from './api.ts';
+import { titleName } from './api.ts';
 import { count, el, glyph, iconText, section, signed, stat } from './dom.ts';
+import { itemDetails, recallParagraphs } from './inspect.ts';
 import type { SheetContent, Sheets, SheetTab } from './sheet.ts';
 
 type FellAt = Pick<Memorial, 'feet' | 'place' | 'quest'>;
@@ -110,7 +110,7 @@ function tabBar(current: FallenTab, open: (tab: FallenTab) => void, tabs: Fallen
 }
 
 function openItem(sheets: Sheets, item: MemorialItem): void {
-  const body = description(item.text, 'Nothing more was known of it.');
+  const body = itemDetails(item.info, { fallback: 'Nothing more was known of it.' });
   sheets.open({
     title: titleName(item.name),
     subtitle: item.slot ? `Worn · ${item.slot}` : 'Carried',
@@ -119,32 +119,6 @@ function openItem(sheets: Sheets, item: MemorialItem): void {
     kind: 'card',
     className: 'sheet-item',
   });
-}
-
-/** A creature's recall from tome2 as coloured runs (tome2's white, colour 1, left to the text colour). */
-export function recallLines(engine: Engine, palette: readonly string[], id: number): MemorialLine[] {
-  return (engine.monsterRecall(id)?.text ?? []).map(([attr, text]) => ({ text, colour: attr === 1 ? '' : (palette[attr] ?? '') }));
-}
-
-/** A creature's recall as paragraphs (tome2 breaks them with newlines), or `empty` when nothing is known. */
-export function recallParagraphs(lines: readonly MemorialLine[], empty: string): HTMLElement {
-  const body = el('div', 'description recall');
-  let paragraph = el('p');
-  for (const run of lines) {
-    run.text.split('\n').forEach((piece, i) => {
-      if (i > 0 && paragraph.textContent?.trim()) {
-        body.append(paragraph);
-        paragraph = el('p');
-      }
-      if (!piece) return;
-      const span = el('span', undefined, piece);
-      if (run.colour) span.style.color = readableColour(run.colour);
-      paragraph.append(span);
-    });
-  }
-  if (paragraph.textContent?.trim()) body.append(paragraph);
-  if (!body.childElementCount) body.append(el('p', 'muted', empty));
-  return body;
 }
 
 export function openFoe(sheets: Sheets, foe: MemorialFoe): void {

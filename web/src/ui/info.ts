@@ -1,10 +1,10 @@
 import { directionDigit } from '../play/prompts.ts';
 import type { MapPoint } from '../render/map.ts';
 import { isAlly, isHostile, isNeutral, type LevelQuest, type MonsterState, type ObjectState } from '../render/snapshot.ts';
-import { capitalise, description, itemGlyph, NOT_NOW, titleName, type GameApi } from './api.ts';
+import { capitalise, itemGlyph, NOT_NOW, titleName, type GameApi } from './api.ts';
 import { el, fraction, iconText, leadIn } from './dom.ts';
 import { openItem } from './inventory.ts';
-import { recallLines, recallParagraphs } from './memorial.ts';
+import { itemCardBody, recallLines, recallParagraphs } from './inspect.ts';
 import type { SheetAction, Sheets } from './sheet.ts';
 
 function healthWord(hp: number, maxhp: number): string {
@@ -109,7 +109,7 @@ export function openFloorObject(api: GameApi, o: ObjectState): void {
           },
         },
       ];
-  body.append(description(api.engine.objectDescription(-o.id), 'You know nothing more about this item yet.'));
+  body.append(itemCardBody(api, api.engine.itemInfo(-o.id), 'You know nothing more about this item yet.'));
   api.sheets.open({
     title: titleName(o.name),
     subtitle: 'On the floor',

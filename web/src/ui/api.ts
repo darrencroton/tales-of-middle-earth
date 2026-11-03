@@ -4,7 +4,7 @@ import type { RecentAction } from '../play/recent.ts';
 import type { MapPoint } from '../render/map.ts';
 import type { GameState, LevelSnapshot } from '../render/snapshot.ts';
 import type { QuantityQuestion } from './menus.ts';
-import { el, glyph } from './dom.ts';
+import { glyph } from './dom.ts';
 import type { Sheets } from './sheet.ts';
 
 /** What the native views need from the game. */
@@ -40,28 +40,14 @@ export interface GameApi {
   /** The hero's recently used spells, powers and items, newest first. */
   recent(): readonly RecentAction[];
   remember(entry: RecentAction): void;
+  /** Casts a spell or uses a power and remembers it (`anyway`: a spell short of mana, at tome2's greater risk). */
+  cast(entry: RecentAction, anyway?: boolean): void;
 }
 
 export { capitalise, titleName } from '../play/text.ts';
 
 /** Why a command cannot be had while tome2 is busy with something else. */
 export const NOT_NOW = 'Finish what you are doing first.';
-
-/** Paragraphs from tome2's item description (wrapped at 75 columns). */
-export function descriptionParagraphs(text: string): string[] {
-  return text
-    .split(/\n\s*\n/)
-    .map((p) => p.replace(/\s*\n\s*/g, ' ').trim())
-    .filter(Boolean);
-}
-
-/** tome2's item description (or paragraphs already split from one) as a block, or `fallback` when there is none. */
-export function description(text: string | readonly string[], fallback: string): HTMLElement {
-  const box = el('div', 'description');
-  const paragraphs = typeof text === 'string' ? descriptionParagraphs(text) : text;
-  for (const p of paragraphs.length ? paragraphs : [fallback]) box.append(el('p', undefined, p));
-  return box;
-}
 
 /** The map symbol of an item or creature, in its palette colour. */
 export function itemGlyph(api: GameApi, thing: { ch: number; attr: number }): HTMLElement {

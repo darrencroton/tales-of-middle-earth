@@ -4341,6 +4341,85 @@ html.keyboard-tight .prompt-card.text .card-title {
   color: var(--fg);
 }
 
+.spell-row:disabled {
+  cursor: default;
+}
+
+/* Inspecting an item, spell or power: lore, figures, properties by group, notes. */
+.inspect {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.inspect > .sheet-section {
+  margin: 0;
+}
+
+.inspect .description p:last-child {
+  margin-bottom: 0;
+}
+
+.inspect .lore p {
+  font-family: var(--serif);
+  font-style: italic;
+}
+
+.inspect .lore .set {
+  color: #8fd88a;
+  font-style: normal;
+}
+
+.inspect .found {
+  font-size: var(--fs-small);
+  font-style: italic;
+}
+
+.damage-grid {
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+}
+
+.stat.wide {
+  grid-column: 1 / -1;
+}
+
+.stat.wide .stat-value {
+  font-family: inherit;
+  text-align: right;
+}
+
+.prop-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.prop-chip {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: var(--panel-raised);
+  font-size: var(--fs-small);
+}
+
+.prop-chip.good {
+  border-color: rgb(127 207 122 / 0.5);
+  color: #9fdf9a;
+}
+
+.prop-chip.bad {
+  border-color: rgb(224 122 106 / 0.6);
+  color: #e88a7a;
+}
+
+.inspect-notes {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+
 /* Short landscape screens: pop-ups keep the same layout with slimmer header and footer, so more of their content shows. */
 @media (max-height: 500px) {
   .sheet-header {

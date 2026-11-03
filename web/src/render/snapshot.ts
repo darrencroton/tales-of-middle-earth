@@ -577,18 +577,38 @@ export interface BirthData {
   classes: BirthEntry[];
 }
 
-export interface SpellInfo {
+/** What tome2's spell list says of a spell, for books and devices alike. */
+export interface SpellBasics {
   name: string;
   school: string;
-  /** Spell level, or -1 when it cannot be cast at all. */
+  /** The hero's spell level (a device's, by Magic Device skill), or -1 when they cannot cast it at all. */
   level: number;
-  mana: number;
   fail: number;
+  /** What it does now, in tome2's short form ("dam 25 rad 2"). */
   info: string;
+  desc: string;
+  /** The skill level it needs (a device's: Magic Device level from which its level rises). */
+  skill: number;
+  /** Castable while blind or confused. */
+  blind: number;
+  confused: number;
+}
+
+/** A spell in a book, as the hero would cast it. */
+export interface SpellInfo extends SpellBasics {
+  mana: number;
   ok: number;
   /** Castable but costs more mana than the player has. */
   short: number;
-  desc: string;
+  /** The casting stat (0 Strength … 5 Charisma). */
+  stat: number;
+  /** Its mana at spell level 1 and 50. */
+  manaMin: number;
+  manaMax: number;
+  /** Cast with piety rather than mana. */
+  piety: number;
+  /** The instrument power this music needs, when the instrument has less; 0 otherwise. */
+  instrument: number;
 }
 
 interface SpellBook {
@@ -607,6 +627,9 @@ export interface PowerInfo {
   from: string;
   level: number;
   cost: number;
+  /** The stat tested when it is used (0 Strength … 5 Charisma), and how hard the test is. */
+  stat: number;
+  diff: number;
 }
 
 export interface SpellState {
@@ -616,6 +639,42 @@ export interface SpellState {
   powers: { label: string; mkey: number }[];
   /** tome2's powers (its "use a power" menu): from race, class, form, gear, corruptions and others, in order. */
   bonus: PowerInfo[];
+}
+
+/** One property of a known item, grouped as object_out_desc describes it; `value` for a bonus (with its unit). */
+export interface ItemProp {
+  group: 'stat' | 'attack' | 'immune' | 'resist' | 'sustain' | 'ability' | 'drawback';
+  label: string;
+  value?: number;
+  unit?: string;
+}
+
+/** Average damage a turn (melee, with the blows) or a shot or throw, against each kind of creature it treats differently. */
+export interface ItemDamage {
+  blows?: number;
+  rows: { against: string; damage: string }[];
+}
+
+/** What the hero knows of an item, as tome2's examining tells it (web_object_info); empty when there is no such item. */
+export interface ItemInfo {
+  known?: number;
+  kind?: string;
+  lore?: string[];
+  set?: string;
+  props?: ItemProp[];
+  activation?: string;
+  worn?: number;
+  power?: string;
+  melee?: ItemDamage;
+  /** With the launcher wielded; a boomerang's is `thrown`. */
+  missile?: ItemDamage;
+  thrown?: ItemDamage;
+  breaks?: number;
+  explosion?: string;
+  recall?: [number, string][];
+  device?: SpellBasics;
+  spells?: SpellInfo[];
+  found?: string;
 }
 
 export interface MonsterRecall {

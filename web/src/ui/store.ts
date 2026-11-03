@@ -3,7 +3,8 @@ import { itemActions, itemMacro, SLOT_NAMES, type ItemAction, type ItemPlace } f
 import { type Macro, type MacroScreen } from '../play/macro.ts';
 import { STORE_ACTION, type InventoryState, type ItemState, type StockItem, type StoreCommand, type StoreOffer, type StoreState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
-import { capitalise, description, itemGlyph, pounds, titleName } from './api.ts';
+import { capitalise, itemGlyph, pounds, titleName } from './api.ts';
+import { itemCardBody } from './inspect.ts';
 import { el, section, stepper } from './dom.ts';
 import { relabelAction } from './popup.ts';
 import type { SheetAction } from './sheet.ts';
@@ -255,7 +256,7 @@ function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: 
   if (amount) body.append(amount.element);
   const short = verb && shop && most === 0 ? `You have ${store.gold} gold: not enough for one.` : null;
   if (short) body.append(el('p', 'shop-short', short));
-  body.append(description(api.engine.storeObjectDescription(item.i), 'Nothing more is known about it until you own it.'));
+  body.append(itemCardBody(api, api.engine.storeItemInfo(item.i), 'Nothing more is known about it until you own it.'));
   const subtitle = shop
     ? [`${item.price} gold each`, item.number > 1 ? `${item.number} for sale` : '', pounds(item.weight)].filter(Boolean).join(' · ')
     : [store.home ? 'In your home' : 'On show', item.number > 1 ? `${item.number} here` : '', pounds(item.weight)].filter(Boolean).join(' · ');
@@ -339,7 +340,7 @@ function openOfferItem(api: GameApi, store: StoreState, model: ShopModel, item: 
     });
   }
   if (store.museum && !why) body.append(el('p', 'muted', 'A donation cannot be taken back.'));
-  body.append(description(api.engine.objectDescription(item.i), 'You know nothing more about this item yet.'));
+  body.append(itemCardBody(api, api.engine.itemInfo(item.i), 'You know nothing more about this item yet.'));
   for (const action of itemActions(item, place).filter((a) => IN_SHOP.has(a.id))) actions.push(shopItemAction(api, action, item, place, handlers));
   const where = place === 'equip' ? (SLOT_NAMES[(item as ItemState & { part?: number }).part ?? 0] ?? 'Worn') : 'In your pack';
   const price = shop && !why ? `${offer?.price ?? 0} gold each` : '';

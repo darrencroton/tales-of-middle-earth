@@ -2,7 +2,8 @@ import { displayName, hasMagic, hasPowers, magicArts, recentKey, recentLabel, re
 import { stripArticle } from '../play/text.ts';
 import type { PowerInfo, SpellInfo, SpellState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
-import { el, iconText, section } from './dom.ts';
+import { el, iconText, section, stat } from './dom.ts';
+import { openSpellCard, powerNotes, spellRow } from './inspect.ts';
 
 const STORAGE_KEY = 'tome2mobile.recent.v1';
 
@@ -53,56 +54,21 @@ interface MagicHandlers {
   run(entry: RecentAction, anyway?: boolean): void;
 }
 
-function spellMeta(spell: SpellInfo): string {
-  if (spell.level < 0) return 'Not yet learnt';
-  return [`Level ${spell.level}`, `${spell.mana} mana`, `${spell.fail}% fail`].join(' · ');
-}
-
-/** A school spell as a tappable row: name, school, cost and what it does. */
-function spellRow(api: GameApi, spell: SpellInfo, handlers: MagicHandlers): HTMLElement {
+/** A school spell as a tappable row (one tap casts it when it can be cast), with ⓘ for its card. */
+function magicSpellRow(api: GameApi, spell: SpellInfo, handlers: MagicHandlers): HTMLElement {
   const row = el('div', 'spell-line');
-  const button = el('button', `spell-row${spell.ok ? '' : ' unavailable'}${spell.short ? ' short' : ''}`);
-  button.type = 'button';
-  button.dataset.nav = '';
-  button.dataset.key = `spell-${spell.name}`;
-  const main = el('span', 'spell-main');
-  main.append(el('span', 'spell-name', spell.name), el('span', 'spell-school', spell.school));
-  const meta = el('span', 'spell-meta');
-  meta.append(el('span', undefined, spellMeta(spell)));
-  if (spell.info) meta.append(el('span', 'spell-info', spell.info));
-  button.append(main, meta);
+  const button = spellRow(spell, `${spell.ok ? '' : 'unavailable'}${spell.short ? ' short' : ''}`);
+  const open = () => openSpellCard(api, spell, (s, anyway) => handlers.run({ kind: 'spell', name: s.name }, anyway));
   button.addEventListener('click', () => {
     if (spell.ok) handlers.run({ kind: 'spell', name: spell.name });
-    else openSpell(api, spell, handlers);
+    else open();
   });
   const info = el('button', 'tv-info', 'i');
   info.type = 'button';
   info.setAttribute('aria-label', `About ${spell.name}`);
-  info.addEventListener('click', () => openSpell(api, spell, handlers));
+  info.addEventListener('click', open);
   row.append(button, info);
   return row;
-}
-
-/** What a spell does, with Cast at the foot. */
-export function openSpell(api: GameApi, spell: SpellInfo, handlers: MagicHandlers): void {
-  const body = el('div', 'description');
-  body.append(el('p', 'muted', spellMeta(spell) + (spell.info ? ` · ${spell.info}` : '')));
-  body.append(el('p', undefined, spell.desc || 'No more is known of this spell.'));
-  if (!spell.ok) body.append(el('p', 'muted', spell.level < 0 ? 'Your skills are not yet high enough to cast it.' : 'You cannot cast it from this book.'));
-  else if (spell.short) body.append(el('p', 'muted', 'You do not have the mana for it. You may try anyway, at a much greater risk of failure.'));
-  const entry: RecentAction = { kind: 'spell', name: spell.name };
-  api.sheets.open({
-    title: spell.name,
-    subtitle: spell.school,
-    body,
-    kind: 'card',
-    className: 'sheet-item',
-    actions: !spell.ok
-      ? []
-      : spell.short
-        ? [{ id: 'cast', label: 'Try anyway', run: () => handlers.run(entry, true) }]
-        : [{ id: 'cast', label: `Cast ${spell.name}`, primary: true, run: () => handlers.run(entry) }],
-  });
 }
 
 function recentDetail(entry: RecentAction, spells: SpellState | null): string {
@@ -156,12 +122,23 @@ function powerMeta(power: PowerInfo): string {
   return [power.level > 1 ? `Level ${power.level}` : '', power.cost ? `${power.cost} mana` : ''].filter(Boolean).join(' · ');
 }
 
-/** What a power does and what grants it, with Use at the foot. */
+/** What a power does, what grants it and what it takes, with Use at the foot. */
 function openPower(api: GameApi, power: PowerInfo, handlers: MagicHandlers): void {
-  const body = el('div', 'description');
-  const meta = [powerMeta(power), power.source === 'gear' ? `From ${grantor(power)}` : ''].filter(Boolean).join(' · ');
-  if (meta) body.append(el('p', 'muted', meta));
-  body.append(el('p', undefined, power.desc || 'No more is known of this power.'));
+  const body = el('div', 'inspect');
+  const grid = el('div', 'stat-grid');
+  if (power.level > 1) grid.append(stat('Level', String(power.level), (api.state()?.player?.lev ?? 0) < power.level ? 'bad' : ''));
+  grid.append(stat('Mana', power.cost ? String(power.cost) : 'None'));
+  body.append(grid);
+  const text = el('div', 'description');
+  text.append(el('p', undefined, power.desc || 'No more is known of this power.'));
+  if (power.source === 'gear') text.append(el('p', 'muted', `From ${grantor(power)}.`));
+  body.append(text);
+  const notes = powerNotes(power);
+  if (notes.length) {
+    const list = el('ul', 'inspect-notes');
+    for (const note of notes) list.append(el('li', undefined, note));
+    body.append(list);
+  }
   api.sheets.open({
     title: displayName(power.name),
     subtitle: powerHeading(power),
@@ -227,7 +204,7 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
   if (current === 'magic') {
     for (const book of spells?.books ?? []) {
       const list = el('div', 'menu-list');
-      for (const spell of book.spells) list.append(spellRow(api, spell, handlers));
+      for (const spell of book.spells) list.append(magicSpellRow(api, spell, handlers));
       body.append(section(book.name.replace(/^(a|an|the) /i, ''), list));
     }
     const arts = magicArts(spells);
