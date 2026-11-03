@@ -1,4 +1,4 @@
-import type { PlayerState } from '../render/snapshot.ts';
+import { placeName, type PlayerState, type Whereabouts } from '../render/snapshot.ts';
 import { JsonFile, type EmscriptenFS } from '../saves.ts';
 
 const FILE = 'adventurers.json';
@@ -22,9 +22,9 @@ export function heroLine(a: Pick<Adventurer, 'level' | 'race' | 'cls'>): string 
 }
 
 /** Where a hero is, in a few words: a dungeon and its level, the town or land they walk, or the world map. */
-export function placeLine(player: Pick<PlayerState, 'depth' | 'dungeon' | 'wild' | 'area'>): string {
-  if (player.depth > 0) return `${player.dungeon}, level ${player.depth}`;
-  return player.area || (player.wild ? 'World map' : 'Middle-earth');
+export function placeLine(player: Whereabouts): string {
+  if (player.depth > 0) return `${placeName(player)}, level ${player.depth}`;
+  return placeName(player) || 'Middle-earth';
 }
 
 /** The adventurer as the game shows them now. */

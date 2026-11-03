@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { cellAppearance, rememberedColour, type AppearanceContext } from '../../web/src/render/appearance.ts';
 import { BASE_ATTR_COLOURS, cellHash, desaturate, luminance, mix, toCss } from '../../web/src/render/colour.ts';
+import { drawnEffects } from '../../web/src/render/effects.ts';
 import { computeEmissive, falloff, hasLineOfLight, lightAt, type LightFrame } from '../../web/src/render/lighting.ts';
 import { FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials, classifyFeature, type FeatureInfo } from '../../web/src/render/materials.ts';
 import {
@@ -11,6 +12,8 @@ import {
   CAVE_PLIT,
   CAVE_SEEN,
   LAYER_MONSTER,
+  LAYER_MULTI_HUED,
+  LAYER_TERRAIN,
   type LevelSnapshot,
 } from '../../web/src/render/snapshot.ts';
 import { snapshot } from './fixtures.ts';
@@ -166,6 +169,56 @@ describe('cell appearance', () => {
     const cell = cellAppearance(context(snap), 0, 0)!;
     assert.equal(cell.glyph, 'o');
     assert.ok(cell.fg[0] > 0.5, 'monster colour survives darkness');
+  });
+});
+
+describe('drawn effects', () => {
+  const COLS = 20;
+  const ROWS = 4;
+  const code = (c: string) => c.charCodeAt(0);
+  /** A 4x2 level drawn at row 1, column 13 of a 20x4 terminal, as tome2 shows it. */
+  const setup = (over: Partial<LevelSnapshot> = {}) => {
+    const snap = snapshot(4, 2, over);
+    const screen = { chars: new Uint8Array(COLS * ROWS).fill(0x20), attrs: new Uint8Array(COLS * ROWS) };
+    for (let y = 0; y < snap.height; y++) {
+      for (let x = 0; x < snap.width; x++) {
+        const i = (y + snap.rowMap) * COLS + x + snap.colMap;
+        screen.chars[i] = snap.glyph[y * snap.width + x];
+        screen.attrs[i] = snap.attr[y * snap.width + x];
+      }
+    }
+    const base = { chars: screen.chars.slice(), attrs: screen.attrs.slice() };
+    const at = (x: number, y: number) => (y + snap.rowMap) * COLS + x + snap.colMap;
+    return { snap, screen, base, at };
+  };
+
+  it('finds a bolt drawn over the map', () => {
+    const { snap, screen, base, at } = setup();
+    screen.chars[at(2, 1)] = code('*');
+    screen.attrs[at(2, 1)] = 6;
+    assert.deepEqual(drawnEffects(snap, screen, base, COLS, ROWS), [{ x: 2, y: 1, ch: code('*'), attr: 6 }]);
+  });
+
+  it('ignores grids tome2 only redrew: shimmering water, a creature that moved', () => {
+    const { snap, screen, base, at } = setup();
+    snap.glyph.fill(code('~'));
+    snap.layer.fill(LAYER_TERRAIN | LAYER_MULTI_HUED);
+    for (let x = 0; x < 4; x++) {
+      screen.chars[at(x, 0)] = base.chars[at(x, 0)] = code('~');
+      screen.attrs[at(x, 0)] = 14;
+    }
+    snap.glyph[snap.width + 1] = code('o');
+    snap.layer[snap.width + 1] = LAYER_MONSTER;
+    screen.chars[at(1, 1)] = code('o');
+    assert.deepEqual(drawnEffects(snap, screen, base, COLS, ROWS), []);
+  });
+
+  it('ignores the symbols hallucination gives creatures', () => {
+    const { snap, screen, base, at } = setup({ hallucinating: true });
+    snap.glyph[1] = code('k');
+    snap.layer[1] = LAYER_MONSTER;
+    screen.chars[at(1, 0)] = code('D');
+    assert.deepEqual(drawnEffects(snap, screen, base, COLS, ROWS), []);
   });
 });
 

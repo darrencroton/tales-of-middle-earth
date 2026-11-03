@@ -197,6 +197,15 @@ export function feetOf(player: Pick<PlayerState, 'depth' | 'wild'>): number {
   return player.wild ? 0 : player.depth * FEET_PER_LEVEL;
 }
 
+export type Whereabouts = Pick<PlayerState, 'depth' | 'dungeon' | 'wild' | 'area' | 'quest'>;
+
+/** Where the hero is: the dungeon (or a quest's own level), the town or land they walk, or the world map; empty while the land is not yet named. */
+export function placeName(player: Whereabouts): string {
+  /* A quest's own level belongs to no dungeon, whatever tome2 keeps as the dungeon. */
+  if (player.depth > 0) return player.quest?.own ? player.quest.title : player.dungeon;
+  return player.area || (player.wild ? 'World map' : '');
+}
+
 /** A quest a level holds. */
 export interface LevelQuest {
   /** tome2's quest index (the random quests share one). */

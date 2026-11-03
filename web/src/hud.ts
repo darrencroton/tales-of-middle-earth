@@ -2,7 +2,7 @@ import type { Place } from './audio/places.ts';
 import { readableColour } from './render/colour.ts';
 import { bar, el, fraction, iconText } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
-import { feetOf, hasWords, isAlly, isHostile, isNotice, type GameState, type LevelQuest, type MessageState, type MonsterState, type ObjectState, type PlayerState } from './render/snapshot.ts';
+import { feetOf, hasWords, isAlly, isHostile, isNotice, type GameState, type LevelQuest, type MessageState, type MonsterState, type ObjectState, type PlayerState, placeName, type Whereabouts } from './render/snapshot.ts';
 
 interface TextSegment {
   text: string;
@@ -45,30 +45,33 @@ const STATUS_LABELS: [string, string][] = [
   ['slow', 'Slowed'],
 ];
 
-export function depthLabel(player: Pick<PlayerState, 'depth' | 'dungeon' | 'wild' | 'area' | 'quest'>): string {
-  if (player.depth === 0 && player.area) return player.area;
-  if (player.wild) return 'World map';
-  if (player.depth === 0) return 'Town';
-  /* A quest's own level belongs to no dungeon, whatever tome2 keeps as the dungeon. */
-  const place = player.quest?.own ? player.quest.title : player.dungeon;
-  return `${place} · ${feetOf(player)} ft (L${player.depth})`;
+export function depthLabel(player: Whereabouts): string {
+  if (player.depth > 0) return `${placeName(player)} · ${feetOf(player)} ft (L${player.depth})`;
+  return placeName(player) || 'Town';
 }
 
-/* Wilderness terrain (wf_info.txt names) as places. */
-const TERRAIN_NAMES: Readonly<Record<string, string>> = {
-  grass: 'Grasslands',
-  forest: 'Forest',
-  road: 'The road',
-  mountain: 'Mountains',
-  'high mountain': 'High mountains',
-  hill: 'Hills',
-  desert: 'Desert',
-  jungle: 'Jungle',
-  swamp: 'Marshes',
-  glacier: 'Glacier',
-  'shallow water': 'Shallows',
-  'deep water': 'Deep water',
+/* Wilderness terrain (wf_info.txt names) as places, and as where the hero is in a sentence. */
+const TERRAINS: Readonly<Record<string, readonly [name: string, where: string]>> = {
+  grass: ['Grasslands', 'in the grasslands'],
+  forest: ['Forest', 'in the forest'],
+  road: ['The road', 'on the road'],
+  mountain: ['Mountains', 'in the mountains'],
+  'high mountain': ['High mountains', 'in the high mountains'],
+  hill: ['Hills', 'in the hills'],
+  desert: ['Desert', 'in the desert'],
+  jungle: ['Jungle', 'in the jungle'],
+  swamp: ['Marshes', 'in the marshes'],
+  glacier: ['Glacier', 'on the glacier'],
+  'shallow water': ['Shallows', 'in the shallows'],
+  'deep water': ['Deep water', 'in deep water'],
 };
+
+const IN_PLACE = new Map<string, string>([...Object.values(TERRAINS), ['World map', 'on the world map'], ['The wilds', 'in the wilds']]);
+
+/** A place named by `placeName`, as where something happened: "in the shallows", "on the road", "in Bree", "in Mirkwood". */
+export function inPlace(place: string): string {
+  return IN_PLACE.get(place) ?? `in ${place}`;
+}
 
 /** What a surface place is called: the world map, a town, a quest, or the land around. Null underground. */
 export function areaName(place: Pick<Place, 'wild' | 'depth' | 'quest' | 'levelName' | 'town' | 'terrain'> | null): string | null {
@@ -79,7 +82,7 @@ export function areaName(place: Pick<Place, 'wild' | 'depth' | 'quest' | 'levelN
   const terrain = place.terrain.trim();
   if (place.town > 0) return terrain || 'Town';
   if (!terrain) return 'The wilds';
-  return TERRAIN_NAMES[terrain.toLowerCase()] ?? terrain.charAt(0).toUpperCase() + terrain.slice(1);
+  return TERRAINS[terrain.toLowerCase()]?.[0] ?? terrain.charAt(0).toUpperCase() + terrain.slice(1);
 }
 
 export function statusLabels(player: Pick<PlayerState, 'status' | 'food'>): string[] {

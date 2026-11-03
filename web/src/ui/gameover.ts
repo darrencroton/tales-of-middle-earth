@@ -147,7 +147,7 @@ export function openFameCard(sheets: Sheets, hero: FallenHero & { entry: ScoreEn
   const fact = (label: string, value: string | null | undefined) => {
     if (value) facts.append(el('dt', undefined, label), el('dd', undefined, value));
   };
-  fact('The end', fateText(e));
+  fact('The end', fateText(e, m));
   fact('When', m ? longDate(m.date) : scoreDate(e.day));
   if (m) fact('Days', String(dayOf(m.turn)));
   fact('Deepest', e.maxDepth > 0 ? `${count(e.maxDepth * FEET_PER_LEVEL)} ft` : 'The surface');
@@ -200,6 +200,7 @@ export function heroEntry(entries: readonly ScoreEntry[], hero: { name: string; 
 export function hallOfFameElements(
   entries: readonly ScoreEntry[],
   highlight: number,
+  memorialOf: (entry: ScoreEntry) => Memorial | null,
   onOpen: (entry: ScoreEntry, index: number) => void,
 ): HTMLElement[] {
   if (entries.length === 0) {
@@ -216,7 +217,7 @@ export function hallOfFameElements(
     main.append(
       el('span', 'fame-name', entry.name),
       el('span', 'fame-who', `${who ? `${who} · ` : ''}Level ${entry.level}`),
-      el('span', 'fame-fate', fateText(entry)),
+      el('span', 'fame-fate', fateText(entry, memorialOf(entry))),
     );
     row.append(
       el('span', 'fame-rank', String(i + 1)),
