@@ -44,6 +44,8 @@
 #include "wilderness_type_info.hpp"
 #include "xtra2.hpp"
 
+#include "json.hpp"
+
 #include <emscripten.h>
 
 #include <algorithm>
@@ -51,7 +53,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -245,7 +246,7 @@ void go_to_safety()
 {
 	int const town = haven();
 	int x, y;
-	town_area(town, &x, &y);
+	if (!town_area(town, &x, &y)) return;
 	if (dun_level && !p_ptr->inside_quest && !(game->edit_data.d_info[dungeon_type].flags & DF_NO_RECALL)) p_ptr->recall_dungeon = dungeon_type;
 	dungeon_type = DUNGEON_WILDERNESS;
 	dun_level = 0;
@@ -392,17 +393,6 @@ bool die_hook(void *, void *, void *)
 	return true;
 }
 
-/* A JSON string of plain text: tome2's names hold no quotes, backslashes or control characters, and any that came would be dropped. */
-void json_text(std::string &out, std::string_view s)
-{
-	out += '"';
-	for (char c : s)
-	{
-		if (c != '"' && c != '\\' && static_cast<unsigned char>(c) >= 0x20) out += c;
-	}
-	out += '"';
-}
-
 } // namespace
 
 /* Whether the hero plays in Adventure mode, with three lives (else Roguelike, with one). */
@@ -430,22 +420,16 @@ void web_adventure_tick()
  * `haven` names the town, or `closed` says why there is none: `astral`,
  * `held` or `none`), `rescue` (tome2 itself saves them) or `final`.
  */
-void json_adventure(std::string &out)
+void json_adventure(JsonWriter &w)
 {
-	out += "\"adventure\":";
-	out += adventure.on ? '1' : '0';
-	out += ",\"lives\":" + std::to_string(lives_left()) + ',';
+	w.field("adventure", adventure.on ? 1 : 0);
+	w.field("lives", lives_left());
 	if (!death) return;
 	bool const choice = returning || may_return();
-	out += "\"fate\":";
-	json_text(out, choice ? "choice" : (alive && !accepted && rescued()) ? "rescue" : "final");
-	out += ',';
+	w.field("fate", choice ? "choice" : (alive && !accepted && rescued()) ? "rescue" : "final");
 	if (!choice) return;
 	char const *closed = safety_closed();
-	json_text(out, closed ? "closed" : "haven");
-	out += ':';
-	json_text(out, closed ? closed : town_name(haven()));
-	out += ',';
+	w.key(closed ? "closed" : "haven").value(closed ? closed : town_name(haven()));
 }
 
 extern "C" {

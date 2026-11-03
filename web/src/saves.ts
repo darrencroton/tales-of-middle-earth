@@ -14,6 +14,45 @@ export interface EmscriptenFS {
   syncfs(populate: boolean, callback: (err: unknown) => void): void;
 }
 
+/** A JSON file in the engine's storage, read through `sanitise`, which also gives the value for a file missing or unreadable. */
+export class JsonFile<T> {
+  private readonly name: string;
+  private readonly sanitise: (raw: unknown) => T;
+  private readonly what: string;
+  private fs: EmscriptenFS | null = null;
+  private path = '';
+
+  /** `what` names the file in the warning when it cannot be written. */
+  constructor(name: string, sanitise: (raw: unknown) => T, what: string) {
+    this.name = name;
+    this.sanitise = sanitise;
+    this.what = what;
+  }
+
+  /** Reads the file from the directory `root`, which later saves write to. */
+  load(fs: EmscriptenFS, root: string): T {
+    this.fs = fs;
+    this.path = `${root}/${this.name}`;
+    try {
+      return this.sanitise(JSON.parse(new TextDecoder().decode(fs.readFile(this.path))));
+    } catch {
+      return this.sanitise(null);
+    }
+  }
+
+  /** Writes `data`; false when it could not be written or nothing has been loaded. */
+  save(data: T): boolean {
+    if (!this.fs) return false;
+    try {
+      this.fs.writeFile(this.path, new TextEncoder().encode(JSON.stringify(data)));
+      return true;
+    } catch (err) {
+      console.warn(`Could not write the ${this.what}`, err);
+      return false;
+    }
+  }
+}
+
 export interface SaveFile {
   path: string;
   data: Uint8Array;

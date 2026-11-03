@@ -14,7 +14,7 @@ export type HelpBlock =
   | { tip: string };
 
 /** Topics built from the game's own data rather than written here. */
-export type HelpSpecial = 'races' | 'manual';
+type HelpSpecial = 'races' | 'manual';
 
 export interface HelpTopic {
   id: string;
@@ -30,7 +30,7 @@ export interface HelpTopic {
   special?: HelpSpecial;
 }
 
-export interface HelpGroup {
+interface HelpGroup {
   title: string;
   topics: HelpTopic[];
 }

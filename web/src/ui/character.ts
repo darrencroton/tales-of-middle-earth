@@ -1,27 +1,17 @@
 import { depthLabel } from '../hud.ts';
 import { LIVES } from '../play/lives.ts';
-import type { PlayerState, SkillEntry } from '../render/snapshot.ts';
+import { FEET_PER_LEVEL, type PlayerState, type SkillEntry } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { KEY_BACKSLASH, KEY_ENTER, KEY_ESCAPE, keyCodes } from '../input/keys.ts';
 import { fullSheetElements, sheetPageKeys, SHEET_PAGES, type FullSheet } from './charsheet.ts';
-import { bar, el, section } from './dom.ts';
+import { bar, el, section, signed, stat } from './dom.ts';
 import { openMenu } from './menus.ts';
 import type { MessageBox } from './msgbox.ts';
 import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
 import { abilityTableElements, cursorKeys, raiseRefusal, selectedAbility, selectedSkill, skillTableElements, type AbilitiesScreen, type SkillsScreen } from './skills.ts';
 
-function stat(label: string, value: string, className = ''): HTMLElement {
-  const node = el('div', `stat ${className}`.trim());
-  node.append(el('span', 'stat-label', label), el('span', 'stat-value', value));
-  return node;
-}
-
-function signed(n: number): string {
-  return `${n >= 0 ? '+' : ''}${n}`;
-}
-
 /** The character sheet's views: the summary, and tome2's skills, abilities and full sheet. */
-export type CharacterTab = 'summary' | 'skills' | 'abilities' | 'sheet';
+type CharacterTab = 'summary' | 'skills' | 'abilities' | 'sheet';
 
 const TABS: [CharacterTab, string, string][] = [
   ['summary', 'Summary', '@'],
@@ -43,13 +33,11 @@ export interface CharacterScreen {
   atCommand: boolean;
 }
 
-export interface CharacterDeps {
+interface CharacterDeps {
   /** Sends keys to tome2 without closing any sheet. */
   sendKeys(keys: number[]): void;
   /** Name of an equipment letter on the full sheet. */
   source(letter: string): string;
-  /** Says why something cannot be done now. */
-  refuse(text: string): void;
   /** Asks for `step` to run now if tome2 is already waiting for a key. */
   poke(): void;
 }
@@ -128,7 +116,7 @@ export class CharacterPanel {
     }
     if (!this.api.state()?.player) return;
     const why = tab === 'summary' ? null : this.api.refusal(COMMANDS[tab]);
-    if (why) this.deps.refuse(why);
+    if (why) this.api.refuse(why);
     this.want = why ? 'summary' : tab;
     this.requested = null;
     this.renderedKey = '';
@@ -158,7 +146,7 @@ export class CharacterPanel {
     if (tab !== 'summary') {
       const why = !this.shown && !this.api.snapshot()?.atCommand ? 'Finish what you are doing first.' : this.api.refusal(COMMANDS[tab]);
       if (why) {
-        this.deps.refuse(why);
+        this.api.refuse(why);
         return;
       }
     }
@@ -388,7 +376,7 @@ export class CharacterPanel {
     if (e.key === 'ArrowRight' || (skills && e.key === 'ArrowLeft')) {
       const step = e.key === 'ArrowRight' ? 1 : -1;
       const why = !skills ? this.learnRefusal() : step > 0 ? this.raiseRefusal() : this.lowerRefusal();
-      if (why) this.deps.refuse(why);
+      if (why) this.api.refuse(why);
       else if (skills) this.move(step);
       else this.deps.sendKeys(keyCodes('6'));
       return true;
@@ -557,7 +545,7 @@ function summaryBody(api: GameApi): HTMLElement | null {
     stat('Next level', sheet.nextExp > 0 ? String(sheet.nextExp) : '—'),
     stat('Gold', `${player.au}`),
     stat('Location', depthLabel(player)),
-    stat('Deepest', `${sheet.maxDepth * 50} ft`),
+    stat('Deepest', `${sheet.maxDepth * FEET_PER_LEVEL} ft`),
     stat('God', sheet.god),
     stat('Infravision', `${sheet.infra} ft`),
     stat('Lives', player.adventure ? `${player.lives ?? 0} of ${LIVES}` : 'One (Roguelike)'),

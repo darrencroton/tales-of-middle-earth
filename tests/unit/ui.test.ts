@@ -16,24 +16,18 @@ import { descriptionParagraphs } from '../../web/src/ui/api.ts';
 import { affordable, drawnBlocks, offerMacro, refusal, serviceReply, shelfMacro, shelfPage, shopModel, trades } from '../../web/src/ui/store.ts';
 import { cursorKeys, parseAbilities, parseSkills, raiseRefusal, selectedAbility, selectedSkill } from '../../web/src/ui/skills.ts';
 import { flagLabel, parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
-import { fateText, heroEntry } from '../../web/src/ui/gameover.ts';
+import { heroEntry } from '../../web/src/ui/gameover.ts';
+import { fateText } from '../../web/src/ui/memorial.ts';
 import { findMessageBox } from '../../web/src/ui/msgbox.ts';
 import { cleanPrompt } from '../../web/src/ui/prompttext.ts';
 import { type TermRow } from '../../web/src/ui/termparse.ts';
+import { termRow } from './fixtures.ts';
 
 const codes = (s: string) => [...s].map((c) => c.charCodeAt(0));
 const screen = (prompt: string, atCommand = false, text = prompt): MacroScreen => ({ prompt, screen: text, atCommand });
 
-function rows(lines: string[], colours: Record<number, [number, number, number][]> = {}): TermRow[] {
-  return Array.from({ length: 24 }, (_, y) => {
-    const chars = new Uint8Array(80).fill(0x20);
-    const attrs = new Uint8Array(80).fill(1);
-    const text = lines[y] ?? '';
-    for (let i = 0; i < text.length && i < 80; i++) chars[i] = text.charCodeAt(i);
-    for (const [from, to, attr] of colours[y] ?? []) attrs.fill(attr, from, to);
-    return { chars, attrs };
-  });
-}
+const rows = (lines: string[], colours: Record<number, [number, number, number][]> = {}): TermRow[] =>
+  Array.from({ length: 24 }, (_, y) => termRow(lines[y] ?? '', { colours: colours[y] }));
 
 function item(extra: Partial<ItemState>): ItemState {
   return { i: 0, name: 'a thing', tval: 0, number: 1, weight: 10, ch: 63, attr: 1, wear: 0, activate: 0, ins: '', ...extra };

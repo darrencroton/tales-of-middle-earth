@@ -27,13 +27,13 @@ export function openSoundtrack(sheets: Sheets, audio: GameAudio): void {
   for (const group of GROUPS) {
     const themes = THEME_LIST.filter((t) => t.group === group);
     if (!themes.length) continue;
-    const list = el('div', 'soundtrack-list');
+    const list = el('div', 'menu-list');
     for (const theme of themes) {
       const row = el('button', 'row-button soundtrack-row');
       row.type = 'button';
       row.dataset.nav = '';
       row.append(el('span', 'row-icon', iconText('♪')));
-      const text = el('span', 'soundtrack-text');
+      const text = el('span', 'row-text');
       text.append(el('span', 'row-label', theme.name), el('span', 'soundtrack-mood', moodLine(theme.mood)));
       row.append(text);
       row.addEventListener('click', () => {

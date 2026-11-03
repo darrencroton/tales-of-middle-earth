@@ -4,6 +4,7 @@ import type { RecentAction } from '../play/recent.ts';
 import type { MapPoint } from '../render/map.ts';
 import type { GameState, LevelSnapshot } from '../render/snapshot.ts';
 import type { QuantityQuestion } from './menus.ts';
+import { el, glyph } from './dom.ts';
 import type { Sheets } from './sheet.ts';
 
 /** What the native views need from the game. */
@@ -56,6 +57,19 @@ export function descriptionParagraphs(text: string): string[] {
     .split(/\n\s*\n/)
     .map((p) => p.replace(/\s*\n\s*/g, ' ').trim())
     .filter(Boolean);
+}
+
+/** tome2's item description (or paragraphs already split from one) as a block, or `fallback` when there is none. */
+export function description(text: string | readonly string[], fallback: string): HTMLElement {
+  const box = el('div', 'description');
+  const paragraphs = typeof text === 'string' ? descriptionParagraphs(text) : text;
+  for (const p of paragraphs.length ? paragraphs : [fallback]) box.append(el('p', undefined, p));
+  return box;
+}
+
+/** The map symbol of an item or creature, in its palette colour. */
+export function itemGlyph(api: GameApi, thing: { ch: number; attr: number }): HTMLElement {
+  return glyph(thing.ch, api.palette()[thing.attr] ?? '#fff');
 }
 
 export function pounds(tenths: number): string {

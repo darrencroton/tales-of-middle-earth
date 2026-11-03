@@ -1,4 +1,4 @@
-import type { MessageState, MonsterState, PlayerState } from '../render/snapshot.ts';
+import { feetOf, type MessageState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
 import { returns } from './lives.ts';
 
 /** A creature the hero has slain. */
@@ -135,7 +135,7 @@ export function record(c: Chronicle, career: Career, player: Progress, slain: re
     }
     if (!c.mightiest || s.level > c.mightiest.level) c.mightiest = { name: s.name, level: s.level };
   }
-  const feet = player.wild ? 0 : player.depth * 50;
+  const feet = feetOf(player);
   if (feet > c.deepestFeet) {
     c.deepestFeet = feet;
     c.deepestPlace = player.dungeon;

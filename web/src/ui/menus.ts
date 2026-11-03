@@ -1,5 +1,5 @@
 import { readableColour } from '../render/colour.ts';
-import { isNotice, type MessageState } from '../render/snapshot.ts';
+import { hasWords, isNotice, type MessageState } from '../render/snapshot.ts';
 import type { VolumeLevel } from '../audio/audio.ts';
 import type { ExplorePace } from '../play/actions.ts';
 import {
@@ -17,7 +17,7 @@ import { runElements } from './adventure.ts';
 import type { RunOptions } from '../flow/runoptions.ts';
 import type { Sheets } from './sheet.ts';
 
-export interface MenuItem {
+interface MenuItem {
   label: string;
   icon: string;
   hint?: string;
@@ -186,7 +186,7 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
 export function openHistory(sheets: Sheets, messages: readonly MessageState[], palette: readonly string[]): void {
   const list = el('ol', 'history');
   for (const m of [...messages].reverse()) {
-    if (!/[^\s=\-_~*]/.test(m.text)) continue;
+    if (!hasWords(m.text)) continue;
     const item = el('li', isNotice(m) ? 'notice' : undefined, m.text);
     if (m.color !== 1 && !isNotice(m)) item.style.color = readableColour(palette[m.color] ?? '');
     list.append(item);

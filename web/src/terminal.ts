@@ -1,7 +1,7 @@
 import type { RGB } from './render/colour.ts';
 
-export const DEFAULT_COLS = 80;
-export const DEFAULT_ROWS = 24;
+const DEFAULT_COLS = 80;
+const DEFAULT_ROWS = 24;
 
 const BLANK = 0x20;
 
@@ -30,7 +30,7 @@ export function rgbToCss(r: number, g: number, b: number): string {
   return `rgb(${clamp(r)}, ${clamp(g)}, ${clamp(b)})`;
 }
 
-export interface CellRect {
+interface CellRect {
   x0: number;
   y0: number;
   x1: number;
@@ -51,8 +51,6 @@ export class TerminalBuffer {
   readonly paletteRgb: RGB[];
   cursorX = -1;
   cursorY = -1;
-  private readonly dirty: Set<number> = new Set();
-  private bounds: CellRect | null = null;
 
   constructor(cols = DEFAULT_COLS, rows = DEFAULT_ROWS) {
     this.cols = cols;
@@ -67,7 +65,6 @@ export class TerminalBuffer {
       const [r, g, b] = BASE_PALETTE[i & 0x0f];
       return [r / 255, g / 255, b / 255] as RGB;
     });
-    this.markAllDirty();
   }
 
   drawText(x: number, y: number, attr: number, text: Uint8Array): void {
@@ -80,46 +77,23 @@ export class TerminalBuffer {
       const ch = text[col - x];
       this.chars[offset + col] = ch;
       this.attrs[offset + col] = attr;
-      if (ch !== BLANK && ch !== 0) this.extendBounds(col, y);
     }
     if (y === this.cursorY && this.cursorX >= start && this.cursorX < end) {
       this.cursorX = -1;
       this.cursorY = -1;
     }
-    this.dirty.add(y);
-  }
-
-  private extendBounds(x: number, y: number): void {
-    const b = this.bounds;
-    if (!b) {
-      this.bounds = { x0: x, y0: y, x1: x, y1: y };
-    } else {
-      b.x0 = Math.min(b.x0, x);
-      b.y0 = Math.min(b.y0, y);
-      b.x1 = Math.max(b.x1, x);
-      b.y1 = Math.max(b.y1, y);
-    }
-  }
-
-  /** Union of non-blank cells drawn since the last clear, or null when blank. */
-  contentBounds(): CellRect | null {
-    return this.bounds ? { ...this.bounds } : null;
   }
 
   setCursor(x: number, y: number): void {
-    if (this.cursorY >= 0) this.dirty.add(this.cursorY);
     this.cursorX = x;
     this.cursorY = y;
-    if (y >= 0 && y < this.rows) this.dirty.add(y);
   }
 
   clear(): void {
     this.chars.fill(BLANK);
     this.attrs.fill(0);
-    this.bounds = null;
     this.cursorX = -1;
     this.cursorY = -1;
-    this.markAllDirty();
   }
 
   setColour(index: number, r: number, g: number, b: number): void {
@@ -128,18 +102,7 @@ export class TerminalBuffer {
     if (this.palette[index] !== css) {
       this.palette[index] = css;
       this.paletteRgb[index] = [r / 255, g / 255, b / 255];
-      this.markAllDirty();
     }
-  }
-
-  markAllDirty(): void {
-    for (let y = 0; y < this.rows; y++) this.dirty.add(y);
-  }
-
-  takeDirtyRows(): number[] {
-    const rows = [...this.dirty].sort((a, b) => a - b);
-    this.dirty.clear();
-    return rows;
   }
 
   copy(): ScreenCopy {

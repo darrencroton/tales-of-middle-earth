@@ -21,7 +21,7 @@ import { syncToStorage, type EmscriptenFS } from './saves.ts';
 import { keyCodes } from './input/keys.ts';
 
 /** Functions the C++ frontend (engine/main-web.cc) calls through Module.tome. */
-export interface TomeBridge {
+interface TomeBridge {
   /** Set once saves were loaded; syncing is disabled while unset. */
   storagePath?: string;
   /** Set when loading saves from IndexedDB failed. */
@@ -93,9 +93,9 @@ interface ModuleOptions {
 
 type CreateModule = (options: ModuleOptions) => Promise<EmscriptenModule>;
 
-export type EngineState = 'idle' | 'loading' | 'running' | 'exited' | 'failed';
+type EngineState = 'idle' | 'loading' | 'running' | 'exited' | 'failed';
 
-export interface EngineEvents {
+interface EngineEvents {
   onStatus(text: string, fraction: number | null): void;
   onRunning(): void;
   onExit(message: string | null): void;
@@ -144,15 +144,13 @@ export class Engine {
 
   /** Copies the current level state out of the engine, or null before it runs. */
   snapshot(): LevelSnapshot | null {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return null;
+    const mod = this.running();
+    if (!mod) return null;
     return readSnapshot(mod, mod._web_snapshot());
   }
 
   gameState(maxMessages = 40): GameState | null {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return null;
-    return JSON.parse(mod.UTF8ToString(mod._web_state_json(maxMessages))) as GameState;
+    return this.callJson<GameState>((mod) => mod._web_state_json(maxMessages));
   }
 
   /** Where the player is (dungeon, town, quest, terrain), or null before a level exists. */
@@ -179,21 +177,20 @@ export class Engine {
 
   /** Removes an entry (by its place in `scores`) from the Hall of Fame; false when it could not be. */
   removeScore(index: number): boolean {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return false;
+    const mod = this.running();
+    if (!mod) return false;
     return mod._web_remove_score(index) !== 0;
   }
 
   /** Blanks screen rows `first` to `last`, so what tome2 draws there next can be told from what it drew before. */
   clearRows(first: number, last: number): void {
-    const mod = this.module;
-    if (mod && this.state === 'running') mod._web_clear_rows(first, last);
+    this.running()?._web_clear_rows(first, last);
   }
 
   /** Records the run just quit through tome2's quit command as abandoned, so the Hall of Fame keeps it; false otherwise. */
   markAbandoned(): boolean {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return false;
+    const mod = this.running();
+    if (!mod) return false;
     return mod._web_mark_abandoned() !== 0;
   }
 
@@ -211,29 +208,29 @@ export class Engine {
 
   /** Turns a birth option (by its place in `runOptions`) on or off; false once the game has begun. */
   setRunOption(index: number, on: boolean): boolean {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return false;
+    const mod = this.running();
+    if (!mod) return false;
     return mod._web_set_run_option(index, on ? 1 : 0) !== 0;
   }
 
   /** Draws the random quests again, this many; false once the game has begun. */
   setRandomQuests(count: number): boolean {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return false;
+    const mod = this.running();
+    if (!mod) return false;
     return mod._web_set_random_quests(count) !== 0;
   }
 
   /** Chooses Adventure mode (three lives) or Roguelike (one) for the hero being created; false once the game has begun. */
   setAdventure(on: boolean): boolean {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return false;
+    const mod = this.running();
+    if (!mod) return false;
     return mod._web_set_adventure(on ? 1 : 0) !== 0;
   }
 
   /** Names the hero being created, and their savefile; false once the game has begun or for a name tome2 refuses. */
   setHeroName(name: string): boolean {
-    const mod = this.module;
-    if (!mod || this.state !== 'running' || !name) return false;
+    const mod = this.running();
+    if (!mod || !name) return false;
     const bytes = Uint8Array.from(keyCodes(name));
     if (bytes.length !== name.length) return false;
     const ptr = mod._web_name_buffer(bytes.length);
@@ -261,8 +258,8 @@ export class Engine {
 
   /** While a tome2 screen covers the map, the screen it was drawn over (null when none is saved). */
   savedScreen(): ScreenCopy | null {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return null;
+    const mod = this.running();
+    if (!mod) return null;
     try {
       const ptr = mod._web_saved_screen();
       if (!ptr) return null;
@@ -286,15 +283,15 @@ export class Engine {
 
   /** What the player knows about an item: inventory index, or minus the floor object index. */
   objectDescription(item: number): string {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return '';
+    const mod = this.running();
+    if (!mod) return '';
     return mod.UTF8ToString(mod._web_object_desc(item));
   }
 
   /** Description of an item on the shelf of the shop the player is in, by stock position. */
   storeObjectDescription(index: number): string {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return '';
+    const mod = this.running();
+    if (!mod) return '';
     return mod.UTF8ToString(mod._web_store_object_desc(index));
   }
 
@@ -314,9 +311,14 @@ export class Engine {
     return json && json.name ? (json as MonsterRecall) : null;
   }
 
+  /** The module while the engine runs, else null. */
+  private running(): EmscriptenModule | null {
+    return this.state === 'running' ? this.module : null;
+  }
+
   private callJson<T>(call: (mod: EmscriptenModule) => number): T | null {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return null;
+    const mod = this.running();
+    if (!mod) return null;
     try {
       return JSON.parse(mod.UTF8ToString(call(mod))) as T;
     } catch (err) {
@@ -327,29 +329,23 @@ export class Engine {
 
   /** Lets messages flow past without -more- pauses (tome2's auto_more option). */
   setAutoMore(on: boolean): void {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return;
-    mod._web_set_auto_more(on ? 1 : 0);
+    this.running()?._web_set_auto_more(on ? 1 : 0);
   }
 
   /** How long each step of a bolt or blast is shown (tome2's delay_factor, 0..9: the cube in ms); 0 draws none. */
   setEffectDelay(factor: number): void {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return;
-    mod._web_set_effect_delay(factor);
+    this.running()?._web_set_effect_delay(factor);
   }
 
   /** Keeps dungeon levels as the hero left them, or makes them anew on each visit (and forgets kept ones). */
   setPersistentLevels(on: boolean): void {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return;
-    mod._web_set_persistent_levels(on ? 1 : 0);
+    this.running()?._web_set_persistent_levels(on ? 1 : 0);
   }
 
   /** Marks grids of the current level (y * width + x) as remembered; returns how many were new. */
   markKnown(cells: readonly number[]): number {
-    const mod = this.module;
-    if (!mod || this.state !== 'running' || cells.length === 0) return 0;
+    const mod = this.running();
+    if (!mod || cells.length === 0) return 0;
     try {
       const ptr = mod._web_mark_buffer(cells.length);
       mod.HEAP32.set(cells, ptr >> 2);
@@ -362,8 +358,8 @@ export class Engine {
 
   /** Adds a message of our own to tome2's message log (see `NOTICE_COLOUR`), in tome2's one byte a character. */
   addNotice(text: string): void {
-    const mod = this.module;
-    if (!mod || this.state !== 'running' || !text) return;
+    const mod = this.running();
+    if (!mod || !text) return;
     try {
       const bytes = Uint8Array.from(keyCodes(text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, '...').replace(/[–—]/g, '-')));
       const ptr = mod._web_notice_buffer(bytes.length);
@@ -375,9 +371,7 @@ export class Engine {
   }
 
   features(): FeatureInfo[] {
-    const mod = this.module;
-    if (!mod || this.state !== 'running') return [];
-    return JSON.parse(mod.UTF8ToString(mod._web_features_json())) as FeatureInfo[];
+    return this.callJson<FeatureInfo[]>((mod) => mod._web_features_json()) ?? [];
   }
 
   get savePath(): string | null {

@@ -24,7 +24,6 @@ export interface Place {
   levelQuest: number;
   levelName: string;
   terrain: string;
-  terrainIdx: number;
   night: number;
   /** 0 at the start; 1 once the Necromancer falls, 2 after Sauron, 3 after Morgoth. */
   stage: number;

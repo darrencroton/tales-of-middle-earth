@@ -13,7 +13,7 @@ export function iconText(symbol: string): string {
   return `${symbol}\uFE0E`;
 }
 
-export interface ButtonOptions {
+interface ButtonOptions {
   className?: string;
   icon?: string;
   hint?: string;
@@ -51,6 +51,23 @@ export function section(title: string, ...children: Node[]): HTMLElement {
   const node = el('section', 'sheet-section');
   node.append(el('h3', undefined, title), ...children);
   return node;
+}
+
+/** A labelled value in a stat grid (`className` adds a tone such as good or bad). */
+export function stat(label: string, value: string, className = ''): HTMLElement {
+  const node = el('div', `stat ${className}`.trim());
+  node.append(el('span', 'stat-label', label), el('span', 'stat-value', value));
+  return node;
+}
+
+/** A bonus with its sign: +3, -2, +0. */
+export function signed(n: number): string {
+  return `${n >= 0 ? '+' : ''}${n}`;
+}
+
+/** A whole number with thousands separators: 12,345. */
+export function count(n: number): string {
+  return n.toLocaleString('en-GB');
 }
 
 export function fraction(value: number, max: number): number {

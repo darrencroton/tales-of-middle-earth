@@ -73,6 +73,8 @@
 #include "xtra1.hpp"
 #include "z-term.hpp"
 
+#include "json.hpp"
+
 #include <boost/preprocessor/cat.hpp>
 
 #include <emscripten.h>
@@ -97,7 +99,7 @@ int level_quest();
 bool level_quest_open();
 void web_run_options_tick();
 void web_adventure_tick();
-void json_adventure(std::string &out);
+void json_adventure(JsonWriter &w);
 
 namespace {
 
@@ -185,52 +187,21 @@ int32_t ptr(void const *p)
 	return static_cast<int32_t>(reinterpret_cast<uintptr_t>(p));
 }
 
-void json_string(std::string &out, std::string_view s)
+/* Clears the export buffer and returns a writer for it. */
+JsonWriter start_json()
 {
-	out += '"';
-	for (unsigned char c : s)
-	{
-		switch (c)
-		{
-		case '"': out += "\\\""; break;
-		case '\\': out += "\\\\"; break;
-		case '\n': out += "\\n"; break;
-		case '\r': out += "\\r"; break;
-		case '\t': out += "\\t"; break;
-		default:
-			if (c < 0x20 || c >= 0x7f)
-			{
-				char buf[8];
-				snprintf(buf, sizeof(buf), "\\u%04x", c);
-				out += buf;
-			}
-			else
-			{
-				out += static_cast<char>(c);
-			}
-		}
-	}
-	out += '"';
+	json.clear();
+	return JsonWriter(json);
 }
 
-void json_key(std::string &out, char const *key)
+/* Opens an object with "ready": 1 when a level is ready; else writes {"ready":0} and returns false. */
+bool begin_ready(JsonWriter &w)
 {
-	json_string(out, key);
-	out += ':';
-}
-
-void json_int(std::string &out, char const *key, long value, bool comma = true)
-{
-	json_key(out, key);
-	out += std::to_string(value);
-	if (comma) out += ',';
-}
-
-void json_str(std::string &out, char const *key, std::string_view value, bool comma = true)
-{
-	json_key(out, key);
-	json_string(out, value);
-	if (comma) out += ',';
+	bool const ready = level_ready();
+	w.begin_object();
+	w.field("ready", ready ? 1 : 0);
+	if (!ready) w.end_object();
+	return ready;
 }
 
 /*
@@ -240,7 +211,7 @@ void json_str(std::string &out, char const *key, std::string_view value, bool co
  * description as tome2's quest log tells it, and whether the level is the
  * quest's own (reached through a quest entrance, in no dungeon).
  */
-void json_level_quest(std::string &out)
+void json_level_quest(JsonWriter &w)
 {
 	int const q = level_quest();
 	if (!q) return;
@@ -249,18 +220,17 @@ void json_level_quest(std::string &out)
 		auto const &rq = random_quests[dun_level];
 		auto const &r_info = game->edit_data.r_info;
 		bool const sword = is_randhero(dun_level);
-		json_key(out, "quest");
-		out += '{';
-		json_int(out, "id", q);
-		json_str(out, "state", rq.done ? "done" : "active");
-		json_str(out, "title", sword ? "Lost sword!" : "Captured princess!");
-		json_key(out, "random");
-		out += '{';
-		json_str(out, "kind", sword ? "sword" : "princess");
-		json_str(out, "foe", rq.r_idx > 0 && static_cast<std::size_t>(rq.r_idx) < r_info.size() && r_info[rq.r_idx].name ? r_info[rq.r_idx].name : "");
-		json_int(out, "count", rq.type);
-		json_int(out, "slain", rq.done ? rq.type : quest[QUEST_RANDOM].data[0], false);
-		out += "}},";
+		w.key("quest").begin_object();
+		w.field("id", q);
+		w.field("state", rq.done ? "done" : "active");
+		w.field("title", sword ? "Lost sword!" : "Captured princess!");
+		w.key("random").begin_object();
+		w.field("kind", sword ? "sword" : "princess");
+		w.field("foe", rq.r_idx > 0 && static_cast<std::size_t>(rq.r_idx) < r_info.size() && r_info[rq.r_idx].name ? r_info[rq.r_idx].name : "");
+		w.field("count", rq.type);
+		w.field("slain", rq.done ? rq.type : quest[QUEST_RANDOM].data[0]);
+		w.end_object();
+		w.end_object();
 		return;
 	}
 
@@ -296,55 +266,51 @@ void json_level_quest(std::string &out)
 		start = end + 1;
 	}
 
-	json_key(out, "quest");
-	out += '{';
-	json_int(out, "id", q);
-	json_int(out, "own", q == p_ptr->inside_quest ? 1 : 0);
-	json_str(out, "state", state);
-	json_str(out, "title", qt.name);
-	json_key(out, "lines");
-	out += '[';
-	for (std::size_t i = 0; i < lines.size(); i++)
-	{
-		if (i) out += ',';
-		json_string(out, lines[i]);
-	}
-	out += "]},";
+	w.key("quest").begin_object();
+	w.field("id", q);
+	w.field("own", q == p_ptr->inside_quest ? 1 : 0);
+	w.field("state", state);
+	w.field("title", qt.name);
+	w.key("lines").begin_array();
+	for (auto const &line : lines) w.value(line);
+	w.end_array();
+	w.end_object();
 }
 
-void json_object(std::string &out, int index, object_type const *o_ptr)
+/* An item's fields, inside an object the caller opens and closes. */
+void json_object_fields(JsonWriter &w, int index, object_type const *o_ptr)
 {
 	char name[160];
 	object_desc(name, o_ptr, true, 3);
 	auto const flags = object_flags(o_ptr);
 
-	out += '{';
-	json_int(out, "i", index);
-	json_str(out, "name", name);
-	json_int(out, "tval", o_ptr->tval);
-	json_int(out, "sval", o_ptr->sval);
-	json_int(out, "number", o_ptr->number);
-	json_int(out, "weight", o_ptr->weight);
-	json_int(out, "ch", static_cast<unsigned char>(object_char(o_ptr)));
-	json_int(out, "attr", object_attr(o_ptr));
-	json_int(out, "wear", wield_slot(o_ptr) >= 0 ? 1 : 0);
-	json_int(out, "activate", (flags & TR_ACTIVATE) ? 1 : 0);
-	if (flags & TR_FUEL_LITE) json_int(out, "fuel", o_ptr->timeout);
-	json_str(out, "ins", o_ptr->inscription, false);
-	out += '}';
+	w.field("i", index);
+	w.field("name", name);
+	w.field("tval", o_ptr->tval);
+	w.field("sval", o_ptr->sval);
+	w.field("number", o_ptr->number);
+	w.field("weight", o_ptr->weight);
+	w.field("ch", static_cast<unsigned char>(object_char(o_ptr)));
+	w.field("attr", object_attr(o_ptr));
+	w.field("wear", wield_slot(o_ptr) >= 0 ? 1 : 0);
+	w.field("activate", (flags & TR_ACTIVATE) ? 1 : 0);
+	if (flags & TR_FUEL_LITE) w.field("fuel", o_ptr->timeout);
+	w.field("ins", o_ptr->inscription);
 }
 
-/* text_out() hook collecting coloured runs as JSON [[attr, "text"], ...]. */
-std::string text_runs;
+void json_object(JsonWriter &w, int index, object_type const *o_ptr)
+{
+	w.begin_object();
+	json_object_fields(w, index, o_ptr);
+	w.end_object();
+}
+
+/* text_out() hook collecting coloured runs (attr, text). */
+std::vector<std::pair<byte, std::string>> text_runs;
 
 void text_out_to_json(byte a, const char *str)
 {
-	if (!text_runs.empty()) text_runs += ',';
-	text_runs += '[';
-	text_runs += std::to_string(a);
-	text_runs += ',';
-	json_string(text_runs, str);
-	text_runs += ']';
+	text_runs.emplace_back(a, str);
 }
 
 void cell_glyph(int y, int x, uint8_t *glyph, uint8_t *attr, uint8_t *layer, uint8_t *effect)
@@ -459,19 +425,14 @@ std::vector<std::pair<player_race_flag_set, char const *>> const &race_flag_name
 	return names;
 }
 
-void json_race_flags(std::string &out, player_race_flag_set const &flags)
+void json_race_flags(JsonWriter &w, player_race_flag_set const &flags)
 {
-	json_key(out, "flags");
-	out += '[';
-	bool first = true;
+	w.key("flags").begin_array();
 	for (auto const &[flag, name] : race_flag_names())
 	{
-		if (!(flags & flag)) continue;
-		if (!first) out += ',';
-		first = false;
-		json_string(out, name);
+		if (flags & flag) w.value(name);
 	}
-	out += "],";
+	w.end_array();
 }
 
 char modifier_op(char m)
@@ -485,120 +446,90 @@ char modifier_op(char m)
 	}
 }
 
-void json_skill_mods(std::string &out, skill_modifiers const &mods)
+void json_skill_mods(JsonWriter &w, skill_modifiers const &mods)
 {
 	auto const &s_descriptors = game->edit_data.s_descriptors;
-	json_key(out, "skills");
-	out += '[';
-	bool first = true;
+	w.key("skills").begin_array();
 	for (std::size_t i = 0; i < mods.modifiers.size() && i < s_descriptors.size(); i++)
 	{
 		auto const &m = mods.modifiers[i];
 		if ((m.base == 0 && m.mod == 0) || s_descriptors[i].name.empty()) continue;
-		if (!first) out += ',';
-		first = false;
-		out += '{';
-		json_str(out, "name", s_descriptors[i].name);
-		json_str(out, "op", std::string(1, modifier_op(m.basem)));
-		json_int(out, "base", static_cast<long>(m.base));
-		json_str(out, "modOp", std::string(1, modifier_op(m.modm)));
-		json_int(out, "mod", m.mod, false);
-		out += '}';
+		w.begin_object();
+		w.field("name", s_descriptors[i].name);
+		w.field("op", std::string(1, modifier_op(m.basem)));
+		w.field("base", static_cast<long>(m.base));
+		w.field("modOp", std::string(1, modifier_op(m.modm)));
+		w.field("mod", m.mod);
+		w.end_object();
 	}
-	out += "],";
+	w.end_array();
 }
 
-void json_abilities(std::string &out, std::vector<player_race_ability_type> const &abilities)
+void json_abilities(JsonWriter &w, std::vector<player_race_ability_type> const &abilities)
 {
 	auto const &ab_info = game->edit_data.ab_info;
-	json_key(out, "abilities");
-	out += '[';
-	bool first = true;
+	w.key("abilities").begin_array();
 	for (auto const &a : abilities)
 	{
 		if (a.ability < 0 || static_cast<std::size_t>(a.ability) >= ab_info.size()) continue;
-		if (!first) out += ',';
-		first = false;
-		out += '{';
-		json_str(out, "name", ab_info[a.ability].name);
-		json_str(out, "desc", ab_info[a.ability].desc);
-		json_int(out, "level", a.level, false);
-		out += '}';
+		w.begin_object();
+		w.field("name", ab_info[a.ability].name);
+		w.field("desc", ab_info[a.ability].desc);
+		w.field("level", a.level);
+		w.end_object();
 	}
-	out += "],";
+	w.end_array();
 }
 
-void json_level_flags(std::string &out, std::array<player_level_flag, PY_MAX_LEVEL + 1> const &lflags)
+void json_level_flags(JsonWriter &w, std::array<player_level_flag, PY_MAX_LEVEL + 1> const &lflags)
 {
-	json_key(out, "levelFlags");
-	out += '[';
-	bool first = true;
+	w.key("levelFlags").begin_array();
 	for (int lev = 0; lev <= PY_MAX_LEVEL; lev++)
 	{
 		auto const &lf = lflags[lev];
 		if (!lf.oflags) continue;
-		if (!first) out += ',';
-		first = false;
-		out += '{';
-		json_int(out, "level", lev);
-		json_int(out, "pval", lf.pval);
-		json_key(out, "flags");
-		out += '[';
-		bool firstFlag = true;
+		w.begin_object();
+		w.field("level", lev);
+		w.field("pval", lf.pval);
+		w.key("flags").begin_array();
 		for (auto const meta : object_flags_meta())
 		{
-			if (!(lf.oflags & meta->flag_set)) continue;
-			if (!firstFlag) out += ',';
-			firstFlag = false;
-			json_string(out, meta->e_name);
+			if (lf.oflags & meta->flag_set) w.value(meta->e_name);
 		}
-		out += "]}";
+		w.end_array();
+		w.end_object();
 	}
-	out += "],";
+	w.end_array();
 }
 
-void json_shared(std::string &out, player_shared const &ps)
+void json_shared(JsonWriter &w, player_shared const &ps)
 {
-	json_key(out, "stats");
-	out += '[';
-	for (int i = 0; i < 6; i++)
-	{
-		if (i) out += ',';
-		out += std::to_string(ps.adj[i]);
-	}
-	out += "],";
-	json_int(out, "hitDie", ps.mhp);
-	json_int(out, "exp", ps.exp);
-	json_key(out, "powers");
-	out += '[';
-	bool first = true;
+	w.key("stats").begin_array();
+	for (int i = 0; i < 6; i++) w.value(ps.adj[i]);
+	w.end_array();
+	w.field("hitDie", ps.mhp);
+	w.field("exp", ps.exp);
+	w.key("powers").begin_array();
 	for (auto const p : ps.powers)
 	{
 		auto it = game->powers.find(p);
 		if (it == game->powers.end()) continue;
-		if (!first) out += ',';
-		first = false;
-		out += '{';
-		json_str(out, "name", it->second->name);
-		json_str(out, "desc", it->second->desc_text, false);
-		out += '}';
+		w.begin_object();
+		w.field("name", it->second->name);
+		w.field("desc", it->second->desc_text);
+		w.end_object();
 	}
-	out += "],";
+	w.end_array();
 }
 
-void json_bit_names(std::string &out, char const *key, std::array<u32b, 2> const &bits, std::function<std::string(std::size_t)> name, std::size_t count)
+void json_bit_names(JsonWriter &w, char const *key, std::array<u32b, 2> const &bits, std::function<std::string(std::size_t)> name, std::size_t count)
 {
-	json_key(out, key);
-	out += '[';
-	bool first = true;
+	w.key(key).begin_array();
 	for (std::size_t i = 0; i < count && i < 64; i++)
 	{
-		if (!(bits[i / 32] & (1u << (i % 32)))) continue;
-		if (!first) out += ',';
-		first = false;
-		json_string(out, name(i));
+		if (bits[i / 32] & (1u << (i % 32))) w.value(name(i));
 	}
-	out += "],";
+	w.end_array();
 }
 
 /* A spell's schools, as tome2 lists them ("Mana/Fire"). */
@@ -747,9 +678,6 @@ extern "C" void BOOST_PP_CAT(__wrap_, MESSAGES_ADD)(Messages *self, std::string 
 extern "C" {
 
 /*
- * Rebuilds the level arrays and returns the header (see HeaderSlot).
- */
-/*
  * Whether messages flow past without -more- pauses (tome2's auto_more
  * option). Applied on every snapshot, so loading a savefile cannot undo it.
  */
@@ -770,6 +698,9 @@ EMSCRIPTEN_KEEPALIVE void web_set_effect_delay(int factor)
 	if (delay_override >= 0 && options) options->delay_factor = delay_override;
 }
 
+/*
+ * Rebuilds the level arrays and returns the header (see HeaderSlot).
+ */
 EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 {
 	auto const &f_info = game->edit_data.f_info;
@@ -845,8 +776,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_features_json()
 {
 	auto const &f_info = game->edit_data.f_info;
 
-	json.clear();
-	json += '[';
+	auto w = start_json();
+	w.begin_array();
 
 	for (std::size_t i = 0; i < f_info.size(); i++)
 	{
@@ -862,16 +793,15 @@ EMSCRIPTEN_KEEPALIVE char const *web_features_json()
 		if (f.flags & FF_ATTR_MULTI) bits |= FB_ATTR_MULTI;
 		if (f.flags & FF_REMEMBER) bits |= FB_REMEMBER;
 
-		if (i) json += ',';
-		json += '{';
-		json_str(json, "name", f.name);
-		json_int(json, "ch", static_cast<unsigned char>(f.x_char));
-		json_int(json, "attr", f.x_attr);
-		json_int(json, "flags", bits, false);
-		json += '}';
+		w.begin_object();
+		w.field("name", f.name);
+		w.field("ch", static_cast<unsigned char>(f.x_char));
+		w.field("attr", f.x_attr);
+		w.field("flags", bits);
+		w.end_object();
 	}
 
-	json += ']';
+	w.end_array();
 	return json.c_str();
 }
 
@@ -880,70 +810,58 @@ EMSCRIPTEN_KEEPALIVE char const *web_features_json()
  */
 EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 {
-	json.clear();
-	json += '{';
-
-	if (!(level_ready()))
-	{
-		json_int(json, "ready", 0, false);
-		json += '}';
-		return json.c_str();
-	}
-
-	json_int(json, "ready", 1);
+	auto w = start_json();
+	if (!begin_ready(w)) return json.c_str();
 
 	/* Player */
-	json_key(json, "player");
-	json += '{';
-	json_str(json, "name", game->player_name);
-	json_str(json, "race", rp_ptr ? rp_ptr->title : "");
-	json_str(json, "cls", spp_ptr ? spp_ptr->title : (cp_ptr ? cp_ptr->title : ""));
+	w.key("player").begin_object();
+	w.field("name", game->player_name);
+	w.field("race", rp_ptr ? rp_ptr->title : "");
+	w.field("cls", spp_ptr ? spp_ptr->title : (cp_ptr ? cp_ptr->title : ""));
 	if (cp_ptr && p_ptr->lev >= 1)
 	{
 		std::size_t idx = static_cast<std::size_t>((p_ptr->lev - 1) / 5);
-		if (idx < cp_ptr->titles.size()) json_str(json, "title", cp_ptr->titles[idx]);
+		if (idx < cp_ptr->titles.size()) w.field("title", cp_ptr->titles[idx]);
 	}
-	json_int(json, "lev", p_ptr->lev);
-	json_int(json, "exp", p_ptr->exp);
-	json_int(json, "au", p_ptr->au);
-	json_int(json, "chp", p_ptr->chp);
-	json_int(json, "mhp", p_ptr->mhp);
-	json_int(json, "csp", p_ptr->csp);
-	json_int(json, "msp", p_ptr->msp);
-	json_int(json, "csane", p_ptr->csane);
-	json_int(json, "msane", p_ptr->msane);
-	json_int(json, "speed", p_ptr->pspeed - 110);
-	json_int(json, "food", p_ptr->food);
-	json_int(json, "depth", dun_level);
-	json_str(json, "dungeon", game->edit_data.d_info[dungeon_type].name);
-	json_int(json, "wild", p_ptr->wild_mode ? 1 : 0);
-	json_int(json, "alwaysPickup", options->always_pickup ? 1 : 0);
-	json_int(json, "skillPoints", p_ptr->skill_points);
-	json_int(json, "pray", p_ptr->pgod == GOD_NONE ? 0 : p_ptr->praying ? 2 : 1);
-	json_int(json, "runes", static_cast<int>(std::count(p_ptr->inscriptions.begin(), p_ptr->inscriptions.end(), true)));
-	json_int(json, "control", p_ptr->control);
-	json_int(json, "dead", death ? 1 : 0);
-	json_str(json, "diedFrom", game->died_from);
-	json_adventure(json);
-	json_level_quest(json);
-	json_key(json, "status");
-	json += '{';
-	json_int(json, "blind", p_ptr->blind);
-	json_int(json, "confused", p_ptr->confused);
-	json_int(json, "afraid", p_ptr->afraid);
-	json_int(json, "poisoned", p_ptr->poisoned);
-	json_int(json, "paralyzed", p_ptr->paralyzed);
-	json_int(json, "hallucinating", p_ptr->image);
-	json_int(json, "cut", p_ptr->cut);
-	json_int(json, "stun", p_ptr->stun);
-	json_int(json, "fast", p_ptr->fast);
-	json_int(json, "slow", p_ptr->slow, false);
-	json += "}},";
+	w.field("lev", p_ptr->lev);
+	w.field("exp", p_ptr->exp);
+	w.field("au", p_ptr->au);
+	w.field("chp", p_ptr->chp);
+	w.field("mhp", p_ptr->mhp);
+	w.field("csp", p_ptr->csp);
+	w.field("msp", p_ptr->msp);
+	w.field("csane", p_ptr->csane);
+	w.field("msane", p_ptr->msane);
+	w.field("speed", p_ptr->pspeed - 110);
+	w.field("food", p_ptr->food);
+	w.field("depth", dun_level);
+	w.field("dungeon", game->edit_data.d_info[dungeon_type].name);
+	w.field("wild", p_ptr->wild_mode ? 1 : 0);
+	w.field("alwaysPickup", options->always_pickup ? 1 : 0);
+	w.field("skillPoints", p_ptr->skill_points);
+	w.field("pray", p_ptr->pgod == GOD_NONE ? 0 : p_ptr->praying ? 2 : 1);
+	w.field("runes", static_cast<int>(std::count(p_ptr->inscriptions.begin(), p_ptr->inscriptions.end(), true)));
+	w.field("control", p_ptr->control);
+	w.field("dead", death ? 1 : 0);
+	w.field("diedFrom", game->died_from);
+	json_adventure(w);
+	json_level_quest(w);
+	w.key("status").begin_object();
+	w.field("blind", p_ptr->blind);
+	w.field("confused", p_ptr->confused);
+	w.field("afraid", p_ptr->afraid);
+	w.field("poisoned", p_ptr->poisoned);
+	w.field("paralyzed", p_ptr->paralyzed);
+	w.field("hallucinating", p_ptr->image);
+	w.field("cut", p_ptr->cut);
+	w.field("stun", p_ptr->stun);
+	w.field("fast", p_ptr->fast);
+	w.field("slow", p_ptr->slow);
+	w.end_object();
+	w.end_object();
 
 	/* Visible monsters */
-	json_key(json, "monsters");
-	json += '[';
-	bool first = true;
+	w.key("monsters").begin_array();
 	for (int i = 1; i < m_max; i++)
 	{
 		monster_type const *m_ptr = &m_list[i];
@@ -954,36 +872,30 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 
 		if (r_ptr->flags & RF_MIMIC) continue;
 
-		if (!first) json += ',';
-		first = false;
-		json += '{';
-		json_int(json, "id", i);
-		json_str(json, "name", r_ptr->name ? r_ptr->name : "");
-		json_int(json, "ch", static_cast<unsigned char>(r_ptr->x_char));
-		json_int(json, "attr", r_ptr->x_attr);
-		json_int(json, "y", m_ptr->fy);
-		json_int(json, "x", m_ptr->fx);
-		json_int(json, "hp", m_ptr->hp);
-		json_int(json, "maxhp", m_ptr->maxhp);
-		json_int(json, "asleep", m_ptr->csleep ? 1 : 0);
-		json_int(json, "afraid", m_ptr->monfear ? 1 : 0);
-		json_int(json, "unique", (r_ptr->flags & RF_UNIQUE) ? 1 : 0);
-		json_int(json, "status", m_ptr->status);
+		w.begin_object();
+		w.field("id", i);
+		w.field("name", r_ptr->name ? r_ptr->name : "");
+		w.field("ch", static_cast<unsigned char>(r_ptr->x_char));
+		w.field("attr", r_ptr->x_attr);
+		w.field("y", m_ptr->fy);
+		w.field("x", m_ptr->fx);
+		w.field("hp", m_ptr->hp);
+		w.field("maxhp", m_ptr->maxhp);
+		w.field("asleep", m_ptr->csleep ? 1 : 0);
+		w.field("afraid", m_ptr->monfear ? 1 : 0);
+		w.field("unique", (r_ptr->flags & RF_UNIQUE) ? 1 : 0);
+		w.field("status", m_ptr->status);
 		bool const inView = projectable(p_ptr->py, p_ptr->px, m_ptr->fy, m_ptr->fx);
-		json_int(json, "view", inView ? 1 : 0);
-		json_int(json, "target", inView && !p_ptr->image && !(r_ptr->flags & RF_NO_TARGET) ? 1 : 0);
-		json_int(json, "ridx", m_ptr->r_idx);
-		json_int(json, "ego", m_ptr->ego);
-		json_int(json, "quest", (m_ptr->mflag & MFLAG_QUEST) ? 1 : 0);
-		json_int(json, "level", r_ptr->level, false);
-		json += '}';
+		w.field("view", inView ? 1 : 0);
+		w.field("target", inView && !p_ptr->image && !(r_ptr->flags & RF_NO_TARGET) ? 1 : 0);
+		w.field("quest", (m_ptr->mflag & MFLAG_QUEST) ? 1 : 0);
+		w.field("level", r_ptr->level);
+		w.end_object();
 	}
-	json += "],";
+	w.end_array();
 
 	/* Visible objects */
-	json_key(json, "objects");
-	json += '[';
-	first = true;
+	w.key("objects").begin_array();
 	for (int i = 1; i < o_max; i++)
 	{
 		object_type const *o_ptr = &o_list[i];
@@ -995,36 +907,33 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 		char name[160];
 		object_desc(name, o_ptr, true, 0);
 
-		if (!first) json += ',';
-		first = false;
-		json += '{';
-		json_int(json, "id", i);
-		json_str(json, "name", name);
-		json_int(json, "ch", static_cast<unsigned char>(object_char(o_ptr)));
-		json_int(json, "attr", object_attr(o_ptr));
-		json_int(json, "gold", o_ptr->tval == TV_GOLD ? 1 : 0);
-		json_int(json, "y", o_ptr->iy);
-		json_int(json, "x", o_ptr->ix, false);
-		json += '}';
+		w.begin_object();
+		w.field("id", i);
+		w.field("name", name);
+		w.field("ch", static_cast<unsigned char>(object_char(o_ptr)));
+		w.field("attr", object_attr(o_ptr));
+		w.field("gold", o_ptr->tval == TV_GOLD ? 1 : 0);
+		w.field("y", o_ptr->iy);
+		w.field("x", o_ptr->ix);
+		w.end_object();
 	}
-	json += "],";
+	w.end_array();
 
 	/* Recent messages, newest first */
 	auto const &messages = game->messages;
 	int const count = std::min<int>(messages.size(), std::max(0, max_messages));
-	json_int(json, "messageTotal", messages_added);
-	json_key(json, "messages");
-	json += '[';
+	w.field("messageTotal", messages_added);
+	w.key("messages").begin_array();
 	for (int age = 0; age < count; age++)
 	{
 		auto const &m = messages.at(age);
-		if (age) json += ',';
-		json += '{';
-		json_str(json, "text", m.text_with_count());
-		json_int(json, "color", m.color, false);
-		json += '}';
+		w.begin_object();
+		w.field("text", m.text_with_count());
+		w.field("color", m.color);
+		w.end_object();
 	}
-	json += "]}";
+	w.end_array();
+	w.end_object();
 
 	return json.c_str();
 }
@@ -1046,29 +955,30 @@ EMSCRIPTEN_KEEPALIVE char const *web_grid_json(int y, int x)
 	auto const &st_info = game->edit_data.st_info;
 	auto const &d_info = game->edit_data.d_info;
 
-	json.clear();
-	json += '{';
+	auto w = start_json();
+	w.begin_object();
 	if (!level_ready() || !in_bounds2(y, x))
 	{
-		json_int(json, "known", 0, false);
-		json += '}';
+		w.field("known", 0);
+		w.end_object();
 		return json.c_str();
 	}
 	cave_type const *c_ptr = &cave[y][x];
 	bool const view = player_can_see_bold(y, x);
 	bool const known = view || (c_ptr->info & CAVE_MARK);
-	json_int(json, "known", known ? 1 : 0);
-	json_int(json, "view", view ? 1 : 0);
+	w.field("known", known ? 1 : 0);
+	w.field("view", view ? 1 : 0);
 
 	std::string name;
 	if (known)
 	{
 		auto const feat = c_ptr->mimic ? c_ptr->mimic : f_info[c_ptr->feat].mimic;
-		if (feat == FEAT_SHOP) name = st_info[c_ptr->special].name;
-		else if (feat == FEAT_MORE && c_ptr->special) name = d_info[c_ptr->special].text;
+		auto const special = static_cast<std::size_t>(c_ptr->special);
+		if (feat == FEAT_SHOP && special < st_info.size()) name = st_info[special].name;
+		else if (feat == FEAT_MORE && c_ptr->special && special < d_info.size()) name = d_info[special].text;
 		else name = f_info[feat].name;
 	}
-	json_str(json, "name", name);
+	w.field("name", name);
 
 	std::vector<object_type const *> objects;
 	if (c_ptr->m_idx)
@@ -1078,25 +988,22 @@ EMSCRIPTEN_KEEPALIVE char const *web_grid_json(int y, int x)
 	}
 	for (auto const o_idx : c_ptr->o_idxs) objects.push_back(&o_list[o_idx]);
 
-	json_key(json, "objects");
-	json += '[';
-	bool first = true;
+	w.key("objects").begin_array();
 	for (auto const *o_ptr : objects)
 	{
 		if (!o_ptr->k_ptr || !o_ptr->marked) continue;
 		char o_name[160];
 		object_desc(o_name, o_ptr, true, 3);
-		if (!first) json += ',';
-		first = false;
-		json += '{';
-		json_int(json, "id", static_cast<int>(o_ptr - o_list));
-		json_str(json, "name", o_name);
-		json_int(json, "ch", static_cast<unsigned char>(object_char(o_ptr)));
-		json_int(json, "attr", object_attr(o_ptr));
-		json_int(json, "gold", o_ptr->tval == TV_GOLD ? 1 : 0, false);
-		json += '}';
+		w.begin_object();
+		w.field("id", static_cast<int>(o_ptr - o_list));
+		w.field("name", o_name);
+		w.field("ch", static_cast<unsigned char>(object_char(o_ptr)));
+		w.field("attr", object_attr(o_ptr));
+		w.field("gold", o_ptr->tval == TV_GOLD ? 1 : 0);
+		w.end_object();
 	}
-	json += "]}";
+	w.end_array();
+	w.end_object();
 	return json.c_str();
 }
 
@@ -1130,72 +1037,49 @@ EMSCRIPTEN_KEEPALIVE void web_add_notice()
  */
 EMSCRIPTEN_KEEPALIVE char const *web_inventory_json()
 {
-	json.clear();
-	json += '{';
+	auto w = start_json();
+	if (!begin_ready(w)) return json.c_str();
 
-	if (!(level_ready()))
-	{
-		json_int(json, "ready", 0, false);
-		json += '}';
-		return json.c_str();
-	}
+	w.field("weight", calc_total_weight());
+	w.field("limit", weight_limit());
 
-	json_int(json, "ready", 1);
-	json_int(json, "weight", calc_total_weight());
-	json_int(json, "limit", weight_limit());
-
-	json_key(json, "pack");
-	json += '[';
-	bool first = true;
+	w.key("pack").begin_array();
 	for (int i = 0; i < INVEN_PACK; i++)
 	{
 		object_type const *o_ptr = &p_ptr->inventory[i];
-		if (!o_ptr->k_ptr) continue;
-		if (!first) json += ',';
-		first = false;
-		json_object(json, i, o_ptr);
+		if (o_ptr->k_ptr) json_object(w, i, o_ptr);
 	}
-	json += "],";
+	w.end_array();
 
-	json_key(json, "equip");
-	json += '[';
-	first = true;
+	w.key("equip").begin_array();
 	for (int i = INVEN_WIELD; i < INVEN_TOTAL; i++)
 	{
 		int const part = p_ptr->body_parts[i - INVEN_WIELD];
 		if (!part) continue;
-		if (!first) json += ',';
-		first = false;
 		object_type const *o_ptr = &p_ptr->inventory[i];
+		w.begin_object();
 		if (o_ptr->k_ptr)
 		{
-			json_object(json, i, o_ptr);
-			json.pop_back();
-			json += ',';
+			json_object_fields(w, i, o_ptr);
 		}
 		else
 		{
-			json += '{';
-			json_int(json, "i", i);
-			json_int(json, "empty", 1);
+			w.field("i", i);
+			w.field("empty", 1);
 		}
-		json_int(json, "part", part, false);
-		json += '}';
+		w.field("part", part);
+		w.end_object();
 	}
-	json += "],";
+	w.end_array();
 
-	json_key(json, "floor");
-	json += '[';
-	first = true;
+	w.key("floor").begin_array();
 	for (auto const o_idx : cave[p_ptr->py][p_ptr->px].o_idxs)
 	{
 		object_type const *o_ptr = &o_list[o_idx];
-		if (!o_ptr->k_ptr) continue;
-		if (!first) json += ',';
-		first = false;
-		json_object(json, -o_idx, o_ptr);
+		if (o_ptr->k_ptr) json_object(w, -o_idx, o_ptr);
 	}
-	json += "]}";
+	w.end_array();
+	w.end_object();
 
 	return json.c_str();
 }
@@ -1239,15 +1123,10 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_object_desc(int index)
 {
 	json.clear();
 
-	if (!(level_ready() && town_info)) return json.c_str();
+	store_type *st = store_here();
+	if (!st) return json.c_str();
 
-	auto const &c_ptr = cave[p_ptr->py][p_ptr->px];
-	if (c_ptr.feat != FEAT_SHOP) return json.c_str();
-
-	auto &stores = town_info[p_ptr->town_num].store;
-	if (c_ptr.special < 0 || static_cast<std::size_t>(c_ptr.special) >= stores.size()) return json.c_str();
-
-	auto &stock = stores[c_ptr.special].stock;
+	auto &stock = st->stock;
 	if (index < 0 || index >= static_cast<int>(stock.size())) return json.c_str();
 
 	return describe_object(&stock[index]);
@@ -1267,12 +1146,14 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 	auto const &ow_info = game->edit_data.ow_info;
 	auto const &ba_info = game->edit_data.ba_info;
 
-	json.clear();
+	auto w = start_json();
+	w.begin_object();
 	int which = 0;
 	store_type *st = store_here(&which);
 	if (!st || st->st_idx >= st_info.size() || st->owner >= ow_info.size())
 	{
-		json = "{\"here\":0}";
+		w.field("here", 0);
+		w.end_object();
 		return json.c_str();
 	}
 	auto const &info = st_info[st->st_idx];
@@ -1280,66 +1161,57 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 	bool const home = which == HOME_STORE;
 	bool const museum = bool(info.flags & STF_MUSEUM);
 
-	json += '{';
-	json_int(json, "here", 1);
-	json_str(json, "name", home ? "Your home" : info.name);
-	json_str(json, "owner", home || museum ? "" : owner.name);
-	json_int(json, "home", home ? 1 : 0);
-	json_int(json, "museum", museum ? 1 : 0);
-	json_int(json, "buys", home || museum || shop_buys_anything(info.name) ? 1 : 0);
-	json_int(json, "noSelling", options->no_selling ? 1 : 0);
-	json_int(json, "gold", p_ptr->au);
-	json_int(json, "capacity", st->stock_size);
+	w.field("here", 1);
+	w.field("name", home ? "Your home" : info.name);
+	w.field("owner", home || museum ? "" : owner.name);
+	w.field("home", home ? 1 : 0);
+	w.field("museum", museum ? 1 : 0);
+	w.field("buys", home || museum || shop_buys_anything(info.name) ? 1 : 0);
+	w.field("noSelling", options->no_selling ? 1 : 0);
+	w.field("gold", p_ptr->au);
+	w.field("capacity", st->stock_size);
 
-	json_key(json, "actions");
-	json += '[';
-	bool first = true;
+	w.key("actions").begin_array();
 	for (auto const idx : info.actions)
 	{
 		if (idx >= ba_info.size() || !ba_info[idx].letter) continue;
 		auto const &ba = ba_info[idx];
-		if (!first) json += ',';
-		first = false;
-		json += '{';
+		w.begin_object();
 		bool const liked = is_state(st, STORE_LIKED);
 		int const state = liked ? STORE_LIKED : is_state(st, STORE_HATED) ? STORE_HATED : STORE_NORMAL;
 		/* As bldg.cc's bldg_process_command: the price for how the keeper sees the hero, and actions kept from them. */
 		bool const closed = (ba.action_restr == 1 && liked) || (ba.action_restr == 2 && !liked);
-		json_str(json, "key", std::string(1, ba.letter));
-		json_int(json, "action", ba.action);
-		json_int(json, "cost", ba.costs[state]);
-		json_int(json, "closed", closed ? 1 : 0);
-		json_str(json, "name", ba.name, false);
-		json += '}';
+		w.field("key", std::string(1, ba.letter));
+		w.field("action", ba.action);
+		w.field("cost", ba.costs[state]);
+		w.field("closed", closed ? 1 : 0);
+		w.field("name", ba.name);
+		w.end_object();
 	}
-	json += "],";
+	w.end_array();
 
-	json_key(json, "stock");
-	json += '[';
+	w.key("stock").begin_array();
 	for (std::size_t i = 0; i < st->stock.size(); i++)
 	{
 		auto *o_ptr = &st->stock[i];
 		char name[160];
 		if (home || museum) object_desc(name, o_ptr, true, 3);
 		else object_desc_store(name, o_ptr, true, 3);
-		if (i) json += ',';
-		json += '{';
-		json_int(json, "i", i);
-		json_str(json, "name", name);
-		json_int(json, "tval", o_ptr->tval);
-		json_int(json, "number", o_ptr->number);
-		json_int(json, "weight", o_ptr->weight);
-		json_int(json, "ch", static_cast<unsigned char>(object_char(o_ptr)));
-		json_int(json, "attr", object_attr(o_ptr));
+		w.begin_object();
+		w.field("i", i);
+		w.field("name", name);
+		w.field("tval", o_ptr->tval);
+		w.field("number", o_ptr->number);
+		w.field("weight", o_ptr->weight);
+		w.field("ch", static_cast<unsigned char>(object_char(o_ptr)));
+		w.field("attr", object_attr(o_ptr));
 		auto const one = one_of(o_ptr);
-		json_int(json, "price", home || museum ? 0 : shop_price(*st, owner, &one, true), false);
-		json += '}';
+		w.field("price", home || museum ? 0 : shop_price(*st, owner, &one, true));
+		w.end_object();
 	}
-	json += "],";
+	w.end_array();
 
-	json_key(json, "sell");
-	json += '[';
-	first = true;
+	w.key("sell").begin_array();
 	for (int i = 0; i < INVEN_TOTAL; i++)
 	{
 		if (i == INVEN_PACK) i = INVEN_WIELD;
@@ -1361,15 +1233,14 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 				price = 0;
 			}
 		}
-		if (!first) json += ',';
-		first = false;
-		json += '{';
-		json_int(json, "i", i);
-		json_str(json, "why", why);
-		json_int(json, "price", price, false);
-		json += '}';
+		w.begin_object();
+		w.field("i", i);
+		w.field("why", why);
+		w.field("price", price);
+		w.end_object();
 	}
-	json += "]}";
+	w.end_array();
+	w.end_object();
 	return json.c_str();
 }
 
@@ -1379,18 +1250,19 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
  */
 EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
 {
-	json.clear();
+	auto w = start_json();
+	w.begin_object();
 
 	if (!(level_ready()) || m_idx <= 0 || m_idx >= m_max)
 	{
-		json = "{}";
+		w.end_object();
 		return json.c_str();
 	}
 
 	monster_type const *m_ptr = &m_list[m_idx];
 	if (!m_ptr->r_idx || !m_ptr->ml)
 	{
-		json = "{}";
+		w.end_object();
 		return json.c_str();
 	}
 
@@ -1405,12 +1277,17 @@ EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
 	text_out_hook = previous_hook;
 	web_scratch_term_end();
 
-	json += '{';
-	json_str(json, "name", name);
-	json_key(json, "text");
-	json += '[';
-	json += text_runs;
-	json += "]}";
+	w.field("name", name);
+	w.key("text").begin_array();
+	for (auto const &[attr, text] : text_runs)
+	{
+		w.begin_array();
+		w.value(attr);
+		w.value(text);
+		w.end_array();
+	}
+	w.end_array();
+	w.end_object();
 	text_runs.clear();
 	return json.c_str();
 }
@@ -1421,35 +1298,27 @@ EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
  */
 EMSCRIPTEN_KEEPALIVE char const *web_place_json()
 {
-	json.clear();
-	json += '{';
-
-	if (!(level_ready()))
-	{
-		json_int(json, "ready", 0, false);
-		json += '}';
-		return json.c_str();
-	}
+	auto w = start_json();
+	if (!begin_ready(w)) return json.c_str();
 
 	auto const &d_info = game->edit_data.d_info;
 	auto const &wf_info = game->edit_data.wf_info;
 	auto const &wilderness = game->wilderness;
 
-	json_int(json, "ready", 1);
-	json_int(json, "dungeon", dungeon_type);
-	json_str(json, "dungeonName", d_info[dungeon_type].name);
-	json_int(json, "depth", dun_level);
-	json_int(json, "maxDepth", d_info[dungeon_type].maxdepth);
-	json_int(json, "wild", p_ptr->wild_mode ? 1 : 0);
-	json_int(json, "wx", p_ptr->wilderness_x);
-	json_int(json, "wy", p_ptr->wilderness_y);
+	w.field("dungeon", dungeon_type);
+	w.field("dungeonName", d_info[dungeon_type].name);
+	w.field("depth", dun_level);
+	w.field("maxDepth", d_info[dungeon_type].maxdepth);
+	w.field("wild", p_ptr->wild_mode ? 1 : 0);
+	w.field("wx", p_ptr->wilderness_x);
+	w.field("wy", p_ptr->wilderness_y);
 
 	/* Fixed at birth: tells apart heroes who share a name. */
 	std::uint8_t seed_bytes[seed_t::n_bytes];
 	seed_flavor().to_bytes(seed_bytes);
 	int32_t const hero_id = static_cast<int32_t>(seed_bytes[0] | (seed_bytes[1] << 8) | (seed_bytes[2] << 16) | (static_cast<uint32_t>(seed_bytes[3]) << 24));
-	json_int(json, "heroId", hero_id);
-	json_int(json, "kept", dun_level > 0 && get_dungeon_save_extension() ? 1 : 0);
+	w.field("heroId", hero_id);
+	w.field("kept", dun_level > 0 && get_dungeon_save_extension() ? 1 : 0);
 
 	/* tome2 keeps town_num from the last surface area, so dungeon towns come from the dungeon's own list. */
 	int town = 0;
@@ -1465,32 +1334,26 @@ EMSCRIPTEN_KEEPALIVE char const *web_place_json()
 	{
 		town = p_ptr->town_num;
 	}
-	json_int(json, "town", town);
-	json_int(json, "townDestroyed", (town > 0 && town_info && town_info[town].destroyed) ? 1 : 0);
-	json_int(json, "quest", p_ptr->inside_quest);
-	json_int(json, "levelQuest", level_quest_open() ? level_quest() : 0);
+	w.field("town", town);
+	w.field("townDestroyed", (town > 0 && town_info && town_info[town].destroyed) ? 1 : 0);
+	w.field("quest", p_ptr->inside_quest);
+	w.field("levelQuest", level_quest_open() ? level_quest() : 0);
 
 	auto const level_name = get_dungeon_name();
-	json_str(json, "levelName", level_name ? *level_name : std::string());
+	w.field("levelName", level_name ? *level_name : std::string());
 
 	std::string terrain;
-	int terrain_idx = -1;
 	if (p_ptr->wilderness_x >= 0 && p_ptr->wilderness_y >= 0 &&
 	    static_cast<std::size_t>(p_ptr->wilderness_x) < wilderness.width() &&
 	    static_cast<std::size_t>(p_ptr->wilderness_y) < wilderness.height())
 	{
 		auto const feat = wilderness(p_ptr->wilderness_x, p_ptr->wilderness_y).feat;
-		if (feat >= 0 && static_cast<std::size_t>(feat) < wf_info.size())
-		{
-			if (wf_info[feat].name) terrain = wf_info[feat].name;
-			terrain_idx = wf_info[feat].terrain_idx;
-		}
+		if (feat >= 0 && static_cast<std::size_t>(feat) < wf_info.size() && wf_info[feat].name) terrain = wf_info[feat].name;
 	}
 	while (!terrain.empty() && terrain.back() == ' ') terrain.pop_back();
-	json_str(json, "terrain", terrain);
-	json_int(json, "terrainIdx", terrain_idx);
+	w.field("terrain", terrain);
 
-	json_int(json, "night", (turn % (10L * DAY)) < ((10L * DAY) / 2) ? 0 : 1);
+	w.field("night", (turn % (10L * DAY)) < ((10L * DAY) / 2) ? 0 : 1);
 
 	auto const done = [](int q) {
 		auto const status = quest[q].status;
@@ -1500,9 +1363,9 @@ EMSCRIPTEN_KEEPALIVE char const *web_place_json()
 	if (done(QUEST_NECRO)) stage = 1;
 	if (done(QUEST_SAURON)) stage = 2;
 	if (done(QUEST_MORGOTH)) stage = 3;
-	json_int(json, "stage", stage);
-	json_int(json, "lev", p_ptr->lev, false);
-	json += '}';
+	w.field("stage", stage);
+	w.field("lev", p_ptr->lev);
+	w.end_object();
 
 	return json.c_str();
 }
@@ -1512,83 +1375,61 @@ EMSCRIPTEN_KEEPALIVE char const *web_place_json()
  */
 EMSCRIPTEN_KEEPALIVE char const *web_character_json()
 {
-	json.clear();
-	json += '{';
+	auto w = start_json();
+	if (!begin_ready(w)) return json.c_str();
 
-	if (!(level_ready()))
-	{
-		json_int(json, "ready", 0, false);
-		json += '}';
-		return json.c_str();
-	}
-
-	static char const *const stat_names[6] = { "STR", "INT", "WIS", "DEX", "CON", "CHR" };
-
-	json_int(json, "ready", 1);
-	json_key(json, "stats");
-	json += '[';
+	w.key("stats").begin_array();
 	for (int i = 0; i < 6; i++)
 	{
 		char use[32];
 		char top[32];
 		cnv_stat(p_ptr->stat_use[i], use);
 		cnv_stat(p_ptr->stat_top[i], top);
-		if (i) json += ',';
-		json += '{';
-		json_str(json, "name", stat_names[i]);
-		json_str(json, "use", use);
-		json_str(json, "top", top);
-		json_int(json, "drained", p_ptr->stat_cur[i] < p_ptr->stat_max[i] ? 1 : 0, false);
-		json += '}';
+		w.begin_object();
+		w.field("name", stat_names[i]);
+		w.field("use", use);
+		w.field("top", top);
+		w.field("drained", p_ptr->stat_cur[i] < p_ptr->stat_max[i] ? 1 : 0);
+		w.end_object();
 	}
-	json += "],";
+	w.end_array();
 
-	json_str(json, "god", deity_info[p_ptr->pgod].name);
-	json_int(json, "exp", p_ptr->exp);
-	json_int(json, "maxExp", p_ptr->max_exp);
-	json_int(json, "nextExp", p_ptr->lev < PY_MAX_LEVEL ? static_cast<long>(player_exp[p_ptr->lev - 1]) * p_ptr->expfact / 100L : 0);
-	json_int(json, "toHit", p_ptr->dis_to_h);
-	json_int(json, "toDam", p_ptr->dis_to_d);
-	json_int(json, "ac", p_ptr->dis_ac);
-	json_int(json, "toAc", p_ptr->dis_to_a);
-	json_int(json, "blows", p_ptr->num_blow);
-	json_int(json, "shots", p_ptr->num_fire);
-	json_int(json, "infra", p_ptr->see_infra * 10);
-	json_int(json, "maxDepth", max_dlv[dungeon_type]);
+	w.field("god", deity_info[p_ptr->pgod].name);
+	w.field("exp", p_ptr->exp);
+	w.field("nextExp", p_ptr->lev < PY_MAX_LEVEL ? static_cast<long>(player_exp[p_ptr->lev - 1]) * p_ptr->expfact / 100L : 0);
+	w.field("toHit", p_ptr->dis_to_h);
+	w.field("toDam", p_ptr->dis_to_d);
+	w.field("ac", p_ptr->dis_ac);
+	w.field("toAc", p_ptr->dis_to_a);
+	w.field("blows", p_ptr->num_blow);
+	w.field("shots", p_ptr->num_fire);
+	w.field("infra", p_ptr->see_infra * 10);
+	w.field("maxDepth", max_dlv[dungeon_type]);
 
 	auto const &s_info = game->s_info;
 	auto const &s_descriptors = game->edit_data.s_descriptors;
-	json_key(json, "skills");
-	json += '[';
-	bool first = true;
+	w.key("skills").begin_array();
 	for (std::size_t i = 0; i < s_info.size() && i < s_descriptors.size(); i++)
 	{
 		if (s_info[i].hidden || s_info[i].value == 0 || s_descriptors[i].name.empty()) continue;
-		if (!first) json += ',';
-		first = false;
-		json += '{';
-		json_str(json, "name", s_descriptors[i].name);
-		json_int(json, "value", s_info[i].value);
-		json_int(json, "mod", s_info[i].mod, false);
-		json += '}';
+		w.begin_object();
+		w.field("name", s_descriptors[i].name);
+		w.field("value", s_info[i].value);
+		w.field("mod", s_info[i].mod);
+		w.end_object();
 	}
-	json += "],";
+	w.end_array();
 
 	auto const &ab_info = game->edit_data.ab_info;
-	json_key(json, "abilities");
-	json += '[';
-	first = true;
+	w.key("abilities").begin_array();
 	for (auto const ability : p_ptr->abilities)
 	{
-		if (ability >= ab_info.size()) continue;
-		if (!first) json += ',';
-		first = false;
-		json_string(json, ab_info[ability].name);
+		if (ability < ab_info.size()) w.value(ab_info[ability].name);
 	}
-	json += "],";
+	w.end_array();
 
-	json_int(json, "turn", turn, false);
-	json += '}';
+	w.field("turn", turn);
+	w.end_object();
 
 	return json.c_str();
 }
@@ -1602,15 +1443,15 @@ EMSCRIPTEN_KEEPALIVE char const *web_scores_json()
 	auto const &race_mod_info = game->edit_data.race_mod_info;
 	auto const &class_info = game->edit_data.class_info;
 
-	json.clear();
-	json += '[';
+	auto w = start_json();
+	w.begin_array();
 
 	char buf[1024];
 	path_build(buf, sizeof(buf), ANGBAND_DIR_USER, "scores.raw");
 	int fd = fd_open(buf, O_RDONLY);
 	if (fd < 0)
 	{
-		json += ']';
+		w.end_array();
 		return json.c_str();
 	}
 
@@ -1644,26 +1485,25 @@ EMSCRIPTEN_KEEPALIVE char const *web_scores_json()
 			cls = class_info[pc].spec[pcs].title;
 		}
 
-		if (i) json += ',';
-		json += '{';
-		json_str(json, "name", field(score.who, sizeof(score.who)));
-		json_str(json, "race", race);
-		json_str(json, "cls", cls);
-		json_int(json, "points", atol(score.pts));
-		json_int(json, "gold", atol(score.gold));
-		json_int(json, "turns", atol(score.turns));
-		json_str(json, "day", field(score.day, sizeof(score.day)));
-		json_int(json, "level", atoi(score.cur_lev));
-		json_int(json, "maxLevel", atoi(score.max_lev));
-		json_int(json, "depth", atoi(score.cur_dun));
-		json_int(json, "maxDepth", atoi(score.max_dun));
-		json_int(json, "quest", atoi(score.inside_quest) ? 1 : 0);
-		json_str(json, "how", field(score.how, sizeof(score.how)), false);
-		json += '}';
+		w.begin_object();
+		w.field("name", field(score.who, sizeof(score.who)));
+		w.field("race", race);
+		w.field("cls", cls);
+		w.field("points", atol(score.pts));
+		w.field("gold", atol(score.gold));
+		w.field("turns", atol(score.turns));
+		w.field("day", field(score.day, sizeof(score.day)));
+		w.field("level", atoi(score.cur_lev));
+		w.field("maxLevel", atoi(score.max_lev));
+		w.field("depth", atoi(score.cur_dun));
+		w.field("maxDepth", atoi(score.max_dun));
+		w.field("quest", atoi(score.inside_quest) ? 1 : 0);
+		w.field("how", field(score.how, sizeof(score.how)));
+		w.end_object();
 	}
 	fd_close(fd);
 
-	json += ']';
+	w.end_array();
 	return json.c_str();
 }
 
@@ -1718,82 +1558,81 @@ EMSCRIPTEN_KEEPALIVE char const *web_birth_json()
 	auto const &race_mod_info = game->edit_data.race_mod_info;
 	auto const &class_info = game->edit_data.class_info;
 
-	json.clear();
-	json += "{\"races\":[";
+	auto w = start_json();
+	w.begin_object();
+	w.key("races").begin_array();
 	for (std::size_t i = 0; i < race_info.size(); i++)
 	{
 		auto const &r = race_info[i];
-		if (i) json += ',';
-		json += '{';
-		json_str(json, "title", r.title);
-		json_str(json, "desc", r.desc);
-		json_shared(json, r.ps);
-		json_int(json, "luck", r.luck);
-		json_int(json, "infra", r.infra);
-		json_race_flags(json, r.flags);
-		json_level_flags(json, r.lflags);
-		json_skill_mods(json, r.skill_modifiers);
-		json_abilities(json, r.abilities);
-		json_bit_names(json, "classes", r.choice, [&](std::size_t c) { return c < class_info.size() ? class_info[c].title : std::string(); }, class_info.size());
-		json_int(json, "index", i, false);
-		json += '}';
+		w.begin_object();
+		w.field("title", r.title);
+		w.field("desc", r.desc);
+		json_shared(w, r.ps);
+		w.field("luck", r.luck);
+		w.field("infra", r.infra);
+		json_race_flags(w, r.flags);
+		json_level_flags(w, r.lflags);
+		json_skill_mods(w, r.skill_modifiers);
+		json_abilities(w, r.abilities);
+		json_bit_names(w, "classes", r.choice, [&](std::size_t c) { return c < class_info.size() ? class_info[c].title : std::string(); }, class_info.size());
+		w.field("index", i);
+		w.end_object();
 	}
-	json += "],\"mods\":[";
+	w.end_array();
+	w.key("mods").begin_array();
 	for (std::size_t i = 0; i < race_mod_info.size(); i++)
 	{
 		auto const &m = race_mod_info[i];
-		if (i) json += ',';
-		json += '{';
-		json_str(json, "title", m.title);
-		json_str(json, "desc", m.description);
-		json_shared(json, m.ps);
-		json_int(json, "luck", m.luck);
-		json_int(json, "infra", m.infra);
-		json_int(json, "mana", m.mana);
-		json_race_flags(json, m.flags);
-		json_level_flags(json, m.lflags);
-		json_skill_mods(json, m.skill_modifiers);
-		json_abilities(json, m.abilities);
-		json_int(json, "index", i, false);
-		json += '}';
+		w.begin_object();
+		w.field("title", m.title);
+		w.field("desc", m.description);
+		json_shared(w, m.ps);
+		w.field("luck", m.luck);
+		w.field("infra", m.infra);
+		w.field("mana", m.mana);
+		json_race_flags(w, m.flags);
+		json_level_flags(w, m.lflags);
+		json_skill_mods(w, m.skill_modifiers);
+		json_abilities(w, m.abilities);
+		w.field("index", i);
+		w.end_object();
 	}
-	json += "],\"classes\":[";
+	w.end_array();
+	w.key("classes").begin_array();
 	for (std::size_t i = 0; i < class_info.size(); i++)
 	{
 		auto const &c = class_info[i];
-		if (i) json += ',';
-		json += '{';
-		json_str(json, "title", c.title);
-		json_str(json, "desc", c.desc);
-		json_shared(json, c.ps);
-		json_int(json, "mana", c.mana);
-		json_int(json, "blows", c.blow_num);
-		json_int(json, "extraBlows", c.extra_blows);
-		json_race_flags(json, c.flags);
-		json_level_flags(json, c.lflags);
-		json_skill_mods(json, c.skill_modifiers);
-		json_abilities(json, c.abilities);
-		json_key(json, "specs");
-		json += '[';
+		w.begin_object();
+		w.field("title", c.title);
+		w.field("desc", c.desc);
+		json_shared(w, c.ps);
+		w.field("mana", c.mana);
+		w.field("blows", c.blow_num);
+		w.field("extraBlows", c.extra_blows);
+		json_race_flags(w, c.flags);
+		json_level_flags(w, c.lflags);
+		json_skill_mods(w, c.skill_modifiers);
+		json_abilities(w, c.abilities);
+		w.key("specs").begin_array();
 		for (std::size_t j = 0; j < c.spec.size(); j++)
 		{
 			auto const &sp = c.spec[j];
-			if (j) json += ',';
-			json += '{';
-			json_str(json, "title", sp.title ? sp.title : "");
-			json_str(json, "desc", sp.desc ? sp.desc : "");
-			json_race_flags(json, sp.flags);
-			json_skill_mods(json, sp.skill_modifiers);
-			json_abilities(json, sp.abilities);
-			json_bit_names(json, "gods", { sp.gods, 0 }, [](std::size_t g) { return g < MAX_GODS ? std::string(deity_info[g].name) : std::string(); }, MAX_GODS);
-			json_int(json, "index", j, false);
-			json += '}';
+			w.begin_object();
+			w.field("title", sp.title ? sp.title : "");
+			w.field("desc", sp.desc ? sp.desc : "");
+			json_race_flags(w, sp.flags);
+			json_skill_mods(w, sp.skill_modifiers);
+			json_abilities(w, sp.abilities);
+			json_bit_names(w, "gods", { sp.gods, 0 }, [](std::size_t g) { return g < MAX_GODS ? std::string(deity_info[g].name) : std::string(); }, MAX_GODS);
+			w.field("index", j);
+			w.end_object();
 		}
-		json += "],";
-		json_int(json, "index", i, false);
-		json += '}';
+		w.end_array();
+		w.field("index", i);
+		w.end_object();
 	}
-	json += "]}";
+	w.end_array();
+	w.end_object();
 	return json.c_str();
 }
 
@@ -1837,18 +1676,9 @@ static std::pair<std::string, std::string> power_source(int idx)
  */
 EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 {
-	json.clear();
-	json += '{';
-	if (!level_ready())
-	{
-		json_int(json, "ready", 0, false);
-		json += '}';
-		return json.c_str();
-	}
-	json_int(json, "ready", 1);
-	json_key(json, "books");
-	json += '[';
-	bool firstBook = true;
+	auto w = start_json();
+	if (!begin_ready(w)) return json.c_str();
+	w.key("books").begin_array();
 	for (int i = 0; i < INVEN_TOTAL; i++)
 	{
 		object_type *o_ptr = &p_ptr->inventory[i];
@@ -1866,43 +1696,38 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 
 		char name[160];
 		object_desc(name, o_ptr, true, 0);
-		if (!firstBook) json += ',';
-		firstBook = false;
-		json += '{';
-		json_int(json, "i", i);
-		json_str(json, "name", name);
-		json_key(json, "spells");
-		json += '[';
-		bool firstSpell = true;
+		w.begin_object();
+		w.field("i", i);
+		w.field("name", name);
+		w.key("spells").begin_array();
 		for (auto spell_idx : sb->spell_idxs)
 		{
 			spell_type *spell = spell_at(spell_idx);
 			s32b level;
 			bool na;
 			get_level_school(spell, 50, -50, &level, &na);
-			if (!firstSpell) json += ',';
-			firstSpell = false;
-			json += '{';
-			json_str(json, "name", spell_type_name(spell));
-			json_str(json, "school", spell_schools(spell));
-			json_int(json, "level", na ? -1 : level);
-			json_int(json, "mana", get_mana(spell_idx));
-			json_int(json, "fail", spell_chance_book(spell_idx));
-			json_str(json, "info", spell_type_info(spell));
+			w.begin_object();
+			w.field("name", spell_type_name(spell));
+			w.field("school", spell_schools(spell));
+			w.field("level", na ? -1 : level);
+			w.field("mana", get_mana(spell_idx));
+			w.field("fail", spell_chance_book(spell_idx));
+			w.field("info", spell_type_info(spell));
 			bool const ok = is_ok_spell(spell_idx, o_ptr->pval);
-			json_int(json, "ok", ok ? 1 : 0);
-			json_int(json, "short", ok && get_mana(spell_idx) > get_power(spell_idx) ? 1 : 0);
+			w.field("ok", ok ? 1 : 0);
+			w.field("short", ok && get_mana(spell_idx) > get_power(spell_idx) ? 1 : 0);
 			std::string desc;
 			spell_type_description_foreach(spell, [&](std::string const &line) {
 				if (!desc.empty()) desc += ' ';
 				desc += line;
 			});
-			json_str(json, "desc", desc, false);
-			json += '}';
+			w.field("desc", desc);
+			w.end_object();
 		}
-		json += "]}";
+		w.end_array();
+		w.end_object();
 	}
-	json += "],";
+	w.end_array();
 
 	auto const &ab_info = game->edit_data.ab_info;
 	auto const &s_descriptors = game->edit_data.s_descriptors;
@@ -1930,41 +1755,34 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 			menu.emplace_back(ab_info[i].action_desc, ab_info[i].action_mkey);
 		}
 	}
-	json_key(json, "bonus");
-	json += '[';
+	w.key("bonus").begin_array();
+	std::vector<int> power_idxs(std::begin(p_ptr->powers), std::end(p_ptr->powers));
+	std::sort(std::begin(power_idxs), std::end(power_idxs));
+	for (auto const idx : power_idxs)
 	{
-		std::vector<int> power_idxs(std::begin(p_ptr->powers), std::end(p_ptr->powers));
-		std::sort(std::begin(power_idxs), std::end(power_idxs));
-		bool firstPower = true;
-		for (auto const idx : power_idxs)
-		{
-			auto it = game->powers.find(idx);
-			if (it == game->powers.end()) continue;
-			auto const [source, from] = power_source(idx);
-			if (!firstPower) json += ',';
-			firstPower = false;
-			json += '{';
-			json_str(json, "name", it->second->name);
-			json_str(json, "desc", it->second->desc_text);
-			json_str(json, "source", source);
-			json_str(json, "from", from);
-			json_int(json, "level", it->second->activation.level);
-			json_int(json, "cost", it->second->activation.cost, false);
-			json += '}';
-		}
+		auto it = game->powers.find(idx);
+		if (it == game->powers.end()) continue;
+		auto const [source, from] = power_source(idx);
+		w.begin_object();
+		w.field("name", it->second->name);
+		w.field("desc", it->second->desc_text);
+		w.field("source", source);
+		w.field("from", from);
+		w.field("level", it->second->activation.level);
+		w.field("cost", it->second->activation.cost);
+		w.end_object();
 	}
-	json += "],";
-	json_key(json, "powers");
-	json += '[';
-	for (std::size_t i = 0; i < menu.size(); i++)
+	w.end_array();
+	w.key("powers").begin_array();
+	for (auto const &[label, mkey] : menu)
 	{
-		if (i) json += ',';
-		json += '{';
-		json_str(json, "label", menu[i].first);
-		json_int(json, "mkey", menu[i].second, false);
-		json += '}';
+		w.begin_object();
+		w.field("label", label);
+		w.field("mkey", mkey);
+		w.end_object();
 	}
-	json += "]}";
+	w.end_array();
+	w.end_object();
 	return json.c_str();
 }
 
@@ -1978,14 +1796,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
  */
 EMSCRIPTEN_KEEPALIVE char const *web_skills_json()
 {
-	json.clear();
-	json += '{';
-	if (!level_ready())
-	{
-		json_int(json, "ready", 0, false);
-		json += '}';
-		return json.c_str();
-	}
+	auto w = start_json();
+	if (!begin_ready(w)) return json.c_str();
 
 	auto const &s_descriptors = game->edit_data.s_descriptors;
 	auto const &s_info = game->s_info;
@@ -2025,12 +1837,9 @@ EMSCRIPTEN_KEEPALIVE char const *web_skills_json()
 		return "";
 	};
 
-	json_int(json, "ready", 1);
-	json_int(json, "points", p_ptr->skill_points);
-	json_int(json, "most", most);
-	json_key(json, "skills");
-	json += '[';
-	bool first = true;
+	w.field("points", p_ptr->skill_points);
+	w.field("most", most);
+	w.key("skills").begin_array();
 	std::function<void(int, int)> add = [&](int father, int depth) {
 		for (std::size_t j = 1; j < n; j++)
 		{
@@ -2042,24 +1851,23 @@ EMSCRIPTEN_KEEPALIVE char const *web_skills_json()
 			char const *state = "normal";
 			if (skill.value == 0 && i != SKILL_MISC) state = skill.mod == 0 ? "untrained" : "learnable";
 			else if (skill.value == SKILL_MAX) state = "max";
-			if (!first) json += ',';
-			first = false;
-			json += '{';
-			json_str(json, "name", s_descriptors[i].name);
-			json_int(json, "depth", depth);
-			json_int(json, "branch", has_child(i) ? (skill.dev ? 2 : 1) : 0);
-			json_int(json, "value", skill.value);
-			json_int(json, "mod", skill.mod);
-			json_str(json, "state", state);
-			json_int(json, "misc", i == SKILL_MISC ? 1 : 0);
-			json_str(json, "raise", refusal(i));
-			json_str(json, "desc", s_descriptors[i].desc, false);
-			json += '}';
+			w.begin_object();
+			w.field("name", s_descriptors[i].name);
+			w.field("depth", depth);
+			w.field("branch", has_child(i) ? (skill.dev ? 2 : 1) : 0);
+			w.field("value", skill.value);
+			w.field("mod", skill.mod);
+			w.field("state", state);
+			w.field("misc", i == SKILL_MISC ? 1 : 0);
+			w.field("raise", refusal(i));
+			w.field("desc", s_descriptors[i].desc);
+			w.end_object();
 			if (skill.dev) add(static_cast<int>(i), depth + 1);
 		}
 	};
 	add(-1, 0);
-	json += "]}";
+	w.end_array();
+	w.end_object();
 	return json.c_str();
 }
 
@@ -2069,18 +1877,11 @@ EMSCRIPTEN_KEEPALIVE char const *web_skills_json()
  */
 EMSCRIPTEN_KEEPALIVE char const *web_abilities_json()
 {
-	json.clear();
-	json += '{';
-	if (!level_ready())
-	{
-		json_int(json, "ready", 0, false);
-		json += '}';
-		return json.c_str();
-	}
+	auto w = start_json();
+	if (!begin_ready(w)) return json.c_str();
 
 	auto const &ab_info = game->edit_data.ab_info;
 	auto const &s_descriptors = game->edit_data.s_descriptors;
-	static char const *const stat_names[6] = { "STR", "INT", "WIS", "DEX", "CON", "CHR" };
 
 	std::vector<std::size_t> table;
 	for (std::size_t i = 0; i < ab_info.size(); i++)
@@ -2089,11 +1890,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_abilities_json()
 	}
 	std::sort(table.begin(), table.end(), [&](std::size_t a, std::size_t b) { return ab_info[a].name < ab_info[b].name; });
 
-	json_int(json, "ready", 1);
-	json_int(json, "points", p_ptr->skill_points);
-	json_key(json, "abilities");
-	json += '[';
-	bool first = true;
+	w.field("points", p_ptr->skill_points);
+	w.key("abilities").begin_array();
 	for (auto const i : table)
 	{
 		auto const &ab = ab_info[i];
@@ -2119,25 +1917,20 @@ EMSCRIPTEN_KEEPALIVE char const *web_abilities_json()
 			needs.push_back(std::string(stat_names[s]) + " " + (level <= 18 ? std::to_string(level) : "18/" + std::to_string((level - 18) * 10)));
 			if (p_ptr->stat_ind[s] < level - 3) met = false;
 		}
-		if (!first) json += ',';
-		first = false;
-		json += '{';
-		json_str(json, "name", ab.name);
-		json_int(json, "cost", ab.cost);
-		json_int(json, "known", known ? 1 : 0);
-		json_int(json, "met", met ? 1 : 0);
-		json_int(json, "learnable", !known && met && p_ptr->skill_points >= ab.cost ? 1 : 0);
-		json_str(json, "desc", ab.desc);
-		json_key(json, "needs");
-		json += '[';
-		for (std::size_t k = 0; k < needs.size(); k++)
-		{
-			if (k) json += ',';
-			json_string(json, needs[k]);
-		}
-		json += "]}";
+		w.begin_object();
+		w.field("name", ab.name);
+		w.field("cost", ab.cost);
+		w.field("known", known ? 1 : 0);
+		w.field("met", met ? 1 : 0);
+		w.field("learnable", !known && met && p_ptr->skill_points >= ab.cost ? 1 : 0);
+		w.field("desc", ab.desc);
+		w.key("needs").begin_array();
+		for (auto const &need : needs) w.value(need);
+		w.end_array();
+		w.end_object();
 	}
-	json += "]}";
+	w.end_array();
+	w.end_object();
 	return json.c_str();
 }
 

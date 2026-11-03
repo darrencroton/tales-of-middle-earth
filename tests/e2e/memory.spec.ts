@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { canvasBrightness, createCharacter, dismissMore, equipSuggested, expect, jumpToLevel, keptLevelFiles, playerPos, pressExplore, sendText, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
+import { canvasBrightness, continueAs, createCharacter, dismissMore, equipSuggested, expect, findFeature, jumpToLevel, keptLevelFiles, playerPos, pressExplore, saveAndQuit, sendText, test, travelTo, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
 
 /** A fingerprint of the level's terrain, and how many grids the hero remembers. */
 function level(page: Page): Promise<{ terrain: number; known: number; depth: number }> {
@@ -20,16 +20,14 @@ async function explore(page: Page, times: number): Promise<void> {
   for (let i = 0; i < times; i++) {
     await dismissMore(page);
     await waitAtCommand(page);
-    await page.evaluate(() => window.__tome!.sendText('\u0001z'));
-    await dismissMore(page);
-    await waitAtCommand(page);
+    await wizardCommand(page, 'z');
     await pressExplore(page);
   }
   await dismissMore(page);
   await waitAtCommand(page);
 }
 
-test('kept levels stay as the hero left them, the way back is known, and the heading follows the depth', async ({ page }) => {
+test('kept levels stay as the hero left them, the way back is known, the heading follows the depth, and the first level stays as it was left after a trip up to the land', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Keeper');
@@ -75,6 +73,24 @@ test('kept levels stay as the hero left them, the way back is known, and the hea
   /* Once the level is mapped, exploring has nothing left but the way on. */
   await wizardCommand(page, 'w');
   expect((await page.evaluate(() => window.__tome!.exploreStop()))?.kind).not.toBe('frontier');
+
+  /* The first level stays as it was left after a trip up to the land. */
+  await jumpToLevel(page, 1);
+  const first = await level(page);
+  const firstAt = await playerPos(page);
+
+  await jumpToLevel(page, 0);
+  const downStairs = await findFeature(page, /down staircase/, { known: true });
+  expect(downStairs, 'no way down known on the land').not.toBeNull();
+  await travelTo(page, downStairs!);
+  expect(await playerPos(page)).toEqual(downStairs);
+
+  await page.evaluate(() => window.__tome!.sendText('\\>'));
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.snapshot()!.depth), { timeout: 30_000 }).toBe(1);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  expect((await level(page)).terrain).toBe(first.terrain);
+  expect(await playerPos(page)).toEqual(firstAt);
 });
 
 test.describe(() => {
@@ -90,44 +106,6 @@ test.describe(() => {
     await jumpToLevel(page, 2);
     expect((await level(page)).terrain).not.toBe(before.terrain);
   });
-});
-
-test('the first level stays as it was left after a trip up to the land', async ({ page }) => {
-  await page.goto('./?wizard');
-  await waitForEngine(page);
-  await createCharacter(page, 'Homebody');
-  await jumpToLevel(page, 1);
-  const before = await level(page);
-  const left = await playerPos(page);
-
-  await jumpToLevel(page, 0);
-  const entrance = await page.evaluate(() => {
-    const tome = window.__tome!;
-    const snap = tome.engine.snapshot()!;
-    const features = tome.engine.features();
-    for (let i = 0; i < snap.feat.length; i++) {
-      if (/down staircase/.test(features[snap.feat[i]].name) && snap.info[i] & 0x11) return { x: i % snap.width, y: Math.floor(i / snap.width) };
-    }
-    return null;
-  });
-  expect(entrance, 'no way down known on the land').not.toBeNull();
-  for (let i = 0; i < 12; i++) {
-    const here = await playerPos(page);
-    if (here.x === entrance!.x && here.y === entrance!.y) break;
-    await page.evaluate(() => window.__tome!.sendText('\u0001z'));
-    await dismissMore(page);
-    await waitAtCommand(page);
-    await page.evaluate(([x, y]) => window.__tome!.tapCell(x, y), [entrance!.x, entrance!.y] as const);
-    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
-  }
-  expect(await playerPos(page)).toEqual(entrance);
-
-  await page.evaluate(() => window.__tome!.sendText('\\>'));
-  await expect.poll(() => page.evaluate(() => window.__tome!.engine.snapshot()!.depth), { timeout: 30_000 }).toBe(1);
-  await dismissMore(page);
-  await waitAtCommand(page);
-  expect((await level(page)).terrain).toBe(before.terrain);
-  expect(await playerPos(page)).toEqual(left);
 });
 
 test('the world map is entered from the commands and left from the toolbar, and at night the land is drawn at once on coming down', async ({ page }) => {
@@ -184,30 +162,20 @@ test('the world map is entered from the commands and left from the toolbar, and 
   expect(await page.evaluate(() => window.__tome!.engine.snapshot()!.turn)).toBe(turn);
 });
 
-test('a quest level is never kept as the dungeon level of its depth', async ({ page }) => {
+test("a quest level is never kept as the dungeon level of its depth, and Thráin's level is never kept", async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Warden');
+  /* In wizard mode tome2 says at birth where Thráin is held in Dol Guldur (dungeon 23). */
+  const messages = await page.evaluate(() => (window.__tome!.engine.gameState(200)?.messages ?? []).map((m) => m.text).join('\n'));
+  const thrainDepth = Number(/Thrain lvl (\d+)/.exec(messages)?.[1]);
+  expect(thrainDepth).toBeGreaterThan(0);
   /* The Thieves quest, taken; its entrance is in Bree. tome2 builds a quest's level at depth 1 and moves it to the quest's own depth. */
   await wizardCommand(page, 'q', 4);
   await wizardCommand(page, 'u');
-  const entrance = await page.evaluate(() => {
-    const tome = window.__tome!;
-    const snap = tome.engine.snapshot()!;
-    const names = tome.engine.features().map((f) => f.name.toLowerCase());
-    const i = snap.feat.findIndex((f) => names[f] === 'quest entrance');
-    return i < 0 ? null : { x: i % snap.width, y: Math.floor(i / snap.width) };
-  });
+  const entrance = await findFeature(page, /^quest entrance$/i);
   expect(entrance).not.toBeNull();
-  for (let i = 0; i < 12; i++) {
-    const here = await playerPos(page);
-    if (here.x === entrance!.x && here.y === entrance!.y) break;
-    await page.evaluate(() => window.__tome!.sendText('\u0001z'));
-    await dismissMore(page);
-    await waitAtCommand(page);
-    await page.evaluate(({ x, y }) => window.__tome!.tapCell(x, y), entrance!);
-    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
-  }
+  await travelTo(page, entrance!);
   await waitAtCommand(page);
   await page.locator('#toolbar [data-action="enter"]').click();
   await expect.poll(() => page.evaluate(() => window.__tome!.engine.gameState()?.player?.quest?.id ?? 0), { timeout: 30_000 }).toBe(4);
@@ -228,36 +196,23 @@ test('a quest level is never kept as the dungeon level of its depth', async ({ p
   await dismissMore(page);
   await waitAtCommand(page);
   expect(await keptLevelFiles(page)).toEqual([]);
-  await page.locator('#toolbar [data-action="menu"]').click();
-  await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
-  await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
-  await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+  await saveAndQuit(page);
   await waitForEngine(page);
-  await page.locator('#title-screen .title-choice', { hasText: 'Continue as Warden' }).click();
-  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
-  await waitAtCommand(page);
+  await continueAs(page, 'Warden');
   expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
   await jumpToLevel(page, 0);
   expect(await keptLevelFiles(page)).toEqual([]);
-});
 
-test("Thráin's level is never kept, from the first arrival on which tome2 takes his quest; he is there from the next", async ({ page }) => {
-  await page.goto('./?wizard');
-  await waitForEngine(page);
-  await createCharacter(page, 'Rescuer');
-  /* In wizard mode tome2 says at birth where Thráin is held in Dol Guldur (dungeon 23). */
-  const messages = await page.evaluate(() => (window.__tome!.engine.gameState(200)?.messages ?? []).map((m) => m.text).join('\n'));
-  const depth = Number(/Thrain lvl (\d+)/.exec(messages)?.[1]);
-  expect(depth).toBeGreaterThan(0);
+  /* Thráin's level is never kept, from the first arrival on which tome2 takes his quest; he is there from the next. */
   await wizardCommand(page, 'D', 23);
   const quest = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.quest?.id ?? 0);
-  await jumpToLevel(page, depth);
+  await jumpToLevel(page, thrainDepth);
   expect(await quest()).toBe(0);
   expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
   /* His cell has one try to fit as each level is made. */
   for (let visit = 0; visit < 4 && (await quest()) !== 19; visit++) {
-    await jumpToLevel(page, depth - 1);
-    await jumpToLevel(page, depth);
+    await jumpToLevel(page, thrainDepth - 1);
+    await jumpToLevel(page, thrainDepth);
     expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
   }
   expect(await quest()).toBe(19);

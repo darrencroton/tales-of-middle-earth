@@ -23,6 +23,8 @@
 #include "tables.hpp"
 #include "variable.hpp"
 
+#include "json.hpp"
+
 #include <emscripten.h>
 
 #include <algorithm>
@@ -105,23 +107,22 @@ extern "C" {
  */
 EMSCRIPTEN_KEEPALIVE char const *web_run_options_json()
 {
-	json = "{\"options\":[";
-	bool first = true;
+	json.clear();
+	JsonWriter w(json);
+	w.begin_object();
+	w.key("options").begin_array();
 	for (auto const &option : RUN_OPTIONS)
 	{
-		if (!first) json += ',';
-		first = false;
-		json += "{\"name\":\"";
-		json += option.name;
-		json += "\",\"on\":";
-		json += options && (options->*option.value) ? '1' : '0';
-		json += '}';
+		w.begin_object();
+		w.field("name", option.name);
+		w.field("on", options && (options->*option.value) ? 1 : 0);
+		w.end_object();
 	}
-	json += "],\"drawn\":" + std::to_string(random_quest_count());
-	json += ",\"maxQuests\":" + std::to_string(MAX_RANDOM_QUEST - 1);
-	json += ",\"adventure\":";
-	json += adventure_mode() ? '1' : '0';
-	json += '}';
+	w.end_array();
+	w.field("drawn", random_quest_count());
+	w.field("maxQuests", MAX_RANDOM_QUEST - 1);
+	w.field("adventure", adventure_mode() ? 1 : 0);
+	w.end_object();
 	return json.c_str();
 }
 

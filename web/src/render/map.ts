@@ -20,13 +20,18 @@ export interface MapPoint {
 export const HIT_FLASH_MS = 450;
 export const MIN_ZOOM = 12;
 export const MAX_ZOOM = 48;
-export const CELL_ASPECT = 0.62;
+const CELL_ASPECT = 0.62;
 
 /** Glyphs with most of their weight low down, lifted so they read as centred. */
 const OPTICAL_LIFT: Readonly<Record<string, number>> = { '▲': 1 / 12 };
 
 const MAP_FONT = '"DejaVu Sans Mono", Menlo, Consolas, "Segoe UI Symbol", "Noto Sans Symbols 2", monospace';
 const ACCENT: RGB = [0.85, 0.64, 0.25];
+
+/** The focus held within a quarter of the view of the level's edges, so the map never scrolls far past them. */
+function clampFocus(focus: number, span: number, size: number): number {
+  return Math.max(span / 2 - span * 0.25, Math.min(size - span / 2 + span * 0.25, focus));
+}
 
 /**
  * Draws the dungeon from engine snapshots with Brogue-style lighting,
@@ -165,12 +170,7 @@ export class MapRenderer {
     const snap = this.snap;
     if (!snap) return;
     const { cols, rows } = this.viewportCells();
-    const limit = (pan: number, focus: number, span: number, size: number) => {
-      if (size <= span) return 0;
-      const lo = span / 2 - span * 0.25;
-      const hi = size - span / 2 + span * 0.25;
-      return Math.max(lo, Math.min(hi, focus + pan)) - focus;
-    };
+    const limit = (pan: number, focus: number, span: number, size: number) => (size <= span ? 0 : clampFocus(focus + pan, span, size) - focus);
     this.panX = limit(this.panX, snap.px + 0.5, cols, snap.width);
     this.panY = limit(this.panY, snap.py + 0.5, rows, snap.height);
   }
@@ -346,18 +346,7 @@ export class MapRenderer {
       const arm = Math.max(3, cellW * 0.3);
       ctx.strokeStyle = `rgba(255,90,70,${(0.55 + 0.45 * pulse).toFixed(3)})`;
       ctx.lineWidth = line;
-      ctx.beginPath();
-      for (const [cx, cy, dx, dy] of [
-        [left, top, 1, 1],
-        [left + cellW, top, -1, 1],
-        [left, top + cellH, 1, -1],
-        [left + cellW, top + cellH, -1, -1],
-      ]) {
-        ctx.moveTo(cx + dx * arm, cy);
-        ctx.lineTo(cx, cy);
-        ctx.lineTo(cx, cy + dy * arm);
-      }
-      ctx.stroke();
+      this.corners(left, top, cellW, cellH, arm);
     }
 
     if (this.path.length > 0) {
@@ -394,18 +383,7 @@ export class MapRenderer {
       const top = py(this.reticle.y);
       const arm = Math.max(3, cellW * 0.35);
       ctx.strokeStyle = toCss(scale(ACCENT, pulse));
-      ctx.beginPath();
-      for (const [cx, cy, dx, dy] of [
-        [left, top, 1, 1],
-        [left + cellW, top, -1, 1],
-        [left, top + cellH, 1, -1],
-        [left + cellW, top + cellH, -1, -1],
-      ]) {
-        ctx.moveTo(cx + dx * arm, cy);
-        ctx.lineTo(cx, cy);
-        ctx.lineTo(cx, cy + dy * arm);
-      }
-      ctx.stroke();
+      this.corners(left, top, cellW, cellH, arm);
     }
 
     const w = this.canvas.width;
@@ -439,6 +417,23 @@ export class MapRenderer {
   private clampCamera(focus: number, span: number, size: number): number {
     if (size <= span) return size / 2;
     if (!this.panned) return focus;
-    return Math.max(span / 2 - span * 0.25, Math.min(size - span / 2 + span * 0.25, focus));
+    return clampFocus(focus, span, size);
+  }
+
+  /** Strokes an L-shaped bracket in each corner of the cell at (left, top), `arm` long. */
+  private corners(left: number, top: number, w: number, h: number, arm: number): void {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    for (const [cx, cy, dx, dy] of [
+      [left, top, 1, 1],
+      [left + w, top, -1, 1],
+      [left, top + h, 1, -1],
+      [left + w, top + h, -1, -1],
+    ]) {
+      ctx.moveTo(cx + dx * arm, cy);
+      ctx.lineTo(cx, cy);
+      ctx.lineTo(cx, cy + dy * arm);
+    }
+    ctx.stroke();
   }
 }

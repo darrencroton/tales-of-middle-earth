@@ -16,10 +16,10 @@ export type RecentAction =
   /** An item used from the pack, by kind so it survives the stack changing size. */
   | { kind: 'item'; command: string; verb: string; tval: number; sval: number; name: string; aimed?: boolean };
 
-export const MAX_RECENT = 5;
+const MAX_RECENT = 5;
 
 /* tome2's "use a skill" menu keys for school spells (MKEY_SCHOOL) and stealing (MKEY_STEAL, under More's Steal). */
-export const MKEY_SCHOOL = 17;
+const MKEY_SCHOOL = 17;
 const MKEY_STEAL = 15;
 
 /**
@@ -253,7 +253,7 @@ export function recentBlocked(
   return null;
 }
 
-export interface MenuChoice {
+interface MenuChoice {
   key: string;
   label: string;
   /** tome2's action key for "use a skill" entries (17 = school spells). */
@@ -291,9 +291,9 @@ export function listedChoices(screen: string, width: number, skipCost = false): 
   return out;
 }
 
-export const SKILL_PROMPT = /Select a skill \(/;
-export const POWER_MENU_PROMPT = /Select a power \(/;
-export const SPELL_PROMPT = /Cast which spell\?/;
+const SKILL_PROMPT = /Select a skill \(/;
+const POWER_MENU_PROMPT = /Select a power \(/;
+const SPELL_PROMPT = /Cast which spell\?/;
 
 /** The choices tome2 is offering, read from its prompt and screen; empty when it is not a menu this knows. */
 export function screenChoices(prompt: string, screen: string): MenuChoice[] {

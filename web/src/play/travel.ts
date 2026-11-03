@@ -1,7 +1,6 @@
 import type { Material } from '../render/materials.ts';
 import {
-  CAVE_MARK,
-  CAVE_SEEN,
+  isKnownCell,
   LAYER_MASK,
   LAYER_MONSTER,
   isAlly,
@@ -12,7 +11,7 @@ import {
 } from '../render/snapshot.ts';
 import { KEY_BACKSLASH as BACKSLASH } from '../input/keys.ts';
 import { titleName } from '../ui/api.ts';
-import { findPath, type Point, type TravelGrid } from './pathfinding.ts';
+import { findPath, floodFill, gridDistance, type Point, type TravelGrid } from './pathfinding.ts';
 import { directionDigit, isAdjacent, type PromptKind } from './prompts.ts';
 
 const MAX_STEPS = 400;
@@ -21,7 +20,7 @@ const MAX_VISITS = 3;
 const WALK = ';'.charCodeAt(0);
 const OPEN = 'o'.charCodeAt(0);
 
-export type TravelStopReason =
+type TravelStopReason =
   | 'arrived'
   | 'monster'
   | 'hurt'
@@ -35,7 +34,6 @@ export type TravelStopReason =
   | 'explored'
   | 'exit'
   | 'exitUp'
-  | 'closest'
   | 'creatureInWay';
 
 export type TravelStep =
@@ -76,12 +74,12 @@ export const STOP_MESSAGES: Record<TravelStopReason, string | null> = {
   explored: 'Nothing left to explore within reach.',
   exit: 'Explored. The way down is here.',
   exitUp: 'Explored. The way up is here.',
-  closest: 'This is as far as you know the way.',
   creatureInWay: 'A creature stands in the way.',
 };
 
 /** Steps a walk that stops short of an unknown place takes before it says so. */
 export const FAR_WALK_STEPS = 10;
+const FAR_WALK_MESSAGE = 'This is as far as you know the way.';
 
 /** What the stop message depends on besides the step itself. */
 export interface StopContext {
@@ -104,19 +102,15 @@ export function stopMessage(step: Extract<TravelStep, { kind: 'stop' }>, ctx: St
   }
   if (step.reason === 'dark' && ctx.light) return 'Your light has gone out. Tap Light to light your way again.';
   if (step.creature) return `You stop: ${titleName(step.creature)} in sight${step.asleep ? ', asleep' : ''}.`;
-  if (step.reason === 'arrived' && ctx.approximate) return !ctx.exploring && ctx.walked >= FAR_WALK_STEPS ? STOP_MESSAGES.closest : null;
+  if (step.reason === 'arrived' && ctx.approximate) return !ctx.exploring && ctx.walked >= FAR_WALK_STEPS ? FAR_WALK_MESSAGE : null;
   return STOP_MESSAGES[step.reason];
-}
-
-function isKnownIndex(snap: LevelSnapshot, i: number): boolean {
-  return (snap.info[i] & (CAVE_MARK | CAVE_SEEN)) !== 0;
 }
 
 /** A known cell the player cannot walk through (a wall, a tree, a mountain). */
 function knownBarrier(snap: LevelSnapshot, materials: readonly Material[], x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= snap.width || y >= snap.height) return true;
   const i = y * snap.width + x;
-  if (!isKnownIndex(snap, i)) return false;
+  if (!isKnownCell(snap.info, i)) return false;
   const m = materials[snap.feat[i]];
   return !m || (!m.walkable && !m.door);
 }
@@ -145,13 +139,13 @@ export function travelGrid(snap: LevelSnapshot, materials: readonly Material[], 
     passable(x, y) {
       const i = y * snap.width + x;
       if (passing !== 'all' && !passing.has(i) && (snap.layer[i] & LAYER_MASK) === LAYER_MONSTER) return false;
-      if (!isKnownIndex(snap, i)) return inferredFloor(snap, materials, x, y);
+      if (!isKnownCell(snap.info, i)) return inferredFloor(snap, materials, x, y);
       const m = materials[snap.feat[i]];
       return !!m && (m.walkable || m.door);
     },
     penalty(x, y) {
       const i = y * snap.width + x;
-      if (!isKnownIndex(snap, i)) return 0.5;
+      if (!isKnownCell(snap.info, i)) return 0.5;
       const m = materials[snap.feat[i]];
       return m && m.door && !m.walkable ? 2 : 0;
     },
@@ -177,44 +171,25 @@ export function approachTarget(snap: LevelSnapshot, materials: readonly Material
   const goalIndex = goal.y * width + goal.x;
   const inside = goal.x >= 0 && goal.y >= 0 && goal.x < width && goal.y < height;
   const goalMat = inside ? materials[snap.feat[goalIndex]] : undefined;
-  const enterable = inside && isKnownIndex(snap, goalIndex) && !!goalMat && (goalMat.walkable || goalMat.door);
+  const enterable = inside && isKnownCell(snap.info, goalIndex) && !!goalMat && (goalMat.walkable || goalMat.door);
 
-  const depth = new Int32Array(width * height).fill(-1);
-  const queue = new Int32Array(width * height);
-  let head = 0;
-  let tail = 0;
-  depth[start] = 0;
-  queue[tail++] = start;
-  const distance = (i: number) => {
-    const x = i % width;
-    const y = (i - x) / width;
-    return Math.max(Math.abs(goal.x - x), Math.abs(goal.y - y)) + 0.001 * Math.hypot(goal.x - x, goal.y - y);
-  };
+  const cell = (i: number): Point => ({ x: i % width, y: Math.floor(i / width) });
+  const distance = (p: Point) => gridDistance(goal, p) + 0.001 * Math.hypot(goal.x - p.x, goal.y - p.y);
   let best = start;
-  let bestDistance = distance(start);
-
-  while (head < tail) {
-    const i = queue[head++];
-    const x = i % width;
-    const y = (i - x) / width;
-    if (enterable && Math.max(Math.abs(goal.x - x), Math.abs(goal.y - y)) <= 1) return { point: goal, exact: true };
-    const d = distance(i);
+  let bestDistance = distance(cell(start));
+  let exact = false;
+  floodFill(grid, cell(start), (i) => {
+    const p = cell(i);
+    if (enterable && gridDistance(goal, p) <= 1) return (exact = true);
+    const d = distance(p);
     if (d < bestDistance) {
       bestDistance = d;
       best = i;
     }
-    for (let ny = y - 1; ny <= y + 1; ny++) {
-      for (let nx = x - 1; nx <= x + 1; nx++) {
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-        const next = ny * width + nx;
-        if (depth[next] >= 0 || !grid.passable(nx, ny)) continue;
-        depth[next] = depth[i] + 1;
-        queue[tail++] = next;
-      }
-    }
-  }
+  });
+  if (exact) return { point: goal, exact: true };
   if (best === start) return null;
-  return { point: { x: best % width, y: Math.floor(best / width) }, exact: best === goalIndex };
+  return { point: cell(best), exact: best === goalIndex };
 }
 
 /**
@@ -242,7 +217,7 @@ export function stepTowards(snap: LevelSnapshot, materials: readonly Material[],
 /** Whether the player has seen or remembers a cell. */
 export function isKnown(snap: LevelSnapshot, point: Point): boolean {
   if (point.x < 0 || point.y < 0 || point.x >= snap.width || point.y >= snap.height) return false;
-  return (snap.info[point.y * snap.width + point.x] & (CAVE_MARK | CAVE_SEEN)) !== 0;
+  return isKnownCell(snap.info, point.y * snap.width + point.x);
 }
 
 /** What a tap on the map does. */
@@ -317,7 +292,7 @@ export function tapAction(
 }
 
 /** What keeps the hero from pushing past a companion: tome2 makes them stop, or strike, while confused, stunned or seeing things. */
-export interface Steadiness {
+interface Steadiness {
   confused: boolean;
   stunned: boolean;
   hallucinating: boolean;
@@ -336,7 +311,7 @@ export function pushPast(snap: LevelSnapshot, materials: readonly Material[], mo
   if (hero.confused || hero.stunned || hero.hallucinating || hero.stormbringer) return cells;
   const onFloor = !!materials[snap.feat[snap.py * snap.width + snap.px]]?.floor;
   for (const m of monsters) {
-    if (!isAlly(m) || (!onFloor && Math.max(Math.abs(m.x - snap.px), Math.abs(m.y - snap.py)) <= 1)) continue;
+    if (!isAlly(m) || (!onFloor && gridDistance(m, { x: snap.px, y: snap.py }) <= 1)) continue;
     cells.add(m.y * snap.width + m.x);
   }
   return cells;
@@ -360,9 +335,35 @@ export function hostilesInSight(monsters: readonly MonsterState[]): MonsterState
   return monsters.filter((m) => isHostile(m) && !!m.view);
 }
 
-/** Whether gold carried has dropped since the last step (a thief's touch does no harm to health). */
-export function robbed(gold: number | undefined, lastGold: number | undefined): boolean {
-  return gold !== undefined && lastGold !== undefined && gold < lastGold;
+/**
+ * What stops a journey wherever it goes: the hero hurt, robbed (gold drops:
+ * a thief's touch does no harm to health), or their light gone out below the
+ * town. Each check compares with the last one, or with `start` at first.
+ */
+export class Watch {
+  private hp: number | null = null;
+  private gold: number | undefined;
+  private light: number | null = null;
+
+  constructor(start?: TravelContext) {
+    if (start) this.note(start);
+  }
+
+  /** What has happened since the last check, if anything; the check then counts as the last. */
+  check(ctx: TravelContext): 'hurt' | 'robbed' | 'dark' | null {
+    const { hp, gold, light } = this;
+    this.note(ctx);
+    if (hp !== null && ctx.hp < hp) return 'hurt';
+    if (ctx.gold !== undefined && gold !== undefined && ctx.gold < gold) return 'robbed';
+    if (ctx.snap.depth > 0 && light !== null && light > 0 && ctx.snap.lightRadius <= 0) return 'dark';
+    return null;
+  }
+
+  private note(ctx: TravelContext): void {
+    this.hp = ctx.hp;
+    this.gold = ctx.gold;
+    this.light = ctx.snap.lightRadius;
+  }
 }
 
 export interface TravelOptions {
@@ -374,11 +375,8 @@ export interface TravelOptions {
   inSight?: Set<number>;
   /** Only the one step to a neighbouring cell (a tap beside the hero): no stops on the way, and nothing to say after. */
   oneStep?: boolean;
-}
-
-/** Whether the light carried has just gone out below the town. */
-export function lightWentOut(snap: Pick<LevelSnapshot, 'depth' | 'lightRadius'>, lastLight: number | null): boolean {
-  return snap.depth > 0 && lastLight !== null && lastLight > 0 && snap.lightRadius <= 0;
+  /** The watch kept by an exploration over all its journeys (else one of the journey's own). */
+  watch?: Watch;
 }
 
 /**
@@ -390,12 +388,10 @@ export function lightWentOut(snap: Pick<LevelSnapshot, 'depth' | 'lightRadius'>,
  * journey (`oneStep`) just takes that step.
  */
 export class Travel {
-  readonly goal: Point;
+  private readonly goal: Point;
   private readonly inSight: Set<number>;
   private readonly single: boolean;
-  private lastHp: number;
-  private lastLight: number;
-  private lastGold: number | undefined;
+  private readonly watch: Watch;
   private lastPos: Point | null = null;
   private lastWasMove = false;
   private lastDoor: Point | null = null;
@@ -426,9 +422,7 @@ export class Travel {
     this.goal = goal;
     this.inSight = options.inSight ?? new Set(hostilesInSight(start.monsters).map((m) => m.id));
     this.single = !!options.oneStep;
-    this.lastHp = start.hp;
-    this.lastGold = start.gold;
-    this.lastLight = start.snap.lightRadius;
+    this.watch = options.watch ?? new Watch(start);
     this.quarry = start.monsters.some((m) => m.x === goal.x && m.y === goal.y);
   }
 
@@ -442,10 +436,9 @@ export class Travel {
     if (!snap.atCommand || snap.icky) return { kind: 'stop', reason: 'interrupted' };
     if (this.finishing || (pos.x === this.goal.x && pos.y === this.goal.y)) return { kind: 'stop', reason: 'arrived' };
     if (this.single && this.steps > 0) return { kind: 'stop', reason: 'interrupted' };
-    if (ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };
-    if (robbed(ctx.gold, this.lastGold)) return { kind: 'stop', reason: 'robbed' };
-    if (lightWentOut(snap, this.lastLight)) return { kind: 'stop', reason: 'dark' };
-    if (this.lastPos && Math.max(Math.abs(this.lastPos.x - pos.x), Math.abs(this.lastPos.y - pos.y)) > 1) {
+    const alarm = this.watch.check(ctx);
+    if (alarm) return { kind: 'stop', reason: alarm };
+    if (this.lastPos && gridDistance(this.lastPos, pos) > 1) {
       /* A new area of the land, or a teleport: the goal no longer means the same place. */
       return { kind: 'stop', reason: 'interrupted' };
     }
@@ -484,9 +477,6 @@ export class Travel {
     if (retryingDoor) return { kind: 'stop', reason: 'shut' };
 
     this.steps++;
-    this.lastHp = ctx.hp;
-    this.lastGold = ctx.gold;
-    this.lastLight = snap.lightRadius;
     this.lastPos = pos;
 
     if (closedDoor) {
@@ -502,5 +492,4 @@ export class Travel {
     if (this.quarry && atGoal && path.length === 1) this.finishing = true;
     return { kind: 'keys', keys: [BACKSLASH, WALK, digit], path };
   }
-
 }

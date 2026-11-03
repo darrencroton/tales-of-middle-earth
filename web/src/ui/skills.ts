@@ -3,7 +3,7 @@ import type { AbilityTable, SkillEntry, SkillTable } from '../render/snapshot.ts
 import { el } from './dom.ts';
 
 /** A row of tome2's skills screen, as far as finding its cursor needs. */
-export interface SkillRow {
+interface SkillRow {
   depth: number;
   name: string;
   selected: boolean;
@@ -38,7 +38,7 @@ function formatValue(value: number): string {
 const TERM_L_GREEN = 13;
 
 /** A row of tome2's abilities screen, as far as finding its cursor needs. */
-export interface AbilityRow {
+interface AbilityRow {
   name: string;
   selected: boolean;
 }

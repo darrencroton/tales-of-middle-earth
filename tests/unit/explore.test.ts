@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Explore, nextStop, type ExplorePlan } from '../../web/src/play/explore.ts';
+import { Explore, exploreOutcome, nextStop, type ExplorePlan } from '../../web/src/play/explore.ts';
 import { decodeRuns, encodeRuns, levelKey, mergeKnown, missingCells } from '../../web/src/play/mapmemory.ts';
 import { approachTarget, inferredFloor } from '../../web/src/play/travel.ts';
 import { fightingStyle, suggestedGear } from '../../web/src/play/items.ts';
 import type { Material } from '../../web/src/render/materials.ts';
 import { CAVE_MARK, LAYER_MONSTER, LAYER_OBJECT, LAYER_TERRAIN, type EquipSlot, type ItemState, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
+import { snapshot } from './fixtures.ts';
 
 const FLOOR = 1;
 const WALL = 2;
@@ -42,7 +43,7 @@ function level(rows: string[]): LevelSnapshot {
       if (ch === '@') [px, py] = [x, y];
     }),
   );
-  return { width, height, px, py, feat, info, layer } as unknown as LevelSnapshot;
+  return snapshot(width, height, { px, py, feat, info, layer });
 }
 
 const frontier = (snap: LevelSnapshot, extra: Partial<ExplorePlan> = {}) => {
@@ -98,8 +99,8 @@ describe('explore', () => {
     const snap = level(['########', '#<.@..>#', '########']);
     const [up, down] = [1 * 8 + 1, 1 * 8 + 6];
     const isBackExit = (i: number) => i === up;
-    assert.deepEqual(nextStop(snap, materials, plan(down, { isBackExit })), { x: 6, y: 1, kind: 'exit', mark: down });
-    assert.deepEqual(nextStop(snap, materials, plan(-1, { isBackExit })), { x: 1, y: 1, kind: 'exit', mark: up, back: true });
+    assert.deepEqual(nextStop(snap, materials, plan(down, { isBackExit })), { x: 6, y: 1, kind: 'exit', mark: down, heading: 'down' });
+    assert.deepEqual(nextStop(snap, materials, plan(-1, { isBackExit })), { x: 1, y: 1, kind: 'exit', mark: up, heading: 'up' });
     const there = { ...snap, px: 1, atCommand: true, icky: false, floorObjects: 0 };
     assert.deepEqual(new Explore(plan(-1, { isBackExit })).step({ snap: there, materials, monsters: [], hp: 10 }), { kind: 'stop', reason: 'exitUp' });
     /* A way on that is known but out of reach is not a reason to turn back. */
@@ -141,7 +142,7 @@ describe('explore', () => {
   it('goes straight to the way on past fountains and shops once the level is explored', () => {
     const snap = level(['##########', '#F.@...F>#', '##########']);
     const exit = 1 * 10 + 8;
-    assert.deepEqual(nextStop(snap, materials, plan(exit)), { x: 8, y: 1, kind: 'exit', mark: exit });
+    assert.deepEqual(nextStop(snap, materials, plan(exit)), { x: 8, y: 1, kind: 'exit', mark: exit, heading: 'down' });
   });
 
   it('still heads for stairs where the hero once dropped an item', () => {
@@ -172,6 +173,14 @@ describe('explore', () => {
     snap.layer[1 * 7 + 3] = LAYER_MONSTER;
     const ctx = { snap: { ...snap, atCommand: true, icky: false, floorObjects: 0 }, materials, monsters: [], hp: 10 };
     assert.deepEqual(new Explore(plan(-1)).step(ctx), { kind: 'stop', reason: 'creatureInWay' });
+  });
+
+  it('tells why nothing is left: explored, or only a creature in the way', () => {
+    const snap = level(['#######', '#@.$..?', '#######']);
+    assert.deepEqual(exploreOutcome(level(['####', '#@.#', '####']), materials, plan(-1)), 'explored');
+    assert.equal(typeof exploreOutcome(snap, materials, plan(-1)), 'object');
+    snap.layer[1 * 7 + 3] = LAYER_MONSTER;
+    assert.equal(exploreOutcome(snap, materials, plan(-1)), 'creatureInWay');
   });
 
   it('passes over a corridor a creature blocked only until it stops, so the corridor is explored later', () => {

@@ -291,7 +291,9 @@ html.keyboard-open .sheet-layer {
   touch-action: manipulation;
 }
 
-.look-name {
+.look-name,
+.tv-label,
+.item-name {
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -1185,15 +1187,6 @@ html.keyboard-open .tv-layer.panel {
   background: rgb(0 0 0 / 0.6);
 }
 
-.tv-close {
-  margin: -0.4rem -0.4rem -0.4rem 0;
-}
-
-.tv-back {
-  align-self: center;
-  margin: -0.4rem 0 -0.4rem -0.5rem;
-}
-
 .tv-choice.link .tv-label {
   color: #f0a64a;
 }
@@ -1215,52 +1208,22 @@ html.keyboard-open .tv-layer.panel {
   touch-action: manipulation;
 }
 
-.tv-header {
+.termview .sheet-header {
   flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.8rem 0.9rem 0.7rem;
-  border-bottom: 1px solid var(--panel-border);
 }
 
-.termview.full .tv-header {
+.termview.full .sheet-header {
   width: min(100%, 48rem);
   margin: 0 auto;
   padding-top: calc(1rem + var(--top-clear));
   border-bottom: 0;
 }
 
-.tv-title-line {
-  display: flex;
-  align-items: baseline;
-  gap: 0.8rem;
-}
-
-.tv-titles {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.tv-subtitle {
-  margin: 0.15rem 0 0;
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
 .tv-meta-unit {
   color: var(--faint);
 }
 
-.tv-title {
-  margin: 0;
-  color: var(--accent);
-  font-size: var(--fs-title);
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.tv-badge {
+.sheet-note {
   flex: 0 0 auto;
   padding: 0.1rem 0.6rem;
   border: 1px solid rgb(217 164 65 / 0.5);
@@ -1379,12 +1342,6 @@ html.keyboard-open .tv-layer.panel {
   font-family: var(--mono);
   font-weight: 700;
   text-align: center;
-}
-
-.tv-label {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .tv-metas {
@@ -1632,10 +1589,6 @@ html.keyboard-open .tv-layer.panel {
 
 .sheet-card .sheet-actions {
   padding-bottom: 0.55rem;
-}
-
-.sheet.sheet-menu {
-  max-height: min(100%, var(--popup-height));
 }
 
 .sheet {
@@ -1941,22 +1894,9 @@ html.keyboard-open .tv-layer.panel {
   font-style: italic;
 }
 
-.soundtrack-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
 .soundtrack-row {
   padding-top: 0.45rem;
   padding-bottom: 0.45rem;
-}
-
-.soundtrack-text {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-width: 0;
 }
 
 .soundtrack-mood {
@@ -1975,18 +1915,13 @@ html.keyboard-open .tv-layer.panel {
 
 /* Saved heroes (title screen) */
 
-.adventurer-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
 .adventurer-row {
   padding-top: 0.45rem;
   padding-bottom: 0.45rem;
 }
 
-.adventurer-text {
+/* A row's label with a line under it. */
+.row-text {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -2093,12 +2028,6 @@ html.keyboard-open .tv-layer.panel {
   flex: 0 0 6.5em;
   color: var(--muted);
   font-size: var(--fs-small);
-}
-
-.item-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .item-ins {
@@ -3635,13 +3564,6 @@ html.keyboard-tight .prompt-card.text .card-title {
   font-size: var(--fs-large);
 }
 
-.gameover-date {
-  margin: 0 0 1rem;
-  color: var(--faint);
-  font-size: var(--fs-small);
-  text-align: center;
-}
-
 /* Hall of Fame */
 
 .fame-list {
@@ -3682,24 +3604,12 @@ html.keyboard-tight .prompt-card.text .card-title {
   text-align: center;
 }
 
-.fame-main {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-width: 0;
-}
-
 .fame-name {
   color: var(--accent-bright);
   font-weight: 600;
 }
 
 .fame-who,
-.fame-details {
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
 .fame-fate {
   color: var(--fg);
   font-size: var(--fs-small);
@@ -3719,12 +3629,6 @@ html.keyboard-tight .prompt-card.text .card-title {
   font-family: var(--sans);
   font-size: var(--fs-small);
   font-weight: 400;
-}
-
-.fame-empty {
-  margin: 1.5rem 0;
-  color: var(--muted);
-  text-align: center;
 }
 
 .tv-text.pair {
@@ -4364,12 +4268,6 @@ html.keyboard-tight .prompt-card.text .card-title {
   opacity: 0.5;
 }
 
-.spell-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
 .spell-line {
   display: flex;
   gap: 0.35rem;
@@ -4437,14 +4335,12 @@ html.keyboard-tight .prompt-card.text .card-title {
 
 /* Short landscape screens: pop-ups keep the same layout with slimmer header and footer, so more of their content shows. */
 @media (max-height: 500px) {
-  .sheet-header,
-  .termview.panel .tv-header {
+  .sheet-header {
     padding-top: 0.4rem;
     padding-bottom: 0.35rem;
   }
 
-  .sheet-title,
-  .tv-title {
+  .sheet-title {
     font-size: var(--fs-large);
   }
 

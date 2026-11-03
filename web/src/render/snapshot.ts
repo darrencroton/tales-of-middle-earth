@@ -5,6 +5,11 @@ export const CAVE_SEEN = 0x0010;
 export const CAVE_PLIT = 0x2000;
 export const CAVE_MLIT = 0x4000;
 
+/** Whether the hero has seen or remembers the cell at index `i` of a level's `info`. */
+export function isKnownCell(info: ArrayLike<number>, i: number): boolean {
+  return (info[i] & (CAVE_MARK | CAVE_SEEN)) !== 0;
+}
+
 /* Layer byte (engine/snapshot.cc). */
 export const LAYER_UNKNOWN = 0;
 export const LAYER_TERRAIN = 1;
@@ -79,7 +84,7 @@ export interface LevelSnapshot {
   effect: Uint8Array;
 }
 
-export interface SnapshotMemory {
+interface SnapshotMemory {
   HEAPU8: Uint8Array;
   HEAPU16: Uint16Array;
   HEAP32: Int32Array;
@@ -184,6 +189,14 @@ export interface PlayerState {
   status: Record<string, number>;
 }
 
+/** Feet below the surface of one dungeon level, as tome2 counts depth. */
+export const FEET_PER_LEVEL = 50;
+
+/** How deep the hero is, in feet (none on the world map). */
+export function feetOf(player: Pick<PlayerState, 'depth' | 'wild'>): number {
+  return player.wild ? 0 : player.depth * FEET_PER_LEVEL;
+}
+
 /** A quest a level holds. */
 export interface LevelQuest {
   /** tome2's quest index (the random quests share one). */
@@ -235,8 +248,6 @@ export interface MonsterState {
   view?: number;
   /** A spell or missile can be aimed at it (in line of fire, as tome2's targeting needs). */
   target?: number;
-  ridx?: number;
-  ego?: number;
   level?: number;
   /** 1 for a creature a quest is after (a random quest's foes, a quest's own monsters). */
   quest?: number;
@@ -289,6 +300,11 @@ export const NOTICE_COLOUR = 16;
 
 export function isNotice(m: Pick<MessageState, 'color'>): boolean {
   return m.color === NOTICE_COLOUR;
+}
+
+/** Whether a message has words in it, not only spaces and tome2's filler lines (`====`, `----`). */
+export function hasWords(text: string): boolean {
+  return /[^\s=\-_~*]/.test(text);
 }
 
 /**
@@ -425,7 +441,7 @@ export interface StoreState {
   sell: StoreOffer[];
 }
 
-export interface StatState {
+interface StatState {
   name: string;
   use: string;
   top: string;
@@ -437,7 +453,6 @@ export interface CharacterState {
   stats: StatState[];
   god: string;
   exp: number;
-  maxExp: number;
   nextExp: number;
   toHit: number;
   toDam: number;
@@ -478,7 +493,7 @@ export interface SkillTable {
 }
 
 /** One row of the abilities screen's whole list. */
-export interface AbilityEntry {
+interface AbilityEntry {
   name: string;
   cost: number;
   known: number;
@@ -506,14 +521,14 @@ export interface BirthSkill {
   mod: number;
 }
 
-export interface BirthAbility {
+interface BirthAbility {
   name: string;
   desc: string;
   level: number;
 }
 
 /** Object flags (tome2 edit-file names) gained at a character level. */
-export interface BirthLevelFlags {
+interface BirthLevelFlags {
   level: number;
   pval: number;
   flags: string[];
@@ -567,7 +582,7 @@ export interface SpellInfo {
   desc: string;
 }
 
-export interface SpellBook {
+interface SpellBook {
   /** Inventory index. */
   i: number;
   name: string;

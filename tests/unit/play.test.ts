@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { commandGroups, commandKeys, commandRefusal, contextActions, contextualAction, CONTROLLING, converseMacro, creaturePowersMacro, pickupCommand, releaseMacro, restMacro, speedAction, transitionUnderfoot, waitCommand, type CommandContext } from '../../web/src/play/actions.ts';
-import { findPath, type TravelGrid } from '../../web/src/play/pathfinding.ts';
+import { findPath, floodFill, gridDistance, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
 import { approachTarget, FAR_WALK_STEPS, goAction, isKnown, outOfSight, pushPast, stepTowards, STOP_MESSAGES, stopMessage, tapAction, Travel, travelGrid, type StopContext, type TravelContext } from '../../web/src/play/travel.ts';
 import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials } from '../../web/src/render/materials.ts';
-import { CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, NO_EFFECT, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
+import { CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
+import { monster, snapshot } from './fixtures.ts';
 
 const keys = (s: string) => [...s].map((c) => c.charCodeAt(0));
 
@@ -74,6 +75,15 @@ describe('pathfinding', () => {
     assert.deepEqual(findPath(gridFrom(['..']), { x: 1, y: 0 }, { x: 1, y: 0 }), []);
   });
 
+  it('counts steps to every reachable cell, nearest first, until the visitor has seen enough', () => {
+    const grid = gridFrom(['..#.', '.##.', '....']);
+    assert.deepEqual([...floodFill(grid, { x: 0, y: 0 })], [0, 1, -1, 5, 1, -1, -1, 4, 2, 2, 3, 4]);
+    const seen: number[] = [];
+    floodFill(grid, { x: 0, y: 0 }, (i) => (seen.push(i), i === 0));
+    assert.deepEqual(seen, [0]);
+    assert.equal(gridDistance({ x: 0, y: 0 }, { x: 3, y: -2 }), 3);
+  });
+
   it('allows an impassable goal such as a monster', () => {
     const grid = gridFrom(['..#']);
     assert.deepEqual(findPath(grid, { x: 0, y: 0 }, { x: 2, y: 0 }), [{ x: 1, y: 0 }, { x: 2, y: 0 }]);
@@ -101,18 +111,8 @@ function level(rows: string[], player: { x: number; y: number }): LevelSnapshot 
       if (ch === 'k') layer[i] = LAYER_MONSTER;
     }),
   );
-  return {
-    inDungeon: true, icky: false, width, height, py: player.y, px: player.x, lightRadius: 1, depth: 1,
-    wild: false, blind: false, hallucinating: false, panelRow: 0, panelCol: 0, rowMap: 1, colMap: 13,
-    atCommand: true, turn: 1, floorObjects: 0, heroActing: false,
-    feat, info: new Uint16Array(n).fill(CAVE_SEEN), glyph: new Uint8Array(n), attr: new Uint8Array(n), layer,
-    effect: new Uint8Array(n).fill(NO_EFFECT),
-  };
+  return snapshot(width, height, { py: player.y, px: player.x, lightRadius: 1, depth: 1, feat, info: new Uint16Array(n).fill(CAVE_SEEN), layer });
 }
-
-const monster = (id: number, x: number, y: number, extra: Partial<MonsterState> = {}): MonsterState => ({
-  id, name: 'kobold', ch: 107, attr: 1, x, y, hp: 5, maxhp: 5, asleep: 0, afraid: 0, unique: 0, status: -2, view: 1, target: 1, ...extra,
-});
 
 describe('travel', () => {
   const ctx = (snap: LevelSnapshot, monsters: MonsterState[] = [], hp = 10): TravelContext => ({ snap, materials: MATERIALS, monsters, hp });
@@ -170,8 +170,8 @@ describe('travel', () => {
   it('takes a one-step journey without stopping or a word after it', () => {
     const snap = level(['...'], { x: 0, y: 0 });
     const travel = new Travel({ x: 1, y: 0 }, ctx(snap), { oneStep: true });
-    assert.equal(travel.step(ctx(snap, [monster(9, 2, 0)])).kind, 'keys');
-    assert.deepEqual(travel.step(ctx(snap, [monster(9, 2, 0)])), { kind: 'stop', reason: 'interrupted' });
+    assert.equal(travel.step(ctx(snap, [monster({ id: 9, x: 2, y: 0 })])).kind, 'keys');
+    assert.deepEqual(travel.step(ctx(snap, [monster({ id: 9, x: 2, y: 0 })])), { kind: 'stop', reason: 'interrupted' });
   });
 
   it('tells known cells from unseen ones', () => {
@@ -239,7 +239,7 @@ describe('travel', () => {
     const arrived = { kind: 'stop' as const, reason: 'arrived' as const };
     const short: StopContext = { light: false, exploring: false, walked: FAR_WALK_STEPS - 1, approximate: true, depth: 1, lightRadius: 1 };
     assert.equal(stopMessage(arrived, short), null);
-    assert.equal(stopMessage(arrived, { ...short, walked: FAR_WALK_STEPS }), STOP_MESSAGES.closest);
+    assert.equal(stopMessage(arrived, { ...short, walked: FAR_WALK_STEPS }), 'This is as far as you know the way.');
     assert.equal(stopMessage(arrived, { ...short, walked: FAR_WALK_STEPS, approximate: false }), null);
   });
 
@@ -281,18 +281,18 @@ describe('travel', () => {
     assert.deepEqual(travel.step(ctx({ ...snap, px: 1, lightRadius: 0 })), { kind: 'stop', reason: 'dark' });
 
     travel = new Travel({ x: 5, y: 0 }, ctx(snap));
-    assert.deepEqual(travel.step(ctx(snap, [monster(7, 5, 5)])), { kind: 'stop', reason: 'monster', creature: 'kobold', asleep: false });
+    assert.deepEqual(travel.step(ctx(snap, [monster({ id: 7, x: 5, y: 5 })])), { kind: 'stop', reason: 'monster', creature: 'kobold', asleep: false });
   });
 
   it('stops for a sleeping creature that comes into view too', () => {
     const snap = level(['......'], { x: 0, y: 0 });
     const travel = new Travel({ x: 5, y: 0 }, ctx(snap));
-    assert.deepEqual(travel.step(ctx(snap, [monster(7, 4, 0, { asleep: 1 })])), { kind: 'stop', reason: 'monster', creature: 'kobold', asleep: true });
+    assert.deepEqual(travel.step(ctx(snap, [monster({ id: 7, x: 4, y: 0, asleep: 1 })])), { kind: 'stop', reason: 'monster', creature: 'kobold', asleep: true });
   });
 
   it('ignores creatures already in sight, however close, and allies', () => {
     const snap = level(['......'], { x: 0, y: 0 });
-    const known = [monster(1, 5, 0, { asleep: 1 }), monster(2, 1, 0, { status: 3 }), monster(3, 1, 1)];
+    const known = [monster({ id: 1, x: 5, y: 0, asleep: 1 }), monster({ id: 2, x: 1, y: 0, status: 3 }), monster({ id: 3, x: 1, y: 1 })];
     const travel = new Travel({ x: 3, y: 0 }, ctx(snap, known));
     assert.equal(travel.step(ctx(snap, known)).kind, 'keys');
     snap.px = 1;
@@ -301,19 +301,19 @@ describe('travel', () => {
 
   it('stops once for a creature coming into sight, and not again while it stays', () => {
     const snap = level(['......'], { x: 0, y: 0 });
-    const leper = [monster(1, 4, 0)];
+    const leper = [monster({ id: 1, x: 4, y: 0 })];
     const first = new Travel({ x: 5, y: 0 }, ctx(snap));
     assert.deepEqual(first.step(ctx(snap, leper)), { kind: 'stop', reason: 'monster', creature: 'kobold', asleep: false });
     const second = new Travel({ x: 5, y: 0 }, ctx(snap, leper));
     assert.equal(second.step(ctx(snap, leper)).kind, 'keys');
     snap.px = 1;
-    const other = [...leper, monster(2, 1, 1)];
+    const other = [...leper, monster({ id: 2, x: 1, y: 1 })];
     assert.deepEqual(second.step(ctx(snap, other)), { kind: 'stop', reason: 'monster', creature: 'kobold', asleep: false });
   });
 
   it('still stops when hurt by a creature in sight', () => {
     const snap = level(['......'], { x: 0, y: 0 });
-    const leper = [monster(1, 2, 0)];
+    const leper = [monster({ id: 1, x: 2, y: 0 })];
     const travel = new Travel({ x: 5, y: 0 }, ctx(snap, leper));
     assert.equal(travel.step(ctx(snap, leper)).kind, 'keys');
     snap.px = 1;
@@ -323,7 +323,7 @@ describe('travel', () => {
   it('does not stop for a creature only sensed, out of line of sight', () => {
     const snap = level(['......'], { x: 0, y: 0 });
     const travel = new Travel({ x: 5, y: 0 }, ctx(snap));
-    assert.equal(travel.step(ctx(snap, [monster(1, 4, 0, { view: 0, target: 0 })])).kind, 'keys');
+    assert.equal(travel.step(ctx(snap, [monster({ id: 1, x: 4, y: 0, view: 0, target: 0 })])).kind, 'keys');
   });
 
   it('stops when a thief takes gold, though health is untouched', () => {
@@ -335,18 +335,18 @@ describe('travel', () => {
 
   it('stops again for a creature that leaves sight and comes back mid-journey', () => {
     const snap = level(['......'], { x: 0, y: 0 });
-    const leper = [monster(1, 2, 0)];
+    const leper = [monster({ id: 1, x: 2, y: 0 })];
     const travel = new Travel({ x: 5, y: 0 }, ctx(snap, leper));
     assert.equal(travel.step(ctx(snap, leper)).kind, 'keys');
     snap.px = 1;
     assert.equal(travel.step(ctx(snap)).kind, 'keys');
     snap.px = 2;
-    assert.deepEqual(travel.step(ctx(snap, [monster(1, 3, 0)])), { kind: 'stop', reason: 'monster', creature: 'kobold', asleep: false });
+    assert.deepEqual(travel.step(ctx(snap, [monster({ id: 1, x: 3, y: 0 })])), { kind: 'stop', reason: 'monster', creature: 'kobold', asleep: false });
   });
 
   it('walks through a companion in a corridor, pushing past it as tome2 does', () => {
     const snap = level(['..k..'], { x: 0, y: 0 });
-    const friend = [monster(1, 2, 0, { status: 3, name: 'dog' })];
+    const friend = [monster({ id: 1, x: 2, y: 0, status: 3, name: 'dog' })];
     const steady = { confused: false, stunned: false, hallucinating: false, stormbringer: false };
     const passing = pushPast(snap, MATERIALS, friend, steady);
     assert.deepEqual([...passing], [2]);
@@ -358,7 +358,7 @@ describe('travel', () => {
 
   it('walks into a creature only on a journey to it; one found at another goal stands in the way', () => {
     const snap = level(['...'], { x: 0, y: 0 });
-    const foe = monster(1, 2, 0, { asleep: 1 });
+    const foe = monster({ id: 1, x: 2, y: 0, asleep: 1 });
     const hunt = new Travel({ x: 2, y: 0 }, ctx(snap, [foe]));
     assert.equal(hunt.step(ctx(snap, [foe])).kind, 'keys');
     const there = { ...snap, px: 1 };
@@ -366,29 +366,29 @@ describe('travel', () => {
     assert.deepEqual(hunt.step(ctx(there, [foe])), { kind: 'stop', reason: 'arrived' });
     const walk = new Travel({ x: 2, y: 0 }, ctx(snap));
     walk.step(ctx(snap));
-    const neutral = monster(2, 2, 0, { status: 0 });
+    const neutral = monster({ id: 2, x: 2, y: 0, status: 0 });
     assert.deepEqual(walk.step(ctx(there, [neutral])), { kind: 'stop', reason: 'creatureInWay' });
   });
 
   it('plans through a creature shown but not in sight, which cannot then turn the way back and forth', () => {
     const snap = level(['.....k.'], { x: 0, y: 0 });
-    const passing = outOfSight(snap, [monster(1, 5, 0, { view: 0 })]);
+    const passing = outOfSight(snap, [monster({ id: 1, x: 5, y: 0, view: 0 })]);
     assert.deepEqual([...passing], [5]);
     assert.equal(travelGrid(snap, MATERIALS, passing).passable(5, 0), true);
-    assert.equal(outOfSight(snap, [monster(1, 5, 0)]).size, 0);
+    assert.equal(outOfSight(snap, [monster({ id: 1, x: 5, y: 0 })]).size, 0);
   });
 
   it('does not push past a hostile or neutral creature, nor while unsteady or off the floor', () => {
     const snap = level(['..k..'], { x: 0, y: 0 });
     const steady = { confused: false, stunned: false, hallucinating: false, stormbringer: false };
-    assert.equal(pushPast(snap, MATERIALS, [monster(1, 2, 0)], steady).size, 0);
-    assert.equal(pushPast(snap, MATERIALS, [monster(1, 2, 0, { status: 0 })], steady).size, 0);
-    const friend = [monster(1, 2, 0, { status: 4 })];
+    assert.equal(pushPast(snap, MATERIALS, [monster({ id: 1, x: 2, y: 0 })], steady).size, 0);
+    assert.equal(pushPast(snap, MATERIALS, [monster({ id: 1, x: 2, y: 0, status: 0 })], steady).size, 0);
+    const friend = [monster({ id: 1, x: 2, y: 0, status: 4 })];
     assert.equal(pushPast(snap, MATERIALS, friend, { ...steady, confused: true }).size, 0);
     assert.equal(pushPast(snap, MATERIALS, friend, { ...steady, stormbringer: true }).size, 0);
     const doorway = level(['+k...'], { x: 0, y: 0 });
-    assert.equal(pushPast(doorway, MATERIALS, [monster(1, 1, 0, { status: 4 })], steady).size, 0);
-    assert.equal(pushPast(doorway, MATERIALS, [monster(1, 3, 0, { status: 4 })], steady).size, 1);
+    assert.equal(pushPast(doorway, MATERIALS, [monster({ id: 1, x: 1, y: 0, status: 4 })], steady).size, 0);
+    assert.equal(pushPast(doorway, MATERIALS, [monster({ id: 1, x: 3, y: 0, status: 4 })], steady).size, 1);
   });
 
   it('stops when the engine is no longer waiting for a command', () => {
@@ -457,8 +457,6 @@ describe('actions', () => {
     assert.deepEqual(contextActions({ ...base, prompt: 'more' }).map((a) => a.id), ['continue', 'skip', 'menu']);
     assert.ok(contextActions({ ...base, prompt: 'yesno' }).some((a) => a.id === 'yes'));
     assert.ok(contextActions({ ...base, prompt: 'aim' }).some((a) => a.id === 'nearest'));
-    const command = contextActions({ ...base, prompt: 'none' }).map((a) => a.id);
-    assert.ok(command.includes('inventory') && command.includes('commands') && command.at(-1) === 'menu');
     assert.deepEqual(
       contextActions({ ...base, mode: 'title', atCommand: false, prompt: 'none' }).map((a) => a.id),
       ['escape', 'enter', 'keyboard', 'menu'],

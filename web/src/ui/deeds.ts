@@ -7,8 +7,8 @@ import {
   type Deed,
 } from '../play/chronicle.ts';
 import type { Memorial } from '../play/memorial.ts';
-import type { EmscriptenFS } from '../saves.ts';
-import { el, iconText, section } from './dom.ts';
+import { JsonFile, type EmscriptenFS } from '../saves.ts';
+import { count, el, iconText, section, stat } from './dom.ts';
 
 const FILE = 'chronicle.json';
 const VERSION = 1;
@@ -53,22 +53,15 @@ function sanitise(raw: unknown): Stored {
  * to the savefiles so exporting saves takes them along.
  */
 export class ChronicleStore {
+  private readonly file = new JsonFile(FILE, sanitise, 'chronicle');
   private data: Stored = sanitise(null);
-  private fs: EmscriptenFS | null = null;
-  private path = '';
   loaded = false;
 
   /** Reads the file from the engine's storage (once the engine runs). */
   load(fs: EmscriptenFS | null, root: string | null): void {
     if (!fs || !root) return;
     this.loaded = true;
-    this.fs = fs;
-    this.path = `${root}/${FILE}`;
-    try {
-      this.data = sanitise(JSON.parse(new TextDecoder().decode(fs.readFile(this.path))));
-    } catch {
-      this.data = sanitise(null);
-    }
+    this.data = this.file.load(fs, root);
   }
 
   get career(): Career {
@@ -142,19 +135,8 @@ export class ChronicleStore {
   }
 
   save(): void {
-    if (!this.fs || !this.path) return;
-    try {
-      this.fs.writeFile(this.path, new TextEncoder().encode(JSON.stringify(this.data)));
-    } catch (err) {
-      console.warn('Could not write the chronicle', err);
-    }
+    this.file.save(this.data);
   }
-}
-
-function fact(label: string, value: string): HTMLElement {
-  const node = el('div', 'stat');
-  node.append(el('span', 'stat-label', label), el('span', 'stat-value', value));
-  return node;
 }
 
 /** The career and every deed, earned or not, for the title screen. */
@@ -162,12 +144,12 @@ export function careerElements(store: ChronicleStore): HTMLElement[] {
   const k = store.career;
   const grid = el('div', 'stat-grid');
   grid.append(
-    fact('Heroes', String(k.heroes)),
-    fact('Fallen', String(k.fallen)),
-    fact('Creatures slain', k.kills.toLocaleString('en-GB')),
-    fact('Legends slain', String(k.uniques)),
-    fact('Deepest', k.deepestFeet ? `${k.deepestFeet} ft` : '—'),
-    fact('Best level', k.bestLevel ? String(k.bestLevel) : '—'),
+    stat('Heroes', String(k.heroes)),
+    stat('Fallen', String(k.fallen)),
+    stat('Creatures slain', count(k.kills)),
+    stat('Legends slain', String(k.uniques)),
+    stat('Deepest', k.deepestFeet ? `${count(k.deepestFeet)} ft` : '—'),
+    stat('Best level', k.bestLevel ? String(k.bestLevel) : '—'),
   );
   const earned = store.earned;
   const list = el('ul', 'deed-list');

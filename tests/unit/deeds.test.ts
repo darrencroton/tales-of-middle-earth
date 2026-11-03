@@ -2,31 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ChronicleStore } from '../../web/src/ui/deeds.ts';
 import type { Memorial } from '../../web/src/play/memorial.ts';
-import type { EmscriptenFS } from '../../web/src/saves.ts';
-
-function memoryFs(files: Record<string, string> = {}): EmscriptenFS {
-  const data = new Map<string, Uint8Array>(Object.entries(files).map(([k, v]) => [k, new TextEncoder().encode(v)]));
-  return {
-    readdir: () => [],
-    stat: () => ({ mode: 0 }),
-    isDir: () => false,
-    readFile: (path) => {
-      const bytes = data.get(path);
-      if (!bytes) throw new Error('ENOENT');
-      return bytes;
-    },
-    writeFile: (path, bytes) => void data.set(path, bytes),
-    unlink: (path) => void data.delete(path),
-    rmdir: () => undefined,
-    mkdirTree: () => undefined,
-    syncfs: (_populate, done) => done(null),
-  };
-}
+import { MemoryFS } from './fixtures.ts';
 
 describe('chronicle store', () => {
   it('treats any name as a plain key, even ones Object.prototype uses', () => {
     const store = new ChronicleStore();
-    store.load(memoryFs(), '/save');
+    store.load(new MemoryFS(), '/save');
     for (const name of ['constructor', 'toString', '__proto__']) {
       const hero = store.hero(name);
       assert.equal(hero.name, name);
@@ -38,7 +19,7 @@ describe('chronicle store', () => {
   });
 
   it('saves and reads back the chronicle, starting a new one when a fallen name returns', () => {
-    const fs = memoryFs();
+    const fs = new MemoryFS();
     const store = new ChronicleStore();
     store.load(fs, '/save');
     store.hero('Frodo').kills = 4;
@@ -54,7 +35,7 @@ describe('chronicle store', () => {
   });
 
   it('remembers fallen heroes by name and final turn, keeping the most recent', () => {
-    const fs = memoryFs();
+    const fs = new MemoryFS();
     const store = new ChronicleStore();
     store.load(fs, '/save');
     const hero = (name: string, day: number) => ({ name, date: new Date(Date.UTC(2026, 0, day)).toISOString() }) as Memorial;

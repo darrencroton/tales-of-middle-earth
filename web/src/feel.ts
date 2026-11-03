@@ -1,5 +1,5 @@
 import type { AnimationLevel } from './settings.ts';
-import type { PlayerState } from './render/snapshot.ts';
+import { feetOf, type PlayerState } from './render/snapshot.ts';
 import { depthLabel } from './hud.ts';
 import { livesText } from './play/lives.ts';
 import { el, iconText } from './ui/dom.ts';
@@ -8,7 +8,7 @@ import { el, iconText } from './ui/dom.ts';
 export const LOW_HEALTH = 0.3;
 
 /** Where on the surface a new place is: the world map, a town, or the land around. */
-export type Surface = 'world' | 'town' | 'land';
+type Surface = 'world' | 'town' | 'land';
 
 export type FeelEvent =
   | { kind: 'hurt'; fraction: number }
@@ -39,7 +39,7 @@ export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
     const ownLevel = next.depth > 0 && !!next.quest?.own;
     const place = ownLevel ? next.quest!.title : next.depth > 0 && !next.wild ? next.dungeon : depthLabel(next);
     const surface: Surface = next.wild ? 'world' : next.inTown ? 'town' : 'land';
-    const feet = next.wild ? 0 : next.depth * 50;
+    const feet = feetOf(next);
     if (level && next.quest?.state === 'active') quest = { kind: 'quest', title: next.quest.title, place: ownLevel ? '' : place, feet };
     else events.push({ kind: 'depth', place, feet, deeper: next.depth > prev.depth, surface });
     /* A quest can fail as the next level is made (a god's temple made twice). */
@@ -212,6 +212,10 @@ export class GameFeel {
     window.clearTimeout(this.bannerTimer);
     this.banner.classList.remove('visible');
     this.layer.classList.remove('low');
+    this.deeds.length = 0;
+    window.clearTimeout(this.deedTimer);
+    this.deedTimer = 0;
+    this.deed.classList.remove('visible');
   }
 
   /** Compares with the last state seen and plays its feedback, except events `hold` keeps back (to be shown another way, or played later with `play`); returns those. */

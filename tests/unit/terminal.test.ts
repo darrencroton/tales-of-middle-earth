@@ -6,20 +6,16 @@ import { TerminalBuffer, rgbToCss } from '../../web/src/terminal.ts';
 const bytes = (s: string) => new Uint8Array([...s].map((c) => c.charCodeAt(0)));
 
 describe('TerminalBuffer', () => {
-  it('starts blank with every row dirty', () => {
+  it('starts blank', () => {
     const term = new TerminalBuffer(10, 3);
     assert.equal(term.screenText(), '\n\n');
-    assert.deepEqual(term.takeDirtyRows(), [0, 1, 2]);
-    assert.deepEqual(term.takeDirtyRows(), []);
   });
 
-  it('draws text with attributes and marks the row dirty', () => {
+  it('draws text with attributes', () => {
     const term = new TerminalBuffer(10, 3);
-    term.takeDirtyRows();
     term.drawText(2, 1, 4, bytes('abc'));
     assert.equal(term.rowText(1), '  abc     ');
     assert.equal(term.attrs[1 * 10 + 3], 4);
-    assert.deepEqual(term.takeDirtyRows(), [1]);
   });
 
   it('clips text at the edges', () => {
@@ -28,14 +24,6 @@ describe('TerminalBuffer', () => {
     term.drawText(-1, 1, 1, bytes('pq'));
     term.drawText(0, 5, 1, bytes('ignored'));
     assert.equal(term.screenText(), '   xy\nq');
-  });
-
-  it('marks old and new cursor rows dirty', () => {
-    const term = new TerminalBuffer(5, 4);
-    term.setCursor(1, 1);
-    term.takeDirtyRows();
-    term.setCursor(2, 3);
-    assert.deepEqual(term.takeDirtyRows(), [1, 3]);
   });
 
   it('clears content and cursor', () => {
@@ -47,16 +35,13 @@ describe('TerminalBuffer', () => {
     assert.equal(term.cursorY, -1);
   });
 
-  it('only invalidates when a palette entry changes', () => {
+  it('sets palette entries and ignores unknown ones', () => {
     const term = new TerminalBuffer(4, 2);
-    term.takeDirtyRows();
-    term.setColour(1, 255, 255, 255);
-    assert.deepEqual(term.takeDirtyRows(), []);
     term.setColour(1, 250, 250, 250);
     assert.equal(term.palette[1], 'rgb(250, 250, 250)');
-    assert.deepEqual(term.takeDirtyRows(), [0, 1]);
+    assert.deepEqual(term.paletteRgb[1], [250 / 255, 250 / 255, 250 / 255]);
     term.setColour(999, 1, 2, 3);
-    assert.deepEqual(term.takeDirtyRows(), []);
+    assert.equal(term.palette.length, 256);
   });
 });
 

@@ -10,15 +10,14 @@ import {
   slainMonsters,
   STREAK_TURNS,
 } from '../../web/src/play/chronicle.ts';
-import { leadInMessages, newMessages, NOTICE_COLOUR, type MonsterState } from '../../web/src/render/snapshot.ts';
+import { leadInMessages, newMessages, NOTICE_COLOUR } from '../../web/src/render/snapshot.ts';
+import { monster } from './fixtures.ts';
 
-const monster = (id: number, name: string, extra: Partial<MonsterState> = {}): MonsterState =>
-  ({ id, name, ch: 99, attr: 2, x: id, y: 1, hp: 5, maxhp: 5, asleep: 0, afraid: 0, unique: 0, status: -1, ridx: id, ego: 0, level: 3, ...extra }) as MonsterState;
 const hero = { lev: 1, au: 100, chp: 20, mhp: 20, depth: 0, dungeon: 'Barrow-Downs', wild: 0 };
 
 describe('chronicle', () => {
   it('finds creatures that vanished with a kill message', () => {
-    const before = [monster(1, 'Cave spider'), monster(2, 'Grip, Farmer Maggot\'s Dog', { unique: 1, level: 5 }), monster(3, 'Jackal')];
+    const before = [monster({ id: 1, name: 'Cave spider' }), monster({ id: 2, name: 'Grip, Farmer Maggot\'s Dog', unique: 1, level: 5 }), monster({ id: 3, name: 'Jackal' })];
     const after = [before[2]];
     const slain = slainMonsters(before, after, [
       { text: 'You have slain the Cave spider.', color: 1 },
@@ -34,7 +33,7 @@ describe('chronicle', () => {
     assert.deepEqual(newMessages(prev, { messageTotal: 5, messages: [{ ...slain, text: 'You have slain the Jackal. <2x>' }] }).length, 1);
     assert.deepEqual(newMessages(prev, prev), []);
     assert.deepEqual(newMessages(prev, { messageTotal: 7, messages: [{ text: 'b', color: 1 }, { text: 'a', color: 1 }, slain] }).map((m) => m.text), ['b', 'a']);
-    const before = [monster(1, 'Jackal'), monster(2, 'Jackal')];
+    const before = [monster({ id: 1, name: 'Jackal' }), monster({ id: 2, name: 'Jackal' })];
     const merged = newMessages(prev, { messageTotal: 5, messages: [{ ...slain, text: 'You have slain the Jackal. <2x>' }] });
     assert.equal(slainMonsters(before, [before[1]], merged).length, 1);
   });

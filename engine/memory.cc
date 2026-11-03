@@ -37,6 +37,12 @@
 /* q_god.cc: the Lost Temple, whose quest fails when a level is generated twice. */
 constexpr std::size_t DUNGEON_LOST_TEMPLE = 30;
 
+/* Whether the hero is on Thráin's level of Dol Guldur. */
+static bool thrain_level()
+{
+	return dungeon_type == DUNGEON_DOL_GULDUR && dun_level == quest[QUEST_THRAIN].data[0];
+}
+
 /*
  * The quest of the level the hero is on, done or not, or 0: the fixed quest
  * whose own level this is, the random quest of this depth in a main dungeon
@@ -51,8 +57,7 @@ int level_quest()
 	auto const &hobbit = quest[QUEST_HOBBIT];
 	if (dungeon_type == DUNGEON_MAZE && dun_level == hobbit.data[0] && hobbit.status >= QUEST_STATUS_TAKEN) return QUEST_HOBBIT;
 	/* Thráin's cell is built only once his quest is taken, which tome2 does on the first arrival: he is there from the next visit (data[1]: built on this level). */
-	auto const &thrain = quest[QUEST_THRAIN];
-	if (dungeon_type == DUNGEON_DOL_GULDUR && dun_level == thrain.data[0] && thrain.data[1]) return QUEST_THRAIN;
+	if (thrain_level() && quest[QUEST_THRAIN].data[1]) return QUEST_THRAIN;
 	if (dungeon_type == DUNGEON_LOST_TEMPLE && quest[QUEST_GOD].status >= QUEST_STATUS_TAKEN) return QUEST_GOD;
 	return 0;
 }
@@ -127,8 +132,7 @@ bool quest_level_here()
 {
 	if (p_ptr->inside_quest || level_quest_open()) return true;
 	/* Thráin's level from the first arrival: tome2 takes his quest then, and builds his cell on the next visit. */
-	auto const &thrain = quest[QUEST_THRAIN];
-	return dungeon_type == DUNGEON_DOL_GULDUR && dun_level == thrain.data[0] && thrain.status < QUEST_STATUS_FINISHED;
+	return thrain_level() && quest[QUEST_THRAIN].status < QUEST_STATUS_FINISHED;
 }
 
 /* Gives a level this frontend's save extension, or takes it away. */

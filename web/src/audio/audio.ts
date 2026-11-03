@@ -316,13 +316,14 @@ export class GameAudio {
       const intent = this.intent;
       if (intent) {
         const tookTime = snap.turn !== intent.turn;
-        ranged = RELEASED.has(intentCue(intent.key)?.id ?? 'hit');
+        const intended = intentCue(intent.key);
+        ranged = RELEASED.has(intended?.id ?? 'hit');
         /* A failure sounds as soon as tome2 reports it. */
-        const failed = !!intentCue(intent.key) && attemptOutcome(true, fresh)?.kind === 'failed';
+        const failed = !!intended && attemptOutcome(true, fresh)?.kind === 'failed';
         const cue = failed ? ({ id: 'fizzle' } as Cue) : tookTime || snap.atCommand ? outcomeCue(intent.key, tookTime, fresh) : null;
         if (cue && !(intent.sounded && RELEASED.has(cue.id))) cues.push(this.voiced(cue, intent));
         if (cue) intentPlayed = cue.id !== 'deny';
-        if (cue || tookTime || !intentCue(intent.key)) this.intent = null;
+        if (cue || tookTime || !intended) this.intent = null;
       }
       for (const text of fresh) {
         for (const cue of messageCues(text)) {
@@ -412,15 +413,11 @@ export class GameAudio {
   private play(cues: Cue[]): void {
     if (!this.sfx || !this.ctx || this.ctx.state !== 'running' || this.soundVolume === 'off') return;
     const now = this.ctx.currentTime;
-    const counts = new Map<CueId, number>();
     let played = 0;
     for (const cue of cues) {
       if (played >= MAX_CUES) break;
-      const count = counts.get(cue.id) ?? 0;
-      if (count >= 2) continue;
       const last = this.lastPlayed.get(cue.id) ?? -Infinity;
       if (now - last < (REPEAT_S[cue.id] ?? 0.05)) continue;
-      counts.set(cue.id, count + 1);
       this.lastPlayed.set(cue.id, now);
       this.sfx.play(cue, played * CUE_STAGGER_S);
       this.recent.push(cue.id);
@@ -508,7 +505,7 @@ export class GameAudio {
     const recentlyHurt = performance.now() - this.hurtAt < 8000;
     if (low && (this.threatened || recentlyHurt) && core.now >= this.nextBeat) {
       const urgency = 1 - this.health / LOW_HEALTH;
-      this.sfx?.play({ id: 'heartbeat', strength: 0.4 + urgency * 0.6 });
+      this.play([{ id: 'heartbeat', strength: 0.4 + urgency * 0.6 }]);
       this.nextBeat = core.now + 1.15 - urgency * 0.4;
     }
   }

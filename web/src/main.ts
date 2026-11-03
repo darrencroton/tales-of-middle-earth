@@ -5,18 +5,19 @@ import { attemptOutcome, doorKinds, freshMessages, launcherKind, spellTone, weap
 import { Engine } from './engine.ts';
 import { areaName, Hud, rowSegments, shortStandaloneView, statusLabels, type HudEntity } from './hud.ts';
 import { attachMapGestures, attachPinch } from './input/gestures.ts';
-import { directionKeys, KEY_BACKSLASH as BACKSLASH, KEY_BACKSPACE, KEY_ENTER, KEY_ESCAPE, keyCodes as codesOf, translateKey, translateText } from './input/keys.ts';
+import { directionKeys, KEY_BACKSLASH as BACKSLASH, KEY_BACKSPACE, KEY_ENTER, KEY_ESCAPE, keyCodes, translateKey, translateText } from './input/keys.ts';
 import { attachSoftKeyboard } from './input/softkeyboard.ts';
 import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
 import { commandGroups, commandKeys, contextActions, contextualAction, commandRefusal, CONTROLLING, creaturePowersMacro, GAME_OPTIONS, converseMacro, releaseMacro, restMacro, transitionUnderfoot, waitCommand, type Action, type ActionContext, type CommandContext, type CommandDef, type ExploreNext, type NativeView, type Slot } from './play/actions.ts';
-import { keyCodes, MacroRunner, type Macro } from './play/macro.ts';
+import { MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
 import { approachTarget, goAction, outOfSight, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
-import { Explore, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
+import { Explore, exploreOutcome, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
+import { gridDistance } from './play/pathfinding.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, questKey, type HeroMemory } from './play/mapmemory.ts';
 import { CAVE_MARK, isHostile, isNeutral, LAYER_MASK, LEAD_LINES, leadInMessages, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
 import {
@@ -52,9 +53,9 @@ import {
   type FightingStyle,
   type GearSuggestion,
 } from './play/items.ts';
-import { ABANDONED, buildMemorial, entryKey, hasFallen, memorialKey, type Memorial } from './play/memorial.ts';
+import { ABANDONED, buildMemorial, hasFallen, memorialKey, type Memorial } from './play/memorial.ts';
 import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/lives.ts';
-import { openFallen, openFoe, type FallenTab } from './ui/memorial.ts';
+import { openFallen, openFoe, recallLines, type FallenTab } from './ui/memorial.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
 import { el, glyph, iconText, navButton, section } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
@@ -63,9 +64,9 @@ import { openInventory } from './ui/inventory.ts';
 import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate, type AdventureRules } from './ui/menus.ts';
 import { Sheets, type SheetContent, type SheetTrail } from './ui/sheet.ts';
 import { bufferRows, type OptionBlock } from './ui/termparse.ts';
-import { TermView, type TermViewOptions, type TermViewTab } from './ui/termview.ts';
+import { TermView, type TermViewOptions } from './ui/termview.ts';
 import { PromptCard, type CardKind } from './ui/promptcard.ts';
-import { defaultItem, setRefusal, type PopAction } from './ui/popup.ts';
+import { defaultItem, setRefusal, type PopAction, type PopTab } from './ui/popup.ts';
 import { ListNav } from './ui/listnav.ts';
 import { cleanPrompt, describableRange } from './ui/prompttext.ts';
 import { FilePages, parseHelpFile, viewerSource, viewerHeading, type HelpFile, type HelpLink, type ViewerHeading } from './ui/filepages.ts';
@@ -591,7 +592,6 @@ function fireSlot(): Slot | null {
 const character = new CharacterPanel(api, {
   sendKeys: (keys) => send(keys),
   source: (letter) => sheetSource(letter),
-  refuse,
   poke: () => {
     if (!engine.awaitingInput || engine.pendingKeys > 0 || macros.running) return;
     const screen = characterScreen();
@@ -884,10 +884,10 @@ let questMoment: { event: Extract<FeelEvent, { kind: 'quest' | 'questEnd' }>; qu
 const CARD_KINDS = new Set<PromptKind>(['yesno', 'quantity', 'text', 'direction', 'aim', 'choice']);
 
 /** Pack / Equipment / Floor tabs for tome2's item prompts. */
-function itemTabs(prompt: string): TermViewTab[] {
+function itemTabs(prompt: string): PopTab[] {
   const mode = /^\((Inven|Equip|Floor):/.exec(prompt)?.[1];
   if (!mode) return [];
-  const tabs: TermViewTab[] = [];
+  const tabs: PopTab[] = [];
   const other = /\/ for (Equip|Inven)/.exec(prompt)?.[1];
   const lists: ['Inven' | 'Equip' | 'Floor', string][] = [
     ['Inven', 'Pack'],
@@ -1040,12 +1040,12 @@ function readViewer(): boolean {
     /* Paging past the last link leaves tome2's cursor beyond it, on no link: one step back puts it on a link, in view. */
     if (wanted.tries <= 0) return false;
     linkWanted = { ...wanted, tries: wanted.tries - 1 };
-    engine.sendKeys(codesOf('4'));
+    engine.sendKeys(keyCodes('4'));
     return true;
   }
   const delta = wanted.link.index - current;
   viewerMove = 'open';
-  engine.sendKeys([...codesOf((delta > 0 ? '6' : '4').repeat(Math.abs(delta))), KEY_ENTER]);
+  engine.sendKeys([...keyCodes((delta > 0 ? '6' : '4').repeat(Math.abs(delta))), KEY_ENTER]);
   return true;
 }
 
@@ -1063,7 +1063,7 @@ function followLink(index: number): void {
     return;
   }
   linkWanted = { key: shown.key, link, tries: 1 };
-  send([...codesOf(`#${link.line}`), KEY_ENTER]);
+  send([...keyCodes(`#${link.line}`), KEY_ENTER]);
 }
 
 /** Leaves the viewer, however many files are open in it. */
@@ -1169,7 +1169,7 @@ function sheetSource(letter: string): string {
 function updatePlace(snap: LevelSnapshot): void {
   const key = `${snap.depth}:${snap.wild}:${snap.width}x${snap.height}`;
   const now = performance.now();
-  const moved = Math.max(Math.abs(snap.px - placePos.x), Math.abs(snap.py - placePos.y)) > 1;
+  const moved = gridDistance({ x: snap.px, y: snap.py }, placePos) > 1;
   placePos = { x: snap.px, y: snap.py };
   if (key === placeKey && !moved && now - placeAt < PLACE_POLL_MS) return;
   placeKey = key;
@@ -1328,13 +1328,10 @@ function exploreNext(snap: LevelSnapshot | null): ExploreNext {
 }
 
 function exploreNextFrom(snap: LevelSnapshot): ExploreNext {
-  const plan = explorePlan();
-  const stop = nextStop(snap, materials, plan, passingCells(snap));
-  if (!stop && nextStop(snap, materials, plan, 'all')) return 'explore';
-  if (!stop) return snap.depth === 0 ? 'worldMap' : 'none';
-  if (stop.kind !== 'exit') return 'explore';
-  if (stop.x === snap.px && stop.y === snap.py) return 'here';
-  return (plan.heading === 'up') !== !!stop.back ? 'up' : 'down';
+  const next = exploreOutcome(snap, materials, explorePlan(), passingCells(snap));
+  if (next === 'explored') return snap.depth === 0 ? 'worldMap' : 'none';
+  if (typeof next === 'string' || next.kind !== 'exit') return 'explore';
+  return next.x === snap.px && next.y === snap.py ? 'here' : (next.heading ?? 'down');
 }
 
 function refresh(): void {
@@ -1634,7 +1631,7 @@ function captureMemorial(player: PlayerState, state: GameState, snap: LevelSnaps
     palette,
     slotName: (part) => SLOT_NAMES[part] ?? 'Slot',
     describe: (item) => descriptionParagraphs(engine.objectDescription(item)),
-    recall: (m) => (engine.monsterRecall(m.id)?.text ?? []).map(([attr, text]) => ({ text, colour: attr === 1 ? '' : (palette[attr] ?? '') })),
+    recall: (m) => recallLines(engine, palette, m.id),
   });
   const tale = chronicles.peek(player.name);
   if (tale) built.tale = structuredClone(tale);
@@ -1647,7 +1644,7 @@ function openFallenHero(tab: FallenTab = 'hero'): void {
   if (!memorial) return;
   if (travel || picker) stopAutomation(null, 'fallen');
   const scores = engine.scores();
-  openFallen(sheets, { memorial, entry: scores.find((e) => entryKey(e) === memorialKey(memorial!)) ?? null }, tab);
+  openFallen(sheets, { memorial, entry: scores.find((e) => memorialKey({ name: e.name, turn: e.turns }) === memorialKey(memorial!)) ?? null }, tab);
 }
 
 /**
@@ -1656,7 +1653,7 @@ function openFallenHero(tab: FallenTab = 'hero'): void {
  * screen any can be removed.
  */
 function openFameHero(entry: ScoreEntry, inGame: boolean): void {
-  const kept = chronicles.memorial(entryKey(entry));
+  const kept = chronicles.memorial(memorialKey({ name: entry.name, turn: entry.turns }));
   const anew = inGame ? fallenSaveFor(entry) : director.canBeginAnew(entry);
   openFameCard(sheets, { memorial: kept, entry }, {
     lookBack: kept ? () => openFallen(sheets, { memorial: kept, entry }) : undefined,
@@ -1685,13 +1682,13 @@ function removeFameEntry(entry: ScoreEntry): void {
   /* The confirmation and the hero's card close back to the Hall of Fame. */
   sheets.back();
   sheets.back();
-  const same = (e: ScoreEntry) => entryKey(e) === entryKey(entry) && e.points === entry.points && e.day === entry.day;
+  const same = (e: ScoreEntry) => memorialKey({ name: e.name, turn: e.turns }) === memorialKey({ name: entry.name, turn: entry.turns }) && e.points === entry.points && e.day === entry.day;
   const index = engine.scores().findIndex(same);
   if (index < 0 || !engine.removeScore(index)) {
     showToast('The Hall of Fame could not be changed.', { log: false, read: true });
     return;
   }
-  if (chronicles.forgetMemorial(entryKey(entry))) chronicles.save();
+  if (chronicles.forgetMemorial(memorialKey({ name: entry.name, turn: entry.turns }))) chronicles.save();
   if (!engine.scores().some((e) => saveBase(e.name) === saveBase(entry.name)) && director.forgetFallen(entry.name)) deleteSavefile(entry.name);
   const shown = fameSheet;
   if (shown) sheets.update(hallOfFameSheet(), shown);
@@ -1706,7 +1703,7 @@ function removeFameEntry(entry: ScoreEntry): void {
 
 /** In the game the savefile list is not at hand; a fallen hero's own savefile is the one just written. */
 function fallenSaveFor(entry: ScoreEntry): boolean {
-  return !!memorial && memorial.name === entry.name && entryKey(entry) === memorialKey(memorial);
+  return !!memorial && memorial.name === entry.name && memorialKey({ name: entry.name, turn: entry.turns }) === memorialKey(memorial);
 }
 
 /* Shops */
@@ -1789,7 +1786,7 @@ function renderShop(store: StoreState): void {
   }
   const tab = model.offer ? shopTab.tab : 'shelf';
   const inventory = engine.inventory();
-  const tabs: TermViewTab[] = [
+  const tabs: PopTab[] = [
     { id: 'shelf', label: model.shelf.label, active: tab === 'shelf', run: () => setShopTab('shelf') },
     ...(model.offer ? [{ id: 'offer', label: model.offer.label, active: tab === 'offer', run: () => setShopTab('offer') }] : []),
     { id: 'exit', label: 'Exit', active: false, run: () => send([KEY_ESCAPE]) },
@@ -2349,7 +2346,7 @@ function startExplore(): void {
   stopAutomation(null, 'explore');
   recentreMap();
   const here = { x: ctx.snap.px, y: ctx.snap.py };
-  const resumed = !!exploreLastStop && Math.max(Math.abs(exploreLastStop.x - here.x), Math.abs(exploreLastStop.y - here.y)) <= ANCHOR_DRIFT;
+  const resumed = !!exploreLastStop && gridDistance(exploreLastStop, here) <= ANCHOR_DRIFT;
   if (!exploreAnchor || !resumed) exploreAnchor = here;
   exploreSpotted.clear();
   for (const o of lastState?.objects ?? []) exploreSeenItems.add(o.y * ctx.snap.width + o.x);

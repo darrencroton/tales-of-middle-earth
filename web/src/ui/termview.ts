@@ -1,11 +1,11 @@
 import { readableColour } from '../render/colour.ts';
 import { el, leadIn } from './dom.ts';
 import { ListNav, type NavDirection } from './listnav.ts';
-import { defaultItem, renderFooter, type PopAction } from './popup.ts';
+import { defaultItem, renderFooter, renderHeader, type PopAction, type PopTab } from './popup.ts';
 import { isInstructionLine } from './prompttext.ts';
 import { bufferRows, parseRows, sliceCell, type Block, type Cell, type ChoiceBlock, type OptionBlock, type Run, type TextBlock } from './termparse.ts';
 
-export interface TermViewCallbacks {
+interface TermViewCallbacks {
   /** A menu choice was tapped or activated. */
   onChoice(key: string, choice: ChoiceBlock): void;
   /** The information button beside a choice was tapped. */
@@ -20,25 +20,17 @@ export interface TermViewCallbacks {
   onLink(index: number): void;
 }
 
-export interface TermViewSource {
+interface TermViewSource {
   cols: number;
   chars: Uint8Array;
   attrs: Uint8Array;
 }
 
-export interface TermViewRegion {
+interface TermViewRegion {
   x0: number;
   y0: number;
   x1: number;
   y1: number;
-}
-
-export interface TermViewTab {
-  /** Stable name for tests and styling (data-tab); `tab<n>` by default. */
-  id?: string;
-  label: string;
-  active: boolean;
-  run(): void;
 }
 
 export interface TermViewOptions {
@@ -52,7 +44,7 @@ export interface TermViewOptions {
   /** What tome2 said just before it asked (a creature's words before a reward), above the content. */
   lead?: readonly string[];
   /** Lists to switch between (pack, equipment, floor). */
-  tabs?: TermViewTab[];
+  tabs?: PopTab[];
   /** The view's own actions (Exit from a building), before those the toolbar offers for the screen. */
   actions?: readonly PopAction[];
   /** Terminal rows to leave out (shop command lists, page markers). */
@@ -116,14 +108,13 @@ export class TermView {
   private readonly footer: HTMLElement;
   private actions: readonly PopAction[] = [];
   private ownActions: readonly PopAction[] = [];
-  private backAction: (() => void) | undefined;
   private footerKey = '';
   private readonly nav: ListNav;
   private readonly palette: () => readonly string[];
   private readonly callbacks: TermViewCallbacks;
   private renderedKey = '';
   private blocks: Block[] = [];
-  private tabs: TermViewTab[] = [];
+  private tabs: PopTab[] = [];
   private customView = '';
   private scrollKey = '';
   private linksAt: TermViewOptions['links'] = undefined;
@@ -136,7 +127,7 @@ export class TermView {
     const backdrop = el('div', 'tv-backdrop');
     this.root = el('div', 'termview');
     this.root.hidden = true;
-    this.header = el('div', 'tv-header');
+    this.header = el('header', 'sheet-header');
     this.body = el('div', 'tv-body');
     this.footer = el('footer', 'tv-footer');
     this.footer.hidden = true;
@@ -148,15 +139,7 @@ export class TermView {
 
     this.root.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      if (target.closest('.tv-footer')) return;
-      if (target.closest('.tv-close')) {
-        this.callbacks.onClose();
-        return;
-      }
-      if (target.closest('.tv-back')) {
-        this.backAction?.();
-        return;
-      }
+      if (target.closest('.tv-footer, .sheet-back, .sheet-close')) return;
       const link = target.closest<HTMLElement>('.tv-link');
       if (link?.dataset.link) {
         this.nav.setActive(link, false);
@@ -204,6 +187,7 @@ export class TermView {
     if (this.root.hidden) return;
     this.root.hidden = true;
     this.layer.hidden = true;
+    this.header.replaceChildren();
     this.renderedKey = '';
     this.scrollKey = '';
   }
@@ -223,11 +207,11 @@ export class TermView {
   private renderFooter(): void {
     const panel = this.root.classList.contains('panel');
     const actions = panel ? [...this.ownActions, ...this.actions] : [];
-    const tabs = this.tabs.map((t, i) => ({ id: t.id ?? `tab${i}`, label: t.label, active: t.active, run: () => t.run() }));
-    const key = JSON.stringify([actions.map((a) => [a.id, a.label, a.primary, a.unavailable]), tabs.map((t) => [t.label, t.active])]);
+    /* Every field but `run`, which JSON leaves out. */
+    const key = JSON.stringify([actions, this.tabs]);
     if (key === this.footerKey) return;
     this.footerKey = key;
-    renderFooter(this.footer, actions, tabs);
+    renderFooter(this.footer, actions, this.tabs);
   }
 
   /** Choices on screen, in order. */
@@ -256,7 +240,7 @@ export class TermView {
       }
     }
     const cursorRow = blocks.some((b) => b.kind === 'option') ? options.cursorRow : undefined;
-    const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.lead, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, cursorRow, !!options.back, options.scroll?.key, blocks]);
+    const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.lead, options.badge, options.tabs, options.describe, cursorRow, !!options.back, options.scroll?.key, blocks]);
     this.show(options.layout);
     this.tabs = options.tabs ?? [];
     this.ownActions = options.actions ?? [];
@@ -376,32 +360,20 @@ export class TermView {
   }
 
   private renderHeader(options: TermViewOptions): void {
-    const parts: HTMLElement[] = [];
     const panel = options.layout === 'panel';
-    this.backAction = options.back;
-    if (options.title || options.badge || panel) {
-      const line = el('div', 'tv-title-line');
-      if (options.back) {
-        const back = el('button', 'tv-back sheet-back', '‹');
-        back.type = 'button';
-        back.setAttribute('aria-label', 'Back');
-        line.append(back);
-      }
-      const titles = el('div', 'tv-titles');
-      if (options.title) titles.append(el('h2', 'tv-title', options.title));
-      if (options.subtitle) titles.append(el('p', 'tv-subtitle', options.subtitle));
-      line.append(titles);
-      if (options.badge) line.append(el('span', 'tv-badge', options.badge));
-      if (panel) {
-        const close = el('button', 'tv-close sheet-close', '✕');
-        close.type = 'button';
-        close.setAttribute('aria-label', 'Close');
-        line.append(close);
-      }
-      parts.push(line);
+    const shown = !!(options.title || options.badge || panel);
+    if (shown) {
+      renderHeader(this.header, {
+        title: options.title,
+        subtitle: options.subtitle,
+        note: options.badge,
+        back: options.back,
+        close: panel ? () => this.callbacks.onClose() : undefined,
+      });
+    } else {
+      this.header.replaceChildren();
     }
-    this.header.replaceChildren(...parts);
-    this.header.hidden = parts.length === 0;
+    this.header.hidden = !shown;
   }
 
   private choiceFor(button: HTMLElement): ChoiceBlock | null {

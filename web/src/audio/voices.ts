@@ -1,4 +1,4 @@
-import type { AudioCore } from './core.ts';
+import { filter, gain, osc, type AudioCore } from './core.ts';
 import type { Instrument } from './themes.ts';
 import { midiToFrequency } from './theory.ts';
 
@@ -28,31 +28,6 @@ function envelope(param: AudioParam, t: number, attack: number, peak: number, su
   const end = t + Math.max(dur, attack);
   param.setTargetAtTime(0, end, release / 3);
   return end + release * 1.6;
-}
-
-function osc(core: AudioCore, type: OscillatorType | PeriodicWave, frequency: number, t: number, stop: number, detune = 0): OscillatorNode {
-  const o = core.ctx.createOscillator();
-  if (typeof type === 'string') o.type = type as OscillatorType;
-  else o.setPeriodicWave(type);
-  o.frequency.value = frequency;
-  o.detune.value = detune;
-  o.start(t);
-  o.stop(stop);
-  return o;
-}
-
-function gain(core: AudioCore, value = 0): GainNode {
-  const g = core.ctx.createGain();
-  g.gain.value = value;
-  return g;
-}
-
-function filter(core: AudioCore, type: BiquadFilterType, frequency: number, q = 0.7): BiquadFilterNode {
-  const f = core.ctx.createBiquadFilter();
-  f.type = type;
-  f.frequency.value = Math.min(20000, Math.max(20, frequency));
-  f.Q.value = q;
-  return f;
 }
 
 /** Vibrato on the given oscillators, fading in after `delay` and out at `stop`. */

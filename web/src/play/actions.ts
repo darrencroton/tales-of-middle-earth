@@ -26,7 +26,7 @@ export type NativeView =
   | 'pace'
   | 'closeFile';
 
-export type ActionEffect =
+type ActionEffect =
   | { kind: 'keys'; keys: number[] }
   | { kind: 'keyboard' }
   | { kind: 'menu' }
@@ -82,7 +82,7 @@ export function commandKeys(def: Pick<CommandDef, 'command'>): number[] {
 const FEAT_BETWEEN = 160;
 
 /** Why tome2 will not let the hero rest on the terrain underfoot (its feature index), or null. */
-export function restRefusal(feat: number | undefined): string | null {
+function restRefusal(feat: number | undefined): string | null {
   return feat === FEAT_BETWEEN ? 'Resting on a Void Jumpgate is too dangerous.' : null;
 }
 
@@ -101,7 +101,7 @@ export function* restMacro(): Macro {
 const text = keyCodes;
 
 /** Where the player is: underground, walking the land (towns and wilderness), or on the world map. */
-export type Surroundings = 'dungeon' | 'land' | 'worldMap';
+type Surroundings = 'dungeon' | 'land' | 'worldMap';
 
 /** What decides which commands the More sheet offers, and which it dims. */
 export interface CommandContext {
@@ -349,8 +349,8 @@ export interface ActionContext {
 const MAX_MAP_ACTIONS = 7;
 /* The hero's buttons that give way, in order, when the toolbar is full; both are also under More. */
 const OVERFLOW_ORDER = ['rest', 'fire'];
-/* The hero's buttons that act for the hero, which wait while they control another creature. */
-const HERO_ACTS = new Set(['recast', 'cast', 'fire', 'rest']);
+/* The hero's buttons that act for the hero, by the tome2 command each stands for (the quick repeat's is a spell's). */
+const HERO_ACTS: Readonly<Record<string, string>> = { recast: 'm', cast: 'm', fire: 'f', rest: 'R' };
 
 const FALLEN: Action = { id: 'fallen', label: 'Your hero', icon: '@', effect: { kind: 'native', view: 'fallen' } };
 const KEYBOARD: Action = { id: 'keyboard', label: 'Keys', icon: '⌨', effect: { kind: 'keyboard' } };
@@ -381,7 +381,7 @@ export function speedAction(pace: ExplorePace): Action {
 }
 
 /** A way to somewhere else from the terrain underfoot: its button and the command that takes it. */
-export interface Transition {
+interface Transition {
   id: 'descend' | 'ascend' | 'enter' | 'leave' | 'rift';
   label: string;
   icon: string;
@@ -462,8 +462,9 @@ function heroActions(ctx: ActionContext): Action[] {
     COMMANDS,
     MENU,
   ];
-  if (ctx.controlling) {
-    for (const action of actions) if (HERO_ACTS.has(action.id)) action.unavailable = CONTROLLING;
+  for (const action of actions) {
+    const why = action.id in HERO_ACTS ? commandRefusal(HERO_ACTS[action.id], { worldMap: false, controlling: !!ctx.controlling }) : null;
+    if (why) action.unavailable = why;
   }
   for (const id of OVERFLOW_ORDER) {
     if (actions.length < MAX_MAP_ACTIONS) break;

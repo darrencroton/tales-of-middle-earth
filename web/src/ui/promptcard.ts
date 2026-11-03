@@ -27,19 +27,19 @@ function questionEnd(text: string): number {
 }
 
 /** The value tome2 pre-fills after a prompt's question ("Quantity (1-6): 1" → "1"). */
-export function promptDefault(text: string): string {
+function promptDefault(text: string): string {
   const end = questionEnd(text);
   return end > 0 ? text.slice(end).trim() : '';
 }
 
 /** Highest quantity offered by "Quantity (1-6):", or null. */
-export function quantityLimit(text: string): number | null {
+function quantityLimit(text: string): number | null {
   const m = /\((\d+)\s*-\s*(\d+)\)/.exec(text);
   return m ? Number(m[2]) : null;
 }
 
 /** What the card between death and life offers. */
-export interface ReturnOffer {
+interface ReturnOffer {
   /** What killed the hero. */
   cause: string;
   /** Lives left once the hero goes back, the one they go back to included. */
