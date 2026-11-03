@@ -3,9 +3,8 @@ import { altarAction, giftActive, GODS, godNamed, godTitle, offeringMacro, worsh
 import type { GodData, PlayerState } from '../render/snapshot.ts';
 import { NOT_NOW, type GameApi } from './api.ts';
 import { count, el, iconText, navButton } from './dom.ts';
-import type { RecentAction } from '../play/recent.ts';
 import { spellText } from './inspect.ts';
-import { magicSpellRow } from './magic.ts';
+import { magicSpellRow, type MagicHandlers } from './magic.ts';
 import type { SheetAction, Sheets } from './sheet.ts';
 
 /** Melkor's offerings at his altar, as Sacrifice offers them. */
@@ -179,7 +178,7 @@ function prayAction(api: GameApi, praying: boolean): SheetAction {
 /** The hero's prayers to `god` in the books they carry, as the Magic panel's rows (a tap prays, ⓘ opens the card), by name. */
 function prayableRows(api: GameApi, god: God): Map<string, HTMLElement> {
   const rows = new Map<string, HTMLElement>();
-  const handlers = { run: (entry: RecentAction, anyway?: boolean) => api.cast(entry, anyway) };
+  const handlers: MagicHandlers = { run: (entry, anyway) => api.cast(entry, anyway) };
   for (const spell of api.engine.spells()?.books.flatMap((b) => b.spells) ?? []) {
     if (spell.god === god.name && !rows.has(spell.name)) rows.set(spell.name, magicSpellRow(api, spell, handlers));
   }
