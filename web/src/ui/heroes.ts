@@ -137,7 +137,6 @@ export class Heroes {
       px: snap.px,
       py: snap.py,
       turn: snap.turn,
-      place: player.depth > 0 ? player.dungeon : (player.area ?? ''),
       palette,
       slotName: (part) => SLOT_NAMES[part] ?? 'Slot',
       describe: (item) => descriptionParagraphs(engine.objectDescription(item)),
@@ -181,9 +180,9 @@ export class Heroes {
    * device can be looked back on in full, some begun anew, and on the title
    * screen any can be removed.
    */
-  openFame(entry: ScoreEntry, inGame: boolean): void {
+  private openFame(entry: ScoreEntry, inGame: boolean): void {
     const { director, sheets } = this.deps;
-    const kept = this.chronicles.memorial(memorialKey({ name: entry.name, turn: entry.turns }));
+    const kept = this.memorialOf(entry);
     const anew = inGame ? this.fallenSaveFor(entry) : director.canBeginAnew(entry);
     openFameCard(sheets, { memorial: kept, entry }, {
       lookBack: kept ? () => openFallen(sheets, { memorial: kept, entry }) : undefined,
@@ -243,6 +242,20 @@ export class Heroes {
     );
   }
 
+  /** The Hall of Fame's rows, best first, with what was remembered of each hero on this device; a tap opens the hero. */
+  fameRows(entries: readonly ScoreEntry[], highlight: number, inGame: boolean): HTMLElement[] {
+    return hallOfFameElements(
+      entries,
+      highlight,
+      (entry) => this.memorialOf(entry),
+      (entry) => this.openFame(entry, inGame),
+    );
+  }
+
+  private memorialOf(entry: ScoreEntry): Memorial | null {
+    return this.chronicles.memorial(memorialKey({ name: entry.name, turn: entry.turns }));
+  }
+
   /** The Hall of Fame from the title screen. */
   openHallOfFame(): void {
     this.deps.sheets.open(this.hallOfFameSheet());
@@ -250,7 +263,7 @@ export class Heroes {
 
   private hallOfFameSheet(): SheetContent {
     const body = el('div', 'fame');
-    body.append(section('Heroes remembered', ...hallOfFameElements(this.deps.engine.scores(), -1, (entry) => this.openFame(entry, false))), ...careerElements(this.chronicles));
+    body.append(section('Heroes remembered', ...this.fameRows(this.deps.engine.scores(), -1, false)), ...careerElements(this.chronicles));
     this.fameSheet = { title: 'Hall of Fame', subtitle: 'Heroes of Middle-earth, remembered', body, className: 'sheet-fame' };
     return this.fameSheet;
   }

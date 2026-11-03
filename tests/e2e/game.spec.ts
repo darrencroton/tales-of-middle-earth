@@ -288,12 +288,12 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('.termview .fame-row')).toHaveCount(3);
   await expect(page.locator('.termview .fame-row').first()).toContainText('Killed by a Cave spider at 150 ft');
   await expect(page.locator('.termview .fame-row').nth(2)).toHaveClass(/current/);
-  await expect(page.locator('.termview .fame-row').nth(2)).toContainText('Abandoned in the town');
+  await expect(page.locator('.termview .fame-row').nth(2)).toContainText('Abandoned in Bree');
   await page.keyboard.press('ArrowUp');
   await expect(page.locator('.termview .fame-row').nth(1)).toHaveClass(/is-active/);
   await page.keyboard.press('Enter');
   await expect(page.locator('.sheet .sheet-title')).toHaveText('Grodon');
-  await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText("Killed by Grip, Farmer Maggot's Dog in the town");
+  await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText("Killed by Grip, Farmer Maggot's Dog on the surface");
   await expect(page.locator('.sheet-fame-hero .sheet-action')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
@@ -305,7 +305,7 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await page.locator('#title-screen [data-link="fame"]').click();
   await expect(page.locator('.sheet .sheet-title')).toHaveText('Hall of Fame');
   await expect(page.locator('.sheet .fame-row')).toHaveCount(3);
-  await expect(page.locator('.sheet .fame-row').nth(1)).toContainText("Killed by Grip, Farmer Maggot's Dog in the town");
+  await expect(page.locator('.sheet .fame-row').nth(1)).toContainText("Killed by Grip, Farmer Maggot's Dog on the surface");
   await expect(page.locator('.sheet')).toContainText('Career');
   await expect(page.locator('.sheet .deed')).toHaveCount(16);
   await expect(page.locator('.sheet .stat', { hasText: 'Fallen' })).toContainText('0');
@@ -442,7 +442,7 @@ test('a hero whose adventure ended can be looked back on and begun anew as a new
   await expect(page.locator('.termview .fame-row').first()).toHaveClass(/current/);
   await page.locator('.termview .fame-row').first().click();
   await expect(page.locator('.sheet-fame-hero .sheet-title')).toHaveText('Anew');
-  await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText('Abandoned in the town');
+  await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText('Abandoned in Bree');
   await expect(page.locator('.sheet-fame-hero .sheet-action')).toHaveText(['Begin anew', 'Look back']);
   await page.locator('.sheet-fame-hero [data-action="look"]').click();
   await expect(page.locator('.sheet-fallen .fallen-cause')).toHaveText('Adventure abandoned');
@@ -548,7 +548,7 @@ test('saved heroes: Continue plays the last, the Game Roster lists them all, an 
   await expect(page.locator('.sheet .fame-row')).toHaveCount(1);
   await page.locator('.sheet .fame-row').first().click();
   await expect(page.locator('.sheet-fame-hero .sheet-title')).toHaveText('Young Sib');
-  await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText('Abandoned in the town');
+  await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText('Abandoned in Bree');
   await expect(page.locator('.sheet-fame-hero .sheet-action')).toHaveText(['Begin anew', 'Look back', 'Remove']);
   await page.locator('.sheet-fame-hero [data-action="remove"]').click();
   await page.locator('.sheet', { hasText: 'Remove Young Sib?' }).locator('.sheet-action.danger').click();

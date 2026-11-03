@@ -9,7 +9,8 @@ import { directionKeys, KEY_BACKSLASH as BACKSLASH, KEY_ENTER, KEY_ESCAPE, keyCo
 import { attachSoftKeyboard } from './input/softkeyboard.ts';
 import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
-import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapEffect, type MapPoint } from './render/map.ts';
+import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapPoint } from './render/map.ts';
+import { drawnEffects, terminalCell } from './render/effects.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
 import { contextActions, contextualAction, commandRefusal, CONTROLLING, creaturePowersMacro, releaseMacro, restMacro, waitCommand, type Action, type ActionContext, type CommandContext, type NativeView } from './play/actions.ts';
 import { MacroRunner, type Macro } from './play/macro.ts';
@@ -61,7 +62,7 @@ import { ShopController } from './ui/shop.ts';
 import { entranceLabel, shopModel } from './ui/store.ts';
 import { parseAbilities, parseSkills } from './ui/skills.ts';
 import { findMessageBox, type MessageBox } from './ui/msgbox.ts';
-import { hallOfFameElements, heroEntry, isHallOfFame, parseTomb } from './ui/gameover.ts';
+import { heroEntry, isHallOfFame, parseTomb } from './ui/gameover.ts';
 import { slainMonsters, type Slain } from './play/chronicle.ts';
 import { parseFullSheet } from './ui/charsheet.ts';
 
@@ -508,11 +509,7 @@ function setMode(next: ViewMode): void {
 }
 
 function terminalToDungeon(snap: LevelSnapshot, col: number, row: number): MapPoint | null {
-  if (row < snap.rowMap || row >= buffer.rows - 1 || col < snap.colMap) return null;
-  const x = col - snap.colMap + snap.panelCol;
-  const y = row - snap.rowMap + snap.panelRow;
-  if (x < 0 || y < 0 || x >= snap.width || y >= snap.height) return null;
-  return { x, y };
+  return terminalCell(snap, col, row, buffer.rows);
 }
 
 function rowZeroText(): string {
@@ -746,7 +743,7 @@ function refresh(): void {
       const scores = engine.scores();
       const shown = player ? heroEntry(scores, { name: player.name, level: player.lev, turns: snap.turn }) : -1;
       termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero for their tale' }, `fame:${scores.length}:${shown}`, () =>
-        hallOfFameElements(scores, shown, (entry) => heroes.openFame(entry, true)),
+        heroes.fameRows(scores, shown, true),
       );
     } else if (store) {
       shop.render();
@@ -1362,16 +1359,7 @@ function captureEffects(): void {
   const snap = game.lastSnap;
   if (!snap || !snap.inDungeon || snap.icky || !base) return;
   if (snap.panelRow !== basePanel.row || snap.panelCol !== basePanel.col) return;
-  const effects: MapEffect[] = [];
-  for (let row: number = snap.rowMap; row < buffer.rows - 1; row++) {
-    for (let col: number = snap.colMap; col < buffer.cols; col++) {
-      const i = row * buffer.cols + col;
-      const ch = buffer.chars[i];
-      if (ch === 0x20 || (ch === base.chars[i] && buffer.attrs[i] === base.attrs[i])) continue;
-      const point = terminalToDungeon(snap, col, row);
-      if (point) effects.push({ ...point, ch, attr: buffer.attrs[i] });
-    }
-  }
+  const effects = drawnEffects(snap, buffer, base, buffer.cols, buffer.rows);
   if (effects.length > MAX_EFFECT_CELLS) return;
   map.setEffects(effects);
   audio.effects(effects, snap.heroActing);

@@ -1,6 +1,6 @@
 import type { Chronicle } from './chronicle.ts';
 import { gridDistance } from './pathfinding.ts';
-import { feetOf, hasWords, isNotice, type CharacterState, type InventoryState, type MessageState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
+import { feetOf, hasWords, placeName, isNotice, type CharacterState, type InventoryState, type MessageState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
 import { stripArticle } from './text.ts';
 
 /** Game turns in a day of Middle-earth (tome2's DAY at ten game turns a player turn). */
@@ -47,7 +47,10 @@ export interface Memorial {
   /** Game turn at death; matches the Hall of Fame entry. */
   turn: number;
   feet: number;
+  /** Where the hero fell (`placeName`). */
   place: string;
+  /** The quest whose own level the hero fell on, else empty. */
+  quest: string;
   cause: string;
   /** ISO date of the fall. */
   date: string;
@@ -123,7 +126,6 @@ interface MemorialSources {
   px: number;
   py: number;
   turn: number;
-  place: string;
   palette: readonly string[];
   slotName(part: number): string;
   describe(item: number): string[];
@@ -160,7 +162,8 @@ export function buildMemorial(s: MemorialSources): Memorial {
     gold: p.au,
     turn: s.turn,
     feet: feetOf(p),
-    place: s.place,
+    place: placeName(p),
+    quest: p.quest?.own ? p.quest.title : '',
     cause,
     date: (s.now ?? new Date()).toISOString(),
     mhp: p.mhp,

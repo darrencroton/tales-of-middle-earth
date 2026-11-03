@@ -1,6 +1,5 @@
 import type { AnimationLevel } from './settings.ts';
-import { feetOf, type PlayerState } from './render/snapshot.ts';
-import { depthLabel } from './hud.ts';
+import { feetOf, placeName, type PlayerState } from './render/snapshot.ts';
 import { livesText } from './play/lives.ts';
 import { el, iconText } from './ui/dom.ts';
 
@@ -35,9 +34,8 @@ export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
   /* A quest's banner comes last, so no other banner covers it. */
   let quest: FeelEvent | null = null;
   if (level || area) {
-    /* A quest's own level belongs to no dungeon, whatever tome2 keeps as the dungeon. */
     const ownLevel = next.depth > 0 && !!next.quest?.own;
-    const place = ownLevel ? next.quest!.title : next.depth > 0 && !next.wild ? next.dungeon : depthLabel(next);
+    const place = placeName(next) || 'Town';
     const surface: Surface = next.wild ? 'world' : next.inTown ? 'town' : 'land';
     const feet = feetOf(next);
     if (level && next.quest?.state === 'active') quest = { kind: 'quest', title: next.quest.title, place: ownLevel ? '' : place, feet };

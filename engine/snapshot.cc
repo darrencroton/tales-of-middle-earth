@@ -709,6 +709,8 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 
 	if (auto_more_override >= 0 && options) options->auto_more = auto_more_override != 0;
 	if (delay_override >= 0 && options) options->delay_factor = delay_override;
+	/* The hero is drawn as their race's symbol, as in the snapshot, never as a digit for their health. */
+	if (options) options->player_char_health = false;
 	web_memory_tick();
 	web_run_options_tick();
 	web_adventure_tick();

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { areaName, depthLabel, rowSegments, shortStandaloneView, sortByDistance, statusLabels } from '../../web/src/hud.ts';
+import { areaName, depthLabel, inPlace, rowSegments, shortStandaloneView, sortByDistance, statusLabels } from '../../web/src/hud.ts';
+import { placeName } from '../../web/src/render/snapshot.ts';
 import { MAX_ZOOM } from '../../web/src/render/map.ts';
 import { defaultSettings, sanitiseSettings } from '../../web/src/settings.ts';
 import { TerminalBuffer } from '../../web/src/terminal.ts';
@@ -20,6 +21,21 @@ describe('HUD helpers', () => {
     assert.equal(depthLabel({ depth: 3, dungeon: 'Barrow-Downs', wild: 0, quest: princess }), 'Barrow-Downs · 150 ft (L3)');
     const hobbit = { id: 6, own: 0, state: 'done' as const, title: 'Lost Hobbit', lines: [] };
     assert.equal(depthLabel({ depth: 30, dungeon: 'Maze', wild: 0, quest: hobbit }), 'Maze · 1500 ft (L30)');
+  });
+
+  it('names where the hero is, and says it in a sentence', () => {
+    const thieves = { id: 4, own: 1, state: 'active' as const, title: 'Thieves!', lines: [] };
+    assert.equal(placeName({ depth: 5, dungeon: 'Barrow-Downs', wild: 0, quest: thieves }), 'Thieves!');
+    assert.equal(placeName({ depth: 5, dungeon: 'Barrow-Downs', wild: 0 }), 'Barrow-Downs');
+    assert.equal(placeName({ depth: 0, dungeon: 'Barrow-Downs', wild: 0, area: 'Shallows' }), 'Shallows');
+    assert.equal(placeName({ depth: 0, dungeon: '', wild: 1 }), 'World map');
+    assert.equal(placeName({ depth: 0, dungeon: '', wild: 0 }), '');
+    assert.equal(inPlace('Shallows'), 'in the shallows');
+    assert.equal(inPlace('The road'), 'on the road');
+    assert.equal(inPlace('World map'), 'on the world map');
+    assert.equal(inPlace('Bree'), 'in Bree');
+    assert.equal(inPlace('The wilds'), 'in the wilds');
+    assert.equal(inPlace('Town'), 'in the town');
   });
 
   it('names surface places from the engine place', () => {

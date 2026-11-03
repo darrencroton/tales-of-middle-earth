@@ -185,5 +185,7 @@ describe('deleting a saved hero', () => {
     assert.equal(placeLine({ depth: 8, dungeon: 'Barrow-downs', wild: 0, area: undefined }), 'Barrow-downs, level 8');
     assert.equal(placeLine({ depth: 0, dungeon: '', wild: 0, area: 'Bree' }), 'Bree');
     assert.equal(placeLine({ depth: 0, dungeon: '', wild: 1, area: undefined }), 'World map');
+    const thieves = { id: 4, own: 1, state: 'active' as const, title: 'Thieves!', lines: [] };
+    assert.equal(placeLine({ depth: 5, dungeon: 'Barrow-Downs', wild: 0, quest: thieves }), 'Thieves!, level 5');
   });
 });

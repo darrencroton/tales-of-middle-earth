@@ -65,7 +65,6 @@ describe('memorial', () => {
       px: 4,
       py: 4,
       turn: 900,
-      place: 'Angband',
       palette: ['#000', '#fff', '#0f0', '#00f'],
       slotName: (part) => (part === 24 ? 'Weapon' : 'Slot'),
       describe: (i) => [`About item ${i}.`],
@@ -73,6 +72,8 @@ describe('memorial', () => {
       now: new Date(Date.UTC(2026, 9, 28)),
     });
     assert.equal(memorial.feet, 1500);
+    assert.equal(memorial.place, 'Angband');
+    assert.equal(memorial.quest, '');
     assert.equal(memorial.cause, 'a Cave troll');
     assert.deepEqual(memorial.stats, [{ name: 'STR', value: '18/50' }]);
     assert.deepEqual(memorial.skills.map((s) => s.name), ['Sword-mastery', 'Combat']);

@@ -1,4 +1,5 @@
 import type { Engine } from '../engine.ts';
+import { inPlace } from '../hud.ts';
 import { DEEDS, type Chronicle, type Deed } from '../play/chronicle.ts';
 import { returnsText } from '../play/lives.ts';
 import { ABANDONED, dayOf, skillValue, type Memorial, type MemorialFoe, type MemorialItem, type MemorialLine } from '../play/memorial.ts';
@@ -8,18 +9,29 @@ import { description, titleName } from './api.ts';
 import { count, el, glyph, iconText, section, signed, stat } from './dom.ts';
 import type { SheetContent, Sheets, SheetTab } from './sheet.ts';
 
-/** Where a hero fell, in words: "in the town", "on a quest", "at 250 ft". */
-function fellWhere(entry: Pick<ScoreEntry, 'depth' | 'quest'>): string {
-  if (entry.quest) return 'on a quest';
-  return entry.depth > 0 ? `at ${entry.depth * FEET_PER_LEVEL} ft` : 'in the town';
+type FellAt = Pick<Memorial, 'feet' | 'place' | 'quest'>;
+
+/** Where a remembered hero fell: "at 250 ft in Mirkwood", "at 250 ft on the quest “Thieves!”", "in the shallows", "in Bree". */
+function memorialWhere(m: FellAt): string {
+  const where = m.quest ? `on the quest “${m.quest}”` : m.place ? inPlace(m.place) : '';
+  return [m.feet ? `at ${count(m.feet)} ft` : '', where].filter(Boolean).join(' ');
 }
 
-/** "Killed by a Cave spider at 250 ft", "Abandoned in the town", or "Retired" for a winner who chose to stop. */
-export function fateText(entry: Pick<ScoreEntry, 'how' | 'depth' | 'quest'>): string {
-  if (entry.how === ABANDONED) return `Abandoned ${fellWhere(entry)}`;
-  if (/^Quitting$/i.test(entry.how)) return `Retired ${fellWhere(entry)}`;
+/** Where a hero fell, as remembered on this device, else from tome2's score, which keeps no place on the land: "at 250 ft", "on a quest", "on the surface". */
+function fellWhere(entry: Pick<ScoreEntry, 'depth' | 'quest'>, memorial: FellAt | null): string {
+  const remembered = memorial ? memorialWhere(memorial) : '';
+  if (remembered) return remembered;
+  if (entry.quest) return 'on a quest';
+  return entry.depth > 0 ? `at ${count(entry.depth * FEET_PER_LEVEL)} ft` : 'on the surface';
+}
+
+/** "Killed by a Cave spider at 250 ft in Mirkwood", "Abandoned in Bree", or "Retired" for a winner who chose to stop. */
+export function fateText(entry: Pick<ScoreEntry, 'how' | 'depth' | 'quest'>, memorial: FellAt | null = null): string {
+  const where = fellWhere(entry, memorial);
+  if (entry.how === ABANDONED) return `Abandoned ${where}`;
+  if (/^Quitting$/i.test(entry.how)) return `Retired ${where}`;
   if (/^Ripe Old Age$/i.test(entry.how)) return 'Lived to a ripe old age';
-  return `Killed by ${entry.how || 'something unknown'} ${fellWhere(entry)}`;
+  return `Killed by ${entry.how || 'something unknown'} ${where}`;
 }
 
 export type FallenTab = 'hero' | 'gear' | 'skills' | 'end';
@@ -47,9 +59,8 @@ export function fateLine(cause: string): string {
 }
 
 /** Where and when: "at 1,500 ft in Erebor · day 12". */
-export function fellWhereWhen(m: Pick<Memorial, 'feet' | 'place' | 'turn'>): string {
-  const where = m.feet ? `at ${count(m.feet)} ft${m.place ? ` in ${m.place}` : ''}` : m.place ? `in ${m.place}` : '';
-  return [where, `day ${dayOf(m.turn)}`].filter(Boolean).join(' · ');
+export function fellWhereWhen(m: FellAt & Pick<Memorial, 'turn'>): string {
+  return [memorialWhere(m), `day ${dayOf(m.turn)}`].filter(Boolean).join(' · ');
 }
 
 /** The creature that killed the hero, as a tappable chip. */
