@@ -39,9 +39,8 @@ function questRow(sheets: Sheets, quest: LoggedQuest): HTMLButtonElement {
 /** One quest of the log, as a card: how it stands, and what it asked or what the hero did. */
 function openLoggedQuest(sheets: Sheets, quest: LoggedQuest): void {
   const body = el('div', 'description');
-  const told = quest.random && quest.state !== 'active' ? loggedQuestText(quest) : questParagraphs(quest);
-  for (const text of told) body.append(el('p', undefined, text));
-  if (quest.unclaimed) body.append(el('p', undefined, 'Done. Return to whoever asked it of you to claim your reward.'));
+  const done = loggedQuestText(quest);
+  for (const text of done.length ? done : questParagraphs(quest)) body.append(el('p', undefined, text));
   const standing =
     quest.state === 'failed'
       ? 'Failed'

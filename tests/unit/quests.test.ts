@@ -24,6 +24,7 @@ describe('quest log', () => {
     assert.equal(questLine(princess), '150 ft · 5 × Cave orc');
     assert.deepEqual(loggedQuestText(princess), ['You set free a princess held captive by 5 × Cave orc, 150 ft down.']);
     assert.deepEqual(loggedQuestText(sword), ["You won back an adventurer's sword from 4 × Hill orc, 400 ft down."]);
-    assert.deepEqual(loggedQuestText({ ...princess, state: 'active' }), []);
+    assert.equal(questLine({ ...princess, random: { ...princess.random, count: 1, foe: 'Grip' } }), '150 ft · Grip');
+    assert.deepEqual(loggedQuestText(wolves), []);
   });
 });

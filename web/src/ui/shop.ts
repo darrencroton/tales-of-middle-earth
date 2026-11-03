@@ -36,6 +36,8 @@ interface ShopDeps {
   redraw(): void;
   /** Applies again the tome2 options a service holds off (messages flowing past). */
   restoreEngineSettings(): void;
+  /** What a service said has been shown in its card. */
+  replied(): void;
 }
 
 /** A building's service under way, with what it has drawn so far. */
@@ -247,7 +249,10 @@ export class ShopController {
     /* Oldest first, without tome2's count of a repeated message ("… <2x>"). */
     const said = run.state && state ? newMessages(run.state, state).map((m) => m.text.replace(/\s*<\d+x>$/, '')).reverse() : [];
     const reply = serviceReply(run.pages.filter((page) => page.length), said);
-    if (reply.length) openMessage(sheets, run.name, reply, 'sheet-service');
+    if (reply.length) {
+      openMessage(sheets, run.name, reply, 'sheet-service');
+      this.deps.replied();
+    }
     return false;
   }
 }

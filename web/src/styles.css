@@ -1917,7 +1917,7 @@ html.keyboard-open .tv-layer.panel {
   color: var(--accent-bright);
 }
 
-/* Saved heroes (title screen) */
+/* Saved heroes (title screen) and the quest log: rows with a line under the name */
 
 .adventurer-row,
 .quest-row {
@@ -1939,7 +1939,7 @@ html.keyboard-open .tv-layer.panel {
   font-size: var(--fs-small);
 }
 
-/* The quest log: quests under way in violet, those done quieter, a reward waiting in gold. */
+/* Quest log: quests under way in violet, those done quieter, a reward waiting in gold. */
 .quest-row .row-icon {
   color: var(--quest);
 }

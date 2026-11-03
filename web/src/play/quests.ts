@@ -22,16 +22,21 @@ export function questGroups(log: QuestLog): QuestGroups {
 /** A quest's line in the log: how dangerous it is or how deep it lay, and a reward still to be claimed. */
 export function questLine(quest: LoggedQuest): string {
   const r = quest.random;
-  if (r) return [quest.depth ? `${quest.depth * FEET_PER_LEVEL} ft` : '', `${r.count} × ${r.foe}`].filter(Boolean).join(' · ');
+  if (r) return [quest.depth ? `${quest.depth * FEET_PER_LEVEL} ft` : '', foes(r)].filter(Boolean).join(' · ');
   if (quest.unclaimed) return 'Reward waiting';
   return quest.state === 'active' && quest.level ? `Danger level ${quest.level}` : '';
 }
 
-/** What a logged quest asked, in words: a fixed quest's description; a random quest done, as what the hero did. */
+/** A random quest's creatures: one by name, several counted. */
+function foes(r: NonNullable<LoggedQuest['random']>): string {
+  return r.count === 1 ? r.foe : `${r.count} × ${r.foe}`;
+}
+
+/** A random quest done, as what the hero did; nothing for the others (their card tells what they ask). */
 export function loggedQuestText(quest: LoggedQuest): string[] {
   const r = quest.random;
   if (!r || quest.state === 'active') return [];
   const where = quest.depth ? `, ${quest.depth * FEET_PER_LEVEL} ft down` : '';
-  if (r.kind === 'sword') return [`You won back an adventurer's sword from ${r.count} × ${r.foe}${where}.`];
-  return [r.count === 1 ? `You set free a princess held captive by ${r.foe}${where}.` : `You set free a princess held captive by ${r.count} × ${r.foe}${where}.`];
+  if (r.kind === 'sword') return [`You won back an adventurer's sword from ${foes(r)}${where}.`];
+  return [`You set free a princess held captive by ${foes(r)}${where}.`];
 }

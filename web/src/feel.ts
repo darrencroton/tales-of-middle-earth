@@ -47,6 +47,7 @@ export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
   } else if (next.quest?.state === 'active' && next.quest.random && prev.quest?.random && next.quest.random.slain > prev.quest.random.slain) {
     quest = { kind: 'questProgress', slain: next.quest.random.slain, count: next.quest.random.count };
   }
+  /* tome2 never ends a quest as the hero arrives on another quest's level, so an end takes the arrival's place. */
   quest = endedQuest(prev, next, level) ?? quest;
   if (next.lev > prev.lev) events.push({ kind: 'levelup', level: next.lev, skillPoints: next.skillPoints ?? 0 });
   else if (next.exp > prev.exp) events.push({ kind: 'exp', amount: next.exp - prev.exp });

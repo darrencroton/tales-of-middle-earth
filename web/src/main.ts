@@ -860,14 +860,15 @@ const SCENE_NOISE = /^You have no more /;
  * Tells a held quest moment once tome2 waits for a command on the map with
  * nothing else open: a quest's first arrival as a card with the scene and
  * what it asks; its end as a card with the scene, unless tome2 already showed
- * those words with a question, or said nothing. Otherwise, and on a return
- * to a quest's level, its banner.
+ * those words (with a question, in a creature's words or a building's reply:
+ * it waits for a conversation to be told), or said nothing. Otherwise, and on
+ * a return to a quest's level, its banner.
  */
 function tellQuestMoment(): void {
   const moment = questMoment;
   const snap = game.lastSnap;
   const state = game.lastState;
-  if (!moment || !snap || !state || mode !== 'map' || !snap.atCommand || journeys.travelling || macros.running || sheets.isOpen || promptCard.visible) return;
+  if (!moment || !snap || !state || mode !== 'map' || !snap.atCommand || journeys.travelling || macros.running || conversation.talking || sheets.isOpen || promptCard.visible) return;
   questMoment = null;
   const { event, quest } = moment;
   const arrival = event.kind === 'quest';
@@ -1691,6 +1692,7 @@ const shop = new ShopController({
   steals: () => abilities.steals(),
   redraw,
   restoreEngineSettings: applyEngineSettings,
+  replied: noteLeadShown,
 });
 const heroes = new Heroes({
   engine,
@@ -1753,6 +1755,7 @@ const conversation = new Conversation({
   hideToast,
   showToast,
   openMessage: (title, text) => openMessage(sheets, title, text),
+  told: noteLeadShown,
 });
 const backup = new Backup({ engine, sheets, input: importFile });
 const updates = new Updates(() => director.atTitle);

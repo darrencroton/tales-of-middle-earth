@@ -170,3 +170,4 @@ Parsed from the terminal each refresh (`main.ts` `refresh()` → `renderCustom`)
 - The home has no e2e test: Bree's appears only once the Thieves' Hideout is cleared; it shares the shop's code and was checked by hand (store, take part of a stack).
 - Hardware-keyboard `i`/`e`/`~` are redirected to the native inventory and knowledge menu (`redirectNativeScreen`), and `?` to Help (`Reader.idle`).
 - Renaming from the full sheet (`c`) edits inline on row 2 and is not offered.
+- The quest log keeps no god quest once its relic is found, and no bounty once paid: tome2 sets them back to untaken (to be given again), keeping no record of them.

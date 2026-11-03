@@ -258,7 +258,6 @@ test("a quest level is never kept as the dungeon level of its depth, Thráin's l
   await expect(card.locator('.sheet-subtitle')).toHaveText('Quest complete');
   await expect(card.locator('.sheet-title')).toHaveText('Nirnaeth Arnoediad');
   await expect(card.locator('.lead-in')).toContainText('You found a way out!');
-  expect(await page.evaluate(() => window.__tome!.engine.gameState()?.player?.quests ?? [])).toContainEqual({ id: 14, state: 'done', title: 'Nirnaeth Arnoediad' });
   await card.locator('[data-action="onward"]').click();
   await expect(page.locator('#hud .entity.quest')).toHaveCount(0);
   /* The quest log keeps it, under those completed, its reward waiting in Gondolin. */

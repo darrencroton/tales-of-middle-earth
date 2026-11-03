@@ -24,6 +24,8 @@ interface ConversationDeps {
   showToast(text: string, options: { log?: boolean; read?: boolean }): void;
   /** Shows what was said in a card. */
   openMessage(title: string, text: string): void;
+  /** What was said has been shown (in a card or a toast). */
+  told(): void;
 }
 
 /**
@@ -47,6 +49,11 @@ export class Conversation {
   reset(): void {
     this.conversation = null;
     this.attempt = null;
+  }
+
+  /** A word with a creature is under way: what it says is still being gathered, to be shown once tome2 is back at the command prompt. */
+  get talking(): boolean {
+    return !!this.conversation;
   }
 
   /** Starts watching an action begun from a button, so a refusal or failure is told once tome2 is back at the command prompt. */
@@ -129,5 +136,6 @@ export class Conversation {
     this.conversation = null;
     if (messages.length > 1) this.deps.openMessage(title, messages.join(' '));
     else if (messages.length === 1) this.deps.showToast(messages[0], { log: false, read: true });
+    if (messages.length) this.deps.told();
   }
 }

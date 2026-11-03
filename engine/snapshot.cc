@@ -232,29 +232,6 @@ static char const *quest_state(s16b status)
 	}
 }
 
-/*
- * Every fixed quest the hero has taken, done or failed, with its state, so
- * the end of a quest is seen wherever it comes: on its level, as the hero
- * leaves it, or away from any quest's level. Random quests are told by the
- * level's own quest.
- */
-static void json_quests(JsonWriter &w)
-{
-	w.key("quests").begin_array();
-	for (int q = QUEST_NULL + 1; q < MAX_Q_IDX; q++)
-	{
-		if (q == QUEST_RANDOM || quest[q].silent) continue;
-		auto const state = quest_state(quest[q].status);
-		if (!state) continue;
-		w.begin_object();
-		w.field("id", q);
-		w.field("state", state);
-		w.field("title", quest[q].name);
-		w.end_object();
-	}
-	w.end_array();
-}
-
 /* A quest's description as tome2's quest log tells it, in lines, without the headings it colours ("#####y…"). */
 static std::vector<std::string> quest_lines(quest_type const &qt)
 {
@@ -293,6 +270,40 @@ static void json_random_quest(JsonWriter &w, int depth)
 	w.field("count", rq.type);
 	w.field("slain", rq.done ? rq.type : here ? quest[QUEST_RANDOM].data[0] : 0);
 	w.end_object();
+}
+
+/*
+ * Every fixed quest the hero has taken, done or failed, with its state (random
+ * quests are told by the level's own quest): for the game state, so the end
+ * of a quest is seen wherever it comes (on its level, as the hero leaves it,
+ * or away from any quest's level); with `log`, also its danger level, its
+ * description and whether its reward is still to be claimed (tome2's
+ * "Completed - Unrewarded"), for the quest log.
+ */
+static void json_quests(JsonWriter &w, bool log)
+{
+	w.key("quests").begin_array();
+	for (int q = QUEST_NULL + 1; q < MAX_Q_IDX; q++)
+	{
+		auto const &qt = quest[q];
+		if (q == QUEST_RANDOM || qt.silent) continue;
+		auto const state = quest_state(qt.status);
+		if (!state) continue;
+		w.begin_object();
+		w.field("id", q);
+		w.field("state", state);
+		w.field("title", qt.name);
+		if (log)
+		{
+			w.field("level", qt.level);
+			w.field("unclaimed", qt.status == QUEST_STATUS_COMPLETED ? 1 : 0);
+			w.key("lines").begin_array();
+			for (auto const &line : quest_lines(qt)) w.value(line);
+			w.end_array();
+		}
+		w.end_object();
+	}
+	w.end_array();
 }
 
 /*
@@ -1513,7 +1524,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	w.field("diedFrom", game->died_from);
 	json_adventure(w);
 	json_level_quest(w);
-	json_quests(w);
+	json_quests(w, false);
 	w.key("status").begin_object();
 	w.field("blind", p_ptr->blind);
 	w.field("confused", p_ptr->confused);
@@ -1927,36 +1938,16 @@ EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
 }
 
 /*
- * The hero's quest log: every fixed quest taken, done or failed, with its
- * danger level, its description as tome2's quest log tells it and whether
- * its reward is still to be claimed (tome2's "Completed - Unrewarded"); and
- * the random quests of the main dungeons done so far, with this level's own
- * while it is under way, by depth.
+ * The hero's quest log: every fixed quest taken, done or failed (json_quests),
+ * and the random quests of the main dungeons done so far, with this level's
+ * own while it is under way, by depth.
  */
 EMSCRIPTEN_KEEPALIVE char const *web_quests_json()
 {
 	auto w = start_json();
 	if (!begin_ready(w)) return json.c_str();
 
-	w.key("quests").begin_array();
-	for (int q = QUEST_NULL + 1; q < MAX_Q_IDX; q++)
-	{
-		auto const &qt = quest[q];
-		if (q == QUEST_RANDOM || qt.silent) continue;
-		auto const state = quest_state(qt.status);
-		if (!state) continue;
-		w.begin_object();
-		w.field("id", q);
-		w.field("state", state);
-		w.field("title", qt.name);
-		w.field("level", qt.level);
-		w.field("unclaimed", qt.status == QUEST_STATUS_COMPLETED ? 1 : 0);
-		w.key("lines").begin_array();
-		for (auto const &line : quest_lines(qt)) w.value(line);
-		w.end_array();
-		w.end_object();
-	}
-	w.end_array();
+	json_quests(w, true);
 
 	w.key("random").begin_array();
 	for (int depth = 1; depth < MAX_RANDOM_QUEST; depth++)
