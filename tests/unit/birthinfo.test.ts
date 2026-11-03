@@ -29,6 +29,7 @@ const thunderlord: BirthEntry = {
 const data: BirthData = {
   races: [thunderlord, { ...thunderlord, index: 18, title: 'DeathMold', flags: ['EXPERIMENTAL', 'NO_GOD'], levelFlags: [], powers: [] }],
   mods: [{ index: 0, title: '', desc: 'Classical', flags: [], skills: [], abilities: [] }],
+  gods: [],
   classes: [
     {
       index: 1,

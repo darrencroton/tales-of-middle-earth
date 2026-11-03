@@ -22,7 +22,10 @@ interface JourneyDeps {
   map: MapRenderer;
   snapshot(): LevelSnapshot | null;
   state(): GameState | null;
+  /** The terrain as the hero can walk it, for travel (with what their abilities let them enter). */
   materials(): readonly Material[];
+  /** The terrain as the level was built, for exploring, which follows the level's own ways. */
+  mapMaterials(): readonly Material[];
   level(): LevelState;
   heading(): Heading;
   alwaysPickup(): boolean;
@@ -111,31 +114,37 @@ export class Journeys {
     };
   }
 
-  private context(): TravelContext | null {
+  /** The terrain a journey walks: as the hero can for travel, as the level was built for exploring. */
+  private terrain(exploring: boolean): readonly Material[] {
+    return exploring ? this.deps.mapMaterials() : this.deps.materials();
+  }
+
+  private context(exploring: boolean): TravelContext | null {
     const snap = this.deps.snapshot();
     const state = this.deps.state();
     if (!snap || !state?.player) return null;
     const row0 = this.deps.buffer.rowText(0).trim();
+    const materials = this.terrain(exploring);
     return {
       snap,
-      materials: this.deps.materials(),
+      materials,
       monsters: state.monsters ?? [],
       hp: state.player.chp,
       gold: state.player.au,
-      passing: this.passing(snap),
+      passing: this.passing(snap, materials),
       prompt: classifyPrompt(row0, this.deps.buffer.cursorY === 0),
     };
   }
 
   /** Cells of the creatures travel and exploring plan through: those not in sight (`outOfSight`), and companions they swap places with as tome2 lets the hero (`pushPast`). */
-  private passing(snap: LevelSnapshot): Set<number> {
+  private passing(snap: LevelSnapshot, materials: readonly Material[]): Set<number> {
     const state = this.deps.state();
     const player = state?.player;
     const monsters = state?.monsters ?? [];
     const cells = outOfSight(snap, monsters);
     if (!player || !monsters.some((m) => m.status > 0)) return cells;
     const weapon = this.deps.engine.inventory()?.equip.find((slot) => slot.i === INVEN_WIELD)?.name ?? '';
-    const companions = pushPast(snap, this.deps.materials(), monsters, {
+    const companions = pushPast(snap, materials, monsters, {
       confused: (player.status.confused ?? 0) > 0,
       stunned: (player.status.stun ?? 0) > 0,
       hallucinating: (player.status.hallucinating ?? 0) > 0,
@@ -180,8 +189,8 @@ export class Journeys {
   private step(): void {
     this.timer = 0;
     if (!this.deps.engine.awaitingInput) return;
-    const ctx = this.context();
     const travel = this.travel;
+    const ctx = this.context(travel instanceof Explore);
     if (!travel || !ctx) return;
     if (travel instanceof Explore) this.deps.level().explore.noteSpotted(this.deps.state()?.objects ?? [], ctx.snap);
     const step = travel.step(ctx);
@@ -229,7 +238,7 @@ export class Journeys {
    * otherwise as far as the known way goes towards it.
    */
   travelTo(goal: MapPoint): void {
-    const ctx = this.context();
+    const ctx = this.context(false);
     if (!ctx || this.deps.held()) return;
     this.stop(null, 'new travel');
     this.deps.hideToast();
@@ -247,7 +256,7 @@ export class Journeys {
 
   /** One step to a neighbouring cell (a closed door there is opened, then walked through). */
   stepTo(cell: MapPoint): void {
-    const ctx = this.context();
+    const ctx = this.context(false);
     if (!ctx || this.deps.held()) return;
     this.stop(null, 'step');
     this.deps.hideToast();
@@ -263,7 +272,7 @@ export class Journeys {
    * explored level, goes to the way on, which a further press takes.
    */
   explore(): void {
-    const ctx = this.context();
+    const ctx = this.context(true);
     if (!ctx || this.deps.held()) return;
     this.stop(null, 'explore');
     this.deps.recentreMap();
@@ -332,7 +341,8 @@ export class Journeys {
   }
 
   private exploreNextFrom(snap: LevelSnapshot): ExploreNext {
-    const next = exploreOutcome(snap, this.deps.materials(), this.plan(), this.passing(snap));
+    const materials = this.terrain(true);
+    const next = exploreOutcome(snap, materials, this.plan(), this.passing(snap, materials));
     if (next === 'explored') return 'none';
     if (typeof next === 'string' || next.kind !== 'exit') return 'explore';
     return next.x === snap.px && next.y === snap.py ? 'here' : (next.heading ?? 'down');
@@ -343,7 +353,8 @@ export class Journeys {
     const snap = this.deps.snapshot();
     if (!snap) return null;
     const plan = this.plan();
-    const stop = nextStop(snap, this.deps.materials(), plan, this.passing(snap));
+    const materials = this.terrain(true);
+    const stop = nextStop(snap, materials, plan, this.passing(snap, materials));
     return { kind: stop?.kind ?? 'none', x: stop?.x ?? -1, y: stop?.y ?? -1, heading: plan.heading ?? 'down' };
   }
 }

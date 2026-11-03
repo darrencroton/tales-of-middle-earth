@@ -14,7 +14,7 @@ export type HelpBlock =
   | { tip: string };
 
 /** Topics built from the game's own data rather than written here. */
-type HelpSpecial = 'races' | 'manual';
+type HelpSpecial = 'races' | 'gods' | 'manual';
 
 export interface HelpTopic {
   id: string;
@@ -492,22 +492,16 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Gods and piety',
         icon: '☼',
         summary: 'Following one of the Valar.',
-        keywords: 'god gods piety pray prayer valar eru manwe tulkas yavanna melkor altar',
+        keywords: 'god gods piety pray praying prayer prayers valar eru manwe tulkas yavanna melkor altar worship sacrifice offering kneel tome',
         body: [
-          'Priests must follow a god; any hero may choose one when they begin, or later at an altar.',
-          'Your *piety* is how pleased your god is: it rises and falls with what you do. *Pray* (under More) calls on your god, bringing some of their gifts into play, until you *Stop praying*. Prayers are spells your god grants: they cost piety instead of mana, and grow with your Prayer skill.',
-          {
-            terms: [
-              ['Eru Ilúvatar', 'The One. Grants wisdom and mana, and while you pray may turn aside evil blows. Wants blunt or blessed weapons, and no good creatures harmed.'],
-              ['Manwë Súlimo', 'Lord of the winds. Grants levitation, and while you pray, speed, free action and flight. Piety slowly fades.'],
-              ['Tulkas', 'The champion. Grants strength and toughness, and loves evil and demons slain while you pray.'],
-              ['Yavanna Kementári', 'Giver of Fruits. Lets you pass through trees and heal on grass; never harm animals while you pray.'],
-              ['Melkor Bauglir', 'The Dark Enemy. Grants strength and fire resistance for a little of your mind. Piety drains quickly.'],
-            ],
-          },
-          'All but Melkor abandon a hero who wears the One Ring.',
+          'Most heroes may choose a god when they begin, and priests begin with theirs. A hero without one can follow the god of an altar later: stand on it and *Worship*. A god, once followed, is yours for good: only the One Ring (worn, for every god but Melkor; destroyed, for Melkor) or any skill in Antimagic ends it.',
+          "*Piety* is how pleased your god is. It rises and falls with what you do, as each god's card tells. Many gifts come only at a certain piety, and some only while you pray.",
+          "*Pray* (under More, or on your god's card) begins praying, and *Stop praying* ends it; each takes a turn. While you pray more of your god's gifts are yours, but for most gods piety fades faster. The HUD shows *Praying* while you do; tap it, or *Faith* on your character's summary, for your god's card, with the gifts that are yours now lit.",
+          "*Prayers* are spells your god grants, written in their tome. They are cast with piety rather than mana and grow with your Prayer skill, which also lends levels in the schools of magic your god favours. Only a god's followers can cast their prayers.",
+          '*Altars* stand in some dungeon rooms, and Lothlórien has one. Long-press one to see whose it is. Melkor alone takes offerings at his: corpses, books of other magic, or your own life.',
         ],
-        see: ['magic'],
+        special: 'gods',
+        see: ['magic', 'skills'],
       },
       {
         id: 'new-hero',

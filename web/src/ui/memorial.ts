@@ -1,5 +1,6 @@
 import { inPlace } from '../hud.ts';
 import { DEEDS, type Chronicle, type Deed } from '../play/chronicle.ts';
+import { godTitle, NO_GOD } from '../play/gods.ts';
 import { returnsText } from '../play/lives.ts';
 import { ABANDONED, dayOf, skillValue, type Memorial, type MemorialFoe, type MemorialItem, type MemorialLine } from '../play/memorial.ts';
 import { readableColour } from '../render/colour.ts';
@@ -182,7 +183,7 @@ function heroTab(sheets: Sheets, hero: FallenHero): HTMLElement[] {
   progress.append(stat('Gold', count(m?.gold ?? e?.gold ?? 0)));
   if (e) progress.append(stat('Score', count(e.points)));
   if (e && e.maxDepth > 0) progress.append(stat('Deepest', `${count(e.maxDepth * FEET_PER_LEVEL)} ft`));
-  if (m?.god && m.god !== 'Nobody') progress.append(stat('God', m.god));
+  if (m?.god && m.god !== NO_GOD) progress.append(stat('God', godTitle(m.god)));
   parts.push(section('Progress', progress));
   if (m?.tale) {
     parts.push(section('Their tale', taleGrid(m.tale)));

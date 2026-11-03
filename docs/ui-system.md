@@ -26,6 +26,7 @@ Map (toolbar, HUD, gestures)
 │   ├── More ──────────────── Commands             panel: commands by intent (section 7)   depth 1
 │   │   ├── Look ──────────── look mode: banner + look card on the map (each creature and item → its card)
 │   │   ├── Magic, Powers ─── the Magic panel on that tab, in the same frame (Back returns to Commands)
+│   │   ├── Kneel at altar ── the altar's god card (Worship; Melkor's offerings for his own; why not, else)
 │   │   ├── item commands (Drink potion, Read scroll…) → tome2 item prompt (TermView panel, tabs)
 │   │   ├── Talk, Give, Steal, doors → direction card on the map (Give then asks which item)
 │   │   ├── while controlling a creature: Release creature, Creature powers (its powers, TermView panel),
@@ -33,6 +34,7 @@ Map (toolbar, HUD, gestures)
 │   │   └── Game options ──── tome2 screen; Commands reopens after
 │   └── Menu ──────────────── Menu                 menu                                     depth 1
 │       ├── Character ─────── Character            panel, tabs Summary · Skills · Abilities · Full sheet
+│       │                     ├── Faith (Summary) ─ God card over Character (gifts lit; Pray · Stop praying)
 │       │                     └── Save skill points? card over Character (Discard · Save)
 │       ├── Messages ──────── Messages             panel (log, newest at the foot)
 │       ├── Knowledge ─────── Knowledge            menu                                     depth 2
@@ -43,7 +45,8 @@ Map (toolbar, HUD, gestures)
 │       ├── Settings ──────── (in a game: Your adventure, the rules fixed at birth, read-only)
 │       ├── Help ──────────── Help                 panel: search, topics by group           depth 2
 │       │                     ├── topic ────────── panel (See also → topic, ‹ returns)       depth 3
-│       │                     │   └── race/class ─ card                                      depth 4
+│       │                     │   ├── race/class ─ card                                      depth 4
+│       │                     │   └── god ──────── card (Gods and piety)                      depth 4
 │       │                     └── ToME manual ──── reader (TermView panel); Help reopens after
 │       ├── About                                  panel (prose)
 │       └── Abandon adventure ─ confirmation       card (red), set apart at the foot
@@ -51,9 +54,10 @@ Map (toolbar, HUD, gestures)
 │   ├── hero name ─────────── Character (or Fallen hero after death)
 │   ├── quest chip ────────── Quest                card (what the level's quest asks, how many are slain);
 │   │                         while it lasts the map's edges glow violet and its foes' chips are marked ⚑
+│   ├── Praying chip ──────── God                  card (gifts lit as the hero has them; Stop praying)
 │   ├── creature / item chip ─ Creature / Item     card (a creature beside you, not hostile: Talk · Give)
 │   └── message log ───────── Messages             panel
-├── Map tap / long-press ───── travel (a neutral creature beside you: talk) / look card (terrain; each creature and item there → its card)
+├── Map tap / long-press ───── travel (a neutral creature beside you: talk) / look card (terrain; an altar's god, each creature and item there → its card)
 ├── A quest begun or ended ─── quest card (the scene tome2 told, then what it asks) or its banner
 └── tome2 asks something ───── question card on the map (yes/no, how many, text, direction,
                                aim, lettered choice, message box) or a TermView panel
@@ -301,7 +305,7 @@ with why, and journeys are refused.
 | `y` | give | a creature's card beside you; More |
 | `Z` | steal from a creature | More (with the Stealing skill); in a shop, *Steal one* on a shelf card |
 | `P` | command allies | More → *Command allies* |
-| `H` `O` | drink at a fountain, sacrifice at an altar | changing button; More |
+| `H` `O` | drink at a fountain; worship or make offerings at an altar | changing button (*Drink*; *Worship* or *Sacrifice* only where tome2's `O` does something), the altar's card (the god's card, from the button, the look card's god row and More's *Kneel at altar*) |
 | `x` | engrave a rune | More, once a rune is learnt |
 | `l` `M` `L` `*` | look, level map, locate, target | long-press; More (*Look*, *Level map*, *Choose target*); dragging the map |
 | `i` `e` `w` `t` `d` `k` `{` `}` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |

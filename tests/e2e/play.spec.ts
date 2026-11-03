@@ -533,8 +533,8 @@ test('race powers are under their race in Powers, their lettered questions are b
   await page.keyboard.press('Escape');
 });
 
-test('dragging pans the map without moving, long press describes, sheets open from the HUD, and a tap acts once on what was pressed', { tag: '@layout' }, async ({ page }) => {
-  await page.goto('./');
+test('dragging pans the map without moving, long press describes (an altar\'s god too, who can be worshipped), sheets open from the HUD, and a tap acts once on what was pressed', { tag: '@layout' }, async ({ page }) => {
+  await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Looker');
   await equipSuggested(page);
@@ -598,6 +598,33 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   await expect(page.locator('.sheet .sheet-title')).toHaveText('Looker');
   await expect(page.locator('.sheet .stat-grid.six .stat')).toHaveCount(6);
   await page.mouse.click(5, 5);
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  /* An altar underfoot: the look card names its god, whose card offers worship; praying then shows on the HUD and the character sheet. */
+  await wizardCommand(page, 'F', 161);
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await page.locator('#look-card .look-row', { hasText: 'Eru Ilúvatar' }).click();
+  const god = page.locator('.sheet-god');
+  await expect(god.locator('.god-gifts li')).toHaveCount(4);
+  await god.locator('.sheet-action', { hasText: 'Worship Eru Ilúvatar' }).click();
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.gameState()!.player!.god)).toBe('Eru Iluvatar');
+  await dismissMore(page);
+  await waitAtCommand(page);
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await page.locator('.sheet .command', { hasText: 'Pray' }).click();
+  await page.locator('#hud .entity.praying').click();
+  await expect(god.locator('.sheet-subtitle')).toContainText('praying');
+  await god.locator('.sheet-action', { hasText: 'Stop praying' }).click();
+  await expect(page.locator('#hud .entity.praying')).toBeHidden();
+  await waitAtCommand(page);
+  await page.locator('#hud .hud-player').click();
+  await page.locator('.sheet .row-button', { hasText: 'Eru Ilúvatar' }).click();
+  await expect(god.locator('.sheet-subtitle')).toContainText('not praying');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
 
   await page.locator('#toolbar [data-action="menu"]').click();

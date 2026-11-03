@@ -135,6 +135,8 @@ export interface CellDescription {
   blurred: boolean;
   known: boolean;
   player: boolean;
+  /** The god of an altar there. */
+  god?: string;
 }
 
 /** What the hero perceives or remembers at a map cell, within what tome2 lets them know. */
@@ -158,6 +160,7 @@ export function describeCell(api: GameApi, point: MapPoint): CellDescription | n
     blurred,
     known,
     player,
+    god: grid?.god,
   };
 }
 

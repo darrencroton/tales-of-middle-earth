@@ -3,6 +3,7 @@ import type { BirthStep } from '../flow/birth.ts';
 import { findTopic, HELP, searchHelp, type HelpBlock, type HelpTopic } from '../help/topics.ts';
 import type { BirthData, BirthEntry } from '../render/snapshot.ts';
 import { birthCard } from './birthcard.ts';
+import { godRows } from './gods.ts';
 import { el, iconText, navButton, section } from './dom.ts';
 import type { Sheets } from './sheet.ts';
 
@@ -98,6 +99,11 @@ export function openHelp(deps: HelpDeps, topicId?: string): void {
         body.append(section(title, list));
       }
       if (!data?.races.length) body.append(paragraph('muted', 'The list appears once the game has finished loading.'));
+    }
+    if (topic.special === 'gods') {
+      const list = el('div', 'menu-list');
+      list.append(...godRows(sheets, deps.birthData()?.gods));
+      body.append(section('The gods', list));
     }
     const see = (topic.see ?? []).map(findTopic).filter((t): t is HelpTopic => !!t && available(t));
     if (see.length) {

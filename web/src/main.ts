@@ -11,7 +11,8 @@ import { Director } from './flow/director.ts';
 import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapPoint } from './render/map.ts';
 import { drawnEffects, terminalCell } from './render/effects.ts';
-import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
+import { buildMaterials, FB_DOOR, FB_NO_WALK, walkableFor, type FeatureInfo, type Material } from './render/materials.ts';
+import { altarAction } from './play/gods.ts';
 import { contextActions, contextualAction, commandRefusal, CONTROLLING, exploreRefusal, creaturePowersMacro, releaseMacro, restMacro, waitCommand, type Action, type ActionContext, type CommandContext, type NativeView } from './play/actions.ts';
 import { MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
@@ -43,6 +44,7 @@ import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyTex
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
 import { el, iconText } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
+import { openAltarGod, openHeroGod } from './ui/gods.ts';
 import { openFloorObject, openMonster, openQuest } from './ui/info.ts';
 import { openInventory, openItemDetails } from './ui/inventory.ts';
 import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate, type AdventureRules } from './ui/menus.ts';
@@ -138,6 +140,16 @@ let basePanel = { row: -1, col: -1 };
 let materialsLoaded = false;
 let features: FeatureInfo[] = [];
 let materials: Material[] = [];
+/* The materials as the hero walks them, kept while the terrain they can enter stays the same. */
+let walking: { base: readonly Material[]; passes: string; materials: readonly Material[] } | null = null;
+
+/** The terrain as the hero can walk it now, for travel and exploring (trees for a tree walker, a flyer or Yavanna's praying follower). */
+function heroMaterials(): readonly Material[] {
+  const passes = game.lastState?.player?.passes;
+  const key = passes?.join(',') ?? '';
+  if (walking?.base !== materials || walking.passes !== key) walking = { base: materials, passes: key, materials: walkableFor(materials, passes) };
+  return walking.materials;
+}
 
 /** What belongs to one game, from loading or creating the hero until the title is back: replaced there. */
 function newRunState() {
@@ -232,6 +244,7 @@ const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
   onPlayer: () => openNative(hasFallen(game.lastState?.player) ? 'fallen' : 'character'),
   onSkills: () => openNative('skills'),
   onQuest: (quest) => openQuest(sheets, quest),
+  onGod: () => openHeroGod(api),
   onMore: () => send([SPACE]),
   onHistory: () => {
     journeys.interrupt('history');
@@ -464,6 +477,11 @@ function openNative(view: NativeView): void {
     case 'equip':
       useSuggested();
       break;
+    case 'altar': {
+      const god = game.lastSnap ? altarGodHere(game.lastSnap) : undefined;
+      if (god) openAltarGod(api, god, true);
+      break;
+    }
     case 'overview':
       setOverview(true);
       break;
@@ -901,6 +919,17 @@ function underfootName(snap: LevelSnapshot): string {
   return features[underfootFeat(snap)]?.name.toLowerCase() ?? '';
 }
 
+/** The god of the altar the hero stands at, or undefined. */
+function altarGodHere(snap: LevelSnapshot): string | undefined {
+  return snap.inDungeon ? features[underfootFeat(snap)]?.god : undefined;
+}
+
+/** What the altar underfoot offers the hero, if anything. */
+function altarHere(snap: LevelSnapshot): 'worship' | 'offer' | null {
+  const p = game.lastState?.player;
+  return p ? altarAction(altarGodHere(snap), p.god ?? '', !!p.faithless) : null;
+}
+
 /** The button for the door of a shop, the home or another building the hero stands at (tome2 calls them all buildings). */
 function entranceHere(snap: LevelSnapshot): string | null {
   if (snap.wild || underfootName(snap) !== 'building') return null;
@@ -950,6 +979,7 @@ function mapSituation(snap: LevelSnapshot): Partial<ActionContext> {
   const quick = abilities.quick();
   return {
     talk: !!talkPartner(),
+    altar: altarHere(snap),
     exploreNext: journeys.exploreNext(snap),
     exploreRefusal: exploreRefusal(surroundings()),
     entrance: entranceHere(snap),
@@ -1290,11 +1320,11 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
 }
 
 function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
-  doTap(tapAction(snap, materials, cell, prompt, game.lastState?.monsters, steered()));
+  doTap(tapAction(snap, heroMaterials(), cell, prompt, game.lastState?.monsters, steered()));
 }
 
 function goTowards(snap: LevelSnapshot, point: MapPoint): void {
-  doTap(goAction(snap, materials, point, game.lastState?.monsters));
+  doTap(goAction(snap, heroMaterials(), point, game.lastState?.monsters));
 }
 
 /** Carries out what a tap on the map decided. */
@@ -1692,7 +1722,8 @@ const journeys = new Journeys({
   map,
   snapshot: () => game.lastSnap,
   state: () => game.lastState,
-  materials: () => materials,
+  materials: heroMaterials,
+  mapMaterials: () => materials,
   level: () => memory.level,
   heading: () => memory.heading,
   alwaysPickup,

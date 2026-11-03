@@ -1,10 +1,12 @@
 import { depthLabel } from '../hud.ts';
+import { godNamed } from '../play/gods.ts';
 import { LIVES } from '../play/lives.ts';
 import { FEET_PER_LEVEL, type PlayerState, type SkillEntry } from '../render/snapshot.ts';
 import { NOT_NOW, type GameApi } from './api.ts';
 import { KEY_BACKSLASH, KEY_ENTER, KEY_ESCAPE, keyCodes } from '../input/keys.ts';
 import { fullSheetElements, sheetPageKeys, SHEET_PAGES, type FullSheet } from './charsheet.ts';
-import { bar, el, section, signed, stat } from './dom.ts';
+import { bar, el, navButton, section, signed, stat } from './dom.ts';
+import { faithLine, openHeroGod } from './gods.ts';
 import { openMenu } from './menus.ts';
 import type { MessageBox } from './msgbox.ts';
 import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
@@ -306,7 +308,7 @@ export class CharacterPanel {
       const invested = this.session?.invested ?? new Map<string, number>();
       body.classList.add('with-detail');
       body.append(
-        ...skillTableElements(skillTable, skillIndex, invested, (index) => {
+        ...skillTableElements(skillTable, skillIndex, invested, this.api.state()?.player?.god ?? '', (index) => {
           if (index === skillIndex) {
             if (skillTable.skills[index].branch) this.deps.sendKeys([KEY_ENTER]);
           } else {
@@ -546,11 +548,16 @@ function summaryBody(api: GameApi): HTMLElement | null {
     stat('Gold', `${player.au}`),
     stat('Location', depthLabel(player)),
     stat('Deepest', `${sheet.maxDepth * FEET_PER_LEVEL} ft`),
-    stat('God', sheet.god),
+    ...(player.god ? [] : [stat('God', 'None')]),
     stat('Infravision', `${sheet.infra} ft`),
     stat('Lives left', player.adventure ? `${player.lives ?? 0} of ${LIVES}` : 'One (Roguelike)'),
   );
   body.append(section('Progress', progress));
+  const god = godNamed(player.god);
+  if (god) {
+    const faith = { piety: player.piety ?? 0, praying: player.pray === 2 };
+    body.append(section('Faith', navButton(god.title, { icon: '☼', hint: faithLine(faith), onClick: () => openHeroGod(api) })));
+  }
   return body;
 }
 

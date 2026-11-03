@@ -2725,6 +2725,39 @@ html.keyboard-tight .prompt-card.text .card-title {
   font-size: var(--fs-small);
 }
 
+/* A god's card: gifts by the piety they need (those not yet the hero's dimmed), and plain lists of what comes with them. */
+.god-gifts .dim .trait-text {
+  color: var(--faint);
+}
+
+.birth-card .god-epithet {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.birth-card .god-note,
+.help-birth > .god-note {
+  margin: 0 0 0.4rem;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.god-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.god-list.good li::marker {
+  color: #7fcf7a;
+}
+
+.god-list.bad li::marker {
+  color: #e07a6a;
+}
+
 .birth-card .birth-choices {
   margin: 0;
   color: var(--muted);
@@ -3824,6 +3857,12 @@ html.keyboard-tight .prompt-card.text .card-title {
   --bar: #4a3a12;
   color: var(--accent-bright);
   border-color: var(--accent);
+}
+
+/* Praying: light blue, as tome2 draws piety while the hero prays. */
+.entity.praying {
+  border-color: rgb(159 199 255 / 0.55);
+  color: #b8d4ff;
 }
 
 .feel-float.still {

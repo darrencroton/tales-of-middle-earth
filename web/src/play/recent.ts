@@ -245,7 +245,7 @@ export function recentBlocked(
 ): string | null {
   if (entry.kind === 'spell') {
     const spell = spells?.books.flatMap((b) => b.spells).find((s) => s.name === entry.name);
-    if (spell?.short) return `Not enough mana for ${entry.name}.`;
+    if (spell?.short) return `Not enough ${spell.piety ? 'piety' : 'mana'} for ${entry.name}.`;
   }
   if (entry.kind === 'item' && /\(0 charges\)/.test(recentItem(entry, pack)?.name ?? '')) {
     return `The ${entry.name} is out of charges.`;

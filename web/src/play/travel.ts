@@ -131,6 +131,9 @@ export type Passing = ReadonlySet<number> | 'all';
 
 const NOBODY: ReadonlySet<number> = new Set();
 
+/* Extra steps a cell walkable only by the hero's ability (a tree for a tree walker) costs travel, so a known path is taken unless the shortcut saves a long way round. */
+const SHORTCUT_COST = 4;
+
 /** Walkable cells the player knows of; creatures in view block, but for those `passing` lets through. */
 export function travelGrid(snap: LevelSnapshot, materials: readonly Material[], passing: Passing = NOBODY): TravelGrid {
   return {
@@ -147,7 +150,7 @@ export function travelGrid(snap: LevelSnapshot, materials: readonly Material[], 
       const i = y * snap.width + x;
       if (!isKnownCell(snap.info, i)) return 0.5;
       const m = materials[snap.feat[i]];
-      return m && m.door && !m.walkable ? 2 : 0;
+      return m?.shortcut ? SHORTCUT_COST : m && m.door && !m.walkable ? 2 : 0;
     },
   };
 }

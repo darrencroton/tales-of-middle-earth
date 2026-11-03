@@ -4,6 +4,8 @@ import type { Action } from '../play/actions.ts';
 import type { TerminalBuffer } from '../terminal.ts';
 import { moduleKey, type ModuleChoice, type SaveInfo, type TitleChoice, type TitleScreen } from '../title.ts';
 import { birthCard } from '../ui/birthcard.ts';
+import { godCard, godlessCard } from '../ui/gods.ts';
+import { godNamed, godTitle, NO_GOD } from '../play/gods.ts';
 import { findSaveIndex } from '../saves.ts';
 import { nextRunName, saveBase } from '../play/adventurers.ts';
 import { el, stat } from '../ui/dom.ts';
@@ -660,6 +662,14 @@ export class Director {
     return entry ? birthDetails(entry, choice.step) : null;
   }
 
+  /** The god highlighted at the last birth step: who they are and what following them means. */
+  private godChoiceCard(label: string): HTMLElement {
+    const god = godNamed(label);
+    if (!god) return godlessCard();
+    this.birthData ??= this.deps.engine.birthData();
+    return godCard(god, this.birthData?.gods.find((g) => g.name === god.name) ?? null);
+  }
+
   private showChoice(choice: BirthChoiceScreen): void {
     const key = JSON.stringify(choice);
     this.show(
@@ -680,13 +690,17 @@ export class Director {
           : current?.unusual
             ? 'Not a natural fit for your race: playable, but expect a harder road.'
             : null;
-        const card = birthCard(current?.label ?? '', details, choice.description.filter((d) => d !== 'EXPERIMENTAL'), tag);
+        const card =
+          choice.step === 'god'
+            ? this.godChoiceCard(current?.label ?? '')
+            : birthCard(current?.label ?? '', details, choice.description.filter((d) => d !== 'EXPERIMENTAL'), tag);
 
         const list = el('div', 'birth-options');
         list.setAttribute('role', 'listbox');
         list.setAttribute('aria-label', STEP_TITLES[choice.step]);
         for (const option of choice.options) {
-          const button = el('button', `birth-option${option.current ? ' current' : ''}${option.unusual ? ' unusual' : ''}`, option.label);
+          const label = choice.step === 'god' ? godTitle(option.label) : option.label;
+          const button = el('button', `birth-option${option.current ? ' current' : ''}${option.unusual ? ' unusual' : ''}`, label);
           button.type = 'button';
           button.dataset.nav = '';
           button.setAttribute('role', 'option');
@@ -732,7 +746,7 @@ export class Director {
       () => {
         const header = el('header', 'birth-header');
         header.append(el('h2', undefined, kind === 'reroll' ? 'Your hero' : 'Ready to begin?'));
-        const subtitle = [this.heroName || field('Name'), `${field('Race')} ${field('Class')}`.trim(), field('God') && field('God') !== 'Nobody' ? `follower of ${field('God')}` : '']
+        const subtitle = [this.heroName || field('Name'), `${field('Race')} ${field('Class')}`.trim(), field('God') && field('God') !== NO_GOD ? `follower of ${godTitle(field('God'))}` : '']
           .filter(Boolean)
           .join(' · ');
         header.append(el('p', 'birth-summary', subtitle));

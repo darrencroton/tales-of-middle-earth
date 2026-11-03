@@ -18,6 +18,8 @@ interface HudCallbacks {
   onSkills(): void;
   /** The chip of the level's quest was tapped. */
   onQuest(quest: LevelQuest): void;
+  /** The praying chip was tapped. */
+  onGod(): void;
   onMore(): void;
   onHistory(): void;
 }
@@ -174,7 +176,7 @@ export class Hud {
     this.turn++;
   }
 
-  /** A HUD button was tapped: the hero, the skill points, or a creature or item (as it is now). */
+  /** A HUD button was tapped: the hero, the skill points, the quest, prayer, or a creature or item (as it is now). */
   private tapped(button: HTMLElement): void {
     const id = Number(button.dataset.id);
     switch (button.dataset.hud) {
@@ -182,6 +184,8 @@ export class Hud {
         return this.callbacks.onPlayer();
       case 'skills':
         return this.callbacks.onSkills();
+      case 'god':
+        return this.callbacks.onGod();
       case 'quest':
         if (this.quest) this.callbacks.onQuest(this.quest);
         return;
@@ -217,6 +221,7 @@ export class Hud {
       [p.name, p.race, p.cls, p.lev, p.chp, p.mhp, p.csp, p.msp, p.csane, p.msane, depthLabel(p), p.au, p.speed, p.skillPoints ?? 0],
       [this.quest?.title ?? '', this.quest?.random?.slain ?? 0],
       statuses,
+      p.pray ?? 0,
       monsters.map((m) => [m.id, m.name, m.ch, m.attr, m.hp, m.maxhp, m.asleep, m.afraid, m.unique, m.status, m.quest]),
       objects.map((o) => [o.id, o.name, o.ch, o.attr]),
     ]);
@@ -251,6 +256,17 @@ export class Hud {
       const r = this.quest.random;
       button.append(el('span', 'glyph', iconText('⚑')), el('span', 'label', this.quest.title));
       if (r && r.count > 1) button.append(el('span', 'progress', `${r.slain}/${r.count}`));
+      item.append(button);
+      strip.append(item);
+    }
+    if (p.pray === 2) {
+      const item = el('li');
+      const button = el('button', 'entity praying');
+      button.type = 'button';
+      button.dataset.hud = 'god';
+      button.dataset.tap = 'god';
+      button.setAttribute('aria-label', 'Praying: your god');
+      button.append(el('span', 'glyph', iconText('☼')), el('span', 'label', 'Praying'));
       item.append(button);
       strip.append(item);
     }

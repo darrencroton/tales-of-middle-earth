@@ -1,5 +1,6 @@
 import { rowText, type TermRow } from './termparse.ts';
 import type { AbilityTable, SkillEntry, SkillTable } from '../render/snapshot.ts';
+import { godTitle } from '../play/gods.ts';
 import { el } from './dom.ts';
 
 /** A row of tome2's skills screen, as far as finding its cursor needs. */
@@ -104,10 +105,15 @@ export function raiseRefusal(skill: Pick<SkillEntry, 'raise' | 'misc'>, most: nu
   }
 }
 
-/** The whole skill list with the selected skill's description; rows with unsaved points show how many; `onTap` receives a row index. */
-export function skillTableElements(table: SkillTable, selected: number, pending: ReadonlyMap<string, number>, onTap: (index: number) => void): HTMLElement[] {
+/** What raising Antimagic costs a hero who follows a god (tome2's recalc_skills ends their worship). */
+function antimagicNote(skill: string | undefined, god: string): string {
+  return skill === 'Antimagic' && god ? `Antimagic denies the gods: once a point in it is saved, ${godTitle(god)} no longer hears you and your piety is lost.` : '';
+}
+
+/** The whole skill list with the selected skill's description (and `god`'s word on Antimagic); rows with unsaved points show how many; `onTap` receives a row index. */
+export function skillTableElements(table: SkillTable, selected: number, pending: ReadonlyMap<string, number>, god: string, onTap: (index: number) => void): HTMLElement[] {
   const current = table.skills[selected];
-  const out: HTMLElement[] = [detail(current?.name ?? '', [current?.desc ?? ''])];
+  const out: HTMLElement[] = [detail(current?.name ?? '', [current?.desc ?? '', antimagicNote(current?.name, god)])];
   table.skills.forEach((skill, i) => {
     const added = pending.get(skill.name) ?? 0;
     const button = el('button', `skill-row ${skill.state}${i === selected ? ' current' : ''}${added ? ' pending' : ''}`);
