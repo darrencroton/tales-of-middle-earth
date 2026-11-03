@@ -1,7 +1,7 @@
 import { commandKeys } from '../play/actions.ts';
 import { altarAction, giftActive, GODS, godNamed, godTitle, offeringMacro, worshipMacro, type Faith, type God, type Offering } from '../play/gods.ts';
-import type { GodData } from '../render/snapshot.ts';
-import type { GameApi } from './api.ts';
+import type { GodData, PlayerState } from '../render/snapshot.ts';
+import { NOT_NOW, type GameApi } from './api.ts';
 import { count, el, iconText, navButton } from './dom.ts';
 import { spellText } from './inspect.ts';
 import type { SheetAction, Sheets } from './sheet.ts';
@@ -93,7 +93,7 @@ function openGodSheet(sheets: Sheets, god: God, data: GodData | null, options: G
   if (options.note) body.append(el('p', 'god-note', options.note));
   sheets.open({
     title: god.title,
-    subtitle: options.subtitle ?? 'One of the Valar',
+    subtitle: options.subtitle,
     badge: el('span', 'help-badge', iconText('☼')),
     body,
     kind: 'card',
@@ -120,9 +120,22 @@ function heroFaith(api: GameApi): { god: God; faith: Faith } | null {
   return p && god ? { god, faith: { piety: p.piety ?? 0, praying: p.pray === 2 } } : null;
 }
 
+/* The gods' altars, tomes and prayers, which do not change: read once. */
+let godsData: readonly GodData[] | undefined;
+
+function engineGod(api: GameApi, name: string): GodData | null {
+  godsData ??= api.engine.birthData()?.gods;
+  return godData(godsData, name);
+}
+
 /** How the hero stands with their god, in a line: "1,234 piety · praying". */
 export function faithLine(faith: Faith): string {
   return `${count(faith.piety)} piety · ${faith.praying ? 'praying' : 'not praying'}`;
+}
+
+/** Why the hero cannot give tome2 a command now, from a card: busy with something else, on the world map or controlling a creature. */
+function heroRefusal(api: GameApi, command: string): string | null {
+  return api.snapshot()?.atCommand ? api.refusal(command) : NOT_NOW;
 }
 
 function prayAction(api: GameApi, praying: boolean): SheetAction {
@@ -130,7 +143,7 @@ function prayAction(api: GameApi, praying: boolean): SheetAction {
     id: 'pray',
     label: praying ? 'Stop praying' : 'Pray',
     icon: '☼',
-    unavailable: api.refusal('p'),
+    unavailable: heroRefusal(api, 'p'),
     run: () => api.send(commandKeys({ command: 'p' })),
   };
 }
@@ -139,41 +152,43 @@ function prayAction(api: GameApi, praying: boolean): SheetAction {
 export function openHeroGod(api: GameApi): void {
   const hero = heroFaith(api);
   if (!hero) return;
-  openGodSheet(api.sheets, hero.god, godData(api.engine.birthData()?.gods, hero.god.name), {
+  openGodSheet(api.sheets, hero.god, engineGod(api, hero.god.name), {
     faith: hero.faith,
     subtitle: `Your god · ${faithLine(hero.faith)}`,
     actions: [prayAction(api, hero.faith.praying)],
   });
 }
 
+/* Why a hero cannot follow a god (tome2: a race that worships none, or any Antimagic). */
+const FAITHLESS: Readonly<Record<NonNullable<PlayerState['faithless']>, string>> = {
+  race: 'Your people worship no gods.',
+  antimagic: 'You do not believe in gods: Antimagic has closed that road.',
+};
+
 /**
  * The god of an altar (the look card, and Kneel at altar where the hero
  * stands): their card, with Worship for a hero without a god, Melkor's
- * offerings for his followers at his altar, and why nothing else can be done.
+ * offerings for his followers at his altar (each only `here`, on the altar),
+ * and why nothing else can be done.
  */
 export function openAltarGod(api: GameApi, name: string, here: boolean): void {
   const god = godNamed(name);
   const p = api.state()?.player;
   if (!god || !p) return;
-  const data = godData(api.engine.birthData()?.gods, god.name);
+  const data = engineGod(api, god.name);
   const mine = p.god === god.name;
   const faith = mine ? { piety: p.piety ?? 0, praying: p.pray === 2 } : null;
-  const subtitle = `${data?.altar ?? 'Altar'}${mine ? ` · ${faithLine(faith!)}` : ''}`;
+  const subtitle = `${data?.altar ?? 'Altar'}${faith ? ` · ${faithLine(faith)}` : ''}`;
   const sheet: GodSheet = { faith, subtitle };
-  const action = here ? altarAction(name, p.god ?? '', !!p.faithless) : null;
-  const refused = here ? api.refusal('O') : null;
-  if (action === 'worship') {
+  const action = altarAction(name, p.god ?? '', !!p.faithless);
+  const refused = heroRefusal(api, 'O');
+  if (!p.god && p.faithless) {
+    sheet.note = FAITHLESS[p.faithless];
+  } else if (action && !here) {
+    sheet.note = action === 'worship' ? `Stand on the altar to worship ${god.title}.` : 'Stand on his altar to make offerings.';
+  } else if (action === 'worship') {
     sheet.note = 'Your piety begins a little below nothing and grows as you please them. A god, once followed, is yours for good: only the One Ring or Antimagic ends it.';
-    sheet.actions = [
-      {
-        id: 'worship',
-        label: `Worship ${god.title}`,
-        icon: '☼',
-        primary: true,
-        unavailable: refused,
-        run: () => api.runMacro(worshipMacro()),
-      },
-    ];
+    sheet.actions = [{ id: 'worship', label: `Worship ${god.title}`, icon: '☼', primary: true, unavailable: refused, run: () => api.runMacro(worshipMacro()) }];
   } else if (action === 'offer') {
     const weak = p.chp <= LIFE_GIVEN || p.mhp <= LIFE_GIVEN ? 'You have too little life left to give.' : null;
     sheet.note = `Each gift of life takes ${LIFE_GIVEN} health for good: for piety (more with Wisdom), or for might, a lasting gain in damage. An item may be a corpse or a book holding no Udun spells.`;
@@ -183,8 +198,6 @@ export function openAltarGod(api: GameApi, name: string, here: boolean): void {
       unavailable: refused ?? (kind === 'item' ? null : weak),
       run: () => api.runMacro(offeringMacro(kind)),
     }));
-  } else if (!p.god && p.faithless) {
-    sheet.note = 'You do not believe in gods: Antimagic has closed that road.';
   } else if (mine) {
     sheet.note = `${god.title} asks no offerings at the altar.`;
   } else if (p.god) {

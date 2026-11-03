@@ -494,7 +494,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'Following one of the Valar.',
         keywords: 'god gods piety pray praying prayer prayers valar eru manwe tulkas yavanna melkor altar worship sacrifice offering kneel tome',
         body: [
-          'Most heroes may choose a god when they begin, and priests begin with theirs. A hero without one can follow the god of an altar later: stand on it and *Worship*. A god, once followed, is yours for good: only the One Ring (for every god but Melkor) or any skill in Antimagic ends it.',
+          'Most heroes may choose a god when they begin, and priests begin with theirs. A hero without one can follow the god of an altar later: stand on it and *Worship*. A god, once followed, is yours for good: only the One Ring (worn, for every god but Melkor; destroyed, for Melkor) or any skill in Antimagic ends it.',
           "*Piety* is how pleased your god is. It rises and falls with what you do, as each god's card tells. Many gifts come only at a certain piety, and some only while you pray.",
           "*Pray* (under More, or on your god's card) begins praying, and *Stop praying* ends it; each takes a turn. While you pray more of your god's gifts are yours, but for most gods piety fades faster. The HUD shows *Praying* while you do; tap it, or *Faith* on your character's summary, for your god's card, with the gifts that are yours now lit.",
           "*Prayers* are spells your god grants, written in their tome. They are cast with piety rather than mana and grow with your Prayer skill, which also lends levels in the schools of magic your god favours. Only a god's followers can cast their prayers.",

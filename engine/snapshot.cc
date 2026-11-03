@@ -702,7 +702,6 @@ std::string spell_description(spell_type *spell)
 	return desc;
 }
 
-/* What tome2's spell list and its description say of a spell (print_spell, print_spell_desc), common to books and devices. */
 /* The god a spell is prayed to (its school's deity), or null for other spells. */
 deity_type const *spell_god(spell_type *spell)
 {
@@ -723,6 +722,7 @@ deity_type const *altar_god(int feat)
 	return &deity_info[god];
 }
 
+/* What tome2's spell list and its description say of a spell (print_spell, print_spell_desc), common to books and devices. */
 void json_spell_common(JsonWriter &w, spell_type *spell)
 {
 	w.field("name", spell_type_name(spell));
@@ -1130,6 +1130,24 @@ void json_item_props(JsonWriter &w, object_type const *o_ptr, object_flag_set co
 }
 
 /*
+ * An edged weapon the hero's god frowns on (Eru: calc_bonuses' penalty for
+ * a sword, axe or polearm unless something worn is blessed), counting what
+ * else is worn but not the weapon it would replace.
+ */
+static bool unholy_weapon(object_type const *o_ptr)
+{
+	bool const edged = o_ptr->tval == TV_SWORD || o_ptr->tval == TV_AXE || o_ptr->tval == TV_POLEARM;
+	if (!edged || !forbid_non_blessed() || blessed(o_ptr)) return false;
+	int const replaced = wield_slot(o_ptr);
+	for (int i = INVEN_WIELD; i < INVEN_TOTAL; i++)
+	{
+		object_type const *worn = &p_ptr->inventory[i];
+		if (i != replaced && worn != o_ptr && worn->k_ptr && (object_flags(worn) & TR_BLESSED)) return false;
+	}
+	return true;
+}
+
+/*
  * What the hero knows of an item, as tome2's examining tells it
  * (object_out_desc on the screen, and a book's browsing as a shop's examine
  * adds): see web_object_info.
@@ -1149,8 +1167,7 @@ char const *item_info_json(object_type *o_ptr)
 	bool const known = object_known_p(o_ptr);
 	auto const flags = object_flags(o_ptr);
 	w.field("known", known ? 1 : 0);
-	bool const edged = o_ptr->tval == TV_SWORD || o_ptr->tval == TV_AXE || o_ptr->tval == TV_POLEARM;
-	if (edged && forbid_non_blessed() && !p_ptr->bless_blade && !blessed(o_ptr)) w.field("unholy", deity_info[p_ptr->pgod].name);
+	if (unholy_weapon(o_ptr)) w.field("unholy", deity_info[p_ptr->pgod].name);
 	for (int tv = 0; tval_descs[tv].tval; tv++)
 	{
 		if (tval_descs[tv].tval != o_ptr->tval) continue;
@@ -1448,7 +1465,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	w.field("pray", p_ptr->pgod == GOD_NONE ? 0 : p_ptr->praying ? 2 : 1);
 	w.field("god", p_ptr->pgod == GOD_NONE ? "" : deity_info[p_ptr->pgod].name);
 	w.field("piety", p_ptr->grace);
-	w.field("faithless", get_skill(SKILL_ANTIMAGIC) > 0 ? 1 : 0);
+	if (race_flags_p(PR_NO_GOD)) w.field("faithless", "race");
+	else if (get_skill(SKILL_ANTIMAGIC) > 0) w.field("faithless", "antimagic");
 	json_passes(w);
 	w.field("runes", static_cast<int>(std::count(p_ptr->inscriptions.begin(), p_ptr->inscriptions.end(), true)));
 	w.field("control", p_ptr->control);

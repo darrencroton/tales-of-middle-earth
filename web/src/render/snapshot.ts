@@ -162,8 +162,8 @@ export interface PlayerState {
   god?: string;
   /** How pleased the hero's god is (tome2's grace). */
   piety?: number;
-  /** 1 when the hero cannot follow a god (any Antimagic skill). */
-  faithless?: number;
+  /** Why the hero cannot follow a god: a race that worships none, or any Antimagic skill. */
+  faithless?: 'race' | 'antimagic';
   /** Terrain tome2 does not let one walk on that the hero can enter now (trees for a tree walker), by feature index. */
   passes?: number[];
   /** Runes (tome2's inscriptions) the hero has learnt to engrave. */

@@ -40,6 +40,7 @@ describe('gods', () => {
   it('answers tome2\'s question to worship, and nothing else', () => {
     const asked = worshipMacro();
     assert.deepEqual(asked.next().value, [92, ...keys('O')]);
+    assert.deepEqual(asked.next(screen('He is the supreme god. -more-')).value, [32]);
     assert.deepEqual(asked.next(screen('Do you want to worship Eru Iluvatar? [y/n]')).value, keys('y'));
     const refused = worshipMacro();
     refused.next();

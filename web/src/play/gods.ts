@@ -7,7 +7,7 @@
  * the altar's macros: worship, and Melkor's offerings.
  */
 
-import { KEY_BACKSLASH, keyCodes } from '../input/keys.ts';
+import { KEY_BACKSLASH, KEY_SPACE, keyCodes } from '../input/keys.ts';
 import type { Macro, MacroScreen } from './macro.ts';
 
 export interface GodGift {
@@ -54,7 +54,7 @@ export const GODS: readonly God[] = [
         piety: 1,
       },
       {
-        text: 'May raise you from death (a 70% chance)',
+        text: 'May raise you from death (a 70% chance), at the cost of nearly all your piety',
         praying: true,
         piety: 100000,
       },
@@ -98,10 +98,8 @@ export const GODS: readonly God[] = [
     gifts: [
       { text: 'Constitution +1, rising to +3 at 15,000', piety: 5000 },
       { text: 'Strength +1, rising to +3 at 20,000', piety: 10000 },
-      {
-        text: 'Your blows strike harder, and his hand may double their force',
-        praying: true,
-      },
+      { text: 'Your blows strike harder', praying: true },
+      { text: 'His hand may double their force', praying: true, piety: 1000 },
     ],
     burdens: [forsaken('Tulkas')],
     pleases: ['Slaying evil creatures, more so while praying.', 'Slaying demons while praying, most of all.'],
@@ -194,9 +192,10 @@ export function altarAction(altarGod: string | undefined, heroGod: string, faith
   return heroGod === altarGod && altarGod === MELKOR ? 'offer' : null;
 }
 
-/** Follows the god of the altar underfoot: tome2 tells of them, then asks. */
+/** Follows the god of the altar underfoot: tome2 tells of them (pausing at -more- when messages pause), then asks. */
 export function* worshipMacro(): Macro {
-  const s: MacroScreen = yield [KEY_BACKSLASH, ...keyCodes('O')];
+  let s: MacroScreen = yield [KEY_BACKSLASH, ...keyCodes('O')];
+  for (let i = 0; i < 12 && /-more-/.test(s.prompt); i++) s = yield [KEY_SPACE];
   if (/^Do you want to worship/.test(s.prompt)) yield keyCodes('y');
 }
 
