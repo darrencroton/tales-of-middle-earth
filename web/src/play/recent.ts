@@ -2,6 +2,7 @@ import { KEY_BACKSLASH as BACKSLASH, KEY_ESCAPE, keyCodes, typedAnswer } from '.
 import type { ItemState, SpellState } from '../render/snapshot.ts';
 import { useAction, type ItemAction } from './items.ts';
 import { bracketChoices, classifyPrompt } from './prompts.ts';
+import { stripArticle } from './text.ts';
 import type { Macro, MacroScreen } from './macro.ts';
 
 /** Something the player does often, kept so it can be done again in one tap. */
@@ -157,7 +158,7 @@ export function recentSource(entry: RecentAction): string {
 
 /** An item's name without its count, article or charges, for labels ("3 Potions of X" → "Potions of X"). */
 export function itemBaseName(name: string): string {
-  return name.replace(/^(a|an|the|some|\d+) /i, '').replace(/ \(\d+ charges?\)/, '');
+  return stripArticle(name.replace(/^\d+ /, '')).replace(/ \(\d+ charges?\)/, '');
 }
 
 export function itemRecent(command: string, verb: string, item: Pick<ItemState, 'tval' | 'sval' | 'name'>): RecentAction {

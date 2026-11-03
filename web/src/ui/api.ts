@@ -42,14 +42,10 @@ export interface GameApi {
   remember(entry: RecentAction): void;
 }
 
-export function capitalise(text: string): string {
-  return text ? text[0].toUpperCase() + text.slice(1) : text;
-}
+export { capitalise, titleName } from '../play/text.ts';
 
-/** Removes a leading article ("a ", "an ", "the ", "7 ") for use as a title. */
-export function titleName(name: string): string {
-  return capitalise(name.replace(/^(a|an|the|some) /i, ''));
-}
+/** Why a command cannot be had while tome2 is busy with something else. */
+export const NOT_NOW = 'Finish what you are doing first.';
 
 /** Paragraphs from tome2's item description (wrapped at 75 columns). */
 export function descriptionParagraphs(text: string): string[] {

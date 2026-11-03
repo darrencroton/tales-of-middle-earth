@@ -16,10 +16,10 @@ import { MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { TargetPicker } from './play/targeting.ts';
 import { approachTarget, goAction, outOfSight, pushPast, stopMessage as stopText, STOP_MESSAGES, tapAction, Travel, type TapAction, type TravelContext, type TravelStep } from './play/travel.ts';
-import { Explore, exploreOutcome, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
+import { Explore, exploreOutcome, LevelExploration, nextStop, WAY_ON, type ExplorePlan } from './play/explore.ts';
 import { gridDistance } from './play/pathfinding.ts';
 import { levelKey, MapMemoryStore, mergeKnown, missingCells, questKey, type HeroMemory } from './play/mapmemory.ts';
-import { CAVE_MARK, isHostile, isNeutral, LAYER_MASK, LEAD_LINES, leadInMessages, newMessages, LAYER_MONSTER, LAYER_OBJECT, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState, type ObjectState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
+import { CAVE_MARK, isHostile, isNeutral, LEAD_LINES, leadInMessages, newMessages, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState, type PlayerState, type ScoreEntry, type SpellState, type StoreCommand, type StoreState } from './render/snapshot.ts';
 import {
   collectFiles,
   decodeBundle,
@@ -39,7 +39,8 @@ import { openSoundtrack } from './ui/soundtrack.ts';
 import { openHelp } from './ui/help.ts';
 import { openMagic, openSpell, RecentStore } from './ui/magic.ts';
 import { CastWatcher, fireMacro, hasActivePowers, hasMagic, hasPowers, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentLabel, recentMagicMacro, thenAim, type RecentAction } from './play/recent.ts';
-import { descriptionParagraphs, titleName, type GameApi } from './ui/api.ts';
+import { descriptionParagraphs, NOT_NOW, type GameApi } from './ui/api.ts';
+import { titleName } from './play/text.ts';
 import { GameFeel, READ_MS, type FeelEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
 import {
@@ -159,50 +160,102 @@ map.glyphMode = settings.glyphs;
 let mode: ViewMode = 'title';
 let base: ScreenCopy | null = null;
 let basePanel = { row: -1, col: -1 };
-let lastSnap: LevelSnapshot | null = null;
-let lastState: GameState | null = null;
 let materialsLoaded = false;
 let features: FeatureInfo[] = [];
 let materials: Material[] = [];
 let travel: Travel | Explore | null = null;
-const exploreSkip = new Set<number>();
-/* Map memory: the level exploring is on (`levelKey`, or a stand-in where there is none), the hero's memory and the land area's remembered grids. */
-let exploreLevel: string | null = null;
-let exploreLevelDepth = -1;
-/** Exploring's visits on this level are kept between visits: on the land, and on dungeon levels tome2 keeps. */
-let exploreKeepsVisits = false;
 const mapMemory = new MapMemoryStore();
-let heroMemory: HeroMemory | null = null;
-let heroMemoryId = '';
-let landMemory: { key: string; width: number; height: number; mask: Uint8Array; changed: boolean } | null = null;
-let memoryTurn = -1;
-let memoryPos = -1;
-/* What Explore would do (the toolbar's label), by turn and place. */
-let exploreNextCache: { key: string; next: ExploreNext } = { key: '', next: 'explore' };
-/** A spell, power, item or shot started from a button: once tome2 is back at the command prompt, a refusal or failure is told. */
-let attempt: { turn: number; messages: string[] } | null = null;
-/** Where exploring this level began (the map fills outwards from it), and where the hero stood when it last stopped. */
-let exploreAnchor: MapPoint | null = null;
-let exploreLastStop: MapPoint | null = null;
-/** Items seen on this level while exploring (by cell), and those first seen during the current exploration. */
-const exploreSeenItems = new Set<number>();
-/** Cells where money has been seen on this level: exploring takes it up whatever the hero picks up. */
-const levelGold = new Set<number>();
-/* Counts changes to `levelGold`, for what Explore would do. */
-let levelGoldVersion = 0;
-const exploreSpotted = new Map<number, string>();
+
+/** What belongs to the level the hero is on: replaced on each level change and back at the title. */
+function newLevelState() {
+  return {
+    /** The level (`levelKey`, or a stand-in where there is none) and its depth. */
+    key: null as string | null,
+    depth: -1,
+    /** Exploring's visits on this level are kept between visits: on the land, and on dungeon levels tome2 keeps. */
+    keepsVisits: false,
+    explore: new LevelExploration(),
+    /* What Explore would do (the toolbar's label), by turn and place. */
+    nextCache: { key: '', next: 'explore' as ExploreNext },
+    /** The current travel only gets as near as the known way allows. */
+    travelApproximate: false,
+    /* The turn and cell the hero's map memory last followed. */
+    memoryTurn: -1,
+    memoryPos: -1,
+  };
+}
+
+/** What belongs to the hero being played: replaced back at the title. */
+function newHeroState() {
+  return {
+    /* Map memory: the hero's memory (by `memoryHeroId`) and the land area's remembered grids. */
+    memoryId: '',
+    memory: null as HeroMemory | null,
+    landMemory: null as { key: string; width: number; height: number; mask: Uint8Array; changed: boolean } | null,
+    chronicle: null as Chronicle | null,
+    streak: { count: 0, lastTurn: 0 } as Streak,
+    /** The fallen hero as they were at the end, once they have died. */
+    memorial: null as Memorial | null,
+    /* How the hero fights (`heroStyle`), by name, level and skill points. */
+    styleKey: '',
+    style: { weapons: true, magic: true } as FightingStyle,
+    steals: false,
+    /* Spells, powers and skill actions, read again each game turn and whenever skill points are spent (a skill raised or an ability learnt takes no turn). */
+    spellsCache: null as { key: string; spells: SpellState | null } | null,
+    /* The game turn the audio last heard the hero's gear. */
+    gearTurn: -1,
+  };
+}
+
+/** What belongs to one game, from loading or creating the hero until the title is back: replaced there. */
+function newRunState() {
+  return {
+    lastSnap: null as LevelSnapshot | null,
+    lastState: null as GameState | null,
+    /** Where the player is, refreshed with the level and every couple of seconds. */
+    place: null as Place | null,
+    placeKey: '',
+    placeAt: 0,
+    placePos: { x: -1, y: -1 },
+    inStore: false,
+    /** The shop or home shown in the native panel, and which of its lists is open (kept while the hero stays inside). */
+    shownShop: null as StoreState | null,
+    shopTab: null as { name: string; tab: ShopTab } | null,
+    /** A trade under way: what is said once it has gone through, and how things stood before, to tell whether it did. */
+    trade: null as { done: string | null; before: string; state: GameState | null } | null,
+    /**
+     * A building's service under way: tome2 answers it by drawing over the
+     * building's screen, which the native panel covers, and pages long answers
+     * with -more- (held while it runs), so each page is kept as it is shown.
+     */
+    service: null as { name: string; before: string[]; state: GameState | null; pages: string[][][] } | null,
+    /* A word with a creature (tome2's Talk and Give): what tome2 says until it is back at the command prompt. */
+    conversation: null as { title: string; named: boolean; messages: string[] } | null,
+    /** A spell, power, item or shot started from a button: once tome2 is back at the command prompt, a refusal or failure is told. */
+    attempt: null as { turn: number; messages: string[] } | null,
+    /** The lives the hero had when asked whether to return from death (`followReturn`), else null. */
+    askedLives: null as number | null,
+    /** The hero has returned from death: the game is saved at the next command prompt, as tome2 saves a death at once. */
+    saveOnReturn: false,
+    quitting: false,
+    /** The hero whose adventure is being abandoned through tome2's quit: once the game has closed, what the frontend keeps of them is forgotten. */
+    abandoning: null as string | null,
+    /** The end-of-game summary has been shown; the lament plays until the title. */
+    ended: false,
+    /** A save command was sent; once the engine has written it, storage is synced (and the player told, if asked). */
+    pendingSync: null as 'silent' | 'toast' | null,
+    /** Sheets covered by a tome2 screen, reopened once it closes. */
+    returnTo: null as SheetTrail | null,
+    lastSavedTurn: -1,
+  };
+}
+
+let level = newLevelState();
+let hero = newHeroState();
+let game = newRunState();
 let travelTimer = 0;
-/** The current travel only gets as near as the known way allows. */
-let travelApproximate = false;
 let lastStopCause = '';
 let picker: TargetPicker | null = null;
-let lastSavedTurn = -1;
-/** A save command was sent; once the engine has written it, storage is synced (and the player told, if asked). */
-let pendingSync: 'silent' | 'toast' | null = null;
-/** The lives the hero had when asked whether to return from death (`followReturn`), else null. */
-let askedLives: number | null = null;
-/** The hero has returned from death: the game is saved at the next command prompt, as tome2 saves a death at once. */
-let saveOnReturn = false;
 let currentActions: Action[] = [];
 let actionsKey = '';
 /* A map toolbar button that has just changed ignores taps this long (Stop and the pace never do). */
@@ -217,24 +270,9 @@ let hasEffects = false;
 let drawingEffect = false;
 let ctrlLatched = false;
 let lastRenderMs = 0;
-let placeKey = '';
-let placeAt = 0;
-/** Where the player is, refreshed with the level and every couple of seconds. */
-let place: Place | null = null;
-let placePos = { x: -1, y: -1 };
-let inStore = false;
-/** The end-of-game summary has been shown; the lament plays until the title. */
-let ended = false;
-/** The fallen hero as they were at the end, once they have died. */
-let memorial: Memorial | null = null;
 /** A fallen hero to begin again once the title screen is back. */
 let pendingAnew: string | null = null;
 let looking = false;
-let quitting = false;
-/** The hero whose adventure is being abandoned through tome2's quit: once the game has closed, what the frontend keeps of them is forgotten. */
-let abandoning: string | null = null;
-/** Sheets covered by a tome2 screen, reopened once it closes. */
-let returnTo: SheetTrail | null = null;
 const macros = new MacroRunner();
 
 let sheetDepth = 0;
@@ -279,7 +317,7 @@ const promptCard = new PromptCard(stage, (keys) => send(keys));
 
 const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
   onEntity: (entity) => openEntity(entity),
-  onPlayer: () => openNative(hasFallen(lastState?.player) ? 'fallen' : 'character'),
+  onPlayer: () => openNative(hasFallen(game.lastState?.player) ? 'fallen' : 'character'),
   onSkills: () => openNative('skills'),
   onQuest: (quest) => openQuest(sheets, quest),
   onMore: () => send([SPACE]),
@@ -300,8 +338,7 @@ let toastTimer = 0;
 function showToast(text: string, { log = true, read = false }: { log?: boolean; read?: boolean } = {}): void {
   if (log && inGame()) {
     engine.addNotice(text);
-    dirty = true;
-    requestFrame();
+    redraw();
   }
   const area = stage.getBoundingClientRect();
   toast.style.setProperty('--toast-x', `${area.left + area.width / 2}px`);
@@ -335,16 +372,16 @@ const api: GameApi = {
   engine: undefined as unknown as Engine,
   sheets,
   palette: () => buffer.palette,
-  snapshot: () => lastSnap,
-  state: () => lastState,
+  snapshot: () => game.lastSnap,
+  state: () => game.lastState,
   send: (keys) => {
     coverSheets(false);
     send(keys);
   },
   command: (command) => {
-    if (!lastSnap?.atCommand) {
+    if (!game.lastSnap?.atCommand) {
       coverSheets(false);
-      showToast('Finish what you are doing first.');
+      showToast(NOT_NOW);
       return;
     }
     coverSheets(true);
@@ -359,8 +396,8 @@ const api: GameApi = {
     converse(command, digit);
   },
   travelTo: (point) => {
-    if (!lastSnap?.atCommand) {
-      refuse('Finish what you are doing first.');
+    if (!game.lastSnap?.atCommand) {
+      refuse(NOT_NOW);
       return;
     }
     sheets.closeAll();
@@ -370,9 +407,9 @@ const api: GameApi = {
   highlight: (point) => flash(point),
   askText: (title, label, initial) => askText(sheets, title, label, initial),
   askQuantity: (question) => askQuantity(sheets, question),
-  recent: () => recents.list(lastState?.player?.name ?? ''),
-  remember: (entry) => recents.remember(lastState?.player?.name ?? '', entry),
-  refusal: (command) => commandRefusal(command, { worldMap: !!lastSnap?.inDungeon && lastSnap.depth === 0 && lastSnap.wild, controlling: controlling() }),
+  recent: () => recents.list(game.lastState?.player?.name ?? ''),
+  remember: (entry) => recents.remember(game.lastState?.player?.name ?? '', entry),
+  refusal: (command) => commandRefusal(command, { worldMap: worldMap(game.lastSnap), controlling: controlling() }),
   travelRefusal,
   refuse,
 };
@@ -388,8 +425,8 @@ function runRecent(entry: RecentAction, aim = false, anyway = false): void {
     return;
   }
   sheets.closeAll();
-  if (!lastSnap?.atCommand) {
-    showToast('Finish what you are doing first.');
+  if (!game.lastSnap?.atCommand) {
+    showToast(NOT_NOW);
     return;
   }
   if (entry.kind === 'item') {
@@ -418,17 +455,15 @@ function castingTone(name: string): SpellTone | null {
 
 /** Starts watching an action begun from a button, so a refusal or failure is told once tome2 is back at the command prompt. */
 function watchAttempt(): void {
-  attempt = lastSnap ? { turn: lastSnap.turn, messages: [] } : null;
+  game.attempt = game.lastSnap ? { turn: game.lastSnap.turn, messages: [] } : null;
 }
-
-let gearTurn = -1;
 
 /** Tells the audio what the hero fights and shoots with, once a game turn. */
 function hearGear(turn: number): void {
-  if (turn === gearTurn) return;
+  if (turn === hero.gearTurn) return;
   const equip = engine.inventory()?.equip;
   if (!equip) return;
-  gearTurn = turn;
+  hero.gearTurn = turn;
   const held = (part: number) => equip.find((slot) => slot.part === part && !slot.empty && !!slot.name);
   const launcher = held(INVEN_BOW);
   audio.setGear(weaponKind(held(INVEN_WIELD)?.tval), launcherKind(launcher?.tval, launcher?.sval));
@@ -437,28 +472,27 @@ function hearGear(turn: number): void {
 /** Gathers the messages of a watched action, and of a conversation. */
 function followAttempt(previous: GameState | null, state: GameState): void {
   if (!previous) return;
-  if (attempt) attempt.messages.push(...freshMessages(previous, state));
-  if (conversation) conversation.messages.push(...freshMessages(previous, state));
+  if (game.attempt) game.attempt.messages.push(...freshMessages(previous, state));
+  if (game.conversation) game.conversation.messages.push(...freshMessages(previous, state));
 }
 
-/* A word with a creature (tome2's Talk and Give): what tome2 says until it is back at the command prompt. */
-let conversation: { title: string; named: boolean; messages: string[] } | null = null;
+/* tome2.s Talk and Give: a word with a creature. */
 const TALK = 'Y'.charCodeAt(0);
 const GIVE = 'y'.charCodeAt(0);
 
 /** The creature one step from the hero in a keypad direction, by its digit's key code. */
 function creatureTowards(code: number | undefined): MonsterState | undefined {
-  const snap = lastSnap;
+  const snap = game.lastSnap;
   const digit = (code ?? 0) - 48;
   if (!snap || digit < 1 || digit > 9 || digit === 5) return undefined;
   const dx = ((digit - 1) % 3) - 1;
   const dy = 1 - Math.floor((digit - 1) / 3);
-  return lastState?.monsters?.find((m) => m.x === snap.px + dx && m.y === snap.py + dy);
+  return game.lastState?.monsters?.find((m) => m.x === snap.px + dx && m.y === snap.py + dy);
 }
 
 /** Begins gathering what tome2 says to Talk (`Y`) or Give (`y`), named for the creature when it is known. */
 function beginConversation(command: number, creature: MonsterState | undefined): void {
-  conversation = { title: creature ? titleName(creature.name) : command === TALK ? 'Talk' : 'Give', named: !!creature, messages: [] };
+  game.conversation = { title: creature ? titleName(creature.name) : command === TALK ? 'Talk' : 'Give', named: !!creature, messages: [] };
 }
 
 /**
@@ -466,7 +500,7 @@ function beginConversation(command: number, creature: MonsterState | undefined):
  * button or tap, giving the direction only once tome2 asks for it.
  */
 function converse(command: 'Y' | 'y', digit: string): void {
-  if (!lastSnap?.atCommand || heroHeld()) return;
+  if (!game.lastSnap?.atCommand || heroHeld()) return;
   hideToast();
   beginConversation(command.charCodeAt(0), creatureTowards(digit.charCodeAt(0)));
   runMacro(converseMacro(command, digit));
@@ -477,49 +511,46 @@ function converse(command: 'Y' | 'y', digit: string): void {
  * sent from More, named for the creature in the direction answered next.
  */
 function noteConversation(codes: readonly number[]): void {
-  if (conversation && !conversation.named && codes.length === 1 && currentPrompt() === 'direction') {
+  if (game.conversation && !game.conversation.named && codes.length === 1 && currentPrompt() === 'direction') {
     const creature = creatureTowards(codes[0]);
-    if (creature) conversation = { ...conversation, title: titleName(creature.name), named: true };
+    if (creature) game.conversation = { ...game.conversation, title: titleName(creature.name), named: true };
     return;
   }
   const command = codes[0] === BACKSLASH ? codes.slice(1) : codes;
-  if ((command[0] !== TALK && command[0] !== GIVE) || !lastSnap?.atCommand) return;
+  if ((command[0] !== TALK && command[0] !== GIVE) || !game.lastSnap?.atCommand) return;
   beginConversation(command[0], undefined);
 }
 
 /** Once tome2 is back at the command prompt: what was said in a card, or a single line as a toast, so a long answer is not lost as messages flow past. */
 function settleConversation(): void {
-  const snap = lastSnap;
-  if (conversation && lastState?.player?.dead) conversation = null;
-  if (!conversation || !snap?.atCommand || snap.icky || macros.running || engine.pendingKeys > 0) return;
-  const { title, messages } = conversation;
-  conversation = null;
+  const snap = game.lastSnap;
+  if (game.conversation && game.lastState?.player?.dead) game.conversation = null;
+  if (!game.conversation || !snap?.atCommand || snap.icky || macros.running || engine.pendingKeys > 0) return;
+  const { title, messages } = game.conversation;
+  game.conversation = null;
   if (messages.length > 1) openMessage(sheets, title, messages.join(' '));
   else if (messages.length === 1) showToast(messages[0], { log: false, read: true });
 }
 
 /** Once a watched action has ended (its macro done, tome2 back at the command prompt), tells the player when tome2 refused it or it failed. */
 function settleAttempt(): void {
-  const snap = lastSnap;
-  if (!attempt || !snap?.atCommand || snap.icky || macros.running) return;
-  const outcome = attemptOutcome(snap.turn !== attempt.turn, attempt.messages);
-  attempt = null;
+  const snap = game.lastSnap;
+  if (!game.attempt || !snap?.atCommand || snap.icky || macros.running) return;
+  const outcome = attemptOutcome(snap.turn !== game.attempt.turn, game.attempt.messages);
+  game.attempt = null;
   if (outcome) showToast(outcome.message, { log: false });
 }
 
-/* Spells, powers and skill actions, read again each game turn and whenever skill points are spent (a skill raised or an ability learnt takes no turn). */
-let spellsCache: { key: string; spells: SpellState | null } | null = null;
-
 function currentSpells(): SpellState | null {
-  const key = `${lastSnap?.turn ?? -1}:${lastState?.player?.skillPoints ?? 0}`;
-  if (spellsCache?.key !== key) spellsCache = { key, spells: engine.spells() };
-  return spellsCache.spells;
+  const key = `${game.lastSnap?.turn ?? -1}:${game.lastState?.player?.skillPoints ?? 0}`;
+  if (hero.spellsCache?.key !== key) hero.spellsCache = { key, spells: engine.spells() };
+  return hero.spellsCache.spells;
 }
 
 /** The toolbar's quick repeat (`quickRecent`), while the game waits for a command. */
 function quickEntry(): RecentAction | null {
-  if (!lastSnap?.atCommand) return null;
-  return quickRecent(api.recent(), currentSpells(), engine.inventory()?.pack ?? [], heroStyle().magic, lastState?.player?.lev ?? 0);
+  if (!game.lastSnap?.atCommand) return null;
+  return quickRecent(api.recent(), currentSpells(), engine.inventory()?.pack ?? [], heroStyle().magic, game.lastState?.player?.lev ?? 0);
 }
 
 /** Why a recent action cannot be done now (`recentBlocked`). */
@@ -529,7 +560,7 @@ function recentUnavailable(entry: RecentAction, needTarget: boolean): string | n
 
 /** A hostile creature a spell or missile can be aimed at, as tome2's "nearest target" needs. */
 function targetInSight(): boolean {
-  return (lastState?.monsters ?? []).some((m) => isHostile(m) && !!m.target);
+  return (game.lastState?.monsters ?? []).some((m) => isHostile(m) && !!m.target);
 }
 
 /** Shows a spell's description from tome2's spell list ("i" beside it), with Cast. */
@@ -545,28 +576,24 @@ function describeSpell(name: string, key: string): boolean {
   return true;
 }
 
-let styleKey = '';
-let style: FightingStyle = { weapons: true, magic: true };
-let steals = false;
-
 /** How the hero fights, read again when their level or skill points change. */
 function heroStyle(): FightingStyle {
-  const player = lastState?.player;
-  if (!player) return style;
+  const player = game.lastState?.player;
+  if (!player) return hero.style;
   const key = `${player.name}:${player.lev}:${player.skillPoints}`;
-  if (key === styleKey) return style;
+  if (key === hero.styleKey) return hero.style;
   const sheet = engine.character();
-  if (!sheet) return style;
-  styleKey = key;
-  style = fightingStyle(sheet.skills);
-  steals = !!sheet.skills?.some((skill) => skill.name === 'Stealing' && skill.value > 0);
-  return style;
+  if (!sheet) return hero.style;
+  hero.styleKey = key;
+  hero.style = fightingStyle(sheet.skills);
+  hero.steals = !!sheet.skills?.some((skill) => skill.name === 'Stealing' && skill.value > 0);
+  return hero.style;
 }
 
 /** The hero has the Stealing skill, read with how they fight. */
 function heroSteals(): boolean {
   heroStyle();
-  return steals;
+  return hero.steals;
 }
 
 /**
@@ -606,42 +633,40 @@ function characterScreen(): CharacterScreen {
   const skills = parseSkills(rows);
   const abilities = skills ? null : parseAbilities(rows);
   const sheet = skills || abilities ? null : parseFullSheet(rows);
-  return { skills, abilities, sheet, box: lastSnap?.icky ? findMessageBox(rows) : null, atCommand: !!lastSnap?.atCommand };
+  return { skills, abilities, sheet, box: game.lastSnap?.icky ? findMessageBox(rows) : null, atCommand: !!game.lastSnap?.atCommand };
 }
 
 /** Closes the sheets; with `comeBack` they reopen once the game is back at the map. */
 function coverSheets(comeBack: boolean): void {
-  returnTo = comeBack ? sheets.snapshot() : null;
+  game.returnTo = comeBack ? sheets.snapshot() : null;
   sheets.closeAll();
 }
 
 /** Reopens sheets covered by a tome2 screen once that screen has closed. */
 function reopenSheets(): void {
-  const snap = lastSnap;
-  if (!returnTo || macros.running || !snap) return;
-  if (quitting || !snap.inDungeon) {
-    returnTo = null;
+  const snap = game.lastSnap;
+  if (!game.returnTo || macros.running || !snap) return;
+  if (game.quitting || !snap.inDungeon) {
+    game.returnTo = null;
     return;
   }
   if (!snap.atCommand || snap.icky) return;
-  const trail = returnTo;
-  returnTo = null;
+  const trail = game.returnTo;
+  game.returnTo = null;
   if (!sheets.isOpen) sheets.restore(trail);
 }
 
 function flash(point: MapPoint): void {
   map.flashHighlight(point, HIGHLIGHT_MS);
-  dirty = true;
-  requestFrame();
+  redraw();
   window.setTimeout(() => {
-    dirty = true;
-    requestFrame();
+    redraw();
   }, HIGHLIGHT_MS + 50);
 }
 
 function openEntity(entity: HudEntity): void {
   if (travel || picker) stopAutomation(null, 'entity');
-  if ((lastState?.player?.status.hallucinating ?? 0) > 0) {
+  if ((game.lastState?.player?.status.hallucinating ?? 0) > 0) {
     flash(entity.kind === 'monster' ? entity.monster : entity.object);
     showToast('You cannot trust your eyes right now.');
     return;
@@ -693,7 +718,7 @@ function openNative(view: NativeView): void {
       break;
     case 'talk': {
       const partner = talkPartner();
-      const digit = partner && lastSnap ? directionDigit(partner.x - lastSnap.px, partner.y - lastSnap.py) : null;
+      const digit = partner && game.lastSnap ? directionDigit(partner.x - game.lastSnap.px, partner.y - game.lastSnap.py) : null;
       if (digit) converse('Y', digit);
       break;
     }
@@ -735,7 +760,7 @@ function openNative(view: NativeView): void {
 }
 
 function showHistory(): void {
-  openHistory(sheets, engine.gameState(200)?.messages ?? lastState?.messages ?? [], buffer.palette);
+  openHistory(sheets, engine.gameState(200)?.messages ?? game.lastState?.messages ?? [], buffer.palette);
 }
 
 /* Whole-level map */
@@ -749,8 +774,7 @@ function setOverview(on: boolean): void {
     showToast('Tap a place to travel there', { log: false });
   }
   updateActionBar(true);
-  dirty = true;
-  requestFrame();
+  redraw();
 }
 
 /* Look mode and the look card */
@@ -804,7 +828,7 @@ function showLookCard(point: MapPoint): void {
     buttons.append(button);
   };
   const monster = description.monsters[0];
-  if (!description.player && description.known && lastSnap?.atCommand) {
+  if (!description.player && description.known && game.lastSnap?.atCommand) {
     add(
       monster && isHostile(monster) ? 'Attack' : 'Go there',
       () => {
@@ -818,8 +842,7 @@ function showLookCard(point: MapPoint): void {
   lookCard.replaceChildren(head, ...(rows.childElementCount ? [rows] : []), buttons);
   lookCard.hidden = false;
   lookNav.setActive(defaultItem(rows, buttons), false);
-  dirty = true;
-  requestFrame();
+  redraw();
 }
 
 /* View state */
@@ -1082,7 +1105,7 @@ function renderViewer(layout: 'panel' | 'full'): boolean {
   const shown = viewerFile();
   if (!shown) return true;
   const { key, file, help } = shown;
-  const level = viewerLevels.at(-1);
+  const open = viewerLevels.at(-1);
   termView.render(file.source(buffer.cols), { x0: 0, y0: 0, x1: buffer.cols - 1, y1: Math.max(0, file.rows.length - 1) }, {
     ...panelOptions(layout),
     describe: null,
@@ -1095,7 +1118,7 @@ function renderViewer(layout: 'panel' | 'full'): boolean {
           }
         : undefined,
     links: help ? (row) => help.lines.get(file.lineAt(row)) ?? [] : undefined,
-    scroll: { key: `${viewerLevels.length}\u0000${key}`, top: level?.scrollTop ?? null, row: file.rowOf(level?.line ?? 0) },
+    scroll: { key: `${viewerLevels.length}\u0000${key}`, top: open?.scrollTop ?? null, row: file.rowOf(open?.line ?? 0) },
   });
   return true;
 }
@@ -1112,7 +1135,7 @@ function toggleOption(option: OptionBlock, options: OptionBlock[]): void {
 
 /** tome2's centred message box, while one is drawn. */
 function currentBox(): MessageBox | null {
-  return lastSnap?.icky ? findMessageBox(bufferRows(buffer, 0, buffer.rows - 1)) : null;
+  return game.lastSnap?.icky ? findMessageBox(bufferRows(buffer, 0, buffer.rows - 1)) : null;
 }
 
 function updatePromptCard(): void {
@@ -1140,7 +1163,7 @@ function updatePromptCard(): void {
     promptCard.showReturn({
       cause: player?.diedFrom ?? '',
       lives: (player?.lives ?? 1) - 1,
-      battlefield: battlefieldText(place),
+      battlefield: battlefieldText(game.place),
       safety: player?.closed ? { refusal: SAFETY_CLOSED[player.closed] } : { text: safetyText(player?.haven ?? '') },
       refuse,
     });
@@ -1169,36 +1192,36 @@ function sheetSource(letter: string): string {
 function updatePlace(snap: LevelSnapshot): void {
   const key = `${snap.depth}:${snap.wild}:${snap.width}x${snap.height}`;
   const now = performance.now();
-  const moved = gridDistance({ x: snap.px, y: snap.py }, placePos) > 1;
-  placePos = { x: snap.px, y: snap.py };
-  if (key === placeKey && !moved && now - placeAt < PLACE_POLL_MS) return;
-  placeKey = key;
-  placeAt = now;
-  place = engine.place();
-  audio.setPlace(place);
+  const moved = gridDistance({ x: snap.px, y: snap.py }, game.placePos) > 1;
+  game.placePos = { x: snap.px, y: snap.py };
+  if (key === game.placeKey && !moved && now - game.placeAt < PLACE_POLL_MS) return;
+  game.placeKey = key;
+  game.placeAt = now;
+  game.place = engine.place();
+  audio.setPlace(game.place);
 }
 
 /* Map memory */
 
 function memoryHeroId(): string | null {
-  const player = lastState?.player;
-  if (!player?.name || player.dead || place?.heroId === undefined) return null;
-  return `${player.name}#${(place.heroId >>> 0).toString(36)}`;
+  const player = game.lastState?.player;
+  if (!player?.name || player.dead || game.place?.heroId === undefined) return null;
+  return `${player.name}#${(game.place.heroId >>> 0).toString(36)}`;
 }
 
 /** Puts what the hero remembers of the current level into the store, and the store into storage; notes where the hero is for the title screen. */
 function persistMapMemory(): void {
-  const player = lastState?.player;
+  const player = game.lastState?.player;
   if (player?.name && !player.dead && adventurers.loaded) {
     adventurers.note(adventurerOf(player));
     adventurers.save();
   }
-  if (heroMemory) {
-    if (landMemory?.changed) {
-      mapMemory.setArea(heroMemory, landMemory.key, landMemory.width, landMemory.height, landMemory.mask);
-      landMemory.changed = false;
+  if (hero.memory) {
+    if (hero.landMemory?.changed) {
+      mapMemory.setArea(hero.memory, hero.landMemory.key, hero.landMemory.width, hero.landMemory.height, hero.landMemory.mask);
+      hero.landMemory.changed = false;
     }
-    if (exploreLevel && exploreKeepsVisits) mapMemory.setVisited(heroMemory, exploreLevel, exploreSkip);
+    if (level.key && level.keepsVisits) mapMemory.setVisited(hero.memory, level.key, level.explore.skip);
   }
   mapMemory.save();
 }
@@ -1208,66 +1231,29 @@ function persistMapMemory(): void {
  * the depth entered (tome2 depths hold across dungeons); null keeps it.
  */
 function headingInto(next: Place): 'down' | 'up' | null {
-  if (exploreLevel === null || next.depth === 0 || next.depth === exploreLevelDepth) return null;
-  return next.depth > exploreLevelDepth ? 'down' : 'up';
+  if (level.key === null || next.depth === 0 || next.depth === level.depth) return null;
+  return next.depth > level.depth ? 'down' : 'up';
 }
 
 function enterLevel(key: string, next: Place): void {
   persistMapMemory();
   const heading = headingInto(next);
-  if (heroMemory && heading) mapMemory.setHeading(heroMemory, heading);
-  exploreLevel = key;
-  exploreLevelDepth = next.depth;
-  exploreKeepsVisits = key.startsWith('land:') || !!next.kept;
-  exploreSkip.clear();
-  landMemory = null;
-  memoryTurn = -1;
-  exploreNextCache = { key: '', next: 'explore' };
-  exploreAnchor = null;
-  exploreLastStop = null;
-  exploreSeenItems.clear();
-  levelGold.clear();
-  if (heroMemory && exploreKeepsVisits) for (const cell of heroMemory.visited[key] ?? []) exploreSkip.add(cell);
-}
-
-/**
- * Notes the cells in view that hold money, taking them out of the places
- * exploring is done with, and forgets those that hold something else or
- * nothing (a creature standing on money hides it).
- */
-function noteGold(objects: readonly ObjectState[], snap: LevelSnapshot): void {
-  const cells = objects.map((o) => o.y * snap.width + o.x);
-  const gold = new Set(cells.filter((_, i) => objects[i].gold));
-  let changed = false;
-  for (const cell of cells) {
-    if (gold.has(cell)) {
-      changed ||= !levelGold.has(cell);
-      levelGold.add(cell);
-      exploreSkip.delete(cell);
-    } else {
-      changed ||= levelGold.delete(cell);
-    }
-  }
-  for (const cell of levelGold) {
-    const top = snap.layer[cell] & LAYER_MASK;
-    if (top !== LAYER_OBJECT && top !== LAYER_MONSTER) changed ||= levelGold.delete(cell);
-  }
-  if (changed) levelGoldVersion++;
-}
-
-/** Items the hero has stood on (or dropped) count as visited. */
-function noteVisited(snap: LevelSnapshot): void {
-  if (snap.floorObjects > 0) exploreSkip.add(snap.py * snap.width + snap.px);
+  if (hero.memory && heading) mapMemory.setHeading(hero.memory, heading);
+  /* An exploration ends with the level it explored. */
+  if (travel instanceof Explore) stopAutomation(null, 'level');
+  level = { ...newLevelState(), key, depth: next.depth, keepsVisits: key.startsWith('land:') || !!next.kept };
+  hero.landMemory = null;
+  if (hero.memory && level.keepsVisits) for (const cell of hero.memory.visited[key] ?? []) level.explore.skip.add(cell);
 }
 
 /** Keeps the grids of an area of the land the hero has seen, and restores those tome2 has forgotten. */
 function rememberLand(snap: LevelSnapshot, key: string): void {
-  if (!heroMemory || !key.startsWith('land:')) return;
-  if (!landMemory || landMemory.key !== key || landMemory.width !== snap.width || landMemory.height !== snap.height) {
-    landMemory = { key, width: snap.width, height: snap.height, mask: mapMemory.area(heroMemory, key, snap.width, snap.height), changed: false };
+  if (!hero.memory || !key.startsWith('land:')) return;
+  if (!hero.landMemory || hero.landMemory.key !== key || hero.landMemory.width !== snap.width || hero.landMemory.height !== snap.height) {
+    hero.landMemory = { key, width: snap.width, height: snap.height, mask: mapMemory.area(hero.memory, key, snap.width, snap.height), changed: false };
   }
-  if (mergeKnown(landMemory.mask, snap.info)) landMemory.changed = true;
-  const missing = missingCells(landMemory.mask, snap.info);
+  if (mergeKnown(hero.landMemory.mask, snap.info)) hero.landMemory.changed = true;
+  const missing = missingCells(hero.landMemory.mask, snap.info);
   if (missing.length === 0 || engine.markKnown(missing) === 0) return;
   for (const cell of missing) snap.info[cell] |= CAVE_MARK;
   dirty = true;
@@ -1275,24 +1261,24 @@ function rememberLand(snap: LevelSnapshot, key: string): void {
 
 function updateMapMemory(snap: LevelSnapshot): void {
   const id = memoryHeroId();
-  if (id && id !== heroMemoryId && mapMemory.loaded) {
+  if (id && id !== hero.memoryId && mapMemory.loaded) {
     persistMapMemory();
-    heroMemoryId = id;
-    heroMemory = mapMemory.hero(id);
-    exploreLevel = null;
+    hero.memoryId = id;
+    hero.memory = mapMemory.hero(id);
+    level.key = null;
   }
-  const current = place && place.depth === snap.depth && !!place.wild === snap.wild ? place : null;
+  const current = game.place && game.place.depth === snap.depth && !!game.place.wild === snap.wild ? game.place : null;
   if (!current) return;
   const key = levelKey(current) ?? `other:${current.dungeon}:${current.depth}:${current.wild}`;
   const pos = snap.py * snap.width + snap.px;
-  if (key !== exploreLevel) {
+  if (key !== level.key) {
     enterLevel(key, current);
-    memoryPos = pos;
+    level.memoryPos = pos;
   }
-  if (snap.turn === memoryTurn && pos === memoryPos) return;
-  memoryTurn = snap.turn;
-  memoryPos = pos;
-  noteVisited(snap);
+  if (snap.turn === level.memoryTurn && pos === level.memoryPos) return;
+  level.memoryTurn = snap.turn;
+  level.memoryPos = pos;
+  level.explore.noteVisited(snap);
   rememberLand(snap, key);
 }
 
@@ -1306,25 +1292,25 @@ let featureRoles: { down: boolean[]; up: boolean[] } = { down: [], up: [] };
  * On the land it leads to no entrance: finding them is the player's.
  */
 function explorePlan(): ExplorePlan {
-  const heading = heroMemory?.heading ?? 'down';
-  const underground = (lastSnap?.depth ?? 0) > 0;
-  const role = (roles: boolean[]) => (i: number) => underground && !!lastSnap && !!roles[lastSnap.feat[i]];
+  const heading = hero.memory?.heading ?? 'down';
+  const underground = (game.lastSnap?.depth ?? 0) > 0;
+  const role = (roles: boolean[]) => (i: number) => underground && !!game.lastSnap && !!roles[game.lastSnap.feat[i]];
   return {
-    skip: exploreSkip,
+    skip: level.explore.skip,
     heading,
     isExit: role(featureRoles[heading]),
     isBackExit: underground ? role(featureRoles[heading === 'up' ? 'down' : 'up']) : undefined,
-    anchor: exploreAnchor,
-    collect: alwaysPickup() ? () => true : (i) => levelGold.has(i),
+    anchor: level.explore.anchor,
+    collect: alwaysPickup() ? () => true : (i) => level.explore.gold.has(i),
   };
 }
 
 /** What Explore would do now (see `ExploreNext`); on the land, once nothing is left, the way on is the world map. */
 function exploreNext(snap: LevelSnapshot | null): ExploreNext {
   if (!snap?.atCommand || snap.wild || !materialsLoaded) return 'explore';
-  const key = `${exploreLevel}:${snap.turn}:${snap.px},${snap.py}:${exploreSkip.size}:${levelGoldVersion}:${heroMemory?.heading}:${alwaysPickup()}`;
-  if (exploreNextCache.key !== key) exploreNextCache = { key, next: exploreNextFrom(snap) };
-  return exploreNextCache.next;
+  const key = `${level.key}:${snap.turn}:${snap.px},${snap.py}:${level.explore.skip.size}:${level.explore.goldVersion}:${hero.memory?.heading}:${alwaysPickup()}`;
+  if (level.nextCache.key !== key) level.nextCache = { key, next: exploreNextFrom(snap) };
+  return level.nextCache.next;
 }
 
 function exploreNextFrom(snap: LevelSnapshot): ExploreNext {
@@ -1337,10 +1323,10 @@ function exploreNextFrom(snap: LevelSnapshot): ExploreNext {
 function refresh(): void {
   const snap = engine.snapshot();
   if (!snap) return;
-  lastSnap = snap;
+  game.lastSnap = snap;
 
   if (!snap.inDungeon) {
-    ended = false;
+    game.ended = false;
     commandState = null;
     leadMessages = [];
     leadShown = false;
@@ -1392,7 +1378,7 @@ function refresh(): void {
   leadMessages = leadInMessages(commandState, state, atCommands, settings.messages === 'flow');
 
   /* tome2 clears its screen flag when an item prompt ends, though the shop is still open until the trade's last question. */
-  const trading = !!trade && !!engine.store();
+  const trading = !!game.trade && !!engine.store();
   if (snap.icky || trading) {
     setMode('overlay');
     const under = engine.savedScreen() ?? base;
@@ -1400,28 +1386,20 @@ function refresh(): void {
     const rows = bufferRows(buffer, 0, buffer.rows - 1);
     const screen = characterScreen();
     const characterView = !!(screen.skills || screen.abilities || screen.sheet);
-    shownShop = currentShop();
-    const tomb = abandoning ? null : parseTomb(rows);
-    const fame = !tomb && ended && isHallOfFame(rows);
-    if (tomb) ended = true;
+    game.shownShop = currentShop();
+    const tomb = game.abandoning ? null : parseTomb(rows);
+    const fame = !tomb && game.ended && isHallOfFame(rows);
+    if (tomb) game.ended = true;
     app.classList.toggle('ended', !!tomb || fame);
-    if (abandoning) {
+    if (game.abandoning) {
       /* tome2's end-of-game screens are passed while the adventure is abandoned. */
       termView.hide();
     } else if (termView.visible && currentBox() && !character.hosting) {
       /* The panel stays as it was beneath a message box. */
     } else if (tomb) {
-      if (chronicles.fall(tomb.name, engine.gameState(0)?.player?.diedFrom === ABANDONED)) chronicles.save();
-      if (adventurers.forget(tomb.name)) adventurers.save();
-      if (heroMemoryId) {
-        mapMemory.forget(heroMemoryId);
-        mapMemory.save();
-        heroMemory = null;
-        heroMemoryId = '';
-        landMemory = null;
-      }
+      forgetHero(tomb.name, { abandoned: engine.gameState(0)?.player?.diedFrom === ABANDONED });
       const tale = chronicles.peek(tomb.name);
-      const fallen = memorial?.name === tomb.name ? memorial : null;
+      const fallen = hero.memorial?.name === tomb.name ? hero.memorial : null;
       termView.renderCustom({ layout: 'full', title: 'Your adventure has ended' }, `${JSON.stringify(tomb)}:${!!fallen}`, () =>
         tombElements(tomb, {
           memorial: fallen,
@@ -1432,14 +1410,14 @@ function refresh(): void {
         }),
       );
     } else if (fame) {
-      const player = lastState?.player;
+      const player = game.lastState?.player;
       const scores = engine.scores();
-      const hero = player ? heroEntry(scores, { name: player.name, level: player.lev, turns: snap.turn }) : -1;
-      termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero for their tale' }, `fame:${scores.length}:${hero}`, () =>
-        hallOfFameElements(scores, hero, (entry) => openFameHero(entry, true)),
+      const shown = player ? heroEntry(scores, { name: player.name, level: player.lev, turns: snap.turn }) : -1;
+      termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero for their tale' }, `fame:${scores.length}:${shown}`, () =>
+        hallOfFameElements(scores, shown, (entry) => openFameHero(entry, true)),
       );
-    } else if (shownShop) {
-      renderShop(shownShop);
+    } else if (game.shownShop) {
+      renderShop(game.shownShop);
     } else if (character.render(screen) || characterView) {
       /* The character sheet shows these screens; one typed on the map opens it at the next idle. */
       termView.hide();
@@ -1449,8 +1427,8 @@ function refresh(): void {
     map.setReticle(null);
   } else {
     setMode('map');
-    shownShop = null;
-    shopTab = null;
+    game.shownShop = null;
+    game.shopTab = null;
     termView.hide();
     const cursor = rowZeroText() ? terminalToDungeon(snap, buffer.cursorX, buffer.cursorY) : null;
     map.setReticle(cursor && (cursor.x !== snap.px || cursor.y !== snap.py) ? cursor : null);
@@ -1459,12 +1437,12 @@ function refresh(): void {
 
   if (state) {
     if (state.player) {
-      state.player.area = areaName(place) ?? undefined;
-      state.player.inTown = !!place && place.depth === 0 && !place.wild && place.town > 0;
+      state.player.area = areaName(game.place) ?? undefined;
+      state.player.inTown = !!game.place && game.place.depth === 0 && !game.place.wild && game.place.town > 0;
     }
-    const previous = lastState;
-    lastState = state;
-    noteGold(state.objects ?? [], snap);
+    const previous = game.lastState;
+    game.lastState = state;
+    level.explore.noteGold(state.objects ?? [], snap);
     hud.update(state, snap.py, snap.px);
     if (state.player) {
       const quest = state.player.quest ?? previous?.player?.quest;
@@ -1484,20 +1462,20 @@ function refresh(): void {
     if (sameHero) showHits(previous, state, slain);
     if (state.player) chronicleUpdate(state.player, slain, snap.turn, sameHero && (previous.player?.chp ?? 0) > state.player.chp);
     if (hasFallen(state.player)) captureMemorial(state.player!, state, snap);
-    if (shownShop && !inStore) audio.cue('shop');
-    inStore = !!shownShop;
-    audio.setView(ended ? 'gameover' : state.player?.dead && state.player.fate === 'choice' ? 'between' : 'game');
+    if (game.shownShop && !game.inStore) audio.cue('shop');
+    game.inStore = !!game.shownShop;
+    audio.setView(game.ended ? 'gameover' : state.player?.dead && state.player.fate === 'choice' ? 'between' : 'game');
     if (state.player) {
-      const follow = followReturn(askedLives, state.player);
-      askedLives = follow.asked;
+      const follow = followReturn(game.askedLives, state.player);
+      game.askedLives = follow.asked;
       if (follow.returned) {
         feel.play({ kind: 'returned', lives: state.player.lives ?? 0 });
         audio.cue('returned');
-        saveOnReturn = true;
+        game.saveOnReturn = true;
       }
     }
     hearGear(snap.turn);
-    audio.update(snap, state, inStore);
+    audio.update(snap, state, game.inStore);
     followAttempt(previous, state);
     coach.update(mode === 'map' && snap.atCommand && !looking && lookCard.hidden && !map.overview, snap.turn);
     /* A card that shows what tome2 has just said leaves the log to it. */
@@ -1523,20 +1501,20 @@ const SCENE_NOISE = /^You have no more /;
  */
 function tellQuestMoment(): void {
   const moment = questMoment;
-  const snap = lastSnap;
-  const state = lastState;
+  const snap = game.lastSnap;
+  const state = game.lastState;
   if (!moment || !snap || !state || mode !== 'map' || !snap.atCommand || travel || macros.running || sheets.isOpen || promptCard.visible) return;
   questMoment = null;
   const { event, quest } = moment;
   const arrival = event.kind === 'quest';
   const key = questKey(quest, snap.depth);
-  const told = arrival && (!heroMemory || !key || heroMemory.quests.includes(key));
+  const told = arrival && (!hero.memory || !key || hero.memory.quests.includes(key));
   const scene = moment.led || !moment.since ? [] : newMessages(moment.since, state).filter((m) => !SCENE_NOISE.test(m.text)).slice(0, LEAD_LINES).reverse().map((m) => m.text);
   if (told || (!arrival && !scene.length)) {
     feel.play(event);
     return;
   }
-  if (arrival && heroMemory) mapMemory.noteQuest(heroMemory, key);
+  if (arrival && hero.memory) mapMemory.noteQuest(hero.memory, key);
   const subtitle = event.kind === 'questEnd' ? (event.failed ? 'Quest failed' : 'Quest complete') : [event.place, event.feet ? `${event.feet} ft` : ''].filter(Boolean).join(' · ') || 'Quest';
   openQuest(sheets, quest, { subtitle, scene, task: arrival });
 }
@@ -1571,39 +1549,36 @@ function showHits(previous: GameState, next: GameState, slain: readonly Slain[])
 
 /* Chronicle: kills, streaks, legends and deeds */
 
-let chronicle: Chronicle | null = null;
-let streak: Streak = { count: 0, lastTurn: 0 };
-
 function chronicleUpdate(player: PlayerState, slain: readonly Slain[], turn: number, hurt: boolean): void {
-  app.classList.toggle('fallen', hasFallen(player) && !abandoning);
+  app.classList.toggle('fallen', hasFallen(player) && !game.abandoning);
   app.classList.toggle('between', !!player.dead && player.fate === 'choice');
   if (player.dead) return;
-  if (chronicle?.name !== player.name) {
-    chronicle = chronicles.hero(player.name);
-    streak = { count: 0, lastTurn: 0 };
+  if (hero.chronicle?.name !== player.name) {
+    hero.chronicle = chronicles.hero(player.name);
+    hero.streak = { count: 0, lastTurn: 0 };
   }
-  const hero = chronicle;
-  const before = JSON.stringify(hero);
+  const tale = hero.chronicle;
+  const before = JSON.stringify(tale);
   const careerBefore = JSON.stringify(chronicles.career);
-  const next = extendStreak(streak, slain.length, turn);
-  streak = next.streak;
-  record(hero, chronicles.career, player, slain, streak.count, hurt);
+  const next = extendStreak(hero.streak, slain.length, turn);
+  hero.streak = next.streak;
+  record(tale, chronicles.career, player, slain, hero.streak.count, hurt);
   const legend = slain.find((s) => s.unique);
   if (legend) {
     feel.announce(titleName(legend.name), 'A legend falls', 'legend');
     feel.shake(0.7);
   } else if (next.name) {
-    feel.announce(next.name, `${streak.count} foes in quick succession`, 'streak');
+    feel.announce(next.name, `${hero.streak.count} foes in quick succession`, 'streak');
   }
-  const deeds = newDeeds(hero, chronicles.career, chronicles.earned);
+  const deeds = newDeeds(tale, chronicles.career, chronicles.earned);
   if (deeds.length) {
-    chronicles.award(hero, deeds);
+    chronicles.award(tale, deeds);
     if (deeds.length > 2) feel.showDeed(`${deeds.length} deeds earned`, deeds.map((d) => d.title).join(' · '));
     else for (const deed of deeds) feel.showDeed(deed.title, deed.text);
     for (const deed of deeds) engine.addNotice(`Deed earned: ${deed.title}.`);
     audio.cue('levelup');
   }
-  if (deeds.length || JSON.stringify(hero) !== before || JSON.stringify(chronicles.career) !== careerBefore) chronicles.save();
+  if (deeds.length || JSON.stringify(tale) !== before || JSON.stringify(chronicles.career) !== careerBefore) chronicles.save();
 }
 
 /* Fallen heroes */
@@ -1611,10 +1586,10 @@ function chronicleUpdate(player: PlayerState, slain: readonly Slain[], turn: num
 /** Keeps the hero as they were when they fell: sheet, gear, skills, the foe and the last messages. */
 function captureMemorial(player: PlayerState, state: GameState, snap: LevelSnapshot): void {
   const key = memorialKey({ name: player.name, turn: snap.turn });
-  if (memorial && memorialKey(memorial) === key) return;
+  if (hero.memorial && memorialKey(hero.memorial) === key) return;
   const kept = chronicles.memorial(key);
   if (kept) {
-    memorial = kept;
+    hero.memorial = kept;
     return;
   }
   const palette = buffer.palette;
@@ -1635,16 +1610,16 @@ function captureMemorial(player: PlayerState, state: GameState, snap: LevelSnaps
   });
   const tale = chronicles.peek(player.name);
   if (tale) built.tale = structuredClone(tale);
-  memorial = built;
+  hero.memorial = built;
   chronicles.remember(key, built);
   chronicles.save();
 }
 
 function openFallenHero(tab: FallenTab = 'hero'): void {
-  if (!memorial) return;
+  if (!hero.memorial) return;
   if (travel || picker) stopAutomation(null, 'fallen');
   const scores = engine.scores();
-  openFallen(sheets, { memorial, entry: scores.find((e) => memorialKey({ name: e.name, turn: e.turns }) === memorialKey(memorial!)) ?? null }, tab);
+  openFallen(sheets, { memorial: hero.memorial, entry: scores.find((e) => memorialKey({ name: e.name, turn: e.turns }) === memorialKey(hero.memorial!)) ?? null }, tab);
 }
 
 /**
@@ -1703,16 +1678,10 @@ function removeFameEntry(entry: ScoreEntry): void {
 
 /** In the game the savefile list is not at hand; a fallen hero's own savefile is the one just written. */
 function fallenSaveFor(entry: ScoreEntry): boolean {
-  return !!memorial && memorial.name === entry.name && memorialKey({ name: entry.name, turn: entry.turns }) === memorialKey(memorial);
+  return !!hero.memorial && hero.memorial.name === entry.name && memorialKey({ name: entry.name, turn: entry.turns }) === memorialKey(hero.memorial);
 }
 
 /* Shops */
-
-/** The shop or home shown in the native panel, and which of its lists is open (kept while the hero stays inside). */
-let shownShop: StoreState | null = null;
-let shopTab: { name: string; tab: ShopTab } | null = null;
-/** A trade under way: what is said once it has gone through, and how things stood before, to tell whether it did. */
-let trade: { done: string | null; before: string; state: GameState | null } | null = null;
 
 /**
  * The shop (or home, or museum) tome2 is in, shown natively from the
@@ -1723,7 +1692,7 @@ function currentShop(): StoreState | null {
   if (mode !== 'overlay') return null;
   const store = engine.store();
   if (!store) return null;
-  return trade || atBuildingCommands() ? store : null;
+  return game.trade || atBuildingCommands() ? store : null;
 }
 
 /** tome2 waits at a building's own commands (row 21 "You may:"), asking nothing else. */
@@ -1734,7 +1703,7 @@ function atBuildingCommands(): boolean {
 
 const shopHandlers: ShopHandlers = {
   trade(macro, done) {
-    trade = { done, before: tradeState(), state: engine.gameState(20) };
+    game.trade = { done, before: tradeState(), state: engine.gameState(20) };
     api.runMacro(macro);
     if (!macros.running) settleTrade();
   },
@@ -1751,9 +1720,9 @@ function tradeState(): string {
 
 /** Once a trade's questions are answered: says it went through, or what tome2 said instead (no room, not enough gold). */
 function settleTrade(): void {
-  if (!trade || macros.running) return;
-  const { done, before, state } = trade;
-  trade = null;
+  if (!game.trade || macros.running) return;
+  const { done, before, state } = game.trade;
+  game.trade = null;
   if (tradeState() !== before) {
     if (done) showToast(done, { log: false });
     return;
@@ -1766,16 +1735,15 @@ function settleTrade(): void {
 }
 
 function setShopTab(tab: ShopTab): void {
-  if (!shopTab) return;
-  shopTab.tab = tab;
-  dirty = true;
-  requestFrame();
+  if (!game.shopTab) return;
+  game.shopTab.tab = tab;
+  redraw();
 }
 
 /** The shop as a panel: its shelf (its services first) and what the hero can offer it as tabs, Exit beside them; a building that does not trade lists its services. */
 function renderShop(store: StoreState): void {
   const model = shopModel(store);
-  if (shopTab?.name !== store.name) shopTab = { name: store.name, tab: 'shelf' };
+  if (game.shopTab?.name !== store.name) game.shopTab = { name: store.name, tab: 'shelf' };
   if (!trades(store)) {
     termView.renderCustom(
       { layout: 'panel', title: store.name, subtitle: store.owner.replace(/\s*\(/, ' (') || undefined, actions: [{ id: 'exit', label: 'Exit', run: () => send([KEY_ESCAPE]) }] },
@@ -1784,7 +1752,7 @@ function renderShop(store: StoreState): void {
     );
     return;
   }
-  const tab = model.offer ? shopTab.tab : 'shelf';
+  const tab = model.offer ? game.shopTab.tab : 'shelf';
   const inventory = engine.inventory();
   const tabs: PopTab[] = [
     { id: 'shelf', label: model.shelf.label, active: tab === 'shelf', run: () => setShopTab('shelf') },
@@ -1824,22 +1792,15 @@ function serviceHint(command: StoreCommand): string | undefined {
   return command.cost > 0 ? `${command.cost} gold` : undefined;
 }
 
-/**
- * A building's service under way: tome2 answers it by drawing over the
- * building's screen, which the native panel covers, and pages long answers
- * with -more- (held while it runs), so each page is kept as it is shown.
- */
-let service: { name: string; before: string[]; state: GameState | null; pages: string[][][] } | null = null;
-
 /** Asks for a service, or says why it cannot be had (no gold spent either way when it cannot); only while tome2 waits at the building's commands. */
 function runService(command: StoreCommand): void {
-  if (service || trade || macros.running || engine.pendingKeys > 0 || !atBuildingCommands()) return;
+  if (game.service || game.trade || macros.running || engine.pendingKeys > 0 || !atBuildingCommands()) return;
   if (command.closed) refuse('The keeper will not do that for you.');
-  else if (command.cost > (lastState?.player?.au ?? 0)) refuse(`That costs ${command.cost} gold, more than you have.`);
+  else if (command.cost > (game.lastState?.player?.au ?? 0)) refuse(`That costs ${command.cost} gold, more than you have.`);
   else {
     /* The rows a service draws on are blanked first, so an answer the same as the last one still shows. */
     engine.clearRows(SERVICE_CLEAR.first, SERVICE_CLEAR.last);
-    service = { name: command.name, before: screenLines(), state: engine.gameState(SERVICE_MESSAGES), pages: [] };
+    game.service = { name: command.name, before: screenLines(), state: engine.gameState(SERVICE_MESSAGES), pages: [] };
     engine.setAutoMore(false);
     send([BACKSLASH, command.key.charCodeAt(0)]);
   }
@@ -1850,14 +1811,14 @@ function screenLines(): string[] {
 }
 
 /** Keeps what a service has drawn so far, leaving out blocks kept from an earlier page. */
-function keepPage(run: NonNullable<typeof service>): void {
+function keepPage(run: NonNullable<typeof game.service>): void {
   const kept = new Set(run.pages.flat().map((block) => block.join('\n')));
   run.pages.push(drawnBlocks(run.before, screenLines()).filter((block) => !kept.has(block.join('\n'))));
 }
 
 /** Follows a service at each idle: keeps a page and turns it at -more-; once back at the building's commands (or out of it), shows what it said. True when a key was sent. */
 function followService(): boolean {
-  const run = service;
+  const run = game.service;
   if (!run || macros.running || engine.pendingKeys > 0 || viewerHeading(rowZeroText())) return false;
   if (currentPrompt() === 'more') {
     keepPage(run);
@@ -1867,7 +1828,7 @@ function followService(): boolean {
   const inside = !!engine.store() && atBuildingCommands();
   const snap = engine.snapshot();
   if (!inside && snap?.inDungeon && !(snap.atCommand && !snap.icky)) return false;
-  service = null;
+  game.service = null;
   applyEngineSettings();
   if (inside) keepPage(run);
   const state = engine.gameState(SERVICE_MESSAGES);
@@ -1905,10 +1866,10 @@ function entranceHere(snap: LevelSnapshot): string | null {
 
 /** A weapon or light worth equipping from the pack. */
 function gearSuggestion(): GearSuggestion | null {
-  const snap = lastSnap;
+  const snap = game.lastSnap;
   if (!snap?.inDungeon || !snap.atCommand) return null;
   const inventory = engine.inventory();
-  const player = lastState?.player;
+  const player = game.lastState?.player;
   if (!inventory?.ready || !player) return null;
   return suggestedGear(inventory, {
     inDungeon: snap.depth > 0,
@@ -1919,18 +1880,18 @@ function gearSuggestion(): GearSuggestion | null {
 
 /** The weakest hostile creature next to the player, if any (none while the hero controls another creature, as the hero cannot fight then). */
 function adjacentFoe(): MonsterState | null {
-  const snap = lastSnap;
+  const snap = game.lastSnap;
   if (!snap?.inDungeon || !snap.atCommand || controlling()) return null;
-  const foes = (lastState?.monsters ?? []).filter((m) => isHostile(m) && isAdjacent(m.x, m.y, snap.px, snap.py));
+  const foes = (game.lastState?.monsters ?? []).filter((m) => isHostile(m) && isAdjacent(m.x, m.y, snap.px, snap.py));
   foes.sort((a, b) => a.hp / Math.max(1, a.maxhp) - b.hp / Math.max(1, b.maxhp));
   return foes[0] ?? null;
 }
 
 /** A neutral creature next to the player (someone to talk to), if any. */
 function talkPartner(): MonsterState | null {
-  const snap = lastSnap;
+  const snap = game.lastSnap;
   if (!snap?.inDungeon || !snap.atCommand) return null;
-  return (lastState?.monsters ?? []).find((m) => isNeutral(m) && isAdjacent(m.x, m.y, snap.px, snap.py)) ?? null;
+  return (game.lastState?.monsters ?? []).find((m) => isNeutral(m) && isAdjacent(m.x, m.y, snap.px, snap.py)) ?? null;
 }
 
 function useSuggested(): void {
@@ -1957,14 +1918,14 @@ function mapSituation(snap: LevelSnapshot): Partial<ActionContext> {
 function updateActionBar(force = false): void {
   /* A bolt or blast being drawn is part of a turn under way: the toolbar waits for it to end. */
   if (drawingEffect) return;
-  const snap = lastSnap;
+  const snap = game.lastSnap;
   const directed = mode === 'screen' ? director.actions() : null;
   const prompt = currentPrompt();
   const foe = adjacentFoe();
   map.setFoe(foe && mode === 'map' ? { x: foe.x, y: foe.y } : null);
   const actions =
     directed ??
-    (shownShop ? shopActions() : null) ??
+    (game.shownShop ? shopActions() : null) ??
     contextActions({
       mode,
       /* tome2's question of which door travel is opening is answered by travel, not the player. */
@@ -1972,8 +1933,8 @@ function updateActionBar(force = false): void {
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
       listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
-      fallen: hasFallen(lastState?.player),
-      screen: !termView.visible ? null : termView.options().length ? 'options' : /You may now dump a character record/.test(buffer.screenText()) || (ended && /Hall of Fame/.test(rowZeroText())) ? 'gameover' : viewerHeading(rowZeroText()) ? 'file' : null,
+      fallen: hasFallen(game.lastState?.player),
+      screen: !termView.visible ? null : termView.options().length ? 'options' : /You may now dump a character record/.test(buffer.screenText()) || (game.ended && /Hall of Fame/.test(rowZeroText())) ? 'gameover' : viewerHeading(rowZeroText()) ? 'file' : null,
       looking,
       overview: map.overview,
       atCommand: !!snap?.atCommand,
@@ -1983,7 +1944,7 @@ function updateActionBar(force = false): void {
       alwaysPickup: alwaysPickup(),
       ...(mode === 'map' && snap ? mapSituation(snap) : {}),
       foe: foe && snap ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
-      worldMap: !!snap?.inDungeon && snap.depth === 0 && snap.wild,
+      worldMap: worldMap(snap),
       controlling: controlling(),
     });
   currentActions = actions;
@@ -2093,19 +2054,23 @@ function navigate(direction: 'up' | 'down' | 'select'): void {
 }
 
 function alwaysPickup(): boolean {
-  return !!lastState?.player?.alwaysPickup;
+  return !!game.lastState?.player?.alwaysPickup;
 }
 
+/** The hero is on the world map (the surface, `wild`). */
+function worldMap(snap: LevelSnapshot | null): boolean {
+  return !!snap?.inDungeon && snap.depth === 0 && snap.wild;
+}
 
 /** What the More sheet needs to know of the hero's situation. */
 function commandContext(): CommandContext {
-  const snap = lastSnap;
-  const player = lastState?.player;
+  const snap = game.lastSnap;
+  const player = game.lastState?.player;
   return {
-    where: !snap?.inDungeon || snap.depth > 0 ? 'dungeon' : snap.wild ? 'worldMap' : 'land',
+    where: worldMap(snap) ? 'worldMap' : !snap?.inDungeon || snap.depth > 0 ? 'dungeon' : 'land',
     underfoot: snap?.inDungeon ? underfootName(snap) : '',
     feat: snap?.inDungeon ? underfootFeat(snap) : -1,
-    beside: !!snap && (lastState?.monsters ?? []).some((m) => isAdjacent(snap.px, snap.py, m.x, m.y)),
+    beside: !!snap && (game.lastState?.monsters ?? []).some((m) => isAdjacent(snap.px, snap.py, m.x, m.y)),
     pray: player?.pray ?? 0,
     runes: (player?.runes ?? 0) > 0,
     steals: heroSteals(),
@@ -2117,14 +2082,14 @@ function commandContext(): CommandContext {
 
 /** The hero controls another creature (a Fire Golem, or one taken by Mind Steal). */
 function controlling(): boolean {
-  return !!lastState?.player?.control;
+  return !!game.lastState?.player?.control;
 }
 
 /** Where the creature the hero controls stands: undefined when they control none, null when it is out of sight. */
 function steered(): MapPoint | null | undefined {
-  const id = lastState?.player?.control;
+  const id = game.lastState?.player?.control;
   if (!id) return undefined;
-  const creature = lastState?.monsters?.find((m) => m.id === id);
+  const creature = game.lastState?.monsters?.find((m) => m.id === id);
   return creature ? { x: creature.x, y: creature.y } : null;
 }
 
@@ -2160,7 +2125,7 @@ function openCommands(): void {
     } else if (def.native) {
       sheets.closeAll();
       openNative(def.native);
-    } else if (def.reading && lastSnap?.atCommand) {
+    } else if (def.reading && game.lastSnap?.atCommand) {
       coverSheets(true);
       send(commandKeys(def));
     } else {
@@ -2196,14 +2161,14 @@ function openCommands(): void {
 /* Travel and targeting */
 
 function travelContext(): TravelContext | null {
-  if (!lastSnap || !lastState?.player) return null;
-  return { snap: lastSnap, materials, monsters: lastState.monsters ?? [], hp: lastState.player.chp, gold: lastState.player.au, passing: passingCells(lastSnap), prompt: currentPrompt() };
+  if (!game.lastSnap || !game.lastState?.player) return null;
+  return { snap: game.lastSnap, materials, monsters: game.lastState.monsters ?? [], hp: game.lastState.player.chp, gold: game.lastState.player.au, passing: passingCells(game.lastSnap), prompt: currentPrompt() };
 }
 
 /** Cells of the creatures travel and exploring plan through: those not in sight (`outOfSight`), and companions they swap places with as tome2 lets the hero (`pushPast`). */
 function passingCells(snap: LevelSnapshot): Set<number> {
-  const player = lastState?.player;
-  const monsters = lastState?.monsters ?? [];
+  const player = game.lastState?.player;
+  const monsters = game.lastState?.monsters ?? [];
   const cells = outOfSight(snap, monsters);
   if (!player || !monsters.some((m) => m.status > 0)) return cells;
   const weapon = engine.inventory()?.equip.find((slot) => slot.i === INVEN_WIELD)?.name ?? '';
@@ -2220,10 +2185,7 @@ function passingCells(snap: LevelSnapshot): Set<number> {
 function stopAutomation(message: string | null, cause: string): void {
   if (travel || picker) lastStopCause = cause;
   const answering = !!travel?.answering;
-  if (travel instanceof Explore && lastSnap) {
-    exploreAnchor = travel.anchor;
-    exploreLastStop = { x: lastSnap.px, y: lastSnap.py };
-  }
+  if (travel instanceof Explore && game.lastSnap) level.explore.stopped(travel.anchor, { x: game.lastSnap.px, y: game.lastSnap.py });
   window.clearTimeout(travelTimer);
   travelTimer = 0;
   travel = null;
@@ -2241,7 +2203,7 @@ function stepTravel(): void {
   if (!engine.awaitingInput) return;
   const ctx = travelContext();
   if (!travel || !ctx) return;
-  if (travel instanceof Explore) noteSpotted(ctx.snap);
+  if (travel instanceof Explore) level.explore.noteSpotted(game.lastState?.objects ?? [], ctx.snap);
   const step = travel.step(ctx);
   if (step.kind === 'stop') {
     const spotted = travel instanceof Explore ? spottedText() : null;
@@ -2269,7 +2231,7 @@ function changingButton(snap: LevelSnapshot): Action {
     entrance: entranceHere(snap),
     gear: gearSuggestion()?.kind ?? null,
     foe: foe ? directionDigit(foe.x - snap.px, foe.y - snap.py) : null,
-    worldMap: snap.depth === 0 && snap.wild,
+    worldMap: worldMap(snap),
   });
 }
 
@@ -2279,7 +2241,7 @@ function stopMessage(journey: Travel | Explore, step: Extract<TravelStep, { kind
     light: changingButton(snap).id === 'equip' && gearSuggestion()?.kind === 'light',
     exploring: journey instanceof Explore,
     walked: journey instanceof Travel ? journey.walked : 0,
-    approximate: travelApproximate,
+    approximate: level.travelApproximate,
     depth: snap.depth,
     lightRadius: snap.lightRadius,
   });
@@ -2302,7 +2264,7 @@ function startTravel(goal: MapPoint): void {
     return;
   }
   travel = new Travel(approach?.point ?? goal, ctx);
-  travelApproximate = !!approach && !approach.exact;
+  level.travelApproximate = !!approach && !approach.exact;
   stepTravel();
 }
 
@@ -2312,25 +2274,11 @@ function travelStepMs(): number {
   return animating() ? TRAVEL_STEP_MS : 0;
 }
 
-/* Exploring carries on from where it began when the hero is about where it last stopped. */
-const ANCHOR_DRIFT = 3;
-
-/** Notes items that come into view while exploring. */
-function noteSpotted(snap: LevelSnapshot): void {
-  const here = snap.py * snap.width + snap.px;
-  for (const o of lastState?.objects ?? []) {
-    const cell = o.y * snap.width + o.x;
-    if (cell === here || exploreSeenItems.has(cell)) continue;
-    exploreSeenItems.add(cell);
-    exploreSpotted.set(cell, o.name);
-  }
-}
-
 /** Items first seen during an exploration that are still lying there, for its closing message. */
 function spottedText(): string | null {
-  const snap = lastSnap;
+  const snap = game.lastSnap;
   if (!snap || alwaysPickup()) return null;
-  const names = [...exploreSpotted].filter(([cell]) => (snap.layer[cell] & LAYER_MASK) === LAYER_OBJECT).map(([, name]) => name);
+  const names = level.explore.spottedNames(snap);
   if (names.length === 0) return null;
   return names.length === 1 ? `You spotted ${names[0]} on the way.` : `You spotted ${names.length} items on the way.`;
 }
@@ -2345,11 +2293,7 @@ function startExplore(): void {
   if (!ctx || heroHeld()) return;
   stopAutomation(null, 'explore');
   recentreMap();
-  const here = { x: ctx.snap.px, y: ctx.snap.py };
-  const resumed = !!exploreLastStop && gridDistance(exploreLastStop, here) <= ANCHOR_DRIFT;
-  if (!exploreAnchor || !resumed) exploreAnchor = here;
-  exploreSpotted.clear();
-  for (const o of lastState?.objects ?? []) exploreSeenItems.add(o.y * ctx.snap.width + o.x);
+  level.explore.begin({ x: ctx.snap.px, y: ctx.snap.py }, game.lastState?.objects ?? [], ctx.snap.width);
   const next = exploreNext(ctx.snap);
   const way = next === 'worldMap' ? '<' : next === 'here' ? transitionUnderfoot(underfootName(ctx.snap))?.command : null;
   if (way) {
@@ -2357,19 +2301,19 @@ function startExplore(): void {
     return;
   }
   travel = new Explore(explorePlan());
-  travelApproximate = false;
+  level.travelApproximate = false;
   updateActionBar();
   stepTravel();
 }
 
 function startTargeting(goal: MapPoint): void {
   stopAutomation(null, 'new target');
-  picker = new TargetPicker(goal, lastState?.monsters?.length ?? 0);
+  picker = new TargetPicker(goal, game.lastState?.monsters?.length ?? 0);
   engine.sendKeys(picker.begin());
 }
 
 function stepTargeting(): void {
-  const snap = lastSnap;
+  const snap = game.lastSnap;
   if (!picker || !snap) return;
   const cursor = buffer.cursorY >= 0 ? terminalToDungeon(snap, buffer.cursorX, buffer.cursorY) : null;
   const prompt = classifyPrompt(rowZeroText());
@@ -2394,8 +2338,8 @@ function redirectNativeScreen(): boolean {
   }
   if (/Display current knowledge/.test(buffer.screenText())) {
     engine.sendKeys([KEY_ESCAPE]);
-    const trail = returnTo;
-    returnTo = null;
+    const trail = game.returnTo;
+    game.returnTo = null;
     if (trail && !sheets.isOpen) sheets.restore(trail);
     else openKnowledge(api);
     return true;
@@ -2413,7 +2357,7 @@ function runMacro(macro: Macro): void {
 }
 
 function stepMacro(): void {
-  const keys = macros.step({ prompt: rowZeroText(), screen: buffer.screenText(), atCommand: !!lastSnap?.atCommand });
+  const keys = macros.step({ prompt: rowZeroText(), screen: buffer.screenText(), atCommand: !!game.lastSnap?.atCommand });
   if (keys.length) {
     engine.sendKeys(keys);
     return;
@@ -2429,8 +2373,7 @@ function recentreMap(): void {
   if (!map.panned) return;
   map.resetPan();
   recentre.hidden = true;
-  dirty = true;
-  requestFrame();
+  redraw();
 }
 
 function continueIfWaiting(): void {
@@ -2455,7 +2398,7 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
   }
   if (promptCard.visible && prompt !== 'aim' && prompt !== 'direction') return;
 
-  const snap = lastSnap;
+  const snap = game.lastSnap;
   if (mode === 'map' && snap) {
     const cell = map.cellAt(clientX, clientY);
     if (map.overview) {
@@ -2484,11 +2427,11 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
 }
 
 function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
-  doTap(tapAction(snap, materials, cell, prompt, lastState?.monsters, steered()));
+  doTap(tapAction(snap, materials, cell, prompt, game.lastState?.monsters, steered()));
 }
 
 function goTowards(snap: LevelSnapshot, point: MapPoint): void {
-  doTap(goAction(snap, materials, point, lastState?.monsters));
+  doTap(goAction(snap, materials, point, game.lastState?.monsters));
 }
 
 /** Carries out what a tap on the map decided. */
@@ -2535,7 +2478,7 @@ function startStep(cell: MapPoint): void {
   const mat = materials[ctx.snap.feat[cell.y * ctx.snap.width + cell.x]];
   const door = !!mat?.door && !mat.walkable;
   travel = new Travel(cell, ctx, { oneStep: !door });
-  travelApproximate = false;
+  level.travelApproximate = false;
   stepTravel();
 }
 
@@ -2569,9 +2512,9 @@ recentre.addEventListener('click', () => recentreMap());
 /** Sends tome2's save command at the command prompt; the sync to browser storage follows once the engine is back at it. */
 function saveGame(notify: 'silent' | 'toast'): boolean {
   const snap = engine.state === 'running' ? engine.snapshot() : null;
-  if (!snap || !snap.inDungeon || !snap.atCommand || snap.icky || quitting) return false;
-  lastSavedTurn = snap.turn;
-  pendingSync = notify;
+  if (!snap || !snap.inDungeon || !snap.atCommand || snap.icky || game.quitting) return false;
+  game.lastSavedTurn = snap.turn;
+  game.pendingSync = notify;
   engine.sendKeys([BACKSLASH, CTRL_S]);
   return true;
 }
@@ -2579,14 +2522,14 @@ function saveGame(notify: 'silent' | 'toast'): boolean {
 function autosave(): void {
   if (travel || picker) stopAutomation(null, 'autosave');
   const snap = engine.state === 'running' ? engine.snapshot() : null;
-  if (snap && snap.turn !== lastSavedTurn && saveGame('silent')) return;
+  if (snap && snap.turn !== game.lastSavedTurn && saveGame('silent')) return;
   persistMapMemory();
   engine.syncNow().catch((err) => console.error('Saving to browser storage failed', err));
 }
 
 /** Collects bolt and explosion glyphs drawn over the map during an animation pause. */
 function captureEffects(): void {
-  const snap = lastSnap;
+  const snap = game.lastSnap;
   if (!snap || !snap.inDungeon || snap.icky || !base) return;
   if (snap.panelRow !== basePanel.row || snap.panelCol !== basePanel.col) return;
   const effects: MapEffect[] = [];
@@ -2623,6 +2566,12 @@ function requestFrame(draw = true): void {
   if (!frameHandle) frameHandle = requestAnimationFrame(frame);
 }
 
+/** Marks the map as changed and asks for a frame to draw it. */
+function redraw(): void {
+  dirty = true;
+  requestFrame();
+}
+
 function frame(now: number): void {
   frameHandle = 0;
   const fps = ANIMATION_FPS[settings.animation];
@@ -2656,8 +2605,7 @@ const engine = new Engine(buffer, {
   onRunning() {
     layout();
     applyEngineSettings();
-    dirty = true;
-    requestFrame();
+    redraw();
     const storageError = engine.storageError;
     if (storageError) {
       openMessage(
@@ -2668,18 +2616,15 @@ const engine = new Engine(buffer, {
     }
   },
   onExit(message) {
-    if (quitting) {
-      const abandoned = abandoning;
-      abandoning = null;
+    if (game.quitting) {
+      const abandoned = game.abandoning;
+      game.abandoning = null;
       if (!abandoned) {
         returnToTitle();
         return;
       }
-      lastState = null;
-      heroMemory = null;
-      heroMemoryId = '';
-      landMemory = null;
-      forgetAdventurer(abandoned);
+      game.lastState = null;
+      forgetHero(abandoned);
       engine.syncNow().catch((err) => console.error('Saving to browser storage failed', err)).finally(() => returnToTitle());
       return;
     }
@@ -2691,8 +2636,7 @@ const engine = new Engine(buffer, {
     title.showEnd(message, true, [{ label: 'Reload', run: () => location.reload() }]);
   },
   onFlush() {
-    dirty = true;
-    requestFrame();
+    redraw();
   },
   onIdle() {
     /* Storage has been read from the browser by the time the engine first waits for a key. */
@@ -2706,18 +2650,18 @@ const engine = new Engine(buffer, {
     director.idle();
     dirty = false;
     refresh();
-    if (lastSnap?.inDungeon && !lastSnap.icky) {
+    if (game.lastSnap?.inDungeon && !game.lastSnap.icky) {
       base = buffer.copy();
-      basePanel = { row: lastSnap.panelRow, col: lastSnap.panelCol };
+      basePanel = { row: game.lastSnap.panelRow, col: game.lastSnap.panelCol };
     }
     if (hasEffects) {
       map.setEffects([]);
       hasEffects = false;
     }
     hud.tick();
-    if (pendingSync && lastSnap?.atCommand) {
-      const notify = pendingSync === 'toast';
-      pendingSync = null;
+    if (game.pendingSync && game.lastSnap?.atCommand) {
+      const notify = game.pendingSync === 'toast';
+      game.pendingSync = null;
       persistMapMemory();
       engine.syncNow().then(
         () => {
@@ -2732,18 +2676,18 @@ const engine = new Engine(buffer, {
       );
     }
     /* After the sync above, which is for a save already written: this one syncs at the next command prompt. */
-    if (saveOnReturn && engine.pendingKeys === 0 && saveGame('silent')) saveOnReturn = false;
+    if (game.saveOnReturn && engine.pendingKeys === 0 && saveGame('silent')) game.saveOnReturn = false;
     if (engine.pendingKeys > 0) {
       requestFrame();
       return;
     }
-    const used = lastSnap?.inDungeon ? castWatcher.idle(rowZeroText(), !!lastSnap.atCommand) : null;
+    const used = game.lastSnap?.inDungeon ? castWatcher.idle(rowZeroText(), !!game.lastSnap.atCommand) : null;
     if (used) api.remember(used);
     if (redirectNativeScreen()) {
       requestFrame();
       return;
     }
-    if (lastSnap?.inDungeon && !macros.running) {
+    if (game.lastSnap?.inDungeon && !macros.running) {
       const screen = characterScreen();
       if (!character.isOpen) character.adopt(screen);
       if (character.step(screen)) {
@@ -2770,14 +2714,14 @@ const engine = new Engine(buffer, {
     /* A quest moment held while a macro ran is told once it has finished. */
     tellQuestMoment();
     /* tome2 never comes back to the command prompt after saving to quit: back at it, the quit stopped short, and nothing is left to delete. */
-    if (quitting && !macros.running && lastSnap?.inDungeon && lastSnap.atCommand && !lastSnap.icky) {
-      quitting = false;
-      abandoning = null;
+    if (game.quitting && !macros.running && game.lastSnap?.inDungeon && game.lastSnap.atCommand && !game.lastSnap.icky) {
+      game.quitting = false;
+      game.abandoning = null;
     }
     requestFrame();
   },
   onKey(code) {
-    audio.keyConsumed(code, lastSnap?.atCommand ?? false);
+    audio.keyConsumed(code, game.lastSnap?.atCommand ?? false);
   },
   onEffectFrame() {
     director.effectFrame();
@@ -2797,8 +2741,8 @@ function send(codes: number[] | null): void {
   if (!codes || codes.length === 0) return;
   const key = codes.length === 1 ? codes[0] : codes.length === 2 && codes[0] === BACKSLASH ? codes[1] : null;
   /* Keys are not followed as the hero's magic while they control another creature. */
-  if (key !== null && lastSnap?.inDungeon && !controlling()) {
-    castWatcher.note(rowZeroText(), buffer.screenText(), key, !!lastSnap.atCommand);
+  if (key !== null && game.lastSnap?.inDungeon && !controlling()) {
+    castWatcher.note(rowZeroText(), buffer.screenText(), key, !!game.lastSnap.atCommand);
     if (castWatcher.casting) audio.castingTone(castingTone(castWatcher.casting));
   }
   if (travel || picker) stopAutomation(null, 'send');
@@ -2817,8 +2761,7 @@ const director = new Director({
   palette: () => buffer.palette,
   send: (keys) => engine.sendKeys(keys),
   requestRefresh: () => {
-    dirty = true;
-    requestFrame();
+    redraw();
   },
 });
 
@@ -2845,8 +2788,7 @@ const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.
   onFame: () => openHallOfFame(),
   onHelp: () => openHelpSheet(),
   onHidden: () => {
-    dirty = true;
-    requestFrame();
+    redraw();
   },
 });
 director.attachTitle(title);
@@ -2864,8 +2806,7 @@ function layout(): void {
   const height = Math.floor(rect.height);
   map.resize(width, height);
   fire.resize(width, height);
-  dirty = true;
-  requestFrame();
+  redraw();
 }
 
 /** The top safe-area inset in CSS pixels. */
@@ -2969,14 +2910,14 @@ window.addEventListener('keydown', (e) => {
     if ((e.key === 'Escape' || e.key === 'Enter') && !macros.running) finishGame();
     return;
   }
-  if (shownShop) {
+  if (game.shownShop) {
     /* In a shop, arrows move through its list, Enter opens the highlighted item and Escape leaves; a service's letter asks for it as a tap does. */
     if (e.key === 'Escape' || termView.navigate(e)) {
       e.preventDefault();
       if (e.key === 'Escape') send([KEY_ESCAPE]);
       return;
     }
-    const extra = !e.ctrlKey && !e.metaKey && !e.altKey ? shopModel(shownShop).extras.find((a) => a.key === e.key) : undefined;
+    const extra = !e.ctrlKey && !e.metaKey && !e.altKey ? shopModel(game.shownShop).extras.find((a) => a.key === e.key) : undefined;
     if (extra) {
       e.preventDefault();
       if (!e.repeat) runService(extra);
@@ -3092,8 +3033,8 @@ toolbar.addEventListener('pointerdown', (e) => {
 function openSettingsSheet(): void {
   openSettings(sheets, settings, (next) => {
     if (settings.persistentLevels && !next.persistentLevels) {
-      if (heroMemory) mapMemory.forgetLevels(heroMemory);
-      if (exploreLevel?.startsWith('level:')) exploreKeepsVisits = false;
+      if (hero.memory) mapMemory.forgetLevels(hero.memory);
+      if (level.key?.startsWith('level:')) level.keepsVisits = false;
     }
     settings = next;
     saveSettings(settings);
@@ -3103,15 +3044,14 @@ function openSettingsSheet(): void {
     map.zoom = settings.zoom;
     pinchStartZoom = settings.zoom;
     map.glyphMode = settings.glyphs;
-    dirty = true;
-    requestFrame();
+    redraw();
     title.animationChanged();
   }, adventureRules());
 }
 
 /** The rules the hero's adventure was begun with, during a game. */
 function adventureRules(): AdventureRules | null {
-  const player = lastState?.player;
+  const player = game.lastState?.player;
   const run = inGame() ? engine.runOptions() : null;
   return player?.name && run ? { hero: player.name, run, lives: player.lives ?? 0 } : null;
 }
@@ -3130,7 +3070,7 @@ function applyEngineSettings(): void {
 }
 
 function inGame(): boolean {
-  return !!lastSnap?.inDungeon;
+  return !!game.lastSnap?.inDungeon;
 }
 
 /** Saves, waits for the save to reach browser storage, then returns to the title screen. */
@@ -3140,7 +3080,7 @@ function saveAndQuit(): void {
     location.reload();
     return;
   }
-  quitting = true;
+  game.quitting = true;
   stopAutomation(null, 'quit');
   persistMapMemory();
   showToast('Saving…', { log: false });
@@ -3162,46 +3102,12 @@ function returnToTitle(): void {
   if (looking) setLooking(false);
   if (map.overview) setOverview(false);
   base = null;
-  lastSnap = null;
-  lastState = null;
-  conversation = null;
-  returnTo = null;
-  pendingSync = null;
-  askedLives = null;
-  saveOnReturn = false;
-  lastSavedTurn = -1;
-  inStore = false;
-  shownShop = null;
-  shopTab = null;
-  trade = null;
-  service = null;
-  ended = false;
-  quitting = false;
-  memorial = null;
-  chronicle = null;
-  streak = { count: 0, lastTurn: 0 };
+  game = newRunState();
   persistMapMemory();
-  exploreSkip.clear();
-  exploreLevel = null;
-  exploreAnchor = null;
-  exploreLastStop = null;
-  exploreSeenItems.clear();
-  levelGold.clear();
-  exploreLevelDepth = -1;
-  exploreKeepsVisits = false;
-  heroMemory = null;
-  heroMemoryId = '';
-  landMemory = null;
-  memoryTurn = -1;
-  exploreNextCache = { key: '', next: 'explore' };
-  attempt = null;
+  level = newLevelState();
+  hero = newHeroState();
   hideToast();
   mapMemory.loaded = false;
-  placeKey = '';
-  gearTurn = -1;
-  styleKey = '';
-  place = null;
-  placePos = { x: -1, y: -1 };
   app.classList.remove('fallen', 'between', 'ended');
   buffer.clear();
   hud.reset();
@@ -3219,7 +3125,7 @@ function returnToTitle(): void {
 
 /** Moves on from the end-of-game summary to the Hall of Fame, and from there to the title. */
 function finishGame(): void {
-  quitting = true;
+  game.quitting = true;
   stopAutomation(null, 'quit');
   runMacro(isHallOfFame(bufferRows(buffer, 0, buffer.rows - 1)) ? finishMacro() : leaveTombMacro());
 }
@@ -3295,7 +3201,7 @@ function openHelpSheet(topic?: string): void {
       birthData: () => engine.birthData(),
       openManual: inGame()
         ? () => {
-            manualWanted = !!lastSnap?.atCommand;
+            manualWanted = !!game.lastSnap?.atCommand;
             api.command('?');
           }
         : undefined,
@@ -3360,7 +3266,7 @@ const adventurerHandlers: AdventurerHandlers = {
 /** Deletes a hero's adventure: the savefile and kept levels, and what the frontend keeps of them. */
 function deleteAdventurer(name: string): void {
   deleteSavefile(name);
-  forgetAdventurer(name);
+  forgetHero(name);
 }
 
 /** Deletes a hero's savefile and kept levels, and their line in tome2's savefile index. */
@@ -3375,15 +3281,28 @@ function deleteSavefile(name: string): void {
   }
 }
 
-/** Forgets what the frontend keeps of a hero whose adventure is over: map memory, tale, title details, recents. */
-function forgetAdventurer(name: string): void {
+/**
+ * Forgets what the frontend keeps of a hero whose adventure is over: map
+ * memory (the hero's in play too, when it is theirs), title details and,
+ * unless they `fell` (their tale is closed and kept, with their recents),
+ * their tale and recents.
+ */
+function forgetHero(name: string, fell?: { abandoned: boolean }): void {
+  if (fell) {
+    if (chronicles.fall(name, fell.abandoned)) chronicles.save();
+  } else {
+    chronicles.forget(name);
+    chronicles.save();
+    recents.forget(name);
+  }
+  if (adventurers.forget(name)) adventurers.save();
   mapMemory.forgetNamed(name);
   mapMemory.save();
-  chronicles.forget(name);
-  chronicles.save();
-  adventurers.forget(name);
-  adventurers.save();
-  recents.forget(name);
+  if (hero.memoryId.startsWith(`${name}#`)) {
+    hero.memory = null;
+    hero.memoryId = '';
+    hero.landMemory = null;
+  }
 }
 
 /**
@@ -3392,11 +3311,11 @@ function forgetAdventurer(name: string): void {
  * the Hall of Fame (marked abandoned in `onIdle`); its end-of-game screens are passed.
  */
 function abandonAdventure(): void {
-  const name = lastState?.player?.name;
+  const name = game.lastState?.player?.name;
   if (!name || !inGame()) return;
   sheets.closeAll();
-  quitting = true;
-  abandoning = name;
+  game.quitting = true;
+  game.abandoning = name;
   stopAutomation(null, 'quit');
   showToast('Leaving…', { log: false });
   runMacro(abandonMacro());
@@ -3404,15 +3323,15 @@ function abandonAdventure(): void {
 
 function openGameMenu(): void {
   const playing = inGame();
-  const dead = playing && !!lastState?.player?.dead;
-  const fallen = playing && hasFallen(lastState?.player);
+  const dead = playing && !!game.lastState?.player?.dead;
+  const fallen = playing && hasFallen(game.lastState?.player);
   openMenu(sheets, 'Menu', [
     { label: fallen ? 'Your hero' : 'Character', icon: '@', hidden: !playing, run: () => (fallen ? openFallenHero() : character.open('summary')) },
     { label: 'Messages', icon: '≣', hidden: !playing, run: () => showHistory() },
     { label: 'Knowledge', icon: '¶', hint: 'Artifacts, creatures, quests', hidden: !playing || fallen, run: () => openKnowledge(api) },
-    { label: 'Save game', icon: '⇩', hidden: !playing || !lastSnap?.atCommand, run: () => {
+    { label: 'Save game', icon: '⇩', hidden: !playing || !game.lastSnap?.atCommand, run: () => {
       sheets.closeAll();
-      if (!saveGame('toast')) showToast('Finish what you are doing first.');
+      if (!saveGame('toast')) showToast(NOT_NOW);
     } },
     { label: playing ? 'Save and quit' : 'Quit to title', icon: '⏻', hint: 'Back to the title screen', hidden: dead, run: () => {
       if (!playing) {
@@ -3434,7 +3353,7 @@ function openGameMenu(): void {
     { label: 'Help', icon: '?', hint: 'How to play, with a search', run: () => openHelpSheet() },
     { label: 'About', icon: 'ℹ', run: () => openTemplate(sheets, 'About', 'about-template') },
     { label: 'Abandon adventure', icon: '✕', hint: 'End it for good', danger: true, hidden: !playing || dead, run: () => {
-      const name = lastState?.player?.name ?? 'This hero';
+      const name = game.lastState?.player?.name ?? 'This hero';
       confirmSheet(
         sheets,
         'Abandon this adventure?',
@@ -3523,7 +3442,7 @@ window.__tome = {
   mode: () => mode,
   stats: () => ({ renderMs: lastRenderMs, zoom: map.zoom }),
   tapCell: (x, y) => {
-    if (lastSnap) tapMapCell(lastSnap, { x, y }, classifyPrompt(rowZeroText()));
+    if (game.lastSnap) tapMapCell(game.lastSnap, { x, y }, classifyPrompt(rowZeroText()));
   },
   mapCellCentre: (x, y) => map.cellCentre(x, y),
   actions: () => currentActions.map((a) => a.id),
@@ -3531,9 +3450,9 @@ window.__tome = {
   settings: () => settings,
   lastStopCause: () => lastStopCause,
   exploreStop: () => {
-    if (!lastSnap) return null;
+    if (!game.lastSnap) return null;
     const plan = explorePlan();
-    const stop = nextStop(lastSnap, materials, plan, passingCells(lastSnap));
+    const stop = nextStop(game.lastSnap, materials, plan, passingCells(game.lastSnap));
     return { kind: stop?.kind ?? 'none', x: stop?.x ?? -1, y: stop?.y ?? -1, heading: plan.heading ?? 'down' };
   },
   macroRunning: () => macros.running,

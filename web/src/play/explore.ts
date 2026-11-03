@@ -1,6 +1,6 @@
 import type { Material } from '../render/materials.ts';
-import { isKnownCell, LAYER_MASK, LAYER_OBJECT, type LevelSnapshot } from '../render/snapshot.ts';
-import { floodFill, type Point } from './pathfinding.ts';
+import { isKnownCell, LAYER_MASK, LAYER_MONSTER, LAYER_OBJECT, type LevelSnapshot, type ObjectState } from '../render/snapshot.ts';
+import { floodFill, gridDistance, type Point } from './pathfinding.ts';
 import { hostilesInSight, Travel, travelGrid, Watch, type Passing, type TravelContext, type TravelStep } from './travel.ts';
 
 const MAX_TARGETS = 500;
@@ -11,6 +11,8 @@ const ANCHOR_WEIGHT = 2;
 const ANCHOR_REACH = 24;
 /* Items to collect count as this many steps nearer than unexplored ground. */
 const ITEM_GREED = 10;
+/* Exploring carries on from where it began when the hero is about where it last stopped. */
+const ANCHOR_DRIFT = 3;
 
 export interface ExplorePlan {
   /** Cells exploring is done with (visited or out of reach); kept between explorations of a level. */
@@ -216,6 +218,91 @@ export class Explore {
       else this.avoid.add(stop.mark);
     }
     return { kind: 'stop', reason: 'blocked' };
+  }
+}
+
+/**
+ * What exploring knows of the level the hero is on, kept between its
+ * explorations: the places it is done with, where it began and last
+ * stopped, the items it has seen and the money in view.
+ */
+export class LevelExploration {
+  /** Cells exploring is done with (`ExplorePlan.skip`). */
+  readonly skip = new Set<number>();
+  /** Where exploring this level began (the map fills outwards from it), and where the hero stood when it last stopped. */
+  anchor: Point | null = null;
+  lastStop: Point | null = null;
+  /** Items seen on this level while exploring (by cell), and those first seen during the current exploration (by cell, with their names). */
+  readonly seenItems = new Set<number>();
+  readonly spotted = new Map<number, string>();
+  /** Cells where money has been seen on this level: exploring takes it up whatever the hero picks up. */
+  readonly gold = new Set<number>();
+  /** Counts changes to `gold`, for what Explore would do. */
+  goldVersion = 0;
+
+  /**
+   * Begins an exploration where the hero stands: it carries on from the
+   * anchor when the hero is about where the last one stopped, else the map
+   * fills out from here; the items in view count as seen.
+   */
+  begin(here: Point, objects: readonly ObjectState[], width: number): void {
+    const last = this.lastStop;
+    const resumed = !!last && gridDistance(last, here) <= ANCHOR_DRIFT;
+    if (!this.anchor || !resumed) this.anchor = here;
+    this.spotted.clear();
+    for (const o of objects) this.seenItems.add(o.y * width + o.x);
+  }
+
+  /** Notes where an exploration stopped, and the anchor it had moved on to. */
+  stopped(anchor: Point | null, at: Point): void {
+    this.anchor = anchor;
+    this.lastStop = at;
+  }
+
+  /** Items the hero stands on count as visited. */
+  noteVisited(snap: LevelSnapshot): void {
+    if (snap.floorObjects > 0) this.skip.add(snap.py * snap.width + snap.px);
+  }
+
+  /** Notes items that come into view while exploring, but for one underfoot. */
+  noteSpotted(objects: readonly ObjectState[], snap: LevelSnapshot): void {
+    const here = snap.py * snap.width + snap.px;
+    for (const o of objects) {
+      const cell = o.y * snap.width + o.x;
+      if (cell === here || this.seenItems.has(cell)) continue;
+      this.seenItems.add(cell);
+      this.spotted.set(cell, o.name);
+    }
+  }
+
+  /** The names of items first seen during this exploration that are still lying there. */
+  spottedNames(snap: LevelSnapshot): string[] {
+    return [...this.spotted].filter(([cell]) => hasItem(snap, cell)).map(([, name]) => name);
+  }
+
+  /**
+   * Notes the cells in view that hold money, taking them out of the places
+   * exploring is done with, and forgets those that hold something else or
+   * nothing (a creature standing on money hides it).
+   */
+  noteGold(objects: readonly ObjectState[], snap: LevelSnapshot): void {
+    const cells = objects.map((o) => o.y * snap.width + o.x);
+    const gold = new Set(cells.filter((_, i) => objects[i].gold));
+    let changed = false;
+    for (const cell of cells) {
+      if (gold.has(cell)) {
+        changed ||= !this.gold.has(cell);
+        this.gold.add(cell);
+        this.skip.delete(cell);
+      } else {
+        changed ||= this.gold.delete(cell);
+      }
+    }
+    for (const cell of this.gold) {
+      const top = snap.layer[cell] & LAYER_MASK;
+      if (top !== LAYER_OBJECT && top !== LAYER_MONSTER) changed ||= this.gold.delete(cell);
+    }
+    if (changed) this.goldVersion++;
   }
 }
 

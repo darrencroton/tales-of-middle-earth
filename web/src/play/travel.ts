@@ -10,9 +10,9 @@ import {
   type MonsterState,
 } from '../render/snapshot.ts';
 import { KEY_BACKSLASH as BACKSLASH } from '../input/keys.ts';
-import { titleName } from '../ui/api.ts';
 import { findPath, floodFill, gridDistance, type Point, type TravelGrid } from './pathfinding.ts';
 import { directionDigit, isAdjacent, type PromptKind } from './prompts.ts';
+import { titleName } from './text.ts';
 
 const MAX_STEPS = 400;
 /* Visits to one cell that end a journey as going round in circles. */

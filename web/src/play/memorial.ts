@@ -1,6 +1,7 @@
 import type { Chronicle } from './chronicle.ts';
 import { gridDistance } from './pathfinding.ts';
 import { feetOf, hasWords, isNotice, type CharacterState, type InventoryState, type MessageState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
+import { stripArticle } from './text.ts';
 
 /** Game turns in a day of Middle-earth (tome2's DAY at ten game turns a player turn). */
 const TURNS_PER_DAY = 115200;
@@ -74,7 +75,7 @@ export function hasFallen(player: Pick<PlayerState, 'dead' | 'fate'> | null | un
 
 /** Strips a leading article so "a Cave spider" matches the creature "Cave spider". */
 export function bareName(name: string): string {
-  return name.replace(/^(a|an|the|some)\s+/i, '').trim().toLowerCase();
+  return stripArticle(name).trim().toLowerCase();
 }
 
 /** The creature in sight whose name matches what killed the hero, nearest first. */

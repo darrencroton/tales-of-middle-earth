@@ -1,7 +1,7 @@
 import { directionDigit } from '../play/prompts.ts';
 import type { MapPoint } from '../render/map.ts';
 import { isAlly, isHostile, isNeutral, type LevelQuest, type MonsterState, type ObjectState } from '../render/snapshot.ts';
-import { capitalise, description, itemGlyph, titleName, type GameApi } from './api.ts';
+import { capitalise, description, itemGlyph, NOT_NOW, titleName, type GameApi } from './api.ts';
 import { el, fraction, iconText, leadIn } from './dom.ts';
 import { openItem } from './inventory.ts';
 import { recallLines, recallParagraphs } from './memorial.ts';
@@ -49,7 +49,7 @@ export function openMonster(api: GameApi, m: MonsterState): void {
     id,
     label,
     primary,
-    unavailable: snap?.atCommand ? api.refusal(command) : 'Finish what you are doing first.',
+    unavailable: snap?.atCommand ? api.refusal(command) : NOT_NOW,
     run: () => {
       const digit = snap && directionDigit(m.x - snap.px, m.y - snap.py);
       if (digit) api.converse(command, digit);

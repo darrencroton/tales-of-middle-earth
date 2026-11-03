@@ -1,4 +1,5 @@
 import { displayName, hasMagic, hasPowers, magicArts, recentKey, recentLabel, recentSource, rememberRecent, skillActionName, techniques, usableRecents, validRecent, type RecentAction } from '../play/recent.ts';
+import { stripArticle } from '../play/text.ts';
 import type { PowerInfo, SpellInfo, SpellState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { el, iconText, section } from './dom.ts';
@@ -130,7 +131,7 @@ const SOURCE_ORDER: readonly PowerInfo['source'][] = ['race', 'class', 'form', '
 
 /** What grants a power, without tome2's article ("a Ring of Teleportation" → "Ring of Teleportation"). */
 function grantor(power: PowerInfo): string {
-  return power.from.trim().replace(/^(a|an|the|some) /i, '');
+  return stripArticle(power.from.trim());
 }
 
 /** The heading a power is listed under: what grants it. */

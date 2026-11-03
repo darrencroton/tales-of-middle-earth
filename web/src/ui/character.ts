@@ -1,7 +1,7 @@
 import { depthLabel } from '../hud.ts';
 import { LIVES } from '../play/lives.ts';
 import { FEET_PER_LEVEL, type PlayerState, type SkillEntry } from '../render/snapshot.ts';
-import type { GameApi } from './api.ts';
+import { NOT_NOW, type GameApi } from './api.ts';
 import { KEY_BACKSLASH, KEY_ENTER, KEY_ESCAPE, keyCodes } from '../input/keys.ts';
 import { fullSheetElements, sheetPageKeys, SHEET_PAGES, type FullSheet } from './charsheet.ts';
 import { bar, el, section, signed, stat } from './dom.ts';
@@ -144,7 +144,7 @@ export class CharacterPanel {
       return;
     }
     if (tab !== 'summary') {
-      const why = !this.shown && !this.api.snapshot()?.atCommand ? 'Finish what you are doing first.' : this.api.refusal(COMMANDS[tab]);
+      const why = !this.shown && !this.api.snapshot()?.atCommand ? NOT_NOW : this.api.refusal(COMMANDS[tab]);
       if (why) {
         this.api.refuse(why);
         return;
