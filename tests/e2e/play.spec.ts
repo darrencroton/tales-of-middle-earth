@@ -48,8 +48,8 @@ test('tapping the map steps towards unseen ground, travels along a known path, a
   await dismissMore(page);
   await waitAtCommand(page);
 
-  /* A tap on unseen ground takes one step towards it. */
-  const unseen = await page.evaluate(() => {
+  /* A tap on unseen ground takes one step towards it; a level whose arrival shows none nearby (walled in by trees or a lit room) gives way to another, past the depths of random quests (3, 8…), whose card would cover the map. */
+  const unseenNearby = () => page.evaluate(() => {
     const tome = window.__tome!;
     const snap = tome.engine.snapshot()!;
     const features = tome.engine.features();
@@ -80,6 +80,11 @@ test('tapping the map steps towards unseen ground, travels along a known path, a
     }
     return best;
   });
+  let unseen = await unseenNearby();
+  for (let depth = 4; !unseen && depth < 8; depth++) {
+    await jumpToLevel(page, depth);
+    unseen = await unseenNearby();
+  }
   expect(unseen, 'no unseen cell on the map to stride towards').not.toBeNull();
 
   const origin = await playerPos(page);
