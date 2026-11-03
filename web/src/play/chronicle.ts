@@ -18,7 +18,6 @@ export interface Chronicle {
   kills: number;
   uniques: string[];
   deepestFeet: number;
-  deepestPlace: string;
   /** The highest-level creature slain. */
   mightiest: { name: string; level: number } | null;
   peakLevel: number;
@@ -112,7 +111,7 @@ export function extendStreak(streak: Streak, kills: number, turn: number): { str
 }
 
 export function newChronicle(name: string): Chronicle {
-  return { name, kills: 0, uniques: [], deepestFeet: 0, deepestPlace: '', mightiest: null, peakLevel: 1, peakGold: 0, nearDeath: false, returns: 0, deeds: [] };
+  return { name, kills: 0, uniques: [], deepestFeet: 0, mightiest: null, peakLevel: 1, peakGold: 0, nearDeath: false, returns: 0, deeds: [] };
 }
 
 export function newCareer(): Career {
@@ -136,10 +135,7 @@ export function record(c: Chronicle, career: Career, player: Progress, slain: re
     if (!c.mightiest || s.level > c.mightiest.level) c.mightiest = { name: s.name, level: s.level };
   }
   const feet = feetOf(player);
-  if (feet > c.deepestFeet) {
-    c.deepestFeet = feet;
-    c.deepestPlace = player.dungeon;
-  }
+  c.deepestFeet = Math.max(c.deepestFeet, feet);
   career.deepestFeet = Math.max(career.deepestFeet, feet);
   c.peakLevel = Math.max(c.peakLevel, player.lev);
   career.bestLevel = Math.max(career.bestLevel, player.lev);

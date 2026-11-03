@@ -80,7 +80,6 @@ describe('chronicle', () => {
     assert.equal(c.kills, 1);
     assert.deepEqual(c.uniques, ['Grip']);
     assert.equal(c.deepestFeet, 500);
-    assert.equal(c.deepestPlace, 'Barrow-Downs');
     assert.deepEqual(c.mightiest, { name: 'Grip', level: 5 });
     const earned = newDeeds(c, career, new Set()).map((d) => d.id);
     assert.deepEqual(earned, ['first-blood', 'giant-slayer', 'delver', 'seasoned']);

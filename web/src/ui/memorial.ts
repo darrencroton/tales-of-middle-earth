@@ -9,12 +9,12 @@ import { description, titleName } from './api.ts';
 import { count, el, glyph, iconText, section, signed, stat } from './dom.ts';
 import type { SheetContent, Sheets, SheetTab } from './sheet.ts';
 
-type FellAt = Pick<Memorial, 'feet' | 'place'>;
+type FellAt = Pick<Memorial, 'feet' | 'place' | 'quest'>;
 
-/** Where a remembered hero fell: "at 250 ft in Mirkwood", "in the shallows", "in Bree". */
+/** Where a remembered hero fell: "at 250 ft in Mirkwood", "at 250 ft on the quest “Thieves!”", "in the shallows", "in Bree". */
 function memorialWhere(m: FellAt): string {
-  if (m.feet) return `at ${count(m.feet)} ft${m.place ? ` ${inPlace(m.place)}` : ''}`;
-  return m.place ? inPlace(m.place) : '';
+  const where = m.quest ? `on the quest “${m.quest}”` : m.place ? inPlace(m.place) : '';
+  return [m.feet ? `at ${count(m.feet)} ft` : '', where].filter(Boolean).join(' ');
 }
 
 /** Where a hero fell, as remembered on this device, else from tome2's score, which keeps no place on the land: "at 250 ft", "on a quest", "on the surface". */

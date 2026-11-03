@@ -5,7 +5,7 @@ import { AdventurerStore, deleteHeroSave, heroLine, saveBase } from '../play/adv
 import { extendStreak, newChronicle, newDeeds, nextTimeTip, record, type Chronicle, type Slain, type Streak } from '../play/chronicle.ts';
 import { SLOT_NAMES } from '../play/items.ts';
 import { buildMemorial, memorialKey, type Memorial } from '../play/memorial.ts';
-import { placeName, type GameState, type LevelSnapshot, type PlayerState, type ScoreEntry } from '../render/snapshot.ts';
+import type { GameState, LevelSnapshot, PlayerState, ScoreEntry } from '../render/snapshot.ts';
 import { findSaveIndex, type EmscriptenFS } from '../saves.ts';
 import type { SaveInfo } from '../title.ts';
 import { descriptionParagraphs, titleName } from './api.ts';
@@ -137,7 +137,6 @@ export class Heroes {
       px: snap.px,
       py: snap.py,
       turn: snap.turn,
-      place: placeName(player),
       palette,
       slotName: (part) => SLOT_NAMES[part] ?? 'Slot',
       describe: (item) => descriptionParagraphs(engine.objectDescription(item)),

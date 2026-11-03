@@ -34,6 +34,8 @@ describe('HUD helpers', () => {
     assert.equal(inPlace('The road'), 'on the road');
     assert.equal(inPlace('World map'), 'on the world map');
     assert.equal(inPlace('Bree'), 'in Bree');
+    assert.equal(inPlace('The wilds'), 'in the wilds');
+    assert.equal(inPlace('Town'), 'in the town');
   });
 
   it('names surface places from the engine place', () => {

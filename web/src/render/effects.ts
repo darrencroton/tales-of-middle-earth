@@ -12,14 +12,10 @@ export function terminalCell(snap: LevelSnapshot, col: number, row: number, rows
 }
 
 /**
- * Glyphs tome2 has drawn over the map that are not what lies on their grid:
- * a bolt, a beam or a blast. A cell counts when it differs from the screen at
- * the last idle (`base`) and its character is not the one the level shows
- * there now, so a grid tome2 merely redrew is never taken for one: shimmering
- * terrain (water, lava walls, mist) and multi-hued creatures, which take a new
- * colour on each redraw, a lasting effect's colour, and creatures that moved
- * since the idle; while hallucinating, creatures and items, which take a new
- * symbol on each redraw.
+ * Glyphs tome2 has drawn over the map that are not what lies on their grid
+ * (a bolt, a beam or a blast): cells that differ from the screen at the last
+ * idle and whose character is not the one the snapshot shows there; while
+ * hallucinating, creature and item grids are left out.
  */
 export function drawnEffects(snap: LevelSnapshot, screen: ScreenCopy, base: ScreenCopy, cols: number, rows: number): MapEffect[] {
   const effects: MapEffect[] = [];

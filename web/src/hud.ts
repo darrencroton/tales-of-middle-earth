@@ -66,11 +66,11 @@ const TERRAINS: Readonly<Record<string, readonly [name: string, where: string]>>
   'deep water': ['Deep water', 'in deep water'],
 };
 
-const IN_PLACE = new Map<string, string>([...Object.values(TERRAINS), ['World map', 'on the world map'], ['The wilds', 'in the wilds']]);
+const IN_PLACE = new Map<string, string>([...Object.values(TERRAINS), ['World map', 'on the world map'], ['Town', 'in the town'], ['Quest', 'on a quest']]);
 
-/** A place named by `placeName`, as where something happened: "in the shallows", "on the road", "in Bree", "in Mirkwood". */
+/** A place named by `placeName`, as where something happened: "in the shallows", "on the road", "in the wilds", "in Bree". */
 export function inPlace(place: string): string {
-  return IN_PLACE.get(place) ?? `in ${place}`;
+  return IN_PLACE.get(place) ?? `in ${place.replace(/^The /, 'the ')}`;
 }
 
 /** What a surface place is called: the world map, a town, a quest, or the land around. Null underground. */

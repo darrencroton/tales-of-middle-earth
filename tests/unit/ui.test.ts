@@ -512,12 +512,12 @@ describe('hall of fame', () => {
 
   it('says where a remembered hero fell', () => {
     const hydra = entry('Mango', 2, 900, 'a 3-headed hydra', 0);
-    assert.equal(fateText(hydra, { feet: 0, place: 'Shallows' }), 'Killed by a 3-headed hydra in the shallows');
-    assert.equal(fateText(hydra, { feet: 0, place: 'Bree' }), 'Killed by a 3-headed hydra in Bree');
-    assert.equal(fateText(entry('A', 1, 1), { feet: 150, place: 'Mirkwood' }), 'Killed by a Cave spider at 150 ft in Mirkwood');
-    assert.equal(fateText({ how: 'Orcs', depth: 5, quest: 1 }, { feet: 250, place: 'Thieves!' }), 'Killed by Orcs at 250 ft in Thieves!');
-    assert.equal(fateText({ how: 'Abandoned', depth: 0, quest: 0 }, { feet: 0, place: 'The road' }), 'Abandoned on the road');
-    assert.equal(fateText(hydra, { feet: 0, place: '' }), 'Killed by a 3-headed hydra on the surface');
+    assert.equal(fateText(hydra, { feet: 0, place: 'Shallows', quest: '' }), 'Killed by a 3-headed hydra in the shallows');
+    assert.equal(fateText(hydra, { feet: 0, place: 'Bree', quest: '' }), 'Killed by a 3-headed hydra in Bree');
+    assert.equal(fateText(entry('A', 1, 1), { feet: 150, place: 'Mirkwood', quest: '' }), 'Killed by a Cave spider at 150 ft in Mirkwood');
+    assert.equal(fateText({ how: 'Orcs', depth: 5, quest: 1 }, { feet: 250, place: 'Thieves!', quest: 'Thieves!' }), 'Killed by Orcs at 250 ft on the quest “Thieves!”');
+    assert.equal(fateText({ how: 'Abandoned', depth: 0, quest: 0 }, { feet: 0, place: 'The road', quest: '' }), 'Abandoned on the road');
+    assert.equal(fateText(hydra, { feet: 0, place: '', quest: '' }), 'Killed by a 3-headed hydra on the surface');
   });
 
   it('finds the entry for this run only', () => {
