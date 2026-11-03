@@ -26,7 +26,7 @@ import { THEME_LIST, themeById, type Theme } from './themes.ts';
 
 export type VolumeLevel = 'off' | 'low' | 'medium' | 'high';
 
-export const VOLUME_GAIN: Record<VolumeLevel, number> = { off: 0, low: 0.3, medium: 0.6, high: 1 };
+const VOLUME_GAIN: Record<VolumeLevel, number> = { off: 0, low: 0.3, medium: 0.6, high: 1 };
 
 const TICK_MS = 90;
 const RECENT_CUES = 30;

@@ -1562,7 +1562,7 @@ export function themeGain(id: string): number {
 /** Every theme by id. */
 export const THEME_LIST: readonly Theme[] = [...THEMES, ...derived()];
 
-export const THEME_BY_ID: ReadonlyMap<string, Theme> = new Map(THEME_LIST.map((theme) => [theme.id, theme]));
+const THEME_BY_ID: ReadonlyMap<string, Theme> = new Map(THEME_LIST.map((theme) => [theme.id, theme]));
 
 export function themeById(id: string): Theme {
   return THEME_BY_ID.get(id) ?? THEME_BY_ID.get('depths')!;

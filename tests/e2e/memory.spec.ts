@@ -31,6 +31,8 @@ test('kept levels stay as the hero left them, the way back is known, the heading
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Keeper');
+  /* Experience enough to outlast a creature arriving from beyond the reach of the wizard's zap, so no fight can end the journeys. */
+  await wizardCommand(page, 'x', 500);
   await jumpToLevel(page, 2);
   /* The hero arrives on stairs, which are always remembered; gear is taken just off them, in the dark. */
   const start = await playerPos(page);

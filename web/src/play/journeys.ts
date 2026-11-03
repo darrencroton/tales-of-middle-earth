@@ -30,7 +30,7 @@ export interface JourneyDeps {
   animating(): boolean;
   /** Where tome2's cursor is on the map, if it shows one there. */
   cursorCell(): MapPoint | null;
-  /** Refuses a journey of the hero's own while they control another creature (true when refused). */
+  /** The hero controls another creature, so their own commands are refused (a toast says why). */
   held(): boolean;
   /** The name of the terrain the hero stands on, in lower case. */
   underfoot(snap: LevelSnapshot): string;

@@ -21,7 +21,7 @@ export const LAYER_MULTI_HUED = 0x80;
 
 export const NO_EFFECT = 0xff;
 
-export const SNAPSHOT_VERSION = 3;
+const SNAPSHOT_VERSION = 3;
 
 /* Header slot indices, matching HeaderSlot in engine/snapshot.cc. */
 const H = {

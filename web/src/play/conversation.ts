@@ -17,7 +17,7 @@ export interface ConversationDeps {
   state(): GameState | null;
   macroRunning(): boolean;
   prompt(): PromptKind;
-  /** Refuses a journey of the hero's own while they control another creature (true when refused). */
+  /** The hero controls another creature, so their own commands are refused (a toast says why). */
   held(): boolean;
   runMacro(macro: Macro): void;
   hideToast(): void;
