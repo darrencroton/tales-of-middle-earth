@@ -184,7 +184,7 @@ export function spellRow(spell: SpellInfo, className = ''): HTMLButtonElement {
   button.dataset.nav = '';
   button.dataset.key = `spell-${spell.name}`;
   const main = el('span', 'spell-main');
-  main.append(el('span', 'spell-name', spell.name), el('span', 'spell-school', spell.school));
+  main.append(el('span', 'spell-name', spell.name), el('span', 'spell-school', spell.god ? godTitle(spell.god) : spell.school));
   const meta = el('span', 'spell-meta');
   meta.append(el('span', undefined, spellMeta(spell)));
   if (spell.info) meta.append(el('span', 'spell-info', effectText(spell.info)));

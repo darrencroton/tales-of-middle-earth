@@ -3,7 +3,9 @@ import { altarAction, giftActive, GODS, godNamed, godTitle, offeringMacro, worsh
 import type { GodData, PlayerState } from '../render/snapshot.ts';
 import { NOT_NOW, type GameApi } from './api.ts';
 import { count, el, iconText, navButton } from './dom.ts';
+import type { RecentAction } from '../play/recent.ts';
 import { spellText } from './inspect.ts';
+import { magicSpellRow } from './magic.ts';
 import type { SheetAction, Sheets } from './sheet.ts';
 
 /** Melkor's offerings at his altar, as Sacrifice offers them. */
@@ -22,13 +24,24 @@ function list(className: string, items: readonly string[]): HTMLElement {
   return node;
 }
 
+interface GodCardOptions {
+  /** The hero's standing with this god, their own: the gifts they have now are lit. */
+  faith?: Faith | null;
+  /** The god's name heads the card (not in a sheet, whose header has it). */
+  titled?: boolean;
+  /** The hero's own prayers in the books they carry, as rows to pray them from, by name. */
+  prayable?: ReadonlyMap<string, HTMLElement>;
+}
+
 /**
  * Who a god is and what following them means: their gifts and the piety each
  * needs (with `faith`, those the hero has now are lit), what comes with them,
- * what pleases and angers them, the prayers of their tome and the schools of
- * magic they lend levels in.
+ * what pleases and angers them, the prayers of their tome (those the hero can
+ * pray from a book they carry as rows to pray them from, the others where they
+ * are written) and the schools of magic they lend levels in.
  */
-export function godCard(god: God, data: GodData | null, faith: Faith | null = null, titled = true): HTMLElement {
+export function godCard(god: God, data: GodData | null, options: GodCardOptions = {}): HTMLElement {
+  const { faith = null, titled = true, prayable } = options;
   const card = el('article', 'birth-card god-card');
   if (titled) card.append(el('h3', undefined, god.title));
   card.append(el('p', 'god-epithet', god.epithet));
@@ -47,17 +60,31 @@ export function godCard(god: God, data: GodData | null, faith: Faith | null = nu
   if (god.angers.length) card.append(el('h4', undefined, 'Angered by'), list('bad', god.angers));
 
   if (data?.prayers?.length) {
-    const prayers = el('ul', 'birth-traits');
-    for (const prayer of data.prayers) {
-      const item = el('li');
-      item.append(el('span', 'trait-level', `Level ${prayer.skill}`), el('span', 'trait-text', prayer.name));
-      const text = spellText(prayer.desc);
-      if (text) item.append(el('span', 'trait-detail', text));
-      prayers.append(item);
-    }
     card.append(el('h4', undefined, 'Prayers'));
-    if (data.book) card.append(el('p', 'god-note', `Written in the ${data.book}. Prayers are cast with piety and grow with the Prayer skill.`));
-    card.append(prayers);
+    const rows = data.prayers.map((p) => prayable?.get(p.name)).filter((row): row is HTMLElement => !!row);
+    if (rows.length) {
+      const list = el('div', 'menu-list god-prayers');
+      list.append(...rows);
+      card.append(list);
+    }
+    const others = data.prayers.filter((p) => !prayable?.has(p.name));
+    if (others.length) {
+      const prayers = el('ul', 'birth-traits');
+      for (const prayer of others) {
+        const item = el('li');
+        item.append(el('span', 'trait-level', `Level ${prayer.skill}`), el('span', 'trait-text', prayer.name));
+        const text = spellText(prayer.desc);
+        if (text) item.append(el('span', 'trait-detail', text));
+        prayers.append(item);
+      }
+      const where = data.book ? `the ${data.book}` : 'their tome';
+      const note = !prayable
+        ? `Written in ${where}. Prayers are cast with piety and grow with the Prayer skill.`
+        : rows.length
+          ? `Not in a book you carry: written in ${where}, or in a book of a single prayer.`
+          : `You carry no book of these prayers: they are written in ${where}, or in a book of a single prayer. Prayers are cast with piety and grow with the Prayer skill.`;
+      card.append(el('p', 'god-note', note), prayers);
+    }
   }
   const schools = god.schools.map(([school, share]) => `${school} (${share})`).join(', ');
   card.append(el('h4', undefined, 'Magic'), el('p', 'god-note', `Your Prayer skill also lends levels in ${schools}: the share of it shown, spells cast with mana.`));
@@ -81,6 +108,7 @@ function godData(data: readonly GodData[] | undefined, name: string): GodData | 
 
 interface GodSheet {
   faith?: Faith | null;
+  prayable?: ReadonlyMap<string, HTMLElement>;
   subtitle?: string;
   /** Said under the details. */
   note?: string;
@@ -89,7 +117,7 @@ interface GodSheet {
 
 function openGodSheet(sheets: Sheets, god: God, data: GodData | null, options: GodSheet = {}): void {
   const body = el('div', 'help-birth');
-  body.append(godCard(god, data, options.faith ?? null, false));
+  body.append(godCard(god, data, { faith: options.faith, titled: false, prayable: options.prayable }));
   if (options.note) body.append(el('p', 'god-note', options.note));
   sheets.open({
     title: god.title,
@@ -148,12 +176,23 @@ function prayAction(api: GameApi, praying: boolean): SheetAction {
   };
 }
 
-/** The hero's god (from the character sheet and the HUD): what they grant now, and Pray or Stop praying. */
+/** The hero's prayers to `god` in the books they carry, as the Magic panel's rows (a tap prays, ⓘ opens the card), by name. */
+function prayableRows(api: GameApi, god: God): Map<string, HTMLElement> {
+  const rows = new Map<string, HTMLElement>();
+  const handlers = { run: (entry: RecentAction, anyway?: boolean) => api.cast(entry, anyway) };
+  for (const spell of api.engine.spells()?.books.flatMap((b) => b.spells) ?? []) {
+    if (spell.god === god.name && !rows.has(spell.name)) rows.set(spell.name, magicSpellRow(api, spell, handlers));
+  }
+  return rows;
+}
+
+/** The hero's god (from the character sheet and the HUD): what they grant now, the prayers they can pray now, and Pray or Stop praying. */
 export function openHeroGod(api: GameApi): void {
   const hero = heroFaith(api);
   if (!hero) return;
   openGodSheet(api.sheets, hero.god, engineGod(api, hero.god.name), {
     faith: hero.faith,
+    prayable: prayableRows(api, hero.god),
     subtitle: `Your god · ${faithLine(hero.faith)}`,
     actions: [prayAction(api, hero.faith.praying)],
   });
@@ -179,7 +218,7 @@ export function openAltarGod(api: GameApi, name: string, here: boolean): void {
   const mine = p.god === god.name;
   const faith = mine ? { piety: p.piety ?? 0, praying: p.pray === 2 } : null;
   const subtitle = `${data?.altar ?? 'Altar'}${faith ? ` · ${faithLine(faith)}` : ''}`;
-  const sheet: GodSheet = { faith, subtitle };
+  const sheet: GodSheet = { faith, subtitle, prayable: mine ? prayableRows(api, god) : undefined };
   const action = altarAction(name, p.god ?? '', !!p.faithless);
   const refused = heroRefusal(api, 'O');
   if (!p.god && p.faithless) {

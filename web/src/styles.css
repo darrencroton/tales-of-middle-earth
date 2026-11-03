@@ -2742,6 +2742,10 @@ html.keyboard-tight .prompt-card.text .card-title {
   font-size: var(--fs-small);
 }
 
+.god-prayers {
+  margin-bottom: 0.6rem;
+}
+
 .god-list {
   margin: 0;
   padding-left: 1.1rem;

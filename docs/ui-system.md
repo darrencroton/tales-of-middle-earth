@@ -54,7 +54,7 @@ Map (toolbar, HUD, gestures)
 │   ├── hero name ─────────── Character (or Fallen hero after death)
 │   ├── quest chip ────────── Quest                card (what the level's quest asks, how many are slain);
 │   │                         while it lasts the map's edges glow violet and its foes' chips are marked ⚑
-│   ├── Praying chip ──────── God                  card (gifts lit as the hero has them; Stop praying)
+│   ├── Praying chip ──────── God                  card (gifts lit as the hero has them; prayers carried, a tap prays; Stop praying)
 │   ├── creature / item chip ─ Creature / Item     card (a creature beside you, not hostile: Talk · Give)
 │   └── message log ───────── Messages             panel
 ├── Map tap / long-press ───── travel (a neutral creature beside you: talk) / look card (terrain; an altar's god, each creature and item there → its card)
