@@ -4,7 +4,8 @@ import { type Macro, type MacroScreen } from '../play/macro.ts';
 import { STORE_ACTION, type InventoryState, type ItemState, type StockItem, type StoreCommand, type StoreOffer, type StoreState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { capitalise, description, itemGlyph, pounds, titleName } from './api.ts';
-import { el, section } from './dom.ts';
+import { el, section, stepper } from './dom.ts';
+import { relabelAction } from './popup.ts';
 import type { SheetAction } from './sheet.ts';
 
 /** The shop's two lists: what is on its shelves (or in the home), and what the hero carries to offer it. */
@@ -236,33 +237,6 @@ export function offerElements(api: GameApi, store: StoreState, model: ShopModel,
   return elements;
 }
 
-/** A stepper choosing how many, starting at one; `onChange` gets each new number. */
-function stepper(max: number, onChange: (n: number) => void): HTMLElement {
-  let value = 1;
-  const box = el('div', 'stepper');
-  const shown = el('span', 'stepper-value', '1');
-  shown.setAttribute('aria-live', 'polite');
-  const button = (label: string, to: () => number, className = 'stepper-button') => {
-    const b = el('button', className, label);
-    b.type = 'button';
-    b.dataset.nav = '';
-    b.addEventListener('click', () => {
-      value = Math.max(1, Math.min(max, to()));
-      shown.textContent = String(value);
-      onChange(value);
-    });
-    return b;
-  };
-  box.append(button('−', () => value - 1), shown, button('+', () => value + 1), button(`All ${max}`, () => max, 'stepper-button wide'));
-  return box;
-}
-
-/** Updates the label of a card's confirming button in place. */
-function relabel(body: HTMLElement, id: string, label: string): void {
-  const node = body.closest('.sheet')?.querySelector(`[data-action="${id}"] .pop-label`);
-  if (node) node.textContent = label;
-}
-
 /** One item on the shelf: what it is and costs, how many to take, and Buy (or Take), or Steal one for a thief; looking costs nothing. */
 function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: StockItem, handlers: ShopHandlers): void {
   const body = el('div', 'item-detail');
@@ -271,14 +245,14 @@ function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: 
   let quantity = 1;
   const verb = model.shelf.verb;
   const label = () => (shop ? `${verb} ${quantity} for ${quantity * item.price} gold` : `${verb} ${quantity}`);
-  if (verb && most > 1) {
-    body.append(
-      stepper(most, (n) => {
-        quantity = n;
-        relabel(body, 'take', label());
-      }),
-    );
-  }
+  const amount =
+    verb && most > 1
+      ? stepper(most, 1, (n) => {
+          quantity = n;
+          relabelAction(body, 'take', label());
+        })
+      : null;
+  if (amount) body.append(amount.element);
   const short = verb && shop && most === 0 ? `You have ${store.gold} gold: not enough for one.` : null;
   if (short) body.append(el('p', 'shop-short', short));
   body.append(description(api.engine.storeObjectDescription(item.i), 'Nothing more is known about it until you own it.'));
@@ -317,6 +291,7 @@ function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: 
     actions,
     kind: 'card',
     className: 'sheet-item',
+    onKey: (e) => amount?.handleKey(e) ?? false,
   });
 }
 
@@ -337,15 +312,15 @@ function openOfferItem(api: GameApi, store: StoreState, model: ShopModel, item: 
       : why === 'nothing'
         ? `${keeper(store)} offers nothing for it.`
         : `${refusal(why)}.`;
+  const amount =
+    !note && key && item.number > 1
+      ? stepper(item.number, 1, (n) => {
+          quantity = n;
+          relabelAction(body, 'offer', label());
+        })
+      : null;
   if (note) body.append(el('p', 'shop-short', note));
-  else if (key && item.number > 1) {
-    body.append(
-      stepper(item.number, (n) => {
-        quantity = n;
-        relabel(body, 'offer', label());
-      }),
-    );
-  }
+  else if (amount) body.append(amount.element);
   if (key) {
     actions.push({
       id: 'offer',
@@ -376,6 +351,7 @@ function openOfferItem(api: GameApi, store: StoreState, model: ShopModel, item: 
     actions,
     kind: 'card',
     className: 'sheet-item',
+    onKey: (e) => amount?.handleKey(e) ?? false,
   });
 }
 

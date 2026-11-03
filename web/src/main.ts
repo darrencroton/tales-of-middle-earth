@@ -1089,13 +1089,9 @@ function runAction(action: Action): void {
   }
 }
 
-/** Up/down/select in tome2 menus: moves tome2's own cursor when it has one, otherwise the highlight. */
+/** Up/down/select over a panel: moves its highlight, or tome2's own cursor when the keys go to tome2. */
 function navigate(direction: 'up' | 'down' | 'select'): void {
-  if (termView.visible && termView.choices().length > 0 && !termView.hasCursor) {
-    if (direction === 'select') termView.activate();
-    else termView.move(direction);
-    return;
-  }
+  if (termView.step(direction)) return;
   if (direction === 'select') send([KEY_ENTER]);
   else send(directionKeys(direction === 'up' ? '8' : '2', false));
 }
@@ -1780,21 +1776,18 @@ window.addEventListener('keydown', (e) => {
   if (currentActions.some((a) => a.id === 'finish')) {
     /* End of game: arrows move through the Hall of Fame, Enter opens a row, Escape (or Enter with nothing to open) continues. */
     e.preventDefault();
-    if (e.key !== 'Escape' && termView.navigate(e)) return;
+    if (e.key !== 'Escape' && termView.handleKey(e)) return;
     if ((e.key === 'Escape' || e.key === 'Enter') && !macros.running) finishGame();
     return;
   }
+  const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
   if (shop.shown) {
-    /* In a shop, arrows move through its list, Enter opens the highlighted item and Escape leaves; a service's letter asks for it as a tap does. */
-    if (e.key === 'Escape' || termView.navigate(e)) {
+    /* In a shop Escape leaves; a service's letter asks for it as a tap does. */
+    const extra = plain ? shopModel(shop.shown).extras.find((a) => a.key === e.key) : undefined;
+    if (e.key === 'Escape' || extra) {
       e.preventDefault();
-      if (e.key === 'Escape') send([KEY_ESCAPE]);
-      return;
-    }
-    const extra = !e.ctrlKey && !e.metaKey && !e.altKey ? shopModel(shop.shown).extras.find((a) => a.key === e.key) : undefined;
-    if (extra) {
-      e.preventDefault();
-      if (!e.repeat) shop.runService(extra);
+      if (extra && !e.repeat) shop.runService(extra);
+      else if (!extra) send([KEY_ESCAPE]);
       return;
     }
   }
@@ -1805,12 +1798,13 @@ window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') reader.close();
       return;
     }
-    if (!e.ctrlKey && !e.metaKey && !e.altKey && reader.followKey(e.key)) {
+    if (plain && reader.followKey(e.key)) {
       e.preventDefault();
       return;
     }
   }
-  if ((reader.file() && termView.readKey(e)) || termView.handleKey(e)) {
+  /* Arrows and Enter: the how-many card's number, else the panel's highlight or the reader's scroll (TermView decides). */
+  if (promptCard.handleKey(e) || termView.handleKey(e)) {
     e.preventDefault();
     return;
   }

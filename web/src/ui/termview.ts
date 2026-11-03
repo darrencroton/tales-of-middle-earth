@@ -1,6 +1,6 @@
 import { readableColour } from '../render/colour.ts';
 import { el, leadIn } from './dom.ts';
-import { ListNav, type NavDirection } from './listnav.ts';
+import { ListNav } from './listnav.ts';
 import { defaultItem, renderFooter, renderHeader, type PopAction, type PopTab } from './popup.ts';
 import { isInstructionLine } from './prompttext.ts';
 import { bufferRows, parseRows, sliceCell, type Block, type Cell, type ChoiceBlock, type OptionBlock, type Run, type TextBlock } from './termparse.ts';
@@ -315,48 +315,57 @@ export class TermView {
     this.nav.setActive(current ?? this.nav.find(mark) ?? defaultItem(this.body, this.footer), true);
   }
 
-  move(direction: NavDirection): void {
-    this.nav.move(direction);
-  }
-
-  activate(): boolean {
-    return this.nav.activate();
+  /**
+   * Who the panel's keys go to: its own highlight in a native view, the
+   * reader's scroll and links, the highlight of a tome2 menu without a
+   * cursor of its own; null when they go to tome2 (which, with a cursor,
+   * redraws the highlight itself).
+   */
+  private keyTarget(): 'custom' | 'reader' | 'menu' | null {
+    if (this.root.hidden) return null;
+    if (this.renderedKey.startsWith('custom\u0000')) return 'custom';
+    if (this.scrollKey) return 'reader';
+    return this.choices().length > 0 && !this.hasCursor ? 'menu' : null;
   }
 
   /**
-   * Keys for the highlight: used when tome2 has no cursor of its own on a
-   * menu (with a cursor, keys go to tome2, which redraws the highlight).
+   * A key for the panel; true when it was used. A native view's arrows and
+   * Enter move and choose its highlight; the reader's page keys and Space
+   * scroll, its arrows move through its links (or scroll when it has none)
+   * and Enter follows one; a tome2 menu without a cursor takes arrows up and
+   * down, Home, End and Enter.
    */
-  /** Arrow keys and Enter over a custom view's [data-nav] items; true when the key was used. */
-  navigate(e: KeyboardEvent): boolean {
-    if (this.root.hidden) return false;
-    return this.nav.handleKey(e);
-  }
-
-  /**
-   * Keys for a document read by scrolling: page keys and Space scroll,
-   * arrows move the highlight through its links (or scroll when it has none),
-   * Enter follows the highlighted link.
-   */
-  readKey(e: KeyboardEvent): boolean {
-    if (this.root.hidden) return false;
-    const page = this.body.clientHeight * 0.9;
-    const line = parseFloat(getComputedStyle(this.body).fontSize) * 2;
-    const steps: Record<string, number> = { PageDown: page, ' ': page, PageUp: -page };
-    if (!this.nav.items().length) Object.assign(steps, { ArrowDown: line, ArrowUp: -line, End: this.body.scrollHeight, Home: -this.body.scrollHeight });
-    const step = steps[e.key];
-    if (step !== undefined) {
-      this.body.scrollBy({ top: step });
-      return true;
-    }
-    return this.nav.handleKey(e);
-  }
-
   handleKey(e: KeyboardEvent): boolean {
-    if (this.root.hidden || this.choices().length === 0 || this.hasCursor) return false;
-    if (e.key === 'Enter') return this.nav.activate();
-    if (/^Arrow(Up|Down)$|^Home$|^End$/.test(e.key)) return this.nav.handleKey(e);
-    return false;
+    const target = this.keyTarget();
+    if (target === 'reader') {
+      const page = this.body.clientHeight * 0.9;
+      const steps: Record<string, number> = { PageDown: page, ' ': page, PageUp: -page };
+      if (!this.nav.items().length) Object.assign(steps, { ArrowDown: this.lineStep(), ArrowUp: -this.lineStep(), End: this.body.scrollHeight, Home: -this.body.scrollHeight });
+      const step = steps[e.key];
+      if (step !== undefined) {
+        this.body.scrollBy({ top: step });
+        return true;
+      }
+    }
+    if (target === 'menu') {
+      if (e.key === 'Enter') return this.nav.activate();
+      return /^Arrow(Up|Down)$|^Home$|^End$/.test(e.key) && this.nav.handleKey(e);
+    }
+    return target !== null && this.nav.handleKey(e);
+  }
+
+  /** A swipe or toolbar step over the panel, as the arrow keys and Enter; false when it goes to tome2. */
+  step(direction: 'up' | 'down' | 'select'): boolean {
+    const target = this.keyTarget();
+    if (!target) return false;
+    if (direction === 'select') this.nav.activate();
+    else if (target === 'reader' && !this.nav.items().length) this.body.scrollBy({ top: direction === 'up' ? -this.lineStep() : this.lineStep() });
+    else this.nav.move(direction);
+    return true;
+  }
+
+  private lineStep(): number {
+    return parseFloat(getComputedStyle(this.body).fontSize) * 2;
   }
 
   private renderHeader(options: TermViewOptions): void {

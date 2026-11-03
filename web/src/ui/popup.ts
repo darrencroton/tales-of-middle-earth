@@ -89,6 +89,12 @@ function actionButton(action: PopAction, primary: boolean): HTMLButtonElement {
   return button;
 }
 
+/** Changes the label of action `id` in the footer of the pop-up holding `body`. */
+export function relabelAction(body: HTMLElement, id: string, label: string): void {
+  const node = body.closest('.sheet')?.querySelector(`[data-action="${id}"] .pop-label`);
+  if (node) node.textContent = label;
+}
+
 /**
  * The footer's default action: the one marked primary, or else the only
  * action that can be done (unless it is destructive); never one that cannot.

@@ -81,3 +81,51 @@ export function bar(kind: string, label: string, value: number, max: number): HT
   node.append(el('span', 'bar-label', label), el('span', 'bar-value', `${value}/${max}`));
   return node;
 }
+
+/** A how-many stepper: −, the number, + and All. */
+export interface Stepper {
+  element: HTMLElement;
+  readonly value: number;
+  /** ArrowLeft or − takes one, ArrowRight or + adds one; true when the key was used. */
+  handleKey(e: KeyboardEvent): boolean;
+}
+
+/**
+ * A stepper choosing a number from one to `max`, starting at `initial`;
+ * `onChange` gets each new number. Its buttons are not list rows, so arrows
+ * up and down keep moving through the pop-up's rows.
+ */
+export function stepper(max: number, initial: number, onChange: (n: number) => void = () => undefined): Stepper {
+  const most = Math.max(1, max);
+  const clamp = (n: number) => Math.max(1, Math.min(most, n));
+  let value = clamp(initial);
+  const shown = el('span', 'stepper-value', String(value));
+  shown.setAttribute('aria-live', 'polite');
+  const set = (n: number) => {
+    const next = clamp(n);
+    if (next === value) return;
+    value = next;
+    shown.textContent = String(value);
+    onChange(value);
+  };
+  const button = (label: string, to: () => number, className = 'stepper-button') => {
+    const b = el('button', className, label);
+    b.type = 'button';
+    b.addEventListener('click', () => set(to()));
+    return b;
+  };
+  const element = el('div', 'stepper');
+  element.append(button('−', () => value - 1), shown, button('+', () => value + 1), button(`All ${most}`, () => most, 'stepper-button wide'));
+  return {
+    element,
+    get value() {
+      return value;
+    },
+    handleKey(e) {
+      const step = e.key === 'ArrowLeft' || e.key === '-' ? -1 : e.key === 'ArrowRight' || e.key === '+' ? 1 : 0;
+      if (!step) return false;
+      set(value + step);
+      return true;
+    },
+  };
+}
