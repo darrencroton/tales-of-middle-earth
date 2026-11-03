@@ -548,7 +548,7 @@ function summaryBody(api: GameApi): HTMLElement | null {
     stat('Deepest', `${sheet.maxDepth * FEET_PER_LEVEL} ft`),
     stat('God', sheet.god),
     stat('Infravision', `${sheet.infra} ft`),
-    stat('Lives', player.adventure ? `${player.lives ?? 0} of ${LIVES}` : 'One (Roguelike)'),
+    stat('Lives left', player.adventure ? `${player.lives ?? 0} of ${LIVES}` : 'One (Roguelike)'),
   );
   body.append(section('Progress', progress));
   return body;
