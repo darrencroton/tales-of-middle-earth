@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { altarAction, giftActive, GODS, godNamed, godTitle, offeringMacro, worshipMacro } from '../../web/src/play/gods.ts';
+import { findPath } from '../../web/src/play/pathfinding.ts';
+import { travelGrid } from '../../web/src/play/travel.ts';
 import { walkableFor, type Material } from '../../web/src/render/materials.ts';
+import { CAVE_SEEN } from '../../web/src/render/snapshot.ts';
+import { snapshot } from './fixtures.ts';
 
 const keys = (s: string) => [...s].map((c) => c.charCodeAt(0));
 const screen = (prompt: string) => ({ prompt, screen: '', atCommand: false });
@@ -65,12 +69,24 @@ describe('gods', () => {
     assert.ok(weak.next(screen('Sacrifice which item?')).done);
   });
 
-  it('lets the hero walk terrain tome2 lets them enter', () => {
-    const tree = { walkable: false, door: false } as Material;
-    const floor = { walkable: true, door: false } as Material;
+  it('lets the hero walk terrain tome2 lets them enter, as a shortcut travel takes only to save a long way round', () => {
+    const floor = { walkable: true, door: false, blocksLight: false } as Material;
+    const tree = { walkable: false, door: false, blocksLight: true } as Material;
     const base = [floor, tree];
     assert.equal(walkableFor(base, []), base);
     const walked = walkableFor(base, [1]);
-    assert.ok(walked[1].walkable && !base[1].walkable);
+    assert.ok(walked[1].walkable && walked[1].shortcut && !base[1].walkable);
+
+    /* From the left of a wood to its right: round by a short path, or through when the way round is long. */
+    const route = (rows: string[]) => {
+      const width = rows[0].length;
+      const feat = new Uint8Array(rows.join('').split('').map((ch) => (ch === 'T' ? 1 : 0)));
+      const snap = snapshot(width, rows.length, { px: 0, py: 1, feat, info: new Uint16Array(feat.length).fill(CAVE_SEEN) });
+      return findPath(travelGrid(snap, walked), { x: 0, y: 1 }, { x: width - 1, y: 1 })!;
+    };
+    const around = route(['.....', '.TTT.', 'TTTTT']);
+    assert.ok(around.every((p) => p.y === 0 || p.x === 4), 'takes the path over the wood');
+    const through = route(['TTTTT', '.TTT.', 'TTTTT']);
+    assert.equal(through.length, 4, 'with no way round, walks through it');
   });
 });

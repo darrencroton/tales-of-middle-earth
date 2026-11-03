@@ -1723,6 +1723,7 @@ const journeys = new Journeys({
   snapshot: () => game.lastSnap,
   state: () => game.lastState,
   materials: heroMaterials,
+  mapMaterials: () => materials,
   level: () => memory.level,
   heading: () => memory.heading,
   alwaysPickup,

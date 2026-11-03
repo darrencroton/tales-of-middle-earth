@@ -40,6 +40,8 @@ export interface Material {
   door: boolean;
   /** Floor, where the hero can push past a companion (tome2's cave_floor_bold). */
   floor: boolean;
+  /** Walkable only by the hero's own ability (trees for a tree walker): travel avoids it unless it saves a long way round, and exploring never uses it. */
+  shortcut?: boolean;
 }
 
 const FLOOR_BG: RGB = [0.11, 0.1, 0.09];
@@ -148,10 +150,10 @@ export function buildMaterials(features: readonly FeatureInfo[]): Material[] {
   return features.map(classifyFeature);
 }
 
-/** Materials as the hero walks them: terrain in `passes` (trees for a tree walker, a flyer or Yavanna's praying follower) becomes walkable. */
+/** Materials as the hero walks them: terrain in `passes` (trees for a tree walker, a flyer or Yavanna's praying follower) becomes walkable, as a shortcut. */
 export function walkableFor(materials: readonly Material[], passes: readonly number[] | undefined): readonly Material[] {
   if (!passes?.length) return materials;
   const out = materials.slice();
-  for (const i of passes) if (out[i]) out[i] = { ...out[i], walkable: true };
+  for (const i of passes) if (out[i] && !out[i].walkable) out[i] = { ...out[i], walkable: true, shortcut: true };
   return out;
 }
