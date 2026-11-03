@@ -260,8 +260,7 @@ export class Journeys {
 
   /**
    * Walks to unexplored places until something needs attention; on an
-   * explored level, goes to the way on, which a further press takes (on the
-   * land, once nothing is left, it opens the world map).
+   * explored level, goes to the way on, which a further press takes.
    */
   explore(): void {
     const ctx = this.context();
@@ -270,7 +269,7 @@ export class Journeys {
     this.deps.recentreMap();
     this.deps.level().explore.begin({ x: ctx.snap.px, y: ctx.snap.py }, this.deps.state()?.objects ?? [], ctx.snap.width);
     const next = this.exploreNext(ctx.snap);
-    const way = next === 'worldMap' ? '<' : next === 'here' ? transitionUnderfoot(this.deps.underfoot(ctx.snap))?.command : null;
+    const way = next === 'here' ? transitionUnderfoot(this.deps.underfoot(ctx.snap))?.command : null;
     if (way) {
       this.deps.send([BACKSLASH, way.charCodeAt(0)]);
       return;
@@ -323,7 +322,7 @@ export class Journeys {
     };
   }
 
-  /** What Explore would do now (see `ExploreNext`); on the land, once nothing is left, the way on is the world map. */
+  /** What Explore would do now (see `ExploreNext`). */
   exploreNext(snap: LevelSnapshot | null): ExploreNext {
     if (!snap?.atCommand || snap.wild || !this.roles) return 'explore';
     const level = this.deps.level();
@@ -334,7 +333,7 @@ export class Journeys {
 
   private exploreNextFrom(snap: LevelSnapshot): ExploreNext {
     const next = exploreOutcome(snap, this.deps.materials(), this.plan(), this.passing(snap));
-    if (next === 'explored') return snap.depth === 0 ? 'worldMap' : 'none';
+    if (next === 'explored') return 'none';
     if (typeof next === 'string' || next.kind !== 'exit') return 'explore';
     return next.x === snap.px && next.y === snap.py ? 'here' : (next.heading ?? 'down');
   }

@@ -12,7 +12,7 @@ taps from the map. **Type** refers to the taxonomy in section 3.
 ```
 Map (toolbar, HUD, gestures)
 ├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Release, Descend/Ascend/Enter rift, Enter shop/home,
-│   Attack, Talk, Pick up, Drink, Wield/Light/Eat, Explore/Way down/Way up/World map — then the hero's
+│   Attack, Talk, Pick up, Drink, Wield/Light/Eat, Explore/Way down/Way up — then the hero's
 │   own buttons in fixed places: quick spell or aimed item, Cast/Powers, Fire, Items, Rest, More,
 │   Menu; while exploring: Stop, Speed, Menu)
 │   ├── Items ─────────────── Inventory            panel, tabs Pack · Equipment · Floor     depth 1
@@ -248,9 +248,10 @@ left by what the player means to do. It leaves out what the hero cannot ever
 do (Pray without a god, Engrave without runes, Steal without the skill) and
 dims, saying why, what cannot be done here: a fountain's or altar's command
 off one, Rest on a Void Jumpgate, Talk, Give and Steal with no one beside the
-hero, on the world map whatever tome2 ignores there, and every command of
-the hero's own while they control another creature (Fire Golem, Mind
-Steal). What Talk or Give brings out is shown in a card named for the
+hero, on the world map whatever tome2 ignores there, Explore on the land
+outside a town or quest (and on the toolbar) and on the world map below
+level 20, and every command of the hero's own while they control another
+creature (Fire Golem, Mind Steal). What Talk or Give brings out is shown in a card named for the
 creature.
 
 While the hero controls a creature, tome2 gives it the walking keys, `m`

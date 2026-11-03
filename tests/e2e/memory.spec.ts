@@ -145,6 +145,15 @@ test('the world map is entered from the commands and left from the toolbar, and 
   await expect.poll(wild).toBe(true);
   await waitAtCommand(page);
   await expect(page.locator('#toolbar [data-action="explore"]')).toHaveCount(0);
+  /* A young hero does not explore the world map: More's Explore is dimmed and says why. */
+  await page.locator('#toolbar [data-action="commands"]').click();
+  const explore = page.locator('.sheet .command', { hasText: 'Explore' });
+  await expect(explore).toHaveClass(/unavailable/);
+  await explore.click();
+  await expect(page.locator('#toast')).toContainText('level 20');
+  expect(await wild()).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet')).toHaveCount(0);
   await page.locator('#toolbar [data-action="walkhere"]').click();
   await expect.poll(wild).toBe(false);
   await expect(page.locator('#toolbar [data-action="walkhere"]')).toHaveCount(0);
