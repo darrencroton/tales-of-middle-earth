@@ -178,8 +178,9 @@ export function listedItem(inventory: InventoryState, prompt: string, letter: st
     return slot ? { item: slot as ItemState, place: 'equip' } : null;
   }
   if (mode === 'Floor') {
+    /* tome2 cuts long names short to fit its list. */
     const name = label.trim().toLowerCase();
-    const item = inventory.floor.find((i) => i.name.toLowerCase() === name);
+    const item = inventory.floor.find((i) => i.name.toLowerCase() === name) ?? (name.length >= 8 ? inventory.floor.find((i) => i.name.toLowerCase().startsWith(name)) : undefined);
     return item ? { item, place: 'floor' } : null;
   }
   return null;

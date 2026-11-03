@@ -114,7 +114,7 @@ export function recallParagraphs(lines: readonly MemorialLine[], empty: string):
 
 /** A spell's figures for the hero as they are now: level, cost, failure. */
 export function spellMeta(spell: SpellInfo): string {
-  if (spell.level < 0) return 'Not yet learnt';
+  if (spell.level <= 0) return 'Not yet learnt';
   return [`Level ${spell.level}`, `${spell.mana} ${spell.piety ? 'piety' : 'mana'}`, `${spell.fail}% fail`].join(' · ');
 }
 
@@ -143,10 +143,10 @@ export function spellNotes(spell: SpellBasics & Partial<SpellInfo>, device = fal
 /** A spell's figures now as a grid: its level, cost and failure for the hero, and what it does at that level. */
 function spellFigures(spell: SpellBasics & Partial<SpellInfo>): HTMLElement {
   const grid = el('div', 'stat-grid');
-  if (spell.level < 0) grid.append(stat('Level', 'Not learnt', 'bad'));
+  if (spell.level <= 0) grid.append(stat('Level', 'Not learnt', 'bad'));
   else grid.append(stat('Level', String(spell.level)));
   if (spell.mana !== undefined) grid.append(stat(spell.piety ? 'Piety' : 'Mana', String(spell.mana), spell.short ? 'bad' : ''));
-  if (spell.level >= 0) grid.append(stat('Fail', `${spell.fail}%`, spell.fail >= 50 ? 'bad' : ''));
+  if (spell.level > 0) grid.append(stat('Fail', `${spell.fail}%`, spell.fail >= 50 ? 'bad' : ''));
   if (spell.info.trim()) grid.append(stat('Now', effectText(spell.info), 'wide'));
   return grid;
 }
@@ -170,7 +170,6 @@ export function spellDetails(spell: SpellBasics & Partial<SpellInfo>, device = f
 /** What a power's use takes, from tome2's power list (cost, stat and difficulty), in words. */
 export function powerNotes(power: PowerInfo): string[] {
   const notes: string[] = [];
-  if (power.level > 1) notes.push(`Usable from character level ${power.level}.`);
   if (power.cost) notes.push(`Costs hit points instead when your mana runs short.`);
   if (power.cost && STAT_NAMES[power.stat]) notes.push(`Succeeds by ${STAT_NAMES[power.stat]}, against a difficulty of ${power.diff} that eases as you gain levels.`);
   return notes;
@@ -186,7 +185,7 @@ export function spellRow(spell: SpellInfo, className = ''): HTMLButtonElement {
   main.append(el('span', 'spell-name', spell.name), el('span', 'spell-school', spell.school));
   const meta = el('span', 'spell-meta');
   meta.append(el('span', undefined, spellMeta(spell)));
-  if (spell.info) meta.append(el('span', 'spell-info', spell.info));
+  if (spell.info) meta.append(el('span', 'spell-info', effectText(spell.info)));
   button.append(main, meta);
   return button;
 }
@@ -251,7 +250,7 @@ export function itemDetails(info: ItemInfo | null, options: ItemDetailsOptions):
     const text = el('div', 'description');
     if (info.activation) text.append(el('p', undefined, `Activate for ${info.activation}${info.worn ? ', while worn' : ''}.`));
     if (info.power) text.append(el('p', undefined, `Grants the power of ${info.power} while worn.`));
-    body.append(section('Activation', text));
+    body.append(section(info.activation ? 'Activation' : 'Power', text));
   }
 
   if (info.device) {
@@ -294,7 +293,13 @@ export function itemCardBody(api: GameApi, info: ItemInfo | null, fallback: stri
 /** A spell's card: its details, with Cast (or Try anyway, short of mana) when `cast` is given and the hero can cast it. */
 export function openSpellCard(api: GameApi, spell: SpellInfo, cast?: (spell: SpellInfo, anyway: boolean) => void): void {
   const body = spellDetails(spell);
-  const why = spell.ok ? null : spell.level < 0 ? 'Your skills are not yet high enough to cast it.' : spell.instrument ? 'This instrument is not powerful enough for it.' : 'You cannot cast it from this book.';
+  const why = spell.ok
+    ? null
+    : spell.instrument
+      ? 'This instrument is not powerful enough for it.'
+      : spell.level === 0
+        ? 'Your skills are not yet high enough to cast it.'
+        : 'You cannot cast it yet.';
   if (why) body.append(el('p', 'muted', why));
   else if (spell.short && cast) body.append(el('p', 'muted', 'You do not have the mana for it. You may try anyway, at a much greater risk of failure.'));
   api.sheets.open({
@@ -306,7 +311,7 @@ export function openSpellCard(api: GameApi, spell: SpellInfo, cast?: (spell: Spe
     actions: !spell.ok || !cast
       ? []
       : spell.short
-        ? [{ id: 'cast', label: 'Try anyway', run: () => cast(spell, true) }]
-        : [{ id: 'cast', label: `Cast ${spell.name}`, primary: true, run: () => cast(spell, false) }],
+        ? [{ id: 'cast', label: 'Try anyway', unavailable: api.refusal('m'), run: () => cast(spell, true) }]
+        : [{ id: 'cast', label: `Cast ${spell.name}`, primary: true, unavailable: api.refusal('m'), run: () => cast(spell, false) }],
   });
 }

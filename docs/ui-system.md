@@ -304,7 +304,7 @@ with why, and journeys are refused.
 | `H` `O` | drink at a fountain, sacrifice at an altar | changing button; More |
 | `x` | engrave a rune | More, once a rune is learnt |
 | `l` `M` `L` `*` | look, level map, locate, target | long-press; More (*Look*, *Level map*, *Choose target*); dragging the map |
-| `i` `e` `w` `t` `d` `k` `{` `}` `I` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |
+| `i` `e` `w` `t` `d` `k` `{` `}` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |
 | `q` `r` `E` `a` `u` `z` `A` `F` `v` `f` | use items, fire, throw | item cards, *Recently used*, Again, Fire, gear suggestions; More → Use an item / Fight and magic |
 | `b` `I` | browse a book, examine an item | the item's card (a book's card lists its spells, each with its own card) |
 | `h` `K` | butcher a corpse, cure meat | the corpse's or meat's card |

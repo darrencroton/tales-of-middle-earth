@@ -116,7 +116,8 @@ export class Abilities {
   /** Casts a spell or uses a power again (aiming at the nearest foe when `aim`); it is remembered once tome2 has taken it. */
   run(entry: RecentAction, aim = false, anyway = false): void {
     const { api, castWatcher } = this.deps;
-    const why = anyway ? null : this.unavailable(entry, false);
+    const command = entry.kind === 'spell' ? 'm' : entry.kind === 'path' ? entry.command : null;
+    const why = (command && api.refusal(command)) || (anyway ? null : this.unavailable(entry, false));
     if (why) {
       api.refuse(why);
       return;

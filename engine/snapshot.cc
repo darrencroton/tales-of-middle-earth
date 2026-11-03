@@ -13,7 +13,6 @@
 #include "cave_type.hpp"
 #include "cmd2.hpp"
 #include "cmd5.hpp"
-#include "cmd6.hpp"
 #include "corrupt.hpp"
 #include "defines.hpp"
 #include "dungeon_info_type.hpp"
@@ -668,6 +667,28 @@ object_type one_of(object_type const *o_ptr)
 	return one;
 }
 
+/*
+ * tome2's device ("stick") mode, off while spells are read for the hero and
+ * put back after: tome2 may be inside a wand's or staff's spell (asking where
+ * to aim it) while the hero looks at something, and its mode is not
+ * reentrant (set_stick_mode asserts, in debug builds only).
+ */
+struct stick_mode_kept
+{
+	s32b const use = get_level_use_stick;
+	s32b const max = get_level_max_stick;
+	stick_mode_kept()
+	{
+		get_level_use_stick = -1;
+		get_level_max_stick = -1;
+	}
+	~stick_mode_kept()
+	{
+		get_level_use_stick = use;
+		get_level_max_stick = max;
+	}
+};
+
 /* A spell's description lines (tome2's print_spell_desc), joined. */
 std::string spell_description(spell_type *spell)
 {
@@ -903,7 +924,7 @@ void json_item_props(JsonWriter &w, object_type const *o_ptr, object_flag_set co
 		{ TR_BRAND_COLD, "attack", "Frost brand" },
 		{ TR_BRAND_POIS, "attack", "Poison brand" },
 		{ TR_CHAOTIC, "attack", "Chaotic" },
-		{ TR_VAMPIRIC, "attack", "Drains life" },
+		{ TR_VAMPIRIC, "attack", "Vampiric" },
 		{ TR_IMPACT, "attack", "Earthquakes" },
 		{ TR_VORPAL, "attack", "Sharp: cuts" },
 		{ TR_WOUNDING, "attack", "Sharp: bleeding" },
@@ -989,7 +1010,7 @@ void json_item_props(JsonWriter &w, object_type const *o_ptr, object_flag_set co
 		{ TR_XTRA_MIGHT, "attack", "Extra might" },
 		{ TR_XTRA_SHOTS, "attack", "Extra shots" },
 		{ TR_DRAIN_MANA, "drawback", "Drains mana" },
-		{ TR_DRAIN_HP, "drawback", "Drains life" },
+		{ TR_DRAIN_HP, "drawback", "Drains your health" },
 		{ TR_DRAIN_EXP, "drawback", "Drains experience" },
 		{ TR_BLESSED, "ability", "Blessed" },
 		{ TR_TELEPORT, "drawback", "Random teleportation" },
@@ -1101,6 +1122,7 @@ char const *item_info_json(object_type *o_ptr)
 	}
 	auto const &a_info = game->edit_data.a_info;
 	auto const &set_info = game->edit_data.set_info;
+	stick_mode_kept const kept;
 	bool const known = object_known_p(o_ptr);
 	auto const flags = object_flags(o_ptr);
 	w.field("known", known ? 1 : 0);
@@ -1159,14 +1181,17 @@ char const *item_info_json(object_type *o_ptr)
 
 	if (known && (o_ptr->tval == TV_WAND || o_ptr->tval == TV_STAFF))
 	{
-		set_stick_mode(o_ptr);
+		/* set_stick_mode's levels, set here as the kept mode is put back after. */
+		get_level_use_stick = o_ptr->pval3 & 0xFFFF;
+		get_level_max_stick = o_ptr->pval3 >> 16;
 		spell_type *spell = spell_at(o_ptr->pval2);
 		w.key("device").begin_object();
 		json_spell_common(w, spell);
 		w.field("level", get_level(o_ptr->pval2, 50));
 		w.field("fail", spell_chance_device(spell));
 		w.end_object();
-		unset_stick_mode();
+		get_level_use_stick = -1;
+		get_level_max_stick = -1;
 	}
 
 	int sval;
@@ -1783,26 +1808,9 @@ EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
 	char name[160];
 	monster_desc(name, m_ptr, 0x88);
 
-	auto const previous_hook = text_out_hook;
-	text_runs.clear();
-	web_scratch_term_begin();
-	text_out_hook = text_out_to_json;
-	monster_description_out(m_ptr->r_idx, m_ptr->ego);
-	text_out_hook = previous_hook;
-	web_scratch_term_end();
-
 	w.field("name", name);
-	w.key("text").begin_array();
-	for (auto const &[attr, text] : text_runs)
-	{
-		w.begin_array();
-		w.value(attr);
-		w.value(text);
-		w.end_array();
-	}
-	w.end_array();
+	json_runs(w, "text", text_out_runs([m_ptr] { monster_description_out(m_ptr->r_idx, m_ptr->ego); }));
 	w.end_object();
-	text_runs.clear();
 	return json.c_str();
 }
 
@@ -2192,6 +2200,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 {
 	auto w = start_json();
 	if (!begin_ready(w)) return json.c_str();
+	stick_mode_kept const kept;
 	w.key("books").begin_array();
 	for (int i = 0; i < INVEN_TOTAL; i++)
 	{

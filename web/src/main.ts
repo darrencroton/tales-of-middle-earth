@@ -205,6 +205,7 @@ const termView = new TermView(stage, () => buffer.palette, {
       const inventory = engine.inventory();
       const listed = inventory && listedItem(inventory, rowZeroText(), choice.key, choice.label.text);
       if (listed) openItemDetails(api, listed.item, listed.place);
+      else refuse('There is nothing more to see there.');
       return;
     }
     send([key.charCodeAt(0)]);

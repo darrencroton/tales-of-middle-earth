@@ -150,7 +150,7 @@ const NOT_ON_WORLD_MAP = new Set(['o', 'c', 'B', 'j', 'T', 'y', 'Y', 'Z', 'P', '
  * the creature (`m` its powers, `d` and `,` its pack; also `i` and the
  * walking keys, which the app never sends for the hero).
  */
-const NOT_WHILE_CONTROLLING = new Set(['w', 't', 'd', 'k', 'e', '+', 'T', '.', ',', 'g', 'R', '_', '<', '>', 'o', 'c', 'y', 'Y', 'j', 'B', 'G', 'N', 'b', 'm', 'p', 'P', 'h', 'K', 'Z', '{', '}', 'A', 'E', 'F', 'f', 'v', 'a', 'z', 'q', 'H', 'r', 'u', 'U', 'O', '*', 'x']);
+const NOT_WHILE_CONTROLLING = new Set(['w', 't', 'd', 'k', 'e', '+', 'T', '.', ',', 'g', 'R', '_', '<', '>', 'o', 'c', 'y', 'Y', 'j', 'B', 'G', 'N', 'm', 'p', 'P', 'h', 'K', 'Z', '{', '}', 'A', 'E', 'F', 'f', 'v', 'a', 'z', 'q', 'H', 'r', 'u', 'U', 'O', '*', 'x']);
 
 export const CONTROLLING = 'Not while you control another creature.';
 
