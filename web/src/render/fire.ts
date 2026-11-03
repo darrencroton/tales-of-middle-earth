@@ -1,7 +1,7 @@
 const LATTICE = 256;
 
 /** Smooth, tileable 2D value noise in 0..1. */
-export class ValueNoise {
+class ValueNoise {
   private readonly values: Float32Array;
 
   constructor(seed = 1) {
@@ -37,7 +37,7 @@ export class ValueNoise {
   }
 }
 
-export interface FlameStyle {
+interface FlameStyle {
   /** Fraction of the height the tallest tongues reach (0..1). */
   reach: number;
   /** Upward drift of the flame texture, in field rows per second. */
@@ -99,7 +99,7 @@ export class FlameField {
 }
 
 /** Maps heat (0..1+) to fire colour channels 0..255 with alpha. */
-export function heatColour(h: number): [number, number, number, number] {
+function heatColour(h: number): [number, number, number, number] {
   const k = Math.min(1, h);
   return [
     Math.min(255, 255 * k * 1.6),

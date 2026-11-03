@@ -1,18 +1,22 @@
 import type { Page } from '@playwright/test';
 import {
   castUntilAimed,
+  continueAs,
   createCharacter,
   dismissMore,
   equipSuggested,
   expect,
+  findFeature,
   jumpToLevel,
   keptLevelFiles,
   playerPos,
   pressExplore,
+  saveAndQuit,
   screenText,
   sendText,
   stepOffStairs,
   test,
+  travelTo,
   viewMode,
   waitAtCommand,
   waitForEngine,
@@ -167,7 +171,7 @@ test('tapping the map steps towards unseen ground, travels along a known path, a
   expect(await playerPos(page)).toEqual(here);
 });
 
-test('items are dropped by the number chosen, used, wielded and taken off from the native inventory', async ({ page }) => {
+test('items are dropped by the number chosen, used, wielded and taken off from the native inventory, and tome2 menus show as tappable lists with a movable highlight', { tag: '@layout' }, async ({ page }) => {
   await page.goto('./');
   await waitForEngine(page);
   await createCharacter(page, 'Packer');
@@ -223,19 +227,13 @@ test('items are dropped by the number chosen, used, wielded and taken off from t
   await page.locator('.sheet .item-row:not(.empty-slot)').first().click();
   await page.locator('.sheet .sheet-action', { hasText: 'Take off' }).click();
   await expect.poll(weapon, { timeout: 10_000 }).toBe('');
-});
-
-test('tome2 menus show as tappable lists with a movable highlight', { tag: '@layout' }, async ({ page }) => {
-  await page.goto('./');
-  await waitForEngine(page);
-  await createCharacter(page, 'Tapper');
 
   await page.locator('#toolbar [data-action="commands"]').click();
   await page.locator('.sheet .command', { hasText: 'Throw' }).click();
   await expect(page.locator('.sheet-layer')).toBeHidden();
   await waitForScreen(page, /Throw which item/);
   await expect.poll(() => viewMode(page)).toBe('overlay');
-  await expect(page.locator('.termview .tv-title')).toHaveText(/Throw which item/);
+  await expect(page.locator('.termview .sheet-title')).toHaveText(/Throw which item/);
 
   const first = await page.locator('.termview .tv-choice.is-active').getAttribute('data-key');
   await page.keyboard.press('ArrowDown');
@@ -250,7 +248,7 @@ test('tome2 menus show as tappable lists with a movable highlight', { tag: '@lay
 
   await page.keyboard.press('=');
   await expect.poll(() => viewMode(page)).toBe('overlay');
-  await expect(page.locator('.termview .tv-close')).toBeVisible();
+  await expect(page.locator('.termview .sheet-close')).toBeVisible();
   const outside = await page.evaluate(() => {
     const map = document.querySelector('#map')!.getBoundingClientRect();
     const corners = [
@@ -272,18 +270,12 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
   await jumpToLevel(page, 1);
   const points = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.skillPoints ?? 0);
   for (let i = 0; i < 8 && (await points()) < 2; i++) {
-    await page.evaluate(() => window.__tome!.sendText('\u0001'));
-    await waitForScreen(page, /Debug Command|\[y\/n\]/);
-    if (/\[y\/n\]/.test((await screenText(page)).split('\n')[0])) await page.evaluate(() => window.__tome!.sendText('y'));
-    await waitForScreen(page, /Debug Command/);
-    await page.evaluate(() => window.__tome!.sendText('x'));
-    await dismissMore(page);
-    await waitAtCommand(page);
+    await wizardCommand(page, 'x');
   }
   expect(await points()).toBeGreaterThan(1);
 
   await page.locator('.hud-player').click();
-  await expect(page.locator('.sheet-title')).toHaveText('Scholar');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Scholar');
   await expect(page.locator('.sheet .pop-tab.selected')).toContainText('Summary');
   const size = async () => page.locator('.sheet').evaluate((el) => Math.round(el.getBoundingClientRect().height));
   const tabsAt = async () => page.locator('.sheet .pop-tabs').evaluate((el) => Math.round(el.getBoundingClientRect().top));
@@ -305,7 +297,7 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
   await expect(learn).toHaveClass(/unavailable/);
   await learn.click();
   await expect(page.locator('#toast')).toContainText('Needs');
-  await expect(page.locator('.sheet-title')).toHaveText('Scholar');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Scholar');
   expect(await size()).toBe(height);
 
   await page.locator('.sheet [data-tab="sheet"]').click();
@@ -330,13 +322,13 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
   await page.locator('#toolbar [data-action="menu"]').click();
   await page.locator('.sheet .row-button', { hasText: 'Knowledge' }).click();
   await page.locator('.sheet .row-button', { hasText: 'Quests' }).click();
-  await expect(page.locator('.termview .tv-title')).toHaveText(/Quest/);
-  await page.locator('.termview .tv-close').click();
+  await expect(page.locator('.termview .sheet-title')).toHaveText(/Quest/);
+  await page.locator('.termview .sheet-close').click();
   await waitAtCommand(page);
-  await expect(page.locator('.sheet-title')).toHaveText('Knowledge');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Knowledge');
   await expect(page.locator('.sheet .row-button.is-active')).toContainText('Quests');
   await page.locator('.sheet-back').click();
-  await expect(page.locator('.sheet-title')).toHaveText('Menu');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Menu');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
 
@@ -392,7 +384,7 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
   await expect(raise).not.toHaveClass(/unavailable/);
   await raise.click();
   await expect(page.locator('.sheet-subtitle')).not.toHaveText(before);
-  await page.locator('.sheet-close:not(.tv-close)').click();
+  await page.locator('.sheet-layer .sheet-close').click();
   await expect(page.locator('.prompt-card')).toContainText('Save and use these skill values?');
   await page.locator('.prompt-card .card-button.primary').click();
   await waitAtCommand(page);
@@ -412,7 +404,7 @@ test.describe(() => {
     const openMagic = async () => {
       await page.locator('#toolbar [data-action="commands"]').click();
       await page.locator('.sheet .command', { hasText: 'Magic' }).click();
-      await expect(page.locator('.sheet-title')).toHaveText('Magic');
+      await expect(page.locator('.sheet .sheet-title')).toHaveText('Magic');
     };
     await openMagic();
     await expect(page.locator('.sheet .recent-button')).toHaveCount(0);
@@ -481,7 +473,7 @@ test('race powers are under their race in Powers, their lettered questions are b
   /* More's Powers, and the toolbar's, open the panel on Powers, each power under what grants it; Magic is its other tab. */
   await page.locator('#toolbar [data-action="commands"]').click();
   await page.locator('.sheet .command', { hasText: 'Powers' }).click();
-  await expect(page.locator('.sheet-title')).toHaveText('Powers');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Powers');
   await expect(page.locator('.sheet .sheet-section h3', { hasText: 'Thunderlord' })).toBeVisible();
   await page.locator('.sheet .pop-tab', { hasText: 'Magic' }).click();
   await expect(page.locator('.sheet .sheet-section h3', { hasText: 'Magic arts' })).toBeVisible();
@@ -490,7 +482,7 @@ test('race powers are under their race in Powers, their lettered questions are b
   await expect(page.locator('.sheet-layer')).toBeHidden();
   const openMagic = async () => {
     await page.locator('#toolbar [data-action="cast"]', { hasText: 'Powers' }).click();
-    await expect(page.locator('.sheet-title')).toHaveText('Powers');
+    await expect(page.locator('.sheet .sheet-title')).toHaveText('Powers');
   };
   /* A power can fail to concentrate; a hero tries again. */
   const aimed = async () => (await screenText(page)).split('\n')[0].startsWith('Direction');
@@ -579,7 +571,7 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   expect(await playerPos(page)).toEqual(start);
 
   await page.locator('#hud .hud-player').click();
-  await expect(page.locator('.sheet-title')).toHaveText('Looker');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Looker');
   await expect(page.locator('.sheet .stat-grid.six .stat')).toHaveCount(6);
   await page.mouse.click(5, 5);
   await expect(page.locator('.sheet-layer')).toBeHidden();
@@ -588,9 +580,9 @@ test('dragging pans the map without moving, long press describes, sheets open fr
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('.sheet .row-button.is-active')).toContainText('Messages');
   await page.keyboard.press('Enter');
-  await expect(page.locator('.sheet-title')).toHaveText('Messages');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Messages');
   await page.keyboard.press('Escape');
-  await expect(page.locator('.sheet-title')).toHaveText('Menu');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Menu');
   await expect(page.locator('.sheet .row-button.is-active')).toContainText('Messages');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
@@ -726,23 +718,9 @@ test('Explore in town never leads to a way down, and the quest level below Bree 
   await expect(page.locator('#toolbar button[data-action]').first()).toContainText('World map');
 
   /* The way down is the player's to find: travel to it, and its button takes it. */
-  const stairs = await page.evaluate(() => {
-    const tome = window.__tome!;
-    const snap = tome.engine.snapshot()!;
-    const names = tome.engine.features().map((f) => f.name.toLowerCase());
-    const i = snap.feat.findIndex((f, n) => /down staircase|quest down/.test(names[f] ?? '') && (snap.info[n] & 0x11) !== 0);
-    return i < 0 ? null : { x: i % snap.width, y: Math.floor(i / snap.width) };
-  });
+  const stairs = await findFeature(page, /down staircase|quest down/i, { known: true });
   expect(stairs).not.toBeNull();
-  for (let i = 0; i < 12; i++) {
-    const here = await playerPos(page);
-    if (here.x === stairs!.x && here.y === stairs!.y) break;
-    await page.evaluate(() => window.__tome!.sendText('\u0001z'));
-    await dismissMore(page);
-    await waitAtCommand(page);
-    await page.evaluate(({ x, y }) => window.__tome!.tapCell(x, y), stairs!);
-    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
-  }
+  await travelTo(page, stairs!);
   await waitAtCommand(page);
   const why = await page.evaluate(() => {
     const snap = window.__tome!.engine.snapshot()!;
@@ -763,7 +741,7 @@ test('Explore in town never leads to a way down, and the quest level below Bree 
 test('a random quest is told on arrival, its chip tells what it asks, it survives a save, and it is named again on the next visit', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
-  await createCharacter(page, 'Rescuer');
+  await createCharacter(page, 'Seeker');
   /* The Barrow-Downs, a main dungeon: of tome2's default 20 random quests, the first waits at its depth 3. */
   await wizardCommand(page, 'D', 4);
   const quest = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.quest ?? null);
@@ -800,14 +778,9 @@ test('a random quest is told on arrival, its chip tells what it asks, it survive
     await expect(page.locator('.sheet-layer')).toBeHidden();
 
     if (visit === 0) {
-      await page.locator('#toolbar [data-action="menu"]').click();
-      await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
-      await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
-      await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+      await saveAndQuit(page);
       await waitForEngine(page);
-      await page.locator('#title-screen .title-choice', { hasText: 'Continue as Rescuer' }).click();
-      await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
-      await waitAtCommand(page);
+      await continueAs(page, 'Seeker');
       expect(await quest()).toEqual(here);
       await expect(chip).toHaveText(new RegExp(here!.title));
     }
@@ -815,7 +788,7 @@ test('a random quest is told on arrival, its chip tells what it asks, it survive
     await expect(chip).toHaveCount(0);
     await expect(page.locator('.feel-layer')).not.toHaveClass(/\bquest\b/);
     expect(await quest()).toBeNull();
-    expect(await keptLevelFiles(page)).not.toContain('Rescuer.lvl4_3');
+    expect(await keptLevelFiles(page)).not.toContain('Seeker.lvl4_3');
   }
 });
 
@@ -829,12 +802,12 @@ test('knowledge and the manual read as whole files, help is searchable, links op
   await page.locator('#toolbar [data-action="menu"]').click();
   await page.locator('.sheet .row-button', { hasText: 'Knowledge' }).click();
   await page.locator('.sheet .row-button', { hasText: 'Unique' }).click();
-  await expect(page.locator('.termview .tv-title')).toHaveText('Known Uniques');
+  await expect(page.locator('.termview .sheet-title')).toHaveText('Known Uniques');
   const size = Number(/Line \d+\/(\d+)\]/.exec(await rowZero())?.[1]);
   expect(size).toBeGreaterThan(40);
   await expect(page.locator('.termview .tv-text')).toHaveCount(size);
   await expect(page.locator('.termview .tv-footer')).toBeHidden();
-  await page.locator('.termview .tv-close').click();
+  await page.locator('.termview .sheet-close').click();
   await waitAtCommand(page);
   await expect(page.locator('.sheet .row-button.is-active')).toContainText('Unique');
   await page.locator('.sheet .sheet-close').click();
@@ -843,15 +816,15 @@ test('knowledge and the manual read as whole files, help is searchable, links op
   /* Help: a search, a topic, its related topics, and back with the search kept. */
   await page.locator('#toolbar [data-action="menu"]').click();
   await page.locator('.sheet .row-button', { hasText: 'Help' }).click();
-  await expect(page.locator('.sheet-title')).toHaveText('Help');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Help');
   await page.locator('.help-search').fill('torch');
   await page.locator('.sheet .row-button', { hasText: 'Light and darkness' }).click();
-  await expect(page.locator('.sheet-title')).toHaveText('Light and darkness');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Light and darkness');
   await page.locator('.help-topic .row-button', { hasText: 'Explore and travel' }).click();
-  await expect(page.locator('.sheet-title')).toHaveText('Explore and travel');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Explore and travel');
   await page.locator('.sheet-back').click();
   await page.locator('.sheet-back').click();
-  await expect(page.locator('.sheet-title')).toHaveText('Help');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Help');
   await expect(page.locator('.help-search')).toHaveValue('torch');
 
   /* The original manual: a lettered link, a link inside the text, back to where the index was left, and out to Help. */
@@ -865,19 +838,19 @@ test('knowledge and the manual read as whole files, help is searchable, links op
   const scrolled = await page.locator('.termview .tv-body').evaluate((b) => b.scrollTop);
   await link.click();
   await expect.poll(rowZero).toMatch(/ability\.txt/);
-  await expect(page.locator('.termview .tv-back')).toBeVisible();
-  await page.locator('.termview .tv-back').click();
+  await expect(page.locator('.termview .sheet-back')).toBeVisible();
+  await page.locator('.termview .sheet-back').click();
   await expect.poll(rowZero).toMatch(/index\.txt/);
   await expect.poll(() => page.locator('.termview .tv-body').evaluate((b) => b.scrollTop)).toBe(scrolled);
-  await page.locator('.termview .tv-close').click();
+  await page.locator('.termview .sheet-close').click();
   await waitAtCommand(page);
-  await expect(page.locator('.sheet-title')).toHaveText('The original ToME manual');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('The original ToME manual');
   await page.locator('.sheet .sheet-close').click();
   await expect(page.locator('.sheet-layer')).toBeHidden();
 
   /* The ? key opens Help rather than tome2's help screens. */
   await page.keyboard.press('?');
-  await expect(page.locator('.sheet-title')).toHaveText('Help');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Help');
   await waitAtCommand(page);
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();

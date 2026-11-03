@@ -64,7 +64,7 @@ export function keyDirection(key: string): NavDirection | null {
 }
 
 /** Where the highlight was: its item's key, and its place among the list's rows (or the footer's buttons). */
-export interface NavMark {
+interface NavMark {
   key: string | undefined;
   index: number;
   inList: boolean;

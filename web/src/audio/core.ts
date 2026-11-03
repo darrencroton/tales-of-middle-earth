@@ -45,7 +45,7 @@ export class AudioCore {
     const reverb = ctx.createConvolver();
     reverb.buffer = impulseResponse(ctx, 3.4, 2.6);
     const reverbIn = ctx.createGain();
-    const reverbLow = biquad(ctx, 'highpass', 220, 0.6);
+    const reverbLow = filter(this, 'highpass', 220, 0.6);
     reverbIn.connect(reverbLow);
     reverbLow.connect(reverb);
     reverb.connect(this.master);
@@ -71,9 +71,9 @@ export class AudioCore {
     this.musicTone.frequency.value = 18000;
     this.musicTone.Q.value = 0.4;
     this.musicVolume = ctx.createGain();
-    const rumble = biquad(ctx, 'highpass', 48, 0.7);
-    const mud = biquad(ctx, 'lowshelf', 160, 0.7, -4);
-    const presence = biquad(ctx, 'highshelf', 3500, 0.7, 2);
+    const rumble = filter(this, 'highpass', 48, 0.7);
+    const mud = filter(this, 'lowshelf', 160, 0.7, -4);
+    const presence = filter(this, 'highshelf', 3500, 0.7, 2);
     this.musicIn.connect(this.musicTone);
     this.musicTone.connect(rumble);
     rumble.connect(mud);
@@ -94,7 +94,7 @@ export class AudioCore {
     this.soundIn = ctx.createGain();
     this.ambienceIn = ctx.createGain();
     this.soundVolume = ctx.createGain();
-    const soundLow = biquad(ctx, 'highpass', 38, 0.7);
+    const soundLow = filter(this, 'highpass', 38, 0.7);
     this.soundIn.connect(soundLow);
     this.ambienceIn.connect(soundLow);
     soundLow.connect(this.soundVolume);
@@ -161,10 +161,29 @@ export class AudioCore {
   }
 }
 
-function biquad(ctx: BaseAudioContext, type: BiquadFilterType, frequency: number, q: number, gainDb = 0): BiquadFilterNode {
-  const f = ctx.createBiquadFilter();
+/** An oscillator started at `t` and stopped at `stop`; `type` may be a periodic wave. */
+export function osc(core: { ctx: BaseAudioContext }, type: OscillatorType | PeriodicWave, frequency: number, t: number, stop: number, detune = 0): OscillatorNode {
+  const o = core.ctx.createOscillator();
+  if (typeof type === 'string') o.type = type as OscillatorType;
+  else o.setPeriodicWave(type);
+  o.frequency.value = frequency;
+  o.detune.value = detune;
+  o.start(t);
+  o.stop(stop);
+  return o;
+}
+
+export function gain(core: { ctx: BaseAudioContext }, value = 0): GainNode {
+  const g = core.ctx.createGain();
+  g.gain.value = value;
+  return g;
+}
+
+/** A biquad filter with the frequency held to 20 Hz..20 kHz. */
+export function filter(core: { ctx: BaseAudioContext }, type: BiquadFilterType, frequency: number, q = 0.7, gainDb = 0): BiquadFilterNode {
+  const f = core.ctx.createBiquadFilter();
   f.type = type;
-  f.frequency.value = frequency;
+  f.frequency.value = Math.min(20000, Math.max(20, frequency));
   f.Q.value = q;
   f.gain.value = gainDb;
   return f;

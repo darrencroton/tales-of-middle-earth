@@ -5,9 +5,8 @@ export const FB_NO_WALK = 1 << 0;
 export const FB_NO_VISION = 1 << 1;
 export const FB_FLOOR = 1 << 2;
 export const FB_WALL = 1 << 3;
-export const FB_PERMANENT = 1 << 4;
 export const FB_DOOR = 1 << 5;
-export const FB_ATTR_MULTI = 1 << 6;
+const FB_ATTR_MULTI = 1 << 6;
 
 export interface FeatureInfo {
   name: string;
@@ -16,7 +15,7 @@ export interface FeatureInfo {
   flags: number;
 }
 
-export interface Emission {
+interface Emission {
   colour: RGB;
   radius: number;
 }

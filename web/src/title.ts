@@ -15,7 +15,7 @@ export interface SaveInfo {
 
 export type TitleChoice = { kind: 'continue'; save: SaveInfo } | { kind: 'new' };
 
-export interface TitleCallbacks {
+interface TitleCallbacks {
   onChoose(choice: TitleChoice): void;
   /** Every saved hero, to pick from: each one's card offers Play and Delete. */
   onAdventurers(saves: SaveInfo[]): void;
@@ -56,7 +56,7 @@ const MAX_EMBERS = 220;
 const FPS: Record<AnimationLevel, number> = { full: 60, reduced: 15, off: 0 };
 
 /** Colour of stone lit by firelight: black, crimson, orange, then pale gold. */
-export function emberRamp(light: number): [number, number, number] {
+function emberRamp(light: number): [number, number, number] {
   const l = Math.max(0, light);
   const r = 255 * Math.min(1, l * 1.25);
   const g = 255 * Math.min(1, Math.max(0, l - 0.35) * 1.05);
@@ -99,6 +99,26 @@ export function titleMask(
     }
   }
   return { mask, top, bottom };
+}
+
+/** A button of the title screen's list: the label, a line of detail under it, and what it does. */
+function choiceButton(label: string, detail: string, primary: boolean, run: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = primary ? 'title-choice primary' : 'title-choice';
+  button.dataset.nav = '';
+  const main = document.createElement('span');
+  main.className = 'title-choice-label';
+  main.textContent = label;
+  button.append(main);
+  if (detail) {
+    const sub = document.createElement('span');
+    sub.className = 'title-choice-detail';
+    sub.textContent = detail;
+    button.append(sub);
+  }
+  button.addEventListener('click', run);
+  return button;
 }
 
 /**
@@ -218,22 +238,7 @@ export class TitleScreen {
     this.status.textContent = '';
     const buttons: HTMLButtonElement[] = [];
     const make = (label: string, detail: string, primary: boolean, run: () => void) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = primary ? 'title-choice primary' : 'title-choice';
-      button.dataset.nav = '';
-      const main = document.createElement('span');
-      main.className = 'title-choice-label';
-      main.textContent = label;
-      button.append(main);
-      if (detail) {
-        const sub = document.createElement('span');
-        sub.className = 'title-choice-detail';
-        sub.textContent = detail;
-        button.append(sub);
-      }
-      button.addEventListener('click', run);
-      buttons.push(button);
+      buttons.push(choiceButton(label, detail, primary, run));
     };
     const last = saves[0];
     if (last) {
@@ -343,23 +348,28 @@ export class TitleScreen {
     }
   }
 
-  /** Shows the screen afresh while a new engine starts: the fire rekindles and the choices follow. */
-  reset(): void {
+  /** Brings the screen back over the game with no choices and `status` as its line. */
+  private reappear(status: string): void {
     window.clearTimeout(this.leaveTimer);
     this.leaveTimer = 0;
     this.surgeAt = 0;
     this.ready = false;
     this.visible = true;
     this.introDone = null;
-    this.dimmed = 1;
     this.root.hidden = false;
     this.app?.setAttribute('inert', '');
     this.root.classList.remove('leaving', 'ready', 'intro', 'error');
     this.intro.hidden = true;
+    this.links.hidden = true;
+    this.status.textContent = status;
+  }
+
+  /** Shows the screen afresh while a new engine starts: the fire rekindles and the choices follow. */
+  reset(): void {
+    this.reappear('');
+    this.dimmed = 1;
     this.intro.replaceChildren();
     this.choices.hidden = true;
-    this.links.hidden = true;
-    this.status.textContent = '';
     this.progress.style.width = '';
     this.startedAt = performance.now() - (this.animation() === 'off' ? IGNITION_MS * 2 : IGNITION_MS * 0.6);
     this.schedule();
@@ -367,30 +377,9 @@ export class TitleScreen {
 
   /** Shows the screen again with a message (game over or failure). */
   showEnd(message: string, error: boolean, actions: { label: string; run: () => void }[]): void {
-    window.clearTimeout(this.leaveTimer);
-    this.leaveTimer = 0;
-    this.surgeAt = 0;
-    this.ready = false;
-    this.visible = true;
-    this.introDone = null;
-    this.root.hidden = false;
-    this.app?.setAttribute('inert', '');
-    this.root.classList.remove('leaving', 'ready', 'intro');
+    this.reappear(message);
     this.root.classList.toggle('error', error);
-    this.intro.hidden = true;
-    this.links.hidden = true;
-    this.status.textContent = message;
-    this.choices.replaceChildren(
-      ...actions.map((a) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'title-choice primary';
-        button.dataset.nav = '';
-        button.textContent = a.label;
-        button.addEventListener('click', a.run);
-        return button;
-      }),
-    );
+    this.choices.replaceChildren(...actions.map((a) => choiceButton(a.label, '', true, a.run)));
     this.choices.hidden = false;
     this.dimmed = error ? 0.5 : 0.8;
     this.schedule();

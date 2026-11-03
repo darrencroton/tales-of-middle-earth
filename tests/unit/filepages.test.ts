@@ -5,21 +5,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FilePages, fileLines, parseHelpFile, viewerHeading, viewerSource } from '../../web/src/ui/filepages.ts';
 import type { TermRow } from '../../web/src/ui/termparse.ts';
+import { termRow } from './fixtures.ts';
 
 const WIDTH = 40;
-
-function row(text: string): TermRow {
-  const chars = new Uint8Array(WIDTH).fill(0x20);
-  const attrs = new Uint8Array(WIDTH).fill(1);
-  for (let i = 0; i < text.length && i < WIDTH; i++) chars[i] = text.charCodeAt(i);
-  return { chars, attrs };
-}
 
 const text = (r: TermRow) => String.fromCharCode(...Array.from(r.chars)).trimEnd();
 
 /** A page of `height` rows showing lines from `top` of a file whose line n reads "line n". */
 function page(top: number, height: number, size: number): TermRow[] {
-  return Array.from({ length: height }, (_, i) => row(top + i < size ? `line ${top + i}` : ''));
+  return Array.from({ length: height }, (_, i) => termRow(top + i < size ? `line ${top + i}` : '', { width: WIDTH }));
 }
 
 describe('file viewer pages', () => {

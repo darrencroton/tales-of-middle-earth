@@ -1,5 +1,5 @@
 import { CAVE_MARK } from '../render/snapshot.ts';
-import type { EmscriptenFS } from '../saves.ts';
+import { JsonFile, type EmscriptenFS } from '../saves.ts';
 
 /** Which way the hero is going through a dungeon: exploring ends at the way on in that direction. */
 export type Heading = 'down' | 'up';
@@ -26,7 +26,7 @@ const MAX_LEVELS = 400;
 /* Most heroes remembered; the oldest are dropped first. */
 const MAX_HEROES = 20;
 
-export interface PlaceKeyInput {
+interface PlaceKeyInput {
   dungeon: number;
   depth: number;
   wild: number;
@@ -36,7 +36,7 @@ export interface PlaceKeyInput {
 }
 
 /** An area of the land (its layout is the same on every visit), or null elsewhere. */
-export function areaKey(place: PlaceKeyInput): string | null {
+function areaKey(place: PlaceKeyInput): string | null {
   if (place.depth !== 0 || place.wild || place.quest || place.wx === undefined || place.wy === undefined) return null;
   return `land:${place.wx},${place.wy}`;
 }
@@ -124,7 +124,7 @@ export function questKey(quest: { id: number; random?: unknown }, depth: number)
   return quest.random ? `${quest.id}:${depth}` : String(quest.id);
 }
 
-export function sanitiseMemory(raw: unknown): Stored {
+function sanitiseMemory(raw: unknown): Stored {
   const value = (raw && typeof raw === 'object' ? raw : {}) as Partial<Stored>;
   const heroes: Record<string, HeroMemory> = {};
   for (const [id, hero] of Object.entries(value.heroes ?? {})) heroes[id] = sanitiseHero(hero);
@@ -143,22 +143,15 @@ function trim<T>(record: Record<string, T>, max: number): void {
  * arrivals have been told.
  */
 export class MapMemoryStore {
+  private readonly file = new JsonFile(FILE, sanitiseMemory, 'map memory');
   private data: Stored = sanitiseMemory(null);
-  private fs: EmscriptenFS | null = null;
-  private path = '';
   private dirty = false;
   loaded = false;
 
   load(fs: EmscriptenFS | null, root: string | null): void {
     if (!fs || !root) return;
     this.loaded = true;
-    this.fs = fs;
-    this.path = `${root}/${FILE}`;
-    try {
-      this.data = sanitiseMemory(JSON.parse(new TextDecoder().decode(fs.readFile(this.path))));
-    } catch {
-      this.data = sanitiseMemory(null);
-    }
+    this.data = this.file.load(fs, root);
   }
 
   /** The hero's memory, now the most recently played (the least recent are dropped beyond `MAX_HEROES`). */
@@ -224,12 +217,6 @@ export class MapMemoryStore {
   }
 
   save(): void {
-    if (!this.dirty || !this.fs || !this.path) return;
-    try {
-      this.fs.writeFile(this.path, new TextEncoder().encode(JSON.stringify(this.data)));
-      this.dirty = false;
-    } catch (err) {
-      console.warn('Could not write the map memory', err);
-    }
+    if (this.dirty && this.file.save(this.data)) this.dirty = false;
   }
 }

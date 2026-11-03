@@ -20,7 +20,7 @@ export function cleanPrompt(text: string): string {
 const HINT_WORDS = /\bESC\b|\bRET\b|\bEsc\b|Escape|\bto (exit|scroll|cancel|quit|select|move|accept|advance|continue|restart|set)\b|for (Equip|Inven|floor|options|random|help)|\bselect by name\b|=exit|^\s*[a-zA-Z@*+=/\-]{1,2}\s*-\s*[a-zA-Z]\s*$|^\s*[a-zA-Z]-[a-zA-Z0-9]+\s*$|^(Inven|Equip|Floor|Spells|Descs)\b/;
 
 /** True for a phrase that only tells the player which keys to press. */
-export function isKeyHint(text: string): boolean {
+function isKeyHint(text: string): boolean {
   return HINT_WORDS.test(text.trim());
 }
 

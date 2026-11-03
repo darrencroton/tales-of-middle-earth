@@ -12,8 +12,8 @@ import {
 import { lightAt, type LightFrame } from './lighting.ts';
 import { attrColour, type Material } from './materials.ts';
 import {
-  CAVE_MARK,
   CAVE_SEEN,
+  isKnownCell,
   LAYER_MASK,
   LAYER_MULTI_HUED,
   LAYER_PLAYER,
@@ -77,7 +77,7 @@ export function cellAppearance(ctx: AppearanceContext, x: number, y: number): Ce
 
   const flags = snap.info[i];
   const visible = (flags & CAVE_SEEN) !== 0;
-  const terrainKnown = (flags & (CAVE_MARK | CAVE_SEEN)) !== 0;
+  const terrainKnown = isKnownCell(snap.info, i);
   const mat = terrainKnown ? (materials[snap.feat[i]] ?? UNKNOWN_MATERIAL) : UNKNOWN_MATERIAL;
   const isTerrain = layer === LAYER_TERRAIN;
   const engineChar = String.fromCharCode(snap.glyph[i]);

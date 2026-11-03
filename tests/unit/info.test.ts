@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { GameApi } from '../../web/src/ui/api.ts';
 import { describeCell, questParagraphs } from '../../web/src/ui/info.ts';
-import type { GameState, GridState, LevelSnapshot } from '../../web/src/render/snapshot.ts';
+import type { GameState, GridState } from '../../web/src/render/snapshot.ts';
+import { snapshot } from './fixtures.ts';
 
 function api(hallucinating: number): GameApi {
-  const snap = { width: 4, height: 1, px: 0, py: 0 };
   const state = {
     player: { status: { hallucinating } },
     monsters: [{ id: 1, name: 'Cave spider', x: 2, y: 0, hp: 5, maxhp: 5, asleep: 0, unique: 0, status: -2 }],
@@ -17,7 +17,7 @@ function api(hallucinating: number): GameApi {
     3: { known: 0, objects: [] },
   };
   return {
-    snapshot: () => snap as unknown as LevelSnapshot,
+    snapshot: () => snapshot(4, 1),
     state: () => state as unknown as GameState,
     engine: { grid: (x: number) => grids[x] },
   } as unknown as GameApi;

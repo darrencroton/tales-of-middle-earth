@@ -1,13 +1,12 @@
 import type { Engine } from '../engine.ts';
-import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, KEY_SPACE as SPACE } from '../input/keys.ts';
+import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, KEY_SPACE as SPACE, keyCodes } from '../input/keys.ts';
 import type { Action } from '../play/actions.ts';
-import { keyCodes } from '../play/macro.ts';
 import type { TerminalBuffer } from '../terminal.ts';
 import { moduleKey, type ModuleChoice, type SaveInfo, type TitleChoice, type TitleScreen } from '../title.ts';
 import { birthCard } from '../ui/birthcard.ts';
 import { findSaveIndex } from '../saves.ts';
 import { nextRunName, saveBase } from '../play/adventurers.ts';
-import { el } from '../ui/dom.ts';
+import { el, stat } from '../ui/dom.ts';
 import { ListNav } from '../ui/listnav.ts';
 import { askText } from '../ui/menus.ts';
 import type { Sheets } from '../ui/sheet.ts';
@@ -17,6 +16,7 @@ import {
   cursorKeysTo,
   describesHero,
   parseBirthChoice,
+  parseHeader,
   parseSaveIndex,
   parseSavefileScreen,
   validCharacterName,
@@ -29,7 +29,7 @@ import { DEFAULT_QUESTS, type RunOptions } from './runoptions.ts';
 import { runElements } from '../ui/adventure.ts';
 import type { BirthData } from '../render/snapshot.ts';
 
-export interface DirectorDeps {
+interface DirectorDeps {
   root: HTMLElement;
   buffer: TerminalBuffer;
   engine: Engine;
@@ -92,15 +92,16 @@ export class Director {
   private saves: SaveInfo[] = [];
   /** Savefiles of fallen heroes, which tome2 can start again with the same race, class and attributes. */
   private fallen: { name: string; description: string }[] = [];
-  /** The hero being created is a fallen one begun anew. */
-  private anew = false;
   /** The fallen hero's savefile a hero begun anew starts from. */
   private template = '';
+  /** The hero being created is a fallen one begun anew. */
+  private get anew(): boolean {
+    return this.template !== '';
+  }
   private choice: BirthChoiceScreen | null = null;
   private pendingKey: string | null = null;
   private chooseWhenReady = false;
   private renderedKey = '';
-  private nameSent = false;
   private lastAuto = '';
   /** Options chosen so far, in order, for going back a step. */
   private picks: BirthPick[] = [];
@@ -235,12 +236,10 @@ export class Director {
     this.heroName = '';
     this.saves = [];
     this.fallen = [];
-    this.anew = false;
     this.template = '';
     this.choice = null;
     this.pendingKey = null;
     this.chooseWhenReady = false;
-    this.nameSent = false;
     this.lastAuto = '';
     this.picks = [];
     this.lastChoice = null;
@@ -297,9 +296,8 @@ export class Director {
           this.askAnewName(template, hero, name, problem);
           return;
         }
-        this.template = template;
         this.heroName = name;
-        this.startCreating(true);
+        this.startCreating(template);
       },
     );
   }
@@ -347,14 +345,15 @@ export class Director {
         return;
       }
       this.heroName = name;
-      this.startCreating(false);
+      this.startCreating();
     });
   }
 
-  private startCreating(anew: boolean): void {
-    this.anew = anew;
+  /** Begins creating a hero; `template` is the fallen hero's savefile a hero begun anew starts from. */
+  private startCreating(template = ''): void {
+    this.template = template;
     this.phase = 'creating';
-    this.nameSent = false;
+    this.lastAuto = '';
     this.picks = [];
     this.lastChoice = null;
     this.deps.send(keyCodes('a'));
@@ -366,10 +365,8 @@ export class Director {
   }
 
   private creating(screen: string, rowZero: string): void {
-    if (/Enter the name of the savefile/.test(screen) && !this.nameSent) {
-      this.nameSent = true;
-      this.deps.send([...keyCodes(this.anew ? this.template : this.heroName), ENTER]);
-    } else if (/already exists! Press any key to load/.test(screen)) {
+    if (/Enter the name of the savefile/.test(screen) && this.answerOnce('savefile', [...keyCodes(this.anew ? this.template : this.heroName), ENTER])) return;
+    if (/already exists! Press any key to load/.test(screen)) {
       // A fallen hero's savefile: tome2 loads it and starts a new character.
       this.deps.send([SPACE]);
     } else if (/Savefile does not exist/.test(rowZero) || /-more-/.test(rowZero)) {
@@ -380,6 +377,14 @@ export class Director {
     } else if (BIRTH_SCREEN.test(screen)) {
       this.startBirth(screen, rowZero);
     }
+  }
+
+  /** Sends `keys` unless `key` was the last answer sent; true when sent. */
+  private answerOnce(key: string, keys: number[]): boolean {
+    if (this.lastAuto === key) return false;
+    this.lastAuto = key;
+    this.deps.send(keys);
+    return true;
   }
 
   private startBirth(screen: string, rowZero: string): void {
@@ -406,10 +411,7 @@ export class Director {
     if (answer(/Number of quests\?/, [...keyCodes('0'), ENTER])) return;
     if (answer(/Enter minimum attribute for/, [ENTER])) return;
     if (/Enter your player's name above/.test(screen)) {
-      const key = `name:${screen}`;
-      if (this.lastAuto === key) return;
-      this.lastAuto = key;
-      this.deps.send([...keyCodes(this.heroName), ENTER]);
+      this.answerOnce(`name:${screen}`, [...keyCodes(this.heroName), ENTER]);
       return;
     }
     const ready = READY_SCREEN.test(screen);
@@ -707,14 +709,8 @@ export class Director {
 
   private showHero(kind: 'reroll' | 'confirm'): void {
     const screen = this.screen();
-    const lines = screen.split('\n');
-    const field = (label: string) => {
-      for (const line of lines.slice(0, 8)) {
-        const m = new RegExp(`^\\s*${label}\\s*:\\s*(.*?)\\s*$`).exec(line.slice(0, 40));
-        if (m) return m[1];
-      }
-      return '';
-    };
+    const header = parseHeader(screen.split('\n'));
+    const field = (label: string) => header.find((f) => f.label === label)?.value ?? '';
     const stats = HERO_STATS.map((name) => {
       const m = new RegExp(`${name}:\\s+(\\S+)`).exec(screen);
       return { name, value: m?.[1] ?? '?' };
@@ -743,11 +739,7 @@ export class Director {
 
         const card = el('article', 'birth-card hero');
         const grid = el('div', 'stat-grid six');
-        for (const s of stats) {
-          const node = el('div', 'stat');
-          node.append(el('span', 'stat-label', s.name), el('span', 'stat-value', s.value));
-          grid.append(node);
-        }
+        for (const s of stats) grid.append(stat(s.name, s.value));
         card.append(grid);
         const vitals = el('div', 'stat-grid');
         for (const [label, pattern] of [
@@ -756,10 +748,7 @@ export class Director {
           ['Sanity', 'Sanity'],
         ] as const) {
           const value = pair(pattern);
-          if (!value) continue;
-          const node = el('div', 'stat');
-          node.append(el('span', 'stat-label', label), el('span', 'stat-value', value));
-          vitals.append(node);
+          if (value) vitals.append(stat(label, value));
         }
         card.append(vitals);
         const skills = el('dl', 'ratings');

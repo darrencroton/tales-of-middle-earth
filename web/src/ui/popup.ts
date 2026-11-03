@@ -24,6 +24,51 @@ export interface PopTab {
   run(): void;
 }
 
+/** What a pop-up's header shows: back, a badge, the title and a line under it, a note, and close. */
+interface PopHeader {
+  title?: string;
+  /** The title element's id (for aria-labelledby). */
+  titleId?: string;
+  subtitle?: string;
+  /** A symbol before the title (an item's or creature's glyph). */
+  badge?: HTMLElement;
+  /** Small text after the title (gold in a shop). */
+  note?: string;
+  /** Shows a back button. */
+  back?: () => void;
+  /** Shows a close button. */
+  close?: () => void;
+}
+
+/** Fills a pop-up's header, one row: back, badge, title and subtitle, note, close. */
+export function renderHeader(header: HTMLElement, options: PopHeader): void {
+  const button = (className: string, text: string, label: string, run: () => void) => {
+    const node = el('button', className, text);
+    node.type = 'button';
+    node.setAttribute('aria-label', label);
+    node.addEventListener('click', run);
+    return node;
+  };
+  const parts: HTMLElement[] = [];
+  if (options.back) parts.push(button('sheet-back', '‹', 'Back', options.back));
+  if (options.badge) {
+    const badge = el('span', 'sheet-badge');
+    badge.append(options.badge);
+    parts.push(badge);
+  }
+  const titles = el('div', 'sheet-titles');
+  if (options.title) {
+    const title = el('h2', 'sheet-title', options.title);
+    if (options.titleId) title.id = options.titleId;
+    titles.append(title);
+  }
+  if (options.subtitle) titles.append(el('p', 'sheet-subtitle', options.subtitle));
+  parts.push(titles);
+  if (options.note) parts.push(el('span', 'sheet-note', options.note));
+  if (options.close) parts.push(button('sheet-close', '✕', 'Close', options.close));
+  header.replaceChildren(...parts);
+}
+
 let refusal: (reason: string) => void = () => undefined;
 
 /** How a tap on an unavailable action says why (a toast and a sound, in the game). */
@@ -44,11 +89,17 @@ function actionButton(action: PopAction, primary: boolean): HTMLButtonElement {
   return button;
 }
 
+/** Changes the label of action `id` in the footer of the pop-up holding `body`. */
+export function relabelAction(body: HTMLElement, id: string, label: string): void {
+  const node = body.closest('.sheet')?.querySelector(`[data-action="${id}"] .pop-label`);
+  if (node) node.textContent = label;
+}
+
 /**
  * The footer's default action: the one marked primary, or else the only
  * action that can be done (unless it is destructive); never one that cannot.
  */
-export function defaultAction(actions: readonly PopAction[]): PopAction | null {
+function defaultAction(actions: readonly PopAction[]): PopAction | null {
   const usable = actions.filter((a) => !a.unavailable);
   const marked = usable.find((a) => a.primary);
   if (marked) return marked;

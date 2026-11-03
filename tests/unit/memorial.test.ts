@@ -1,11 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { bareName, buildMemorial, dayOf, entryKey, findKiller, lastWords, memorialKey, skillValue } from '../../web/src/play/memorial.ts';
-import type { MonsterState, PlayerState } from '../../web/src/render/snapshot.ts';
-
-const monster = (id: number, name: string, x: number, y: number): MonsterState => ({
-  id, name, ch: 112, attr: 2, x, y, hp: 10, maxhp: 10, asleep: 0, afraid: 0, unique: 0, status: -1, level: 12,
-});
+import { bareName, buildMemorial, dayOf, findKiller, lastWords, memorialKey, skillValue } from '../../web/src/play/memorial.ts';
+import type { PlayerState } from '../../web/src/render/snapshot.ts';
+import { monster } from './fixtures.ts';
 
 const player: PlayerState = {
   name: 'Hurin', race: 'Human', cls: 'Warrior', title: 'Swordsman', lev: 20, exp: 9000, au: 450, chp: -3, mhp: 180, csp: 0, msp: 0, csane: 50, msane: 50,
@@ -16,9 +13,9 @@ describe('memorial', () => {
   it('matches the killer by name, ignoring the article, nearest first', () => {
     assert.equal(bareName('a Cave troll'), 'cave troll');
     assert.equal(bareName("Grip, Farmer Maggot's Dog"), "grip, farmer maggot's dog");
-    const far = monster(1, 'Cave troll', 10, 10);
-    const near = monster(2, 'Cave troll', 5, 6);
-    assert.equal(findKiller('a Cave troll', [far, near, monster(3, 'Orc', 5, 5)], 5, 5), near);
+    const far = monster({ id: 1, name: 'Cave troll', x: 10, y: 10 });
+    const near = monster({ id: 2, name: 'Cave troll', x: 5, y: 6 });
+    assert.equal(findKiller('a Cave troll', [far, near, monster({ id: 3, name: 'Orc', x: 5, y: 5 })], 5, 5), near);
     assert.equal(findKiller('starvation', [far], 5, 5), null);
     assert.equal(findKiller('', [far], 5, 5), null);
   });
@@ -42,15 +39,15 @@ describe('memorial', () => {
     assert.equal(skillValue(12345), '12.345');
     assert.equal(skillValue(1000), '1.000');
     assert.equal(skillValue(-500), '−0.500');
-    assert.equal(memorialKey({ name: 'Hurin', turn: 900 }), entryKey({ name: 'Hurin', turns: 900 }));
+    assert.equal(memorialKey({ name: 'Hurin', turn: 900 }), 'Hurin@900');
   });
 
   it('gathers the hero, their gear and their foe', () => {
-    const troll = monster(7, 'Cave troll', 4, 5);
+    const troll = monster({ id: 7, name: 'Cave troll', x: 4, y: 5 });
     const memorial = buildMemorial({
       player,
       character: {
-        ready: 1, stats: [{ name: 'STR', use: ' 18/50', top: '18/50', drained: 0 }], god: 'Tulkas', exp: 9000, maxExp: 9000, nextExp: 10000,
+        ready: 1, stats: [{ name: 'STR', use: ' 18/50', top: '18/50', drained: 0 }], god: 'Tulkas', exp: 9000, nextExp: 10000,
         toHit: 12, toDam: 15, ac: 40, toAc: 10, blows: 3, shots: 1, infra: 20, maxDepth: 30, turn: 900,
         skills: [{ name: 'Combat', value: 5000 }, { name: 'Sword-mastery', value: 20000 }], abilities: ['Precision'],
       },

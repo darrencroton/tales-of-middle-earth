@@ -28,8 +28,8 @@ interface PhraseNote {
 }
 
 const DEFAULT_SECTIONS: Record<Role, SectionKind[]> = {
-  drone: ['intro', 'a', 'b', 'breath', 'outro'],
-  pad: ['intro', 'a', 'b', 'breath', 'outro'],
+  drone: ['intro', 'a', 'b', 'breath'],
+  pad: ['intro', 'a', 'b', 'breath'],
   bass: ['a', 'b', 'breath'],
   arp: ['a', 'b', 'breath'],
   melody: ['a', 'b', 'breath'],
@@ -38,7 +38,7 @@ const DEFAULT_SECTIONS: Record<Role, SectionKind[]> = {
   perc: ['a', 'b'],
 };
 
-const ALL_SECTIONS: SectionKind[] = ['intro', 'a', 'b', 'breath', 'outro'];
+const ALL_SECTIONS: SectionKind[] = ['intro', 'a', 'b', 'breath'];
 
 const DEFAULT_PAN: Record<Role, number> = {
   drone: 0,
@@ -159,7 +159,7 @@ export class Composer {
 
   /** Chord degree for a bar of a section. */
   chordAt(section: PieceSection, bar: number): number {
-    if (section.kind === 'intro' || section.kind === 'outro') return this.theme.chords[0];
+    if (section.kind === 'intro') return this.theme.chords[0];
     return this.theme.chords[bar % this.theme.chords.length];
   }
 
@@ -211,7 +211,6 @@ export class Composer {
     const sections = layer.in ?? (layer.from !== undefined ? ALL_SECTIONS : DEFAULT_SECTIONS[layer.role]);
     if (!sections.includes(section)) return false;
     if (layer.from !== undefined && intensity < layer.from) return false;
-    if (layer.below !== undefined && intensity >= layer.below) return false;
     if (layer.every && globalBar % layer.every !== 0) return false;
     return true;
   }

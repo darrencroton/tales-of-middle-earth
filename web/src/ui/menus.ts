@@ -1,5 +1,5 @@
 import { readableColour } from '../render/colour.ts';
-import { isNotice, type MessageState } from '../render/snapshot.ts';
+import { hasWords, isNotice, type MessageState } from '../render/snapshot.ts';
 import type { VolumeLevel } from '../audio/audio.ts';
 import type { ExplorePace } from '../play/actions.ts';
 import {
@@ -12,12 +12,13 @@ import {
 } from '../settings.ts';
 import type { GlyphMode } from '../render/appearance.ts';
 import { MAX_ZOOM, MIN_ZOOM } from '../render/map.ts';
-import { el, navButton, section } from './dom.ts';
+import { el, navButton, section, stepper } from './dom.ts';
 import { runElements } from './adventure.ts';
+import { relabelAction } from './popup.ts';
 import type { RunOptions } from '../flow/runoptions.ts';
 import type { Sheets } from './sheet.ts';
 
-export interface MenuItem {
+interface MenuItem {
   label: string;
   icon: string;
   hint?: string;
@@ -186,7 +187,7 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
 export function openHistory(sheets: Sheets, messages: readonly MessageState[], palette: readonly string[]): void {
   const list = el('ol', 'history');
   for (const m of [...messages].reverse()) {
-    if (!/[^\s=\-_~*]/.test(m.text)) continue;
+    if (!hasWords(m.text)) continue;
     const item = el('li', isNotice(m) ? 'notice' : undefined, m.text);
     if (m.color !== 1 && !isNotice(m)) item.style.color = readableColour(palette[m.color] ?? '');
     list.append(item);
@@ -280,8 +281,6 @@ export interface QuantityQuestion {
 /** Asks how many of a stack to use: a stepper starting at one, then the confirming button. */
 export function askQuantity(sheets: Sheets, question: QuantityQuestion): Promise<number | null> {
   return new Promise((resolve) => {
-    const max = Math.max(1, question.max);
-    let value = Math.max(1, Math.min(max, question.initial ?? 1));
     let settled = false;
     const finish = (n: number | null) => {
       if (settled) return;
@@ -290,29 +289,8 @@ export function askQuantity(sheets: Sheets, question: QuantityQuestion): Promise
     };
     const body = el('div', 'ask-quantity');
     body.append(el('p', 'muted', question.label));
-    const shown = el('span', 'stepper-value', String(value));
-    shown.setAttribute('aria-live', 'polite');
-    const button = (label: string, run: () => void, className = 'stepper-button') => {
-      const b = el('button', className, label);
-      b.type = 'button';
-      b.addEventListener('click', run);
-      return b;
-    };
-    const set = (n: number) => {
-      value = Math.max(1, Math.min(max, n));
-      shown.textContent = String(value);
-      const label = body.closest('.sheet')?.querySelector('[data-action="confirm"] .pop-label');
-      if (label) label.textContent = `${question.verb} ${value}`;
-    };
-    const stepper = el('div', 'stepper');
-    stepper.append(
-      button('−', () => set(value - 1)),
-      shown,
-      button('+', () => set(value + 1)),
-      button('1', () => set(1), 'stepper-button wide'),
-      button(`All ${max}`, () => set(max), 'stepper-button wide'),
-    );
-    body.append(stepper);
+    const amount = stepper(question.max, question.initial ?? 1, (n) => relabelAction(body, 'confirm', `${question.verb} ${n}`));
+    body.append(amount.element);
     sheets.open({
       title: question.title,
       body,
@@ -322,21 +300,16 @@ export function askQuantity(sheets: Sheets, question: QuantityQuestion): Promise
         { id: 'cancel', label: 'Cancel', run: () => sheets.back() },
         {
           id: 'confirm',
-          label: `${question.verb} ${value}`,
+          label: `${question.verb} ${amount.value}`,
           primary: !question.danger,
           danger: question.danger,
           run: () => {
-            finish(value);
+            finish(amount.value);
             sheets.back();
           },
         },
       ],
-      onKey: (e) => {
-        const step = e.key === 'ArrowLeft' || e.key === '-' ? -1 : e.key === 'ArrowRight' || e.key === '+' ? 1 : 0;
-        if (!step) return false;
-        set(value + step);
-        return true;
-      },
+      onKey: (e) => amount.handleKey(e),
       onClose: () => finish(null),
     });
   });

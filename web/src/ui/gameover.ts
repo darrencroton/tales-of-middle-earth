@@ -1,15 +1,13 @@
 import type { Chronicle } from '../play/chronicle.ts';
 import { returnsText } from '../play/lives.ts';
 import { dayOf, type Memorial, type MemorialFoe } from '../play/memorial.ts';
-import type { ScoreEntry } from '../render/snapshot.ts';
+import { FEET_PER_LEVEL, type ScoreEntry } from '../render/snapshot.ts';
 import { titleName } from './api.ts';
-import { el, navButton, section } from './dom.ts';
+import { count, el, navButton, section, stat } from './dom.ts';
 import { confirmSheet } from './menus.ts';
 import type { SheetAction, Sheets } from './sheet.ts';
 import { deedChips, fateLine, fateText, fellWhereWhen, foeChip, gearStrip, lastWordsList, type FallenHero, type FallenTab } from './memorial.ts';
 import { rowText, type TermRow } from './termparse.ts';
-
-export { fateText, fellWhere } from './memorial.ts';
 
 export interface Tomb {
   name: string;
@@ -42,12 +40,12 @@ export function parseTomb(rows: readonly TermRow[]): Tomb | null {
 }
 
 /** "28 October 2026", or the text as given when it is not a date. */
-export function longDate(iso: string): string {
+function longDate(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-export interface TombExtras {
+interface TombExtras {
   memorial: Memorial | null;
   tale: Chronicle | null;
   /** Advice for the next hero. */
@@ -68,7 +66,7 @@ export function tombElements(tomb: Tomb, extras: TombExtras): HTMLElement[] {
     el(
       'p',
       'gameover-where',
-      [m ? fellWhereWhen(m) : tomb.depth ? `at ${(tomb.depth * 50).toLocaleString('en-GB')} ft` : 'on the surface', m ? longDate(m.date) : tomb.date]
+      [m ? fellWhereWhen(m) : tomb.depth ? `at ${count(tomb.depth * FEET_PER_LEVEL)} ft` : 'on the surface', m ? longDate(m.date) : tomb.date]
         .filter(Boolean)
         .join(' · '),
     ),
@@ -93,18 +91,14 @@ export function tombElements(tomb: Tomb, extras: TombExtras): HTMLElement[] {
   ];
   const tale = m?.tale ?? extras.tale;
   if (tale) {
-    stats.push(['Creatures slain', tale.kills.toLocaleString('en-GB')]);
+    stats.push(['Creatures slain', count(tale.kills)]);
     if (tale.uniques.length) stats.push(['Legends slain', String(tale.uniques.length)]);
-    stats.push(['Deepest', tale.deepestFeet ? `${tale.deepestFeet.toLocaleString('en-GB')} ft` : 'The surface']);
+    stats.push(['Deepest', tale.deepestFeet ? `${count(tale.deepestFeet)} ft` : 'The surface']);
     if (tale.mightiest) stats.push(['Mightiest foe', titleName(tale.mightiest.name)]);
     if (tale.returns) stats.push(['Returned from death', returnsText(tale.returns)]);
   }
   if (m) stats.push(['Days survived', String(dayOf(m.turn))]);
-  for (const [label, value] of stats) {
-    const node = el('div', 'stat');
-    node.append(el('span', 'stat-label', label), el('span', 'stat-value', value));
-    grid.append(node);
-  }
+  for (const [label, value] of stats) grid.append(stat(label, value));
   parts.push(section('Your tale', grid));
   if (tale?.uniques.length) {
     parts.push(el('p', 'tale-legends', `Slew ${tale.uniques.slice(0, 4).join(', ')}${tale.uniques.length > 4 ? ' and more' : ''}.`));
@@ -134,7 +128,7 @@ function scoreDate(day: string): string {
   return new Date(2000 + Number(m[3]), Number(m[1]) - 1, Number(m[2])).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-export interface FameCardActions {
+interface FameCardActions {
   /** Opens the hero as they were at the end (only when that was kept). */
   lookBack?(): void;
   /** Starts the same race, class and attributes again (only when tome2 can). */
@@ -156,9 +150,9 @@ export function openFameCard(sheets: Sheets, hero: FallenHero & { entry: ScoreEn
   fact('The end', fateText(e));
   fact('When', m ? longDate(m.date) : scoreDate(e.day));
   if (m) fact('Days', String(dayOf(m.turn)));
-  fact('Deepest', e.maxDepth > 0 ? `${(e.maxDepth * 50).toLocaleString('en-GB')} ft` : 'The surface');
-  if (m?.tale) fact('Foes slain', m.tale.kills.toLocaleString('en-GB'));
-  fact('Score', e.points.toLocaleString('en-GB'));
+  fact('Deepest', e.maxDepth > 0 ? `${count(e.maxDepth * FEET_PER_LEVEL)} ft` : 'The surface');
+  if (m?.tale) fact('Foes slain', count(m.tale.kills));
+  fact('Score', count(e.points));
   const body = el('div', 'adventurer-detail');
   body.append(facts);
   const buttons: SheetAction[] = [];
@@ -209,7 +203,7 @@ export function hallOfFameElements(
   onOpen: (entry: ScoreEntry, index: number) => void,
 ): HTMLElement[] {
   if (entries.length === 0) {
-    return [el('p', 'fame-empty', 'No adventure has ended yet. Heroes who fall, and adventures abandoned, are remembered here.')];
+    return [el('p', 'tv-empty', 'No adventure has ended yet. Heroes who fall, and adventures abandoned, are remembered here.')];
   }
   const list = el('ol', 'fame-list');
   entries.forEach((entry, i) => {
@@ -217,7 +211,7 @@ export function hallOfFameElements(
     const row = el('button', `fame-row${i === highlight ? ' current' : ''}`);
     row.type = 'button';
     row.dataset.nav = '';
-    const main = el('span', 'fame-main');
+    const main = el('span', 'row-text');
     const who = [entry.race, entry.cls].filter(Boolean).join(' ');
     main.append(
       el('span', 'fame-name', entry.name),
@@ -227,7 +221,7 @@ export function hallOfFameElements(
     row.append(
       el('span', 'fame-rank', String(i + 1)),
       main,
-      el('span', 'fame-points', entry.points.toLocaleString('en-GB')),
+      el('span', 'fame-points', count(entry.points)),
       el('span', 'fame-open', '›'),
     );
     row.addEventListener('click', () => onOpen(entry, i));

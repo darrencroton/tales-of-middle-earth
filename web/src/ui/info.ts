@@ -1,14 +1,13 @@
 import { directionDigit } from '../play/prompts.ts';
-import { readableColour } from '../render/colour.ts';
 import type { MapPoint } from '../render/map.ts';
 import { isAlly, isHostile, isNeutral, type LevelQuest, type MonsterState, type ObjectState } from '../render/snapshot.ts';
-import { capitalise, descriptionParagraphs, titleName, type GameApi } from './api.ts';
-import { el, glyph, iconText, leadIn } from './dom.ts';
+import { capitalise, description, itemGlyph, NOT_NOW, titleName, type GameApi } from './api.ts';
+import { el, fraction, iconText, leadIn } from './dom.ts';
 import { openItem } from './inventory.ts';
+import { recallLines, recallParagraphs } from './memorial.ts';
 import type { SheetAction, Sheets } from './sheet.ts';
 
-
-export function healthWord(hp: number, maxhp: number): string {
+function healthWord(hp: number, maxhp: number): string {
   if (maxhp <= 0) return 'unhurt';
   const pct = (100 * Math.max(0, hp)) / maxhp;
   if (pct >= 100) return 'unhurt';
@@ -38,7 +37,7 @@ export function openMonster(api: GameApi, m: MonsterState): void {
   const snap = api.snapshot();
   const body = el('div', 'monster-detail');
   const health = el('div', `health ${isAlly(m) ? 'ally' : ''}`);
-  health.style.setProperty('--fill', `${Math.max(0, Math.min(100, (100 * m.hp) / Math.max(1, m.maxhp))).toFixed(1)}%`);
+  health.style.setProperty('--fill', `${(fraction(m.hp, m.maxhp) * 100).toFixed(1)}%`);
   health.append(el('span', undefined, capitalise(healthWord(m.hp, m.maxhp))));
   body.append(health);
 
@@ -50,7 +49,7 @@ export function openMonster(api: GameApi, m: MonsterState): void {
     id,
     label,
     primary,
-    unavailable: snap?.atCommand ? api.refusal(command) : 'Finish what you are doing first.',
+    unavailable: snap?.atCommand ? api.refusal(command) : NOT_NOW,
     run: () => {
       const digit = snap && directionDigit(m.x - snap.px, m.y - snap.py);
       if (digit) api.converse(command, digit);
@@ -72,30 +71,12 @@ export function openMonster(api: GameApi, m: MonsterState): void {
         },
       ];
 
-  const recall = api.engine.monsterRecall(m.id);
-  const description = el('div', 'description recall');
-  let paragraph = el('p');
-  for (const [attr, text] of recall?.text ?? []) {
-    const pieces = text.split('\n');
-    pieces.forEach((piece, i) => {
-      if (i > 0 && paragraph.textContent?.trim()) {
-        description.append(paragraph);
-        paragraph = el('p');
-      }
-      if (!piece) return;
-      const span = el('span', undefined, piece);
-      if (attr !== 1) span.style.color = readableColour(api.palette()[attr] ?? '');
-      paragraph.append(span);
-    });
-  }
-  if (paragraph.textContent?.trim()) description.append(paragraph);
-  if (!description.childElementCount) description.append(el('p', 'muted', 'You know nothing more about this creature.'));
-  body.append(description);
+  body.append(recallParagraphs(recallLines(api.engine, api.palette(), m.id), 'You know nothing more about this creature.'));
 
   api.sheets.open({
     title: titleName(m.name),
     subtitle: monsterSummary(m),
-    badge: glyph(m.ch, api.palette()[m.attr] ?? '#fff'),
+    badge: itemGlyph(api, m),
     body,
     actions,
     kind: 'card',
@@ -128,14 +109,11 @@ export function openFloorObject(api: GameApi, o: ObjectState): void {
           },
         },
       ];
-  const description = el('div', 'description');
-  const paragraphs = descriptionParagraphs(api.engine.objectDescription(-o.id));
-  for (const p of paragraphs.length ? paragraphs : ['You know nothing more about this item yet.']) description.append(el('p', undefined, p));
-  body.append(description);
+  body.append(description(api.engine.objectDescription(-o.id), 'You know nothing more about this item yet.'));
   api.sheets.open({
     title: titleName(o.name),
     subtitle: 'On the floor',
-    badge: glyph(o.ch, api.palette()[o.attr] ?? '#fff'),
+    badge: itemGlyph(api, o),
     body,
     actions,
     kind: 'card',
@@ -197,7 +175,7 @@ export function questParagraphs(quest: LevelQuest): string[] {
 }
 
 /** How a quest begins or ends, told in its card: the heading under its title, what tome2 said then, and whether to say what it asks. */
-export interface QuestMoment {
+interface QuestMoment {
   subtitle: string;
   scene: readonly string[];
   task: boolean;

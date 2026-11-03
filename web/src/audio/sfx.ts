@@ -1,4 +1,4 @@
-import type { AudioCore } from './core.ts';
+import { filter, gain, osc, type AudioCore } from './core.ts';
 import type { Cue, CueId, Element, LauncherKind, SpellTone, WeaponKind } from './cues.ts';
 import { degreeToMidi, midiToFrequency, SCALES, type ScaleName } from './theory.ts';
 import { playVoice } from './voices.ts';
@@ -133,6 +133,14 @@ const ELEMENT_NOISE: Record<Element, { freq: number; q: number; brown: boolean; 
   earth: { freq: 300, q: 0.7, brown: true, gain: 1.6 },
 };
 
+/** What a cue's sound is built from: the cue, its start time, its strength and its distance factor. */
+interface CueArgs {
+  cue: Cue;
+  t: number;
+  s: number;
+  far: number;
+}
+
 /**
  * Synthesised sound effects. Every sound is built from a few layers (a
  * body, a transient, a tail) with small random variations, and musical
@@ -144,6 +152,86 @@ export class SoundEffects {
   /** Gain applied to every layer of the sound being built. */
   private trim = 1;
 
+  /** The sound each cue makes; a missing id is a compile error. */
+  private readonly recipes: Record<CueId, (args: CueArgs) => void> = {
+    hit: ({ cue, t, s }) => this.hit(t, s, false, cue.variant as WeaponKind | undefined),
+    crit: ({ cue, t }) => this.hit(t, 1, true, cue.variant as WeaponKind | undefined),
+    miss: ({ t }) => this.whoosh(t, 0.16, 650, 2600, 0.17),
+    hurt: ({ t, s }) => this.hurt(t, s),
+    ail: ({ t }) => this.ail(t),
+    claw: ({ t, s }) => this.claw(t, s),
+    bite: ({ t, s }) => this.bite(t, s),
+    parry: ({ t }) => this.whoosh(t, 0.1, 450, 1500, 0.2),
+    kill: ({ cue, t }) => this.kill(t, cue.variant as WeaponKind | undefined),
+    'kill-unique': ({ cue, t }) => this.killUnique(t, cue.variant as WeaponKind | undefined),
+    impact: ({ t, s }) => {
+      this.thump(t, 0.25 * s, 110, 55, 0.1);
+      return this.noise(this.out(rand(-0.2, 0.2), 1), t, { type: 'bandpass', freq: 1200, q: 1, level: 0.35 * s, decay: 0.025 });
+    },
+    'door-open': ({ t, far }) => this.door(t, far, false),
+    'door-close': ({ t, far }) => this.doorClose(t, far),
+    'door-bash': ({ t }) => this.doorBash(t),
+    'door-locked': ({ t }) => this.rattle(t),
+    unlock: ({ t }) => this.unlock(t),
+    'distant-door': ({ t }) => this.door(t, 0.35, true),
+    'stairs-down': ({ t }) => this.stairs(t, true),
+    'stairs-up': ({ t }) => this.stairs(t, false),
+    travel: ({ t }) => this.windGust(t),
+    pickup: ({ t }) => this.pickup(t),
+    gold: ({ t, s }) => this.coins(t, s),
+    buy: ({ t }) => this.coins(t, 0.35),
+    levelup: ({ t }) => this.levelUp(t),
+    learn: ({ t }) => this.learn(t),
+    quaff: ({ t }) => this.quaff(t),
+    read: ({ t }) => this.read(t),
+    eat: ({ t }) => this.eat(t),
+    cast: ({ cue, t }) => this.cast(t, cue.variant as SpellTone | undefined),
+    fizzle: ({ t }) => this.fizzle(t),
+    fire: ({ cue, t }) => this.shoot(t, cue.variant as LauncherKind | undefined),
+    throw: ({ t }) => this.whoosh(t, 0.22, 400, 1600, 0.22),
+    zap: ({ t }) => this.zap(t),
+    activate: ({ t }) => this.activate(t),
+    wield: ({ t }) => this.wield(t),
+    takeoff: ({ t }) => this.rustle(t, 0.12),
+    drop: ({ t }) => this.drop(t),
+    fuel: ({ t }) => this.pour(t),
+    disarm: ({ t }) => this.unlock(t),
+    tunnel: ({ t }) => this.tunnel(t),
+    heal: ({ t }) => this.heal(t),
+    teleport: ({ t }) => this.teleport(t),
+    trap: ({ t }) => this.trap(t),
+    secret: ({ t }) => this.secret(t),
+    rumble: ({ t }) => this.rumble(t),
+    breath: ({ cue, t }) => this.breath(t, cue.element ?? 'fire'),
+    'spell-monster': ({ t }) => this.monsterSpell(t),
+    shriek: ({ t }) => this.shriek(t),
+    danger: ({ t }) => this.danger(t),
+    unique: ({ t }) => this.unique(t),
+    death: ({ t }) => this.death(t),
+    returned: ({ t }) => this.returned(t),
+    shop: ({ t }) => this.shopBell(t),
+    deny: ({ t }) => this.tone(this.out(0, 1), t, { type: 'sine', freq: 220, to: 170, glide: 0.12, level: 0.12, decay: 0.08 }),
+    poisoned: ({ t }) => this.sickly(t),
+    confused: ({ t }) => this.warble(t, 6),
+    hallucinate: ({ t }) => this.warble(t, 2.5),
+    blind: ({ t }) => this.noise(this.out(0, 1), t, { type: 'lowpass', freq: 3000, to: 400, glide: 0.6, level: 0.18, attack: 0.05, decay: 0.25, brown: true }),
+    paralyzed: ({ t }) => this.freeze(t),
+    afraid: ({ t }) => this.shiver(t),
+    stun: ({ t }) => this.stun(t),
+    cut: ({ t }) => this.noise(this.out(0.2, 1), t, { type: 'highpass', freq: 2500, to: 6000, glide: 0.1, level: 0.12, attack: 0.005, decay: 0.05 }),
+    haste: ({ t }) => this.whoosh(t, 0.4, 300, 3500, 0.2),
+    slow: ({ t }) => this.slow(t),
+    cured: ({ t }) => this.chord(t, [0, 4], 0.7, 0.85, 'glass', 1),
+    hungry: ({ t }) => this.growl(t),
+    bolt: ({ cue, t }) => this.bolt(t, cue.element ?? 'magic'),
+    explosion: ({ cue, t }) => this.explosion(t, cue.element ?? 'fire'),
+    heartbeat: ({ t, s }) => this.heartbeat(t, s),
+    'ui-open': ({ t }) => this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 1400, to: 2600, glide: 0.08, q: 0.6, level: 0.035, attack: 0.03, decay: 0.04 }),
+    'ui-close': ({ t }) => this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 2400, to: 1200, glide: 0.08, q: 0.6, level: 0.03, attack: 0.02, decay: 0.035 }),
+    quest: ({ t }) => this.fanfare(t),
+    save: ({ t }) => this.closeBook(t),
+  };
+
   constructor(core: AudioCore) {
     this.core = core;
   }
@@ -154,7 +242,7 @@ export class SoundEffects {
     const far = cue.distance ? Math.max(0.15, 1 - cue.distance / 22) : 1;
     this.trim = Math.pow(10, (TRIM_DB[cue.id] ?? 0) / 20);
     try {
-      this.dispatch(cue, t, s, far);
+      this.recipes[cue.id]({ cue, t, s, far });
       const duck = DUCK[cue.id];
       if (duck) this.core.duck(t, duck[0], duck[1]);
     } catch (err) {
@@ -164,163 +252,10 @@ export class SoundEffects {
     }
   }
 
-  private dispatch(cue: Cue, t: number, s: number, far: number): void {
-    switch (cue.id) {
-      case 'hit':
-        return this.hit(t, s, false, cue.variant as WeaponKind | undefined);
-      case 'crit':
-        return this.hit(t, 1, true, cue.variant as WeaponKind | undefined);
-      case 'miss':
-        return this.whoosh(t, 0.16, 650, 2600, 0.17);
-      case 'hurt':
-        return this.hurt(t, s);
-      case 'ail':
-        return this.ail(t);
-      case 'claw':
-        return this.claw(t, s);
-      case 'bite':
-        return this.bite(t, s);
-      case 'parry':
-        return this.whoosh(t, 0.1, 450, 1500, 0.2);
-      case 'kill':
-        return this.kill(t, cue.variant as WeaponKind | undefined);
-      case 'kill-unique':
-        return this.killUnique(t, cue.variant as WeaponKind | undefined);
-      case 'impact':
-        this.thump(t, 0.25 * s, 110, 55, 0.1);
-        return this.noise(this.out(rand(-0.2, 0.2), 1), t, { type: 'bandpass', freq: 1200, q: 1, level: 0.35 * s, decay: 0.025 });
-      case 'door-open':
-        return this.door(t, far, false);
-      case 'door-close':
-        return this.doorClose(t, far);
-      case 'door-bash':
-        return this.doorBash(t);
-      case 'door-locked':
-        return this.rattle(t);
-      case 'unlock':
-        return this.unlock(t);
-      case 'distant-door':
-        return this.door(t, 0.35, true);
-      case 'stairs-down':
-        return this.stairs(t, true);
-      case 'stairs-up':
-        return this.stairs(t, false);
-      case 'travel':
-        return this.windGust(t);
-      case 'pickup':
-        return this.pickup(t);
-      case 'gold':
-        return this.coins(t, s);
-      case 'buy':
-        return this.coins(t, 0.35);
-      case 'levelup':
-        return this.levelUp(t);
-      case 'learn':
-        return this.learn(t);
-      case 'quaff':
-        return this.quaff(t);
-      case 'read':
-        return this.read(t);
-      case 'eat':
-        return this.eat(t);
-      case 'cast':
-        return this.cast(t, cue.variant as SpellTone | undefined);
-      case 'fizzle':
-        return this.fizzle(t);
-      case 'fire':
-        return this.shoot(t, cue.variant as LauncherKind | undefined);
-      case 'throw':
-        return this.whoosh(t, 0.22, 400, 1600, 0.22);
-      case 'zap':
-        return this.zap(t);
-      case 'activate':
-        return this.activate(t);
-      case 'wield':
-        return this.wield(t);
-      case 'takeoff':
-        return this.rustle(t, 0.12);
-      case 'drop':
-        return this.drop(t);
-      case 'fuel':
-        return this.pour(t);
-      case 'disarm':
-        return this.unlock(t);
-      case 'tunnel':
-        return this.tunnel(t);
-      case 'heal':
-        return this.heal(t);
-      case 'teleport':
-        return this.teleport(t);
-      case 'trap':
-        return this.trap(t);
-      case 'secret':
-        return this.secret(t);
-      case 'rumble':
-        return this.rumble(t);
-      case 'breath':
-        return this.breath(t, cue.element ?? 'fire');
-      case 'spell-monster':
-        return this.monsterSpell(t);
-      case 'shriek':
-        return this.shriek(t);
-      case 'danger':
-        return this.danger(t);
-      case 'unique':
-        return this.unique(t);
-      case 'death':
-        return this.death(t);
-      case 'returned':
-        return this.returned(t);
-      case 'shop':
-        return this.shopBell(t);
-      case 'deny':
-        return this.tone(this.out(0, 1), t, { type: 'sine', freq: 220, to: 170, glide: 0.12, level: 0.12, decay: 0.08 });
-      case 'poisoned':
-        return this.sickly(t);
-      case 'confused':
-        return this.warble(t, 6);
-      case 'hallucinate':
-        return this.warble(t, 2.5);
-      case 'blind':
-        return this.noise(this.out(0, 1), t, { type: 'lowpass', freq: 3000, to: 400, glide: 0.6, level: 0.18, attack: 0.05, decay: 0.25, brown: true });
-      case 'paralyzed':
-        return this.freeze(t);
-      case 'afraid':
-        return this.shiver(t);
-      case 'stun':
-        return this.stun(t);
-      case 'cut':
-        return this.noise(this.out(0.2, 1), t, { type: 'highpass', freq: 2500, to: 6000, glide: 0.1, level: 0.12, attack: 0.005, decay: 0.05 });
-      case 'haste':
-        return this.whoosh(t, 0.4, 300, 3500, 0.2);
-      case 'slow':
-        return this.slow(t);
-      case 'cured':
-        return this.chord(t, [0, 4], 0.7, 0.85, 'glass', 1);
-      case 'hungry':
-        return this.growl(t);
-      case 'bolt':
-        return this.bolt(t, cue.element ?? 'magic');
-      case 'explosion':
-        return this.explosion(t, cue.element ?? 'fire');
-      case 'heartbeat':
-        return this.heartbeat(t, s);
-      case 'ui-open':
-        return this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 1400, to: 2600, glide: 0.08, q: 0.6, level: 0.035, attack: 0.03, decay: 0.04 });
-      case 'ui-close':
-        return this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 2400, to: 1200, glide: 0.08, q: 0.6, level: 0.03, attack: 0.02, decay: 0.035 });
-      case 'quest':
-        return this.fanfare(t);
-      case 'save':
-        return this.closeBook(t);
-    }
-  }
-
   /* Building blocks */
 
   private out(pan: number, level: number): GainNode {
-    const g = this.core.ctx.createGain();
-    g.gain.value = level * this.trim;
+    const g = gain(this.core, level * this.trim);
     const p = this.core.ctx.createStereoPanner();
     p.pan.value = Math.max(-1, Math.min(1, pan));
     g.connect(p);
@@ -372,10 +307,8 @@ export class SoundEffects {
   private ring(dest: AudioNode, t: number, freq: number, ratio: number, index: number, level: number, decay: number): void {
     const ctx = this.core.ctx;
     const end = t + decay * 7;
-    const carrier = ctx.createOscillator();
-    carrier.frequency.value = freq;
-    const mod = ctx.createOscillator();
-    mod.frequency.value = freq * ratio;
+    const carrier = osc(this.core, 'sine', freq, t, end);
+    const mod = osc(this.core, 'sine', freq * ratio, t, end);
     const depth = ctx.createGain();
     depth.gain.setValueAtTime(freq * index, t);
     depth.gain.setTargetAtTime(0, t, decay * 0.5);
@@ -387,10 +320,6 @@ export class SoundEffects {
     g.gain.setTargetAtTime(0, t + 0.002, decay);
     carrier.connect(g);
     g.connect(dest);
-    carrier.start(t);
-    mod.start(t);
-    carrier.stop(end);
-    mod.stop(end);
   }
 
   /** A low blow: a falling sine, felt more than heard, and a short knock of noise a few octaves up, toneless, which carries it on a phone speaker. */
@@ -512,9 +441,7 @@ export class SoundEffects {
 
   private door(t: number, far: number, distant: boolean): void {
     const dest = this.out(rand(-0.3, 0.3), far * (distant ? 0.6 : 1));
-    const muffle = this.core.ctx.createBiquadFilter();
-    muffle.type = 'lowpass';
-    muffle.frequency.value = distant ? 700 : 5000;
+    const muffle = filter(this.core, 'lowpass', distant ? 700 : 5000, 1);
     muffle.connect(dest);
     this.noise(muffle, t, { type: 'highpass', freq: 2500, level: 0.12, decay: 0.008 });
     const ctx = this.core.ctx;
@@ -524,16 +451,12 @@ export class SoundEffects {
     o.type = 'sawtooth';
     o.frequency.setValueAtTime(base, t + 0.03);
     o.frequency.linearRampToValueAtTime(base * rand(1.3, 1.7), t + 0.03 + length);
-    const wobble = ctx.createOscillator();
-    wobble.frequency.value = rand(18, 30);
-    const wobbleDepth = ctx.createGain();
-    wobbleDepth.gain.value = base * 0.35;
+    const end = t + 0.1 + length * 1.6;
+    const wobble = osc(this.core, 'sine', rand(18, 30), t + 0.03, end);
+    const wobbleDepth = gain(this.core, base * 0.35);
     wobble.connect(wobbleDepth);
     wobbleDepth.connect(o.frequency);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = rand(650, 950);
-    bp.Q.value = 6;
+    const bp = filter(this.core, 'bandpass', rand(650, 950), 6);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t + 0.03);
     g.gain.linearRampToValueAtTime(0.2, t + 0.03 + length * 0.3);
@@ -541,11 +464,8 @@ export class SoundEffects {
     o.connect(bp);
     bp.connect(g);
     g.connect(muffle);
-    const end = t + 0.1 + length * 1.6;
     o.start(t + 0.03);
-    wobble.start(t + 0.03);
     o.stop(end);
-    wobble.stop(end);
     this.tone(muffle, t + 0.02 + length, { freq: 85, to: 60, glide: 0.05, level: 0.12, decay: 0.07 });
   }
 
@@ -774,10 +694,7 @@ export class SoundEffects {
 
   private zap(t: number): void {
     const dest = this.out(0, 1);
-    const bp = this.core.ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 1800;
-    bp.Q.value = 1.2;
+    const bp = filter(this.core, 'bandpass', 1800, 1.2);
     bp.connect(dest);
     this.noise(bp, t, { type: 'bandpass', freq: 3000, to: 700, glide: 0.2, q: 1.5, level: 0.25, attack: 0.02, decay: 0.1 });
     for (let i = 0; i < 4; i++) this.noise(dest, t + i * 0.03, { type: 'highpass', freq: 3000, level: 0.012, decay: 0.006 });
@@ -830,16 +747,11 @@ export class SoundEffects {
     o.type = 'sawtooth';
     o.frequency.setValueAtTime(1500, t);
     o.frequency.linearRampToValueAtTime(2500, t + 0.3);
-    const vib = ctx.createOscillator();
-    vib.frequency.value = 13;
-    const depth = ctx.createGain();
-    depth.gain.value = 120;
+    const vib = osc(this.core, 'sine', 13, t, t + 0.8);
+    const depth = gain(this.core, 120);
     vib.connect(depth);
     depth.connect(o.frequency);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 2200;
-    bp.Q.value = 3;
+    const bp = filter(this.core, 'bandpass', 2200, 3);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(0.06, t + 0.05);
@@ -848,9 +760,7 @@ export class SoundEffects {
     bp.connect(g);
     g.connect(this.out(rand(-0.5, 0.5), 1));
     o.start(t);
-    vib.start(t);
     o.stop(t + 0.8);
-    vib.stop(t + 0.8);
   }
 
   private bolt(t: number, element: Element): void {
@@ -918,12 +828,8 @@ export class SoundEffects {
   private warble(t: number, rate: number): void {
     const ctx = this.core.ctx;
     const source = this.core.noiseSource(false);
-    const f = ctx.createBiquadFilter();
-    f.type = 'bandpass';
-    f.frequency.value = midiToFrequency(this.midi(4, 1));
-    f.Q.value = 9;
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = rate;
+    const f = filter(this.core, 'bandpass', midiToFrequency(this.midi(4, 1)), 9);
+    const lfo = osc(this.core, 'sine', rate, t, t + 1.6);
     const depth = ctx.createGain();
     depth.gain.setValueAtTime(0, t);
     depth.gain.linearRampToValueAtTime(900, t + 0.6);
@@ -937,9 +843,7 @@ export class SoundEffects {
     f.connect(g);
     g.connect(this.out(0, 1));
     source.start(t, Math.random() * 1.5);
-    lfo.start(t);
     source.stop(t + 1.6);
-    lfo.stop(t + 1.6);
   }
 
   /** Held fast: chains drawn tight and a caught breath. */
@@ -967,26 +871,20 @@ export class SoundEffects {
   private growl(t: number): void {
     const ctx = this.core.ctx;
     const source = this.core.noiseSource(true);
-    const f = ctx.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = 380;
+    const f = filter(this.core, 'lowpass', 380, 1);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(0.35, t + 0.3);
     g.gain.setTargetAtTime(0, t + 0.7, 0.2);
-    const am = ctx.createOscillator();
-    am.frequency.value = 9;
-    const amDepth = ctx.createGain();
-    amDepth.gain.value = 0.2;
+    const am = osc(this.core, 'sine', 9, t, t + 2);
+    const amDepth = gain(this.core, 0.2);
     am.connect(amDepth);
     amDepth.connect(g.gain);
     source.connect(f);
     f.connect(g);
     g.connect(this.out(0, 1));
     source.start(t);
-    am.start(t);
     source.stop(t + 2);
-    am.stop(t + 2);
   }
 
   private shopBell(t: number): void {

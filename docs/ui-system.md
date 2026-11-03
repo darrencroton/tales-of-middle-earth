@@ -172,8 +172,8 @@ No key hints anywhere.
 - tome2 shows files (knowledge lists, help, notes, command help) 20 lines at a
   time. `ui/filepages.ts` gathers every page as tome2 shows it (one Space per
   idle, read at once, so the player only ever sees the whole file) and the
-  panel shows the whole file as one scrolling list (`renderViewer` in
-  `main.ts`).
+  panel shows the whole file as one scrolling list (`Reader.render` in
+  `ui/reader.ts`).
 - A file opened part-way down (a help link to an anchor) opens scrolled there.
 - Help links are tappable wherever they are: lettered links as rows, links
   inside the text as inline links. The help file itself is read from the
@@ -209,7 +209,8 @@ Four things look different and never stand for each other:
 | Swipe down on the header | Same as ✕. |
 | Escape | One step back: the previous sheet in the frame, or closes a card. |
 | Backspace | Back, when the frame has a previous sheet. |
-| Arrows / swipes | Move the highlight; Enter / tap chooses. Long lists scroll naturally. |
+| Arrows / swipes | Move the highlight; Enter / tap chooses. Long lists scroll naturally. Over a tome2 panel `TermView.handleKey` decides from what it shows: a native view's highlight, the reader's scroll and links, a tome2 menu without a cursor of its own; otherwise keys go to tome2. |
+| ← / → (or − / +) | Change a how-many stepper's number (`stepper` in `ui/dom.ts`: −, the number, +, All; shared by How many?, the shop's item cards and tome2's quantity card, where Enter then answers with it). Its buttons are not list rows, so ↑ / ↓ keep moving through the rows. |
 
 - **Context is kept.** Sheets covered by a tome2 screen (a reading command,
   `api.command`, an item action that only shows something) reopen when it

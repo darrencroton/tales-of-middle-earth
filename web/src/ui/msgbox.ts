@@ -1,7 +1,7 @@
 import { bracketChoices } from '../play/prompts.ts';
 import { rowText, type TermRow } from './termparse.ts';
 
-export interface BoxChoice {
+interface BoxChoice {
   label: string;
   key: string;
 }

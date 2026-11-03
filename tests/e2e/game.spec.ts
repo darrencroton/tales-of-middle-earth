@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import type { Page } from '@playwright/test';
-import { beginNewCharacter, createCharacter, expect, inDungeon, jumpToLevel, screenText, sendText, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
+import { abandonFromKeyboard, beginNewCharacter, continueAs, createCharacter, expect, inDungeon, jumpToLevel, saveAndQuit, sendText, summonBeside, test, untilVisible, waitAtCommand, waitForEngine, wizardCommand } from './helpers.ts';
 
 test('loads the engine and lays out the opening screen without overflow', { tag: ['@layout', '@smoke'] }, async ({ page }) => {
   const errors: string[] = [];
@@ -47,10 +47,7 @@ test('creates a character, saves and quits to the title with its music playing o
   expect(layout.toolbarOverflow).toBeLessThanOrEqual(1);
   expect(layout.toolbarRight).toBeLessThanOrEqual(layout.viewportWidth + 0.5);
 
-  await page.locator('#toolbar [data-action="menu"]').click();
-  await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
-  await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
-  await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+  await saveAndQuit(page);
   /* The title theme plays again at once, without another tap, and the page is not reloaded. */
   await expect.poll(() => page.evaluate(() => window.__tome!.audio.status.theme), { timeout: 15_000 }).toBe('title');
   expect(await page.evaluate(() => window.__tome!.audio.status.state)).toBe('running');
@@ -60,10 +57,8 @@ test('creates a character, saves and quits to the title with its music playing o
   const resume = page.locator('#title-screen .title-choice').first();
   await expect(resume).toContainText(`Continue as ${name}`);
   await expect(resume.locator('.title-choice-detail')).toContainText(/^Level 1 \S+ \S+ · \S/);
-  await resume.click();
+  await continueAs(page, name);
   await expect.poll(() => inDungeon(page), { timeout: 30_000 }).toBe(true);
-  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
-  await waitAtCommand(page);
   await expect(page.locator('#hud .hud-player .name')).toHaveText(name);
   expect(errors).toEqual([]);
 });
@@ -135,7 +130,7 @@ test('help opens from the title screen, with races and classes from the game its
   await page.goto('./');
   await waitForEngine(page);
   await page.locator('#title-screen [data-link="help"]').click();
-  await expect(page.locator('.sheet-title')).toHaveText('Help');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Help');
   await expect(page.locator('.sheet .row-button', { hasText: 'The original ToME manual' })).toHaveCount(0);
 
   /* Searching keeps the first result highlighted: the arrows move from it, and Enter in the field opens it. */
@@ -149,7 +144,7 @@ test('help opens from the title screen, with races and classes from the game its
   await page.keyboard.press('ArrowUp');
   await expect(page.locator('.help-search')).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(page.locator('.sheet-title')).toHaveText('Stairs and levels');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Stairs and levels');
   await page.keyboard.press('Escape');
   await page.locator('.help-search').fill('');
   await page.locator('.sheet .row-button', { hasText: 'Races and classes' }).click();
@@ -161,7 +156,7 @@ test('help opens from the title screen, with races and classes from the game its
   await expect(card.first().locator('h3')).toHaveText('Hobbit');
   await expect(card.first().locator('.birth-stat')).toHaveCount(6);
   await page.keyboard.press('Escape');
-  await expect(page.locator('.sheet-title')).toHaveText('Races and classes');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Races and classes');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
@@ -274,11 +269,7 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await createCharacter(page, 'Retiree');
   await seedScores(page);
 
-  await sendText(page, '\\Q');
-  await waitForScreen(page, /really want to quit/);
-  await sendText(page, 'y');
-  await waitForScreen(page, /verify QUITTING/);
-  await sendText(page, '@');
+  await abandonFromKeyboard(page);
   const finish = page.locator('#toolbar [data-action="finish"]');
   await expect(finish).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('.termview')).toContainText('Your adventure has ended');
@@ -286,7 +277,7 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('.termview .tale-tip')).toContainText('Next time');
   await expect(page.locator('#hud')).toBeHidden();
   await page.locator('#toolbar [data-action="fallen"]').click();
-  await expect(page.locator('.sheet-title')).toHaveText('Retiree');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Retiree');
   await page.locator('.sheet [data-tab="gear"]').click();
   await expect(page.locator('.sheet .sheet-section h3').first()).toHaveText('Equipment');
   await page.keyboard.press('Escape');
@@ -301,7 +292,7 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await page.keyboard.press('ArrowUp');
   await expect(page.locator('.termview .fame-row').nth(1)).toHaveClass(/is-active/);
   await page.keyboard.press('Enter');
-  await expect(page.locator('.sheet-title')).toHaveText('Grodon');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Grodon');
   await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText("Killed by Grip, Farmer Maggot's Dog in the town");
   await expect(page.locator('.sheet-fame-hero .sheet-action')).toHaveCount(0);
   await page.keyboard.press('Escape');
@@ -312,7 +303,7 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1);
 
   await page.locator('#title-screen [data-link="fame"]').click();
-  await expect(page.locator('.sheet-title')).toHaveText('Hall of Fame');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Hall of Fame');
   await expect(page.locator('.sheet .fame-row')).toHaveCount(3);
   await expect(page.locator('.sheet .fame-row').nth(1)).toContainText("Killed by Grip, Farmer Maggot's Dog in the town");
   await expect(page.locator('.sheet')).toContainText('Career');
@@ -322,7 +313,7 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('.sheet-fame-hero .sheet-title')).toHaveText('Bilbo');
   await expect(page.locator('.sheet-fame-hero .sheet-action')).toHaveText(['Remove']);
   await page.keyboard.press('Escape');
-  await expect(page.locator('.sheet-title')).toHaveText('Hall of Fame');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Hall of Fame');
   await page.locator('.sheet .fame-row').first().click();
   await page.locator('.sheet-fame-hero [data-action="remove"]').click();
   await page.locator('.sheet', { hasText: 'Remove Bilbo?' }).locator('.sheet-action.danger').click();
@@ -350,19 +341,13 @@ async function fallToWyrm(page: Page, until: string): Promise<void> {
     await summonBeside(page, 783);
   }
   expect((await nearest())?.reach, 'no wyrm could be summoned beside the hero').toBe(1);
-  const target = page.locator(until);
-  for (let i = 0; i < 30 && !(await target.isVisible()); i++) {
-    const row = (await screenText(page)).split('\n')[0] ?? '';
-    /* Wizard mode offers to cheat death once no life is left. */
-    if (/Die\?/.test(row)) await sendText(page, 'y');
-    else if (/-more-/.test(row)) await sendText(page, '\u001b');
-    else {
+  await untilVisible(page, page.locator(until), {
+    act: async () => {
       /* A step into the wyrm attacks it, whatever the toolbar offers first (the hero arrived on stairs). */
       const wyrm = await nearest();
       if (wyrm?.reach === 1 && (await page.evaluate(() => window.__tome!.engine.snapshot()!.atCommand))) await sendText(page, `\\;${wyrm.digit}`);
-    }
-    await page.waitForTimeout(300);
-  }
+    },
+  });
 }
 
 test('a hero in Adventure mode returns from death twice, and the third death is told and can be looked back on', async ({ page }) => {
@@ -430,12 +415,7 @@ test('a hero in Adventure mode returns from death twice, and the third death is 
   await death.locator('.card-button.primary').click();
 
   const finish = page.locator('#toolbar [data-action="finish"]');
-  for (let i = 0; i < 30 && !(await finish.isVisible()); i++) {
-    const row = (await screenText(page)).split('\n')[0] ?? '';
-    if (/Die\?/.test(row)) await sendText(page, 'y');
-    else if (/-more-/.test(row)) await sendText(page, '\u001b');
-    await page.waitForTimeout(300);
-  }
+  await untilVisible(page, finish);
   await expect(page.locator('.termview')).toContainText('Your tale');
   await page.locator('#toolbar [data-action="fallen"]').click();
   await expect(page.locator('.sheet-fallen .fallen-cause')).toContainText(killer);
@@ -454,20 +434,9 @@ test('a hero whose adventure ended can be looked back on and begun anew as a new
   await createCharacter(page, 'Anew');
   const stats = await page.evaluate(() => window.__tome!.engine.character()!.stats.map((s) => s.use));
 
-  await sendText(page, '\\Q');
-  await waitForScreen(page, /really want to quit/);
-  await sendText(page, 'y');
-  await waitForScreen(page, /verify QUITTING/);
-  await sendText(page, '@');
+  await abandonFromKeyboard(page);
   const finish = page.locator('#toolbar [data-action="finish"]');
-  for (let i = 0; i < 40 && !(await finish.isVisible()); i++) {
-    if (await page.locator('.prompt-card.death').isVisible()) {
-      await expect(page.locator('.prompt-card.death .card-button')).toHaveCount(1);
-      await page.locator('.prompt-card.death .card-button.primary').click();
-    }
-    if (/-more-/.test((await screenText(page)).split('\n')[0] ?? '')) await sendText(page, '\u001b');
-    await page.waitForTimeout(500);
-  }
+  await untilVisible(page, finish, { tries: 40, pause: 500 });
   await finish.click();
   await expect(page.locator('.termview .fame-row')).toHaveCount(1);
   await expect(page.locator('.termview .fame-row').first()).toHaveClass(/current/);
@@ -491,10 +460,7 @@ test('a hero whose adventure ended can be looked back on and begun anew as a new
   await expect(page.locator('#hud .hud-player .name')).toHaveText('Anew II');
   expect(await page.evaluate(() => window.__tome!.engine.character()!.stats.map((s) => s.use))).toEqual(stats);
 
-  await page.locator('#toolbar [data-action="menu"]').click();
-  await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
-  await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
-  await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+  await saveAndQuit(page);
   await waitForEngine(page);
   await expect(page.locator('#title-screen .title-choice').first()).toContainText('Continue as Anew II');
   await page.locator('#title-screen [data-link="fame"]').click();
@@ -526,10 +492,7 @@ test('the name prompt sits at the top of the screen, clear of the keyboard', { t
 test('saved heroes: Continue plays the last, the Game Roster lists them all, an abandoned hero stays in the Hall of Fame until removed, Delete removes only that hero', async ({ page }) => {
   test.setTimeout(300_000);
   const quit = async () => {
-    await page.locator('#toolbar [data-action="menu"]').click();
-    await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
-    await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
-    await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+    await saveAndQuit(page);
     await waitForEngine(page);
   };
   const savedFiles = () =>

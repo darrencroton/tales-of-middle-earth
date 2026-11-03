@@ -1,4 +1,5 @@
 import { displayName, hasMagic, hasPowers, magicArts, recentKey, recentLabel, recentSource, rememberRecent, skillActionName, techniques, usableRecents, validRecent, type RecentAction } from '../play/recent.ts';
+import { stripArticle } from '../play/text.ts';
 import type { PowerInfo, SpellInfo, SpellState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { el, iconText, section } from './dom.ts';
@@ -47,7 +48,7 @@ export class RecentStore {
   }
 }
 
-export interface MagicHandlers {
+interface MagicHandlers {
   /** Casts a spell or uses a power (and remembers it); `anyway` tries a spell the hero lacks the mana for. */
   run(entry: RecentAction, anyway?: boolean): void;
 }
@@ -124,13 +125,13 @@ function rowButton(label: string, hint: string, icon: string, key: string, run: 
 }
 
 /** The Magic panel's two views: spells and magic arts, and powers and techniques. */
-export type MagicTab = 'magic' | 'powers';
+type MagicTab = 'magic' | 'powers';
 
 const SOURCE_ORDER: readonly PowerInfo['source'][] = ['race', 'class', 'form', 'gear', 'corruption', 'other'];
 
 /** What grants a power, without tome2's article ("a Ring of Teleportation" → "Ring of Teleportation"). */
 function grantor(power: PowerInfo): string {
-  return power.from.trim().replace(/^(a|an|the|some) /i, '');
+  return stripArticle(power.from.trim());
 }
 
 /** The heading a power is listed under: what grants it. */
@@ -225,7 +226,7 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
 
   if (current === 'magic') {
     for (const book of spells?.books ?? []) {
-      const list = el('div', 'spell-list');
+      const list = el('div', 'menu-list');
       for (const spell of book.spells) list.append(spellRow(api, spell, handlers));
       body.append(section(book.name.replace(/^(a|an|the) /i, ''), list));
     }

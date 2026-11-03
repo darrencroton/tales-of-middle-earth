@@ -30,7 +30,7 @@ export const PERCUSSION: ReadonlySet<Instrument> = new Set(['drum', 'timpani', '
 
 export type Role = 'drone' | 'pad' | 'bass' | 'arp' | 'melody' | 'counter' | 'bells' | 'perc';
 
-export type SectionKind = 'intro' | 'a' | 'b' | 'breath' | 'outro';
+export type SectionKind = 'intro' | 'a' | 'b' | 'breath';
 
 export interface Layer {
   role: Role;
@@ -47,8 +47,6 @@ export interface Layer {
   in?: SectionKind[];
   /** Plays only at or above this intensity (0..1). */
   from?: number;
-  /** Plays only below this intensity. */
-  below?: number;
   /** Plays only on every n-th bar. */
   every?: number;
   pan?: number;
@@ -1564,7 +1562,7 @@ export function themeGain(id: string): number {
 /** Every theme by id. */
 export const THEME_LIST: readonly Theme[] = [...THEMES, ...derived()];
 
-export const THEME_BY_ID: ReadonlyMap<string, Theme> = new Map(THEME_LIST.map((theme) => [theme.id, theme]));
+const THEME_BY_ID: ReadonlyMap<string, Theme> = new Map(THEME_LIST.map((theme) => [theme.id, theme]));
 
 export function themeById(id: string): Theme {
   return THEME_BY_ID.get(id) ?? THEME_BY_ID.get('depths')!;

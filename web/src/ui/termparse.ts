@@ -47,11 +47,11 @@ export interface OptionBlock {
   name: string;
 }
 
-export interface GapBlock {
+interface GapBlock {
   kind: 'gap';
 }
 
-export interface PreBlock {
+interface PreBlock {
   kind: 'pre';
   rows: Run[][];
 }
@@ -149,7 +149,7 @@ const GLUED_CHOICE = /(?<=[A-Za-z])(?=\[[a-zA-Z0-9]\] [A-Z])/g;
  * space, or with no space at all, as when tome2 packs long names into
  * fixed columns ("n) Petty-Dwarf o) Dark-Elf", "n) Petty-Dwarf[o] Dark-Elf").
  */
-export function splitMenuCell(cell: Cell): Cell[] {
+function splitMenuCell(cell: Cell): Cell[] {
   if (!choiceKey(cell.text)) return [cell];
   const starts = new Set([0]);
   for (const m of cell.text.matchAll(INNER_CHOICE)) starts.add((m.index ?? 0) + 1);
@@ -201,7 +201,7 @@ function toChoice(row: number, cell: Cell, meta: Cell[]): ChoiceBlock | null {
 }
 
 /** Fraction of visible characters that are symbols rather than letters or digits. */
-export function symbolRatio(rows: readonly TermRow[], x0: number, x1: number): number {
+function symbolRatio(rows: readonly TermRow[], x0: number, x1: number): number {
   let symbols = 0;
   let visible = 0;
   for (const row of rows) {
@@ -217,7 +217,7 @@ export function symbolRatio(rows: readonly TermRow[], x0: number, x1: number): n
 }
 
 /** Colour runs of a row between two columns, without trailing blanks. */
-export function runsOf(row: TermRow, x0: number, x1: number): Run[] {
+function runsOf(row: TermRow, x0: number, x1: number): Run[] {
   let end = x1;
   while (end >= x0 && isBlank(row.chars[end])) end--;
   return end < x0 ? [] : makeCell(row, x0, end).runs;

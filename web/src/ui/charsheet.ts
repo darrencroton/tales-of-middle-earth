@@ -1,5 +1,5 @@
 import { rowText, type TermRow } from './termparse.ts';
-import { el, section } from './dom.ts';
+import { el, section, stat } from './dom.ts';
 
 /* tome2 colours on the character sheet. */
 const TERM_RED = 4;
@@ -8,18 +8,18 @@ const GOOD_COLOURS = new Set([5, 6, 10, 13, 14]);
 
 export const SHEET_PAGES = ['Stats', 'Bonuses', 'Resists', 'Traits', 'Senses'] as const;
 
-export interface SheetStat {
+interface SheetStat {
   label: string;
   value: string;
   tone: 'good' | 'bad' | '';
 }
 
-export interface SheetGroup {
+interface SheetGroup {
   title: string;
   stats: SheetStat[];
 }
 
-export interface SheetFlag {
+interface SheetFlag {
   label: string;
   value: string;
   tone: 'good' | 'bad';
@@ -221,7 +221,7 @@ export function sheetPageKeys(from: number, to: number): string {
   return 'n'.repeat((to - from + SHEET_PAGES.length) % SHEET_PAGES.length);
 }
 
-export interface FullSheetHandlers {
+interface FullSheetHandlers {
   /** Sends keys to the sheet. */
   send(keys: string): void;
   /** Name for an equipment letter from the sheet. */
@@ -230,11 +230,7 @@ export interface FullSheetHandlers {
 
 function statGrid(stats: SheetStat[]): HTMLElement {
   const grid = el('div', 'stat-grid');
-  for (const s of stats) {
-    const node = el('div', `stat${s.tone ? ` ${s.tone}` : ''}`);
-    node.append(el('span', 'stat-label', s.label), el('span', 'stat-value', s.value));
-    grid.append(node);
-  }
+  for (const s of stats) grid.append(stat(s.label, s.value, s.tone));
   return grid;
 }
 

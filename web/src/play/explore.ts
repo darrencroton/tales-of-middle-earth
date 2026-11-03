@@ -1,7 +1,7 @@
 import type { Material } from '../render/materials.ts';
-import { CAVE_MARK, CAVE_SEEN, LAYER_MASK, LAYER_OBJECT, type LevelSnapshot } from '../render/snapshot.ts';
-import type { Point } from './pathfinding.ts';
-import { hostilesInSight, lightWentOut, robbed, Travel, travelGrid, type Passing, type TravelContext, type TravelStep } from './travel.ts';
+import { isKnownCell, LAYER_MASK, LAYER_MONSTER, LAYER_OBJECT, type LevelSnapshot, type ObjectState } from '../render/snapshot.ts';
+import { floodFill, gridDistance, type Point } from './pathfinding.ts';
+import { hostilesInSight, Travel, travelGrid, Watch, type Passing, type TravelContext, type TravelStep } from './travel.ts';
 
 const MAX_TARGETS = 500;
 const MAX_RETRIES = 6;
@@ -11,6 +11,8 @@ const ANCHOR_WEIGHT = 2;
 const ANCHOR_REACH = 24;
 /* Items to collect count as this many steps nearer than unexplored ground. */
 const ITEM_GREED = 10;
+/* Exploring carries on from where it began when the hero is about where it last stopped. */
+const ANCHOR_DRIFT = 3;
 
 export interface ExplorePlan {
   /** Cells exploring is done with (visited or out of reach); kept between explorations of a level. */
@@ -29,20 +31,16 @@ export interface ExplorePlan {
   avoid?: ReadonlySet<number>;
 }
 
-export type StopKind = 'item' | 'frontier' | 'exit';
+type StopKind = 'item' | 'frontier' | 'exit';
 
-export interface ExploreStop extends Point {
+interface ExploreStop extends Point {
   kind: StopKind;
   /** The cell that counts as done on arrival. */
   mark: number;
   /** Beyond the anchor's reach (an edge of unexplored space or an item). */
   far?: boolean;
-  /** A way back, as the level has no known way on. */
-  back?: boolean;
-}
-
-function known(snap: LevelSnapshot, i: number): boolean {
-  return (snap.info[i] & (CAVE_MARK | CAVE_SEEN)) !== 0;
+  /** Which way an exit leads. */
+  heading?: 'down' | 'up';
 }
 
 function hasItem(snap: LevelSnapshot, i: number): boolean {
@@ -50,8 +48,8 @@ function hasItem(snap: LevelSnapshot, i: number): boolean {
 }
 
 /** A known cell the eye can see past from, next to unknown space. */
-export function isFrontier(snap: LevelSnapshot, materials: readonly Material[], i: number): boolean {
-  if (!known(snap, i)) return false;
+function isFrontier(snap: LevelSnapshot, materials: readonly Material[], i: number): boolean {
+  if (!isKnownCell(snap.info, i)) return false;
   const m = materials[snap.feat[i]];
   if (!m || !(m.door || (m.walkable && !m.blocksLight))) return false;
   const { width, height } = snap;
@@ -59,37 +57,15 @@ export function isFrontier(snap: LevelSnapshot, materials: readonly Material[], 
   const y = (i - x) / width;
   for (let ny = y - 1; ny <= y + 1; ny++) {
     for (let nx = x - 1; nx <= x + 1; nx++) {
-      if (nx >= 0 && ny >= 0 && nx < width && ny < height && !known(snap, ny * width + nx)) return true;
+      if (nx >= 0 && ny >= 0 && nx < width && ny < height && !isKnownCell(snap.info, ny * width + nx)) return true;
     }
   }
   return false;
 }
 
 /** Steps from `start` to every cell a known way reaches (-1 elsewhere). */
-function reach(snap: LevelSnapshot, materials: readonly Material[], start: number, passing: Passing): Int32Array {
-  const { width, height } = snap;
-  const grid = travelGrid(snap, materials, passing);
-  const depth = new Int32Array(width * height).fill(-1);
-  const queue = new Int32Array(width * height);
-  let head = 0;
-  let tail = 0;
-  depth[start] = 0;
-  queue[tail++] = start;
-  while (head < tail) {
-    const i = queue[head++];
-    const x = i % width;
-    const y = (i - x) / width;
-    for (let ny = y - 1; ny <= y + 1; ny++) {
-      for (let nx = x - 1; nx <= x + 1; nx++) {
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-        const next = ny * width + nx;
-        if (depth[next] >= 0 || !grid.passable(nx, ny)) continue;
-        depth[next] = depth[i] + 1;
-        queue[tail++] = next;
-      }
-    }
-  }
-  return depth;
+function reach(snap: LevelSnapshot, materials: readonly Material[], start: Point, passing: Passing): Int32Array {
+  return floodFill(travelGrid(snap, materials, passing), start);
 }
 
 function stopAt(snap: LevelSnapshot, cell: number, kind: StopKind, mark = cell): ExploreStop {
@@ -109,11 +85,10 @@ function stopAt(snap: LevelSnapshot, cell: number, kind: StopKind, mark = cell):
  * but for those `passing` lets through (see `travelGrid`).
  */
 export function nextStop(snap: LevelSnapshot, materials: readonly Material[], plan: ExplorePlan, passing: Passing = new Set()): ExploreStop | null {
-  const { width } = snap;
-  const start = snap.py * width + snap.px;
-  const depth = reach(snap, materials, start, passing);
-  const anchor = plan.anchor ? plan.anchor.y * width + plan.anchor.x : start;
-  const fromAnchor = anchor === start ? depth : reach(snap, materials, anchor, passing);
+  const start = snap.py * snap.width + snap.px;
+  const depth = reach(snap, materials, { x: snap.px, y: snap.py }, passing);
+  const anchor = plan.anchor ?? null;
+  const fromAnchor = !anchor || anchor.y * snap.width + anchor.x === start ? depth : reach(snap, materials, anchor, passing);
   const anchorGap = fromAnchor[start];
 
   let best = -1;
@@ -143,12 +118,30 @@ export function nextStop(snap: LevelSnapshot, materials: readonly Material[], pl
     }
     return exit;
   };
+  const heading = plan.heading ?? 'down';
   const exit = nearest(plan.isExit);
-  if (exit >= 0) return stopAt(snap, exit, 'exit');
+  if (exit >= 0) return { ...stopAt(snap, exit, 'exit'), heading };
   const isBackExit = plan.isBackExit;
-  if (!isBackExit || snap.info.some((info, i) => (info & (CAVE_MARK | CAVE_SEEN)) !== 0 && plan.isExit(i))) return null;
+  if (!isBackExit || snap.info.some((_, i) => isKnownCell(snap.info, i) && plan.isExit(i))) return null;
   const back = nearest(isBackExit);
-  return back >= 0 ? { ...stopAt(snap, back, 'exit'), back: true } : null;
+  return back >= 0 ? { ...stopAt(snap, back, 'exit'), heading: heading === 'up' ? 'down' : 'up' } : null;
+}
+
+/** Why exploring has nowhere to go: nothing left within reach, creatures in view stand in the way, or the way to each place left failed (`plan.avoid`: a creature not yet seen, a stuck door). */
+type NothingLeft = 'explored' | 'creatureInWay' | 'blocked';
+
+/** Where exploring goes next (see `nextStop`), or why nowhere. */
+export function exploreOutcome(snap: LevelSnapshot, materials: readonly Material[], plan: ExplorePlan, passing: Passing = new Set()): ExploreStop | NothingLeft {
+  const stop = nextStop(snap, materials, plan, passing);
+  if (stop) return stop;
+  const all = { ...plan, avoid: undefined };
+  if (!nextStop(snap, materials, all, 'all')) return 'explored';
+  return plan.avoid?.size && nextStop(snap, materials, all, passing) ? 'blocked' : 'creatureInWay';
+}
+
+/** The message for a way on (or back) reached: which way it leads. */
+function exitReason(stop: ExploreStop): 'exit' | 'exitUp' {
+  return stop.heading === 'up' ? 'exitUp' : 'exit';
 }
 
 /**
@@ -165,9 +158,7 @@ export class Explore {
   private travel: Travel | null = null;
   private stop: ExploreStop | null = null;
   private targets = 0;
-  private lastHp: number | null = null;
-  private lastLight: number | null = null;
-  private lastGold: number | undefined;
+  private readonly watch = new Watch();
   private readonly plan: ExplorePlan;
   private readonly avoid = new Set<number>();
   /** Hostiles in view at the last step, shared by all its journeys (see `TravelOptions`). */
@@ -182,11 +173,6 @@ export class Explore {
     return this.plan.anchor ?? null;
   }
 
-  /** The message for a way on (or back) reached: which way it leads. */
-  private exitReason(stop: ExploreStop): 'exit' | 'exitUp' {
-    return (this.plan.heading === 'up') !== !!stop.back ? 'exitUp' : 'exit';
-  }
-
   /** The goal still has something to show or collect. */
   private worthReaching(snap: LevelSnapshot, materials: readonly Material[]): boolean {
     const stop = this.stop;
@@ -196,13 +182,6 @@ export class Explore {
     return true;
   }
 
-  /** Why no place is left: none at all, creatures in view stand in the way, or the way to one failed (a creature not yet seen, a stuck door). */
-  private whyNothingLeft(snap: LevelSnapshot, materials: readonly Material[], passing: Passing | undefined): 'explored' | 'creatureInWay' | 'blocked' {
-    const all = { ...this.plan, avoid: undefined };
-    if (!nextStop(snap, materials, all, 'all')) return 'explored';
-    return nextStop(snap, materials, all, passing) ? 'blocked' : 'creatureInWay';
-  }
-
   /** Waiting to tell tome2 which door to open. */
   get answering(): boolean {
     return !!this.travel?.answering;
@@ -210,27 +189,23 @@ export class Explore {
 
   step(ctx: TravelContext): TravelStep {
     const { snap } = ctx;
-    if (this.lastHp !== null && ctx.hp < this.lastHp) return { kind: 'stop', reason: 'hurt' };
-    if (robbed(ctx.gold, this.lastGold)) return { kind: 'stop', reason: 'robbed' };
-    if (lightWentOut(snap, this.lastLight)) return { kind: 'stop', reason: 'dark' };
-    this.lastHp = ctx.hp;
-    this.lastGold = ctx.gold;
-    this.lastLight = snap.lightRadius;
+    const alarm = this.watch.check(ctx);
+    if (alarm) return { kind: 'stop', reason: alarm };
     this.inSight ??= new Set(hostilesInSight(ctx.monsters).map((m) => m.id));
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       if (this.travel && !this.worthReaching(snap, ctx.materials)) this.travel = null;
       if (!this.travel) {
         if (this.targets >= MAX_TARGETS) return { kind: 'stop', reason: 'limit' };
-        let stop = nextStop(snap, ctx.materials, this.plan, ctx.passing);
-        if (stop?.far && this.plan.anchor) {
+        let stop = exploreOutcome(snap, ctx.materials, this.plan, ctx.passing);
+        if (typeof stop !== 'string' && stop.far && this.plan.anchor) {
           this.plan.anchor = { x: snap.px, y: snap.py };
-          stop = nextStop(snap, ctx.materials, this.plan, ctx.passing);
+          stop = exploreOutcome(snap, ctx.materials, this.plan, ctx.passing);
         }
-        if (!stop) return { kind: 'stop', reason: this.whyNothingLeft(snap, ctx.materials, ctx.passing) };
-        if (stop.kind === 'exit' && stop.x === snap.px && stop.y === snap.py) return { kind: 'stop', reason: this.exitReason(stop) };
+        if (typeof stop === 'string') return { kind: 'stop', reason: stop };
+        if (stop.kind === 'exit' && stop.x === snap.px && stop.y === snap.py) return { kind: 'stop', reason: exitReason(stop) };
         this.stop = stop;
         this.targets++;
-        this.travel = new Travel(stop, ctx, { inSight: this.inSight });
+        this.travel = new Travel(stop, ctx, { inSight: this.inSight, watch: this.watch });
       }
       const step = this.travel.step(ctx);
       if (step.kind === 'keys') return step;
@@ -238,11 +213,96 @@ export class Explore {
       const stop = this.stop!;
       this.travel = null;
       const arrived = step.reason === 'arrived';
-      if (stop.kind === 'exit' && arrived) return { kind: 'stop', reason: this.exitReason(stop) };
+      if (stop.kind === 'exit' && arrived) return { kind: 'stop', reason: exitReason(stop) };
       if (arrived || (step.reason === 'shut' && stop.kind !== 'exit')) this.plan.skip.add(stop.mark);
       else this.avoid.add(stop.mark);
     }
     return { kind: 'stop', reason: 'blocked' };
+  }
+}
+
+/**
+ * What exploring knows of the level the hero is on, kept between its
+ * explorations: the places it is done with, where it began and last
+ * stopped, the items it has seen and the money in view.
+ */
+export class LevelExploration {
+  /** Cells exploring is done with (`ExplorePlan.skip`). */
+  readonly skip = new Set<number>();
+  /** Where exploring this level began (the map fills outwards from it), and where the hero stood when it last stopped. */
+  anchor: Point | null = null;
+  lastStop: Point | null = null;
+  /** Items seen on this level while exploring (by cell), and those first seen during the current exploration (by cell, with their names). */
+  readonly seenItems = new Set<number>();
+  readonly spotted = new Map<number, string>();
+  /** Cells where money has been seen on this level: exploring takes it up whatever the hero picks up. */
+  readonly gold = new Set<number>();
+  /** Counts changes to `gold`, for what Explore would do. */
+  goldVersion = 0;
+
+  /**
+   * Begins an exploration where the hero stands: it carries on from the
+   * anchor when the hero is about where the last one stopped, else the map
+   * fills out from here; the items in view count as seen.
+   */
+  begin(here: Point, objects: readonly ObjectState[], width: number): void {
+    const last = this.lastStop;
+    const resumed = !!last && gridDistance(last, here) <= ANCHOR_DRIFT;
+    if (!this.anchor || !resumed) this.anchor = here;
+    this.spotted.clear();
+    for (const o of objects) this.seenItems.add(o.y * width + o.x);
+  }
+
+  /** Notes where an exploration stopped, and the anchor it had moved on to. */
+  stopped(anchor: Point | null, at: Point): void {
+    this.anchor = anchor;
+    this.lastStop = at;
+  }
+
+  /** Items the hero stands on count as visited. */
+  noteVisited(snap: LevelSnapshot): void {
+    if (snap.floorObjects > 0) this.skip.add(snap.py * snap.width + snap.px);
+  }
+
+  /** Notes items that come into view while exploring, but for one underfoot. */
+  noteSpotted(objects: readonly ObjectState[], snap: LevelSnapshot): void {
+    const here = snap.py * snap.width + snap.px;
+    for (const o of objects) {
+      const cell = o.y * snap.width + o.x;
+      if (cell === here || this.seenItems.has(cell)) continue;
+      this.seenItems.add(cell);
+      this.spotted.set(cell, o.name);
+    }
+  }
+
+  /** The names of items first seen during this exploration that are still lying there. */
+  spottedNames(snap: LevelSnapshot): string[] {
+    return [...this.spotted].filter(([cell]) => hasItem(snap, cell)).map(([, name]) => name);
+  }
+
+  /**
+   * Notes the cells in view that hold money, taking them out of the places
+   * exploring is done with, and forgets those that hold something else or
+   * nothing (a creature standing on money hides it).
+   */
+  noteGold(objects: readonly ObjectState[], snap: LevelSnapshot): void {
+    const cells = objects.map((o) => o.y * snap.width + o.x);
+    const gold = new Set(cells.filter((_, i) => objects[i].gold));
+    let changed = false;
+    for (const cell of cells) {
+      if (gold.has(cell)) {
+        changed ||= !this.gold.has(cell);
+        this.gold.add(cell);
+        this.skip.delete(cell);
+      } else {
+        changed ||= this.gold.delete(cell);
+      }
+    }
+    for (const cell of this.gold) {
+      const top = snap.layer[cell] & LAYER_MASK;
+      if (top !== LAYER_OBJECT && top !== LAYER_MONSTER) changed ||= this.gold.delete(cell);
+    }
+    if (changed) this.goldVersion++;
   }
 }
 

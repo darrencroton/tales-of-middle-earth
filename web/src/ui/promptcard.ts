@@ -1,7 +1,7 @@
 import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, keyCodes as codes, typedAnswer } from '../input/keys.ts';
 import { LIVES, livesText, RETURN_KEYS } from '../play/lives.ts';
 import { bracketChoices, choiceQuestion, type PromptKind } from '../play/prompts.ts';
-import { el, iconText, leadIn } from './dom.ts';
+import { el, iconText, leadIn, stepper, type Stepper } from './dom.ts';
 import { cleanPrompt } from './prompttext.ts';
 import type { MessageBox } from './msgbox.ts';
 
@@ -27,19 +27,19 @@ function questionEnd(text: string): number {
 }
 
 /** The value tome2 pre-fills after a prompt's question ("Quantity (1-6): 1" → "1"). */
-export function promptDefault(text: string): string {
+function promptDefault(text: string): string {
   const end = questionEnd(text);
   return end > 0 ? text.slice(end).trim() : '';
 }
 
 /** Highest quantity offered by "Quantity (1-6):", or null. */
-export function quantityLimit(text: string): number | null {
+function quantityLimit(text: string): number | null {
   const m = /\((\d+)\s*-\s*(\d+)\)/.exec(text);
   return m ? Number(m[2]) : null;
 }
 
 /** What the card between death and life offers. */
-export interface ReturnOffer {
+interface ReturnOffer {
   /** What killed the hero. */
   cause: string;
   /** Lives left once the hero goes back, the one they go back to included. */
@@ -64,6 +64,10 @@ export class PromptCard {
   private showPad = false;
   /** The card shows what tome2 said before its question. */
   private leading = false;
+  /** The how-many stepper, while the quantity card shows it. */
+  private amount: Stepper | null = null;
+  /** The stepper has changed the number tome2 shows. */
+  private amountMoved = false;
 
   constructor(parent: HTMLElement, send: (keys: number[]) => void) {
     this.send = send;
@@ -277,26 +281,33 @@ export class PromptCard {
   }
 
   private quantity(raw: string): void {
-    const max = quantityLimit(raw) ?? 99;
-    let value = Math.max(1, Math.min(max, Number(promptDefault(raw)) || 1));
-    const shown = el('span', 'stepper-value', String(value));
-    const set = (n: number) => {
-      value = Math.max(1, Math.min(max, n));
-      shown.textContent = String(value);
-    };
-    const stepper = el('div', 'stepper');
-    stepper.append(
-      this.button('−', () => set(value - 1), 'stepper-button'),
-      shown,
-      this.button('+', () => set(value + 1), 'stepper-button'),
-      this.button(`All ${max}`, () => set(max), 'stepper-button wide'),
-    );
+    this.amountMoved = false;
+    const amount = stepper(quantityLimit(raw) ?? 99, Number(promptDefault(raw)) || 1, () => (this.amountMoved = true));
+    this.amount = amount;
     const buttons = el('div', 'card-buttons');
     buttons.append(
       this.button('Cancel', [ESCAPE]),
-      this.button('OK', () => this.answer([...codes(String(value)), ENTER]), 'card-button primary'),
+      this.button('OK', () => this.answerQuantity(), 'card-button primary'),
     );
-    this.root.replaceChildren(this.title('How many?'), stepper, buttons);
+    this.root.replaceChildren(this.title('How many?'), amount.element, buttons);
+  }
+
+  private answerQuantity(): void {
+    if (this.amount) this.answer([...codes(String(this.amount.value)), ENTER]);
+  }
+
+  /**
+   * Keys for the how-many card: ArrowLeft/ArrowRight (or − and +) change the
+   * number, and Enter answers with it once they have; other keys go to
+   * tome2's prompt, which the card follows.
+   */
+  handleKey(e: KeyboardEvent): boolean {
+    if (!this.visible || !this.amount?.element.isConnected) return false;
+    if (e.key === 'Enter' && this.amountMoved) {
+      this.answerQuantity();
+      return true;
+    }
+    return this.amount.handleKey(e);
   }
 
   private text(raw: string): void {

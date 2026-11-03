@@ -46,7 +46,7 @@ import {
   stretchChords,
   transposeMelody,
 } from '../../web/src/audio/theory.ts';
-import type { MonsterState } from '../../web/src/render/snapshot.ts';
+import { monster } from './fixtures.ts';
 
 const place = (patch: Partial<Place> = {}): Place => ({
   ready: 1,
@@ -61,27 +61,9 @@ const place = (patch: Partial<Place> = {}): Place => ({
   levelQuest: 0,
   levelName: '',
   terrain: 'grass',
-  terrainIdx: 6,
   night: 0,
   stage: 0,
   lev: 1,
-  ...patch,
-});
-
-const monster = (patch: Partial<MonsterState>): MonsterState => ({
-  id: 1,
-  name: 'Orc',
-  ch: 111,
-  attr: 7,
-  y: 5,
-  x: 5,
-  hp: 10,
-  maxhp: 10,
-  asleep: 0,
-  afraid: 0,
-  unique: 0,
-  status: -1,
-  level: 5,
   ...patch,
 });
 
@@ -244,7 +226,6 @@ describe('composer', () => {
       assert.equal(piece[0].kind, (theme.intro ?? 1) > 0 ? 'intro' : 'a');
       assert.ok(piece.some((s) => s.kind === 'a'));
       assert.ok(piece.every((s) => s.bars > 0));
-      assert.ok(piece.every((s) => s.kind !== 'outro'), `${theme.id} ends without an outro`);
       const repeat = planPiece(theme, new Rng(7), false);
       assert.equal(repeat[0].kind, 'a', `${theme.id} repeats straight into the motif`);
     }
@@ -528,10 +509,10 @@ describe('sound cues', () => {
   it('rates danger by toughness, distance and health', () => {
     const player = { lev: 10, chp: 50, mhp: 50 };
     assert.equal(danger(player, [], 5, 5), 0);
-    const weakFar = danger(player, [monster({ level: 2, x: 15 })], 5, 5);
-    const toughNear = danger(player, [monster({ level: 30, x: 6 })], 5, 5);
+    const weakFar = danger(player, [monster({ level: 2, x: 15, y: 5 })], 5, 5);
+    const toughNear = danger(player, [monster({ level: 30, x: 6, y: 5 })], 5, 5);
     assert.ok(toughNear > weakFar);
-    assert.ok(danger({ ...player, chp: 10 }, [monster({ level: 30, x: 6 })], 5, 5) > toughNear);
+    assert.ok(danger({ ...player, chp: 10 }, [monster({ level: 30, x: 6, y: 5 })], 5, 5) > toughNear);
     assert.equal(danger(player, [monster({ status: 1, level: 50 })], 5, 5), 0);
   });
 

@@ -1,18 +1,9 @@
 import type { Page } from '@playwright/test';
-import { createCharacter, equipSuggested, expect, jumpToLevel, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
+import { createCharacter, equipSuggested, expect, findFeature, jumpToLevel, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
 
 /** The door of a town building, by the glyph and colour tome2 draws it with (st_info.txt). */
 async function door(page: Page, glyph: string, colour: number): Promise<{ x: number; y: number }> {
-  const cell = await page.evaluate(
-    ([g, c]) => {
-      const tome = window.__tome!;
-      const snap = tome.engine.snapshot()!;
-      const feats = tome.engine.features();
-      const i = snap.feat.findIndex((f, n) => feats[f]?.name === 'Building' && snap.glyph[n] === g.charCodeAt(0) && snap.attr[n] === c);
-      return i < 0 ? null : { x: i % snap.width, y: Math.floor(i / snap.width) };
-    },
-    [glyph, colour] as const,
-  );
+  const cell = await findFeature(page, /^Building$/, { glyph, colour });
   expect(cell, `no building drawn as ${glyph} in colour ${colour}`).not.toBeNull();
   return cell!;
 }

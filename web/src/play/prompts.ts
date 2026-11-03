@@ -1,3 +1,5 @@
+import { gridDistance } from './pathfinding.ts';
+
 export type PromptKind = 'none' | 'more' | 'yesno' | 'aim' | 'direction' | 'item' | 'quantity' | 'text' | 'choice' | 'other';
 
 /**
@@ -30,11 +32,11 @@ export function directionDigit(dx: number, dy: number): string | null {
 }
 
 export function isAdjacent(ax: number, ay: number, bx: number, by: number): boolean {
-  return Math.max(Math.abs(ax - bx), Math.abs(ay - by)) === 1;
+  return gridDistance({ x: ax, y: ay }, { x: bx, y: by }) === 1;
 }
 
 /** A choice offered by a bracketed key, "Create [S]hots, [A]rrows or [B]olts?" → S Shots, A Arrows, B Bolts. */
-export interface BracketChoice {
+interface BracketChoice {
   key: string;
   label: string;
 }

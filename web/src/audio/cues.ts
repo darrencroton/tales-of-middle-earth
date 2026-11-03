@@ -112,7 +112,7 @@ const ELEMENT_WORDS: [RegExp, Element][] = [
   [/earth|shards|rocks|gravity|inertia|sound/i, 'earth'],
 ];
 
-export function elementFromText(text: string): Element {
+function elementFromText(text: string): Element {
   for (const [pattern, element] of ELEMENT_WORDS) if (pattern.test(text)) return element;
   return 'magic';
 }

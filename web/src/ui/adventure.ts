@@ -4,7 +4,7 @@ import { el } from './dom.ts';
 import { segmented } from './menus.ts';
 
 /** How the rules of a run are changed while a character is created; without it they are only shown. */
-export interface RunChanges {
+interface RunChanges {
   adventure(on: boolean): void;
   quests(count: number): void;
   option(index: number, on: boolean): void;

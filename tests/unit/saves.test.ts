@@ -10,64 +10,11 @@ import {
   exportFilename,
   findSaveIndex,
   isSafeRelativePath,
+  JsonFile,
   restoreFiles,
-  type EmscriptenFS,
 } from '../../web/src/saves.ts';
+import { MemoryFS } from './fixtures.ts';
 import { deleteHeroSave, heroLine, nextRunName, placeLine, saveBase } from '../../web/src/play/adventurers.ts';
-
-class MemoryFS implements EmscriptenFS {
-  readonly files = new Map<string, Uint8Array>();
-  readonly dirs = new Set<string>(['/']);
-
-  readdir(path: string): string[] {
-    const prefix = path.endsWith('/') ? path : `${path}/`;
-    const names = new Set<string>(['.', '..']);
-    for (const p of [...this.files.keys(), ...this.dirs]) {
-      if (p.startsWith(prefix) && p !== prefix) names.add(p.slice(prefix.length).split('/')[0]);
-    }
-    return [...names];
-  }
-
-  stat(path: string): { mode: number } {
-    if (this.dirs.has(path)) return { mode: 0o040000 };
-    if (this.files.has(path)) return { mode: 0o100000 };
-    throw new Error(`ENOENT ${path}`);
-  }
-
-  isDir(mode: number): boolean {
-    return (mode & 0o170000) === 0o040000;
-  }
-
-  readFile(path: string): Uint8Array {
-    const data = this.files.get(path);
-    if (!data) throw new Error(`ENOENT ${path}`);
-    return data;
-  }
-
-  writeFile(path: string, data: Uint8Array): void {
-    this.files.set(path, data);
-  }
-
-  unlink(path: string): void {
-    if (!this.files.delete(path)) throw new Error(`ENOENT ${path}`);
-  }
-
-  rmdir(path: string): void {
-    if (this.readdir(path).length > 2 || !this.dirs.delete(path)) throw new Error(`ENOTEMPTY ${path}`);
-  }
-
-  mkdirTree(path: string): void {
-    let current = '';
-    for (const part of path.split('/').filter(Boolean)) {
-      current += `/${part}`;
-      this.dirs.add(current);
-    }
-  }
-
-  syncfs(_populate: boolean, callback: (err: unknown) => void): void {
-    callback(null);
-  }
-}
 
 describe('base64', () => {
   it('round-trips arbitrary bytes, including large buffers', () => {
@@ -160,6 +107,21 @@ describe('filesystem helpers', () => {
     fs.writeFile(`${root}/chronicle.json`, new Uint8Array([1]));
     assert.throws(() => restoreFiles(fs, root, [{ path: '../evil', data: new Uint8Array() }]), /Unsafe/);
     assert.deepEqual(names(fs), ['chronicle.json']);
+  });
+});
+
+describe('JSON files', () => {
+  const sanitise = (raw: unknown) => ({ n: typeof (raw as { n?: unknown })?.n === 'number' ? (raw as { n: number }).n : 0 });
+
+  it('reads what it saved, and the sanitised empty value from a missing or broken file', () => {
+    const fs = new MemoryFS();
+    const file = new JsonFile('notes.json', sanitise, 'notes');
+    assert.equal(file.save({ n: 1 }), false);
+    assert.deepEqual(file.load(fs, '/save'), { n: 0 });
+    assert.equal(file.save({ n: 7 }), true);
+    assert.deepEqual(new JsonFile('notes.json', sanitise, 'notes').load(fs, '/save'), { n: 7 });
+    fs.writeFile('/save/notes.json', new TextEncoder().encode('{'));
+    assert.deepEqual(file.load(fs, '/save'), { n: 0 });
   });
 });
 

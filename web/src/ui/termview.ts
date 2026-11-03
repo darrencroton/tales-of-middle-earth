@@ -1,11 +1,11 @@
 import { readableColour } from '../render/colour.ts';
 import { el, leadIn } from './dom.ts';
-import { ListNav, type NavDirection } from './listnav.ts';
-import { defaultItem, renderFooter, type PopAction } from './popup.ts';
+import { ListNav } from './listnav.ts';
+import { defaultItem, renderFooter, renderHeader, type PopAction, type PopTab } from './popup.ts';
 import { isInstructionLine } from './prompttext.ts';
 import { bufferRows, parseRows, sliceCell, type Block, type Cell, type ChoiceBlock, type OptionBlock, type Run, type TextBlock } from './termparse.ts';
 
-export interface TermViewCallbacks {
+interface TermViewCallbacks {
   /** A menu choice was tapped or activated. */
   onChoice(key: string, choice: ChoiceBlock): void;
   /** The information button beside a choice was tapped. */
@@ -20,25 +20,17 @@ export interface TermViewCallbacks {
   onLink(index: number): void;
 }
 
-export interface TermViewSource {
+interface TermViewSource {
   cols: number;
   chars: Uint8Array;
   attrs: Uint8Array;
 }
 
-export interface TermViewRegion {
+interface TermViewRegion {
   x0: number;
   y0: number;
   x1: number;
   y1: number;
-}
-
-export interface TermViewTab {
-  /** Stable name for tests and styling (data-tab); `tab<n>` by default. */
-  id?: string;
-  label: string;
-  active: boolean;
-  run(): void;
 }
 
 export interface TermViewOptions {
@@ -52,7 +44,7 @@ export interface TermViewOptions {
   /** What tome2 said just before it asked (a creature's words before a reward), above the content. */
   lead?: readonly string[];
   /** Lists to switch between (pack, equipment, floor). */
-  tabs?: TermViewTab[];
+  tabs?: PopTab[];
   /** The view's own actions (Exit from a building), before those the toolbar offers for the screen. */
   actions?: readonly PopAction[];
   /** Terminal rows to leave out (shop command lists, page markers). */
@@ -116,14 +108,13 @@ export class TermView {
   private readonly footer: HTMLElement;
   private actions: readonly PopAction[] = [];
   private ownActions: readonly PopAction[] = [];
-  private backAction: (() => void) | undefined;
   private footerKey = '';
   private readonly nav: ListNav;
   private readonly palette: () => readonly string[];
   private readonly callbacks: TermViewCallbacks;
   private renderedKey = '';
   private blocks: Block[] = [];
-  private tabs: TermViewTab[] = [];
+  private tabs: PopTab[] = [];
   private customView = '';
   private scrollKey = '';
   private linksAt: TermViewOptions['links'] = undefined;
@@ -136,7 +127,7 @@ export class TermView {
     const backdrop = el('div', 'tv-backdrop');
     this.root = el('div', 'termview');
     this.root.hidden = true;
-    this.header = el('div', 'tv-header');
+    this.header = el('header', 'sheet-header');
     this.body = el('div', 'tv-body');
     this.footer = el('footer', 'tv-footer');
     this.footer.hidden = true;
@@ -148,15 +139,7 @@ export class TermView {
 
     this.root.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      if (target.closest('.tv-footer')) return;
-      if (target.closest('.tv-close')) {
-        this.callbacks.onClose();
-        return;
-      }
-      if (target.closest('.tv-back')) {
-        this.backAction?.();
-        return;
-      }
+      if (target.closest('.tv-footer, .sheet-back, .sheet-close')) return;
       const link = target.closest<HTMLElement>('.tv-link');
       if (link?.dataset.link) {
         this.nav.setActive(link, false);
@@ -204,6 +187,7 @@ export class TermView {
     if (this.root.hidden) return;
     this.root.hidden = true;
     this.layer.hidden = true;
+    this.header.replaceChildren();
     this.renderedKey = '';
     this.scrollKey = '';
   }
@@ -223,11 +207,11 @@ export class TermView {
   private renderFooter(): void {
     const panel = this.root.classList.contains('panel');
     const actions = panel ? [...this.ownActions, ...this.actions] : [];
-    const tabs = this.tabs.map((t, i) => ({ id: t.id ?? `tab${i}`, label: t.label, active: t.active, run: () => t.run() }));
-    const key = JSON.stringify([actions.map((a) => [a.id, a.label, a.primary, a.unavailable]), tabs.map((t) => [t.label, t.active])]);
+    /* Every field but `run`, which JSON leaves out. */
+    const key = JSON.stringify([actions, this.tabs]);
     if (key === this.footerKey) return;
     this.footerKey = key;
-    renderFooter(this.footer, actions, tabs);
+    renderFooter(this.footer, actions, this.tabs);
   }
 
   /** Choices on screen, in order. */
@@ -256,7 +240,7 @@ export class TermView {
       }
     }
     const cursorRow = blocks.some((b) => b.kind === 'option') ? options.cursorRow : undefined;
-    const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.lead, options.badge, options.tabs?.map((t) => [t.label, t.active]), options.describe, cursorRow, !!options.back, options.scroll?.key, blocks]);
+    const key = JSON.stringify([options.layout, options.empty, options.title, options.subtitle, options.lead, options.badge, options.tabs, options.describe, cursorRow, !!options.back, options.scroll?.key, blocks]);
     this.show(options.layout);
     this.tabs = options.tabs ?? [];
     this.ownActions = options.actions ?? [];
@@ -331,77 +315,74 @@ export class TermView {
     this.nav.setActive(current ?? this.nav.find(mark) ?? defaultItem(this.body, this.footer), true);
   }
 
-  move(direction: NavDirection): void {
-    this.nav.move(direction);
-  }
-
-  activate(): boolean {
-    return this.nav.activate();
+  /**
+   * Who the panel's keys go to: its own highlight in a native view, the
+   * reader's scroll and links, the highlight of a tome2 menu without a
+   * cursor of its own; null when they go to tome2 (which, with a cursor,
+   * redraws the highlight itself).
+   */
+  private keyTarget(): 'custom' | 'reader' | 'menu' | null {
+    if (this.root.hidden) return null;
+    if (this.renderedKey.startsWith('custom\u0000')) return 'custom';
+    if (this.scrollKey) return 'reader';
+    return this.choices().length > 0 && !this.hasCursor ? 'menu' : null;
   }
 
   /**
-   * Keys for the highlight: used when tome2 has no cursor of its own on a
-   * menu (with a cursor, keys go to tome2, which redraws the highlight).
+   * A key for the panel; true when it was used. A native view's arrows and
+   * Enter move and choose its highlight; the reader's page keys and Space
+   * scroll, its arrows move through its links (or scroll when it has none)
+   * and Enter follows one; a tome2 menu without a cursor takes arrows up and
+   * down, Home, End and Enter.
    */
-  /** Arrow keys and Enter over a custom view's [data-nav] items; true when the key was used. */
-  navigate(e: KeyboardEvent): boolean {
-    if (this.root.hidden) return false;
-    return this.nav.handleKey(e);
-  }
-
-  /**
-   * Keys for a document read by scrolling: page keys and Space scroll,
-   * arrows move the highlight through its links (or scroll when it has none),
-   * Enter follows the highlighted link.
-   */
-  readKey(e: KeyboardEvent): boolean {
-    if (this.root.hidden) return false;
-    const page = this.body.clientHeight * 0.9;
-    const line = parseFloat(getComputedStyle(this.body).fontSize) * 2;
-    const steps: Record<string, number> = { PageDown: page, ' ': page, PageUp: -page };
-    if (!this.nav.items().length) Object.assign(steps, { ArrowDown: line, ArrowUp: -line, End: this.body.scrollHeight, Home: -this.body.scrollHeight });
-    const step = steps[e.key];
-    if (step !== undefined) {
-      this.body.scrollBy({ top: step });
-      return true;
-    }
-    return this.nav.handleKey(e);
-  }
-
   handleKey(e: KeyboardEvent): boolean {
-    if (this.root.hidden || this.choices().length === 0 || this.hasCursor) return false;
-    if (e.key === 'Enter') return this.nav.activate();
-    if (/^Arrow(Up|Down)$|^Home$|^End$/.test(e.key)) return this.nav.handleKey(e);
-    return false;
+    const target = this.keyTarget();
+    if (target === 'reader') {
+      const page = this.body.clientHeight * 0.9;
+      const steps: Record<string, number> = { PageDown: page, ' ': page, PageUp: -page };
+      if (!this.nav.items().length) Object.assign(steps, { ArrowDown: this.lineStep(), ArrowUp: -this.lineStep(), End: this.body.scrollHeight, Home: -this.body.scrollHeight });
+      const step = steps[e.key];
+      if (step !== undefined) {
+        this.body.scrollBy({ top: step });
+        return true;
+      }
+    }
+    if (target === 'menu') {
+      if (e.key === 'Enter') return this.nav.activate();
+      return /^Arrow(Up|Down)$|^Home$|^End$/.test(e.key) && this.nav.handleKey(e);
+    }
+    return target !== null && this.nav.handleKey(e);
+  }
+
+  /** A swipe or toolbar step over the panel, as the arrow keys and Enter; false when it goes to tome2. */
+  step(direction: 'up' | 'down' | 'select'): boolean {
+    const target = this.keyTarget();
+    if (!target) return false;
+    if (direction === 'select') this.nav.activate();
+    else if (target === 'reader' && !this.nav.items().length) this.body.scrollBy({ top: direction === 'up' ? -this.lineStep() : this.lineStep() });
+    else this.nav.move(direction);
+    return true;
+  }
+
+  private lineStep(): number {
+    return parseFloat(getComputedStyle(this.body).fontSize) * 2;
   }
 
   private renderHeader(options: TermViewOptions): void {
-    const parts: HTMLElement[] = [];
     const panel = options.layout === 'panel';
-    this.backAction = options.back;
-    if (options.title || options.badge || panel) {
-      const line = el('div', 'tv-title-line');
-      if (options.back) {
-        const back = el('button', 'tv-back sheet-back', '‹');
-        back.type = 'button';
-        back.setAttribute('aria-label', 'Back');
-        line.append(back);
-      }
-      const titles = el('div', 'tv-titles');
-      if (options.title) titles.append(el('h2', 'tv-title', options.title));
-      if (options.subtitle) titles.append(el('p', 'tv-subtitle', options.subtitle));
-      line.append(titles);
-      if (options.badge) line.append(el('span', 'tv-badge', options.badge));
-      if (panel) {
-        const close = el('button', 'tv-close sheet-close', '✕');
-        close.type = 'button';
-        close.setAttribute('aria-label', 'Close');
-        line.append(close);
-      }
-      parts.push(line);
+    const shown = !!(options.title || options.badge || panel);
+    if (shown) {
+      renderHeader(this.header, {
+        title: options.title,
+        subtitle: options.subtitle,
+        note: options.badge,
+        back: options.back,
+        close: panel ? () => this.callbacks.onClose() : undefined,
+      });
+    } else {
+      this.header.replaceChildren();
     }
-    this.header.replaceChildren(...parts);
-    this.header.hidden = parts.length === 0;
+    this.header.hidden = !shown;
   }
 
   private choiceFor(button: HTMLElement): ChoiceBlock | null {

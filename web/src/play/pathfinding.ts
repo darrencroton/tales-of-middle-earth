@@ -13,6 +13,11 @@ export interface TravelGrid {
 
 const SQRT2 = Math.SQRT2;
 
+/** Steps between two cells when a diagonal step counts as one (Chebyshev distance). */
+export function gridDistance(a: Point, b: Point): number {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
 function octile(ax: number, ay: number, bx: number, by: number): number {
   const dx = Math.abs(ax - bx);
   const dy = Math.abs(ay - by);
@@ -126,4 +131,37 @@ export function findPath(grid: TravelGrid, start: Point, goal: Point, maxExpande
     path.push({ x: i % width, y: Math.floor(i / width) });
   }
   return path.reverse();
+}
+
+/**
+ * Breadth-first steps from `start` to every cell reachable through passable
+ * ones, 8-connected (-1 elsewhere). `visit` sees each cell (by index) as it
+ * is taken from the queue, nearest first, `start` included; returning true
+ * ends the fill there.
+ */
+export function floodFill(grid: TravelGrid, start: Point, visit?: (index: number) => boolean | void): Int32Array {
+  const { width, height } = grid;
+  const depth = new Int32Array(width * height).fill(-1);
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+  const first = start.y * width + start.x;
+  depth[first] = 0;
+  queue[tail++] = first;
+  while (head < tail) {
+    const i = queue[head++];
+    if (visit?.(i)) break;
+    const x = i % width;
+    const y = (i - x) / width;
+    for (let ny = y - 1; ny <= y + 1; ny++) {
+      for (let nx = x - 1; nx <= x + 1; nx++) {
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const next = ny * width + nx;
+        if (depth[next] >= 0 || !grid.passable(nx, ny)) continue;
+        depth[next] = depth[i] + 1;
+        queue[tail++] = next;
+      }
+    }
+  }
+  return depth;
 }

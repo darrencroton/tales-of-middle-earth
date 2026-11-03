@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, expect, type Locator, type Page } from '@playwright/test';
 
 /**
  * The test runner with the app's settings stored before the first load:
@@ -217,19 +217,28 @@ export async function playerPos(page: Page): Promise<{ x: number; y: number }> {
   });
 }
 
-/** Uses tome2's wizard commands (page loaded with ?wizard) to jump to a dungeon level and wield a torch. */
-export async function jumpToLevel(page: Page, level: number): Promise<void> {
-  const rowZero = async () => (await screenText(page)).split('\n')[0] ?? '';
+async function firstRow(page: Page): Promise<string> {
+  return (await screenText(page)).split('\n')[0] ?? '';
+}
+
+/** Opens tome2's debug command prompt (page loaded with ?wizard), with a number before it when `arg` is given; the screen it shows. */
+async function openDebugMenu(page: Page, arg?: number): Promise<string> {
   let text = await screenText(page);
-  await sendText(page, '\u0001');
+  await sendText(page, `${arg === undefined ? '' : `0${arg}`}\u0001`);
   text = await waitForSettle(page, text, 5_000);
-  for (let i = 0; i < 10 && !/Debug Command/.test(await rowZero()); i++) {
-    await sendText(page, /\[y\/n\]/.test(await rowZero()) ? 'y' : ' ');
+  for (let i = 0; i < 10 && !/Debug Command/.test(await firstRow(page)); i++) {
+    await sendText(page, /\[y\/n\]/.test(await firstRow(page)) ? 'y' : ' ');
     text = await waitForSettle(page, text, 5_000);
   }
+  return text;
+}
+
+/** Uses tome2's wizard commands (page loaded with ?wizard) to jump to a dungeon level and wield a torch. */
+export async function jumpToLevel(page: Page, level: number): Promise<void> {
+  let text = await openDebugMenu(page);
   await sendText(page, 'j');
   text = await waitForSettle(page, text, 5_000);
-  for (let i = 0; i < 5 && !/Jump to level/.test(await rowZero()); i++) {
+  for (let i = 0; i < 5 && !/Jump to level/.test(await firstRow(page)); i++) {
     await sendText(page, ' ');
     text = await waitForSettle(page, text, 5_000);
   }
@@ -259,14 +268,7 @@ export async function keptLevelFiles(page: Page): Promise<string[]> {
 
 /** Runs one of tome2's wizard commands (page loaded with ?wizard), with a number before it when `arg` is given. */
 export async function wizardCommand(page: Page, key: string, arg?: number): Promise<void> {
-  const rowZero = async () => (await screenText(page)).split('\n')[0] ?? '';
-  let text = await screenText(page);
-  await sendText(page, `${arg === undefined ? '' : `0${arg}`}\u0001`);
-  text = await waitForSettle(page, text, 5_000);
-  for (let i = 0; i < 10 && !/Debug Command/.test(await rowZero()); i++) {
-    await sendText(page, /\[y\/n\]/.test(await rowZero()) ? 'y' : ' ');
-    text = await waitForSettle(page, text, 5_000);
-  }
+  const text = await openDebugMenu(page, arg);
   await sendText(page, key);
   await waitForSettle(page, text, 5_000);
   await dismissMore(page);
@@ -288,7 +290,7 @@ export async function castUntilAimed(page: Page, spell: string, failed?: () => P
     const total = await page.evaluate(() => window.__tome!.engine.gameState()?.messageTotal ?? 0);
     await page.locator('#toolbar [data-action="commands"]').click();
     await page.locator('.sheet .command', { hasText: 'Magic' }).click();
-    await expect(page.locator('.sheet-title')).toHaveText('Magic');
+    await expect(page.locator('.sheet .sheet-title')).toHaveText('Magic');
     await page.locator('.sheet .spell-row', { hasText: spell }).click();
     await expect(page.locator('.sheet-layer')).toBeHidden();
     let outcome = '';
@@ -353,4 +355,89 @@ export async function pressExplore(page: Page): Promise<void> {
     await page.locator('.sheet .command', { hasText: 'Explore' }).click();
   }
   await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+}
+
+/** Saves and quits from the Menu, until the title screen shows. */
+export async function saveAndQuit(page: Page): Promise<void> {
+  await page.locator('#toolbar [data-action="menu"]').click();
+  await page.locator('.sheet .row-button', { hasText: 'Save and quit' }).click();
+  await page.locator('.sheet-action.primary', { hasText: 'Save and quit' }).click();
+  await expect(page.locator('#title-screen')).toBeVisible({ timeout: 60_000 });
+}
+
+/** Continues the saved hero `name` from the title screen, until tome2 waits for a command. */
+export async function continueAs(page: Page, name: string): Promise<void> {
+  await page.locator('#title-screen .title-choice', { hasText: `Continue as ${name}` }).click();
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
+  await waitAtCommand(page);
+}
+
+/**
+ * The first grid of the level whose feature name matches `name`, or null: only
+ * grids the hero knows when `known`, only those drawn with `glyph` and `colour` when given.
+ */
+export async function findFeature(
+  page: Page,
+  name: RegExp,
+  options: { known?: boolean; glyph?: string; colour?: number } = {},
+): Promise<{ x: number; y: number } | null> {
+  return page.evaluate(
+    ([source, flags, known, glyph, colour]) => {
+      const tome = window.__tome!;
+      const snap = tome.engine.snapshot()!;
+      const features = tome.engine.features();
+      const pattern = new RegExp(source, flags);
+      for (let i = 0; i < snap.feat.length; i++) {
+        if (!pattern.test(features[snap.feat[i]]?.name ?? '')) continue;
+        if (known && !(snap.info[i] & 0x11)) continue;
+        if (glyph !== undefined && snap.glyph[i] !== glyph.charCodeAt(0)) continue;
+        if (colour !== undefined && snap.attr[i] !== colour) continue;
+        return { x: i % snap.width, y: Math.floor(i / snap.width) };
+      }
+      return null;
+    },
+    [name.source, name.flags, options.known ?? false, options.glyph, options.colour] as const,
+  );
+}
+
+/** Taps a cell until the hero stands on it, sending the creatures around away before each try (page loaded with ?wizard) so none stops the walk. */
+export async function travelTo(page: Page, cell: { x: number; y: number }): Promise<void> {
+  for (let i = 0; i < 12; i++) {
+    const here = await playerPos(page);
+    if (here.x === cell.x && here.y === cell.y) break;
+    await wizardCommand(page, 'z');
+    await page.evaluate(({ x, y }) => window.__tome!.tapCell(x, y), cell);
+    await expect.poll(() => page.evaluate(() => window.__tome!.travelling()), { timeout: 60_000 }).toBe(false);
+  }
+}
+
+/** Quits the game with tome2's own keys (`\Q`, then its confirmations), which abandons the adventure. */
+export async function abandonFromKeyboard(page: Page): Promise<void> {
+  await sendText(page, '\\Q');
+  await waitForScreen(page, /really want to quit/);
+  await sendText(page, 'y');
+  await waitForScreen(page, /verify QUITTING/);
+  await sendText(page, '@');
+}
+
+/**
+ * Passes what tome2 shows (a death card's Continue, *Die?* in wizard mode, `-more-`) until `target` is
+ * visible; `act` runs on the other tries, at the command prompt, and `tries` times `pause` ms is the limit.
+ */
+export async function untilVisible(
+  page: Page,
+  target: Locator,
+  options: { act?: () => Promise<void>; tries?: number; pause?: number } = {},
+): Promise<void> {
+  const death = page.locator('.prompt-card.death');
+  for (let i = 0; i < (options.tries ?? 30) && !(await target.isVisible()); i++) {
+    const row = await firstRow(page);
+    if (await death.isVisible()) {
+      await expect(death.locator('.card-button')).toHaveCount(1);
+      await death.locator('.card-button.primary').click();
+    } else if (/Die\?/.test(row)) await sendText(page, 'y');
+    else if (/-more-/.test(row)) await sendText(page, '\u001b');
+    else await options.act?.();
+    await page.waitForTimeout(options.pause ?? 300);
+  }
 }

@@ -6,7 +6,7 @@ import { birthCard } from './birthcard.ts';
 import { el, iconText, navButton, section } from './dom.ts';
 import type { Sheets } from './sheet.ts';
 
-export interface HelpDeps {
+interface HelpDeps {
   sheets: Sheets;
   /** Races, modifiers and classes, once the game's data is loaded. */
   birthData(): BirthData | null;

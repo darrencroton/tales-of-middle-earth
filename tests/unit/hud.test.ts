@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { areaName, depthLabel, rowSegments, shortStandaloneView, sortByDistance, statusLabels } from '../../web/src/hud.ts';
+import { MAX_ZOOM } from '../../web/src/render/map.ts';
 import { defaultSettings, sanitiseSettings } from '../../web/src/settings.ts';
 import { TerminalBuffer } from '../../web/src/terminal.ts';
 
@@ -87,17 +88,7 @@ describe('settings', () => {
         explorePace: 'relaxed',
       },
     );
-    assert.deepEqual(sanitiseSettings({ animation: 'wild', glyphs: 7, zoom: 999, textSize: 'huge', messages: 'loud', music: 11, sound: 'max', persistentLevels: 'yes', explorePace: 'fast' }, defaults), {
-      animation: 'full',
-      glyphs: 'brogue',
-      zoom: 48,
-      textSize: 'medium',
-      messages: 'flow',
-      music: 'medium',
-      sound: 'medium',
-      persistentLevels: true,
-      explorePace: 'normal',
-    });
+    assert.deepEqual(sanitiseSettings({ animation: 'wild', glyphs: 7, zoom: 999, textSize: 'huge', messages: 'loud', music: 11, sound: 'max', persistentLevels: 'yes', explorePace: 'fast' }, defaults), { ...defaults, zoom: MAX_ZOOM });
     assert.deepEqual(sanitiseSettings(null, defaults), defaults);
   });
 });
@@ -123,17 +114,6 @@ describe('terminal overlay helpers', () => {
     assert.equal(term.diffBounds(saved), null);
     saved.attrs[1 + 2 * 10] = 3;
     assert.deepEqual(term.diffBounds(saved), { x0: 1, y0: 2, x1: 1, y1: 2 });
-  });
-
-  it('tracks content bounds until cleared', () => {
-    const term = new TerminalBuffer(20, 10);
-    assert.equal(term.contentBounds(), null);
-    term.drawText(2, 3, 1, bytes('  hi '));
-    assert.deepEqual(term.contentBounds(), { x0: 4, y0: 3, x1: 5, y1: 3 });
-    term.drawText(0, 6, 1, bytes('x'));
-    assert.deepEqual(term.contentBounds(), { x0: 0, y0: 3, x1: 5, y1: 6 });
-    term.clear();
-    assert.equal(term.contentBounds(), null);
   });
 });
 

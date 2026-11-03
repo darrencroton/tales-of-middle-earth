@@ -1,22 +1,22 @@
 import { SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
 import { itemRecent, recentItem, recentItemAction, recentKey } from '../play/recent.ts';
 import type { EquipSlot, InventoryState, ItemState } from '../render/snapshot.ts';
-import { capitalise, descriptionParagraphs, pounds, titleName, type GameApi } from './api.ts';
-import { el, glyph, section } from './dom.ts';
+import { capitalise, description, itemGlyph, pounds, titleName, type GameApi } from './api.ts';
+import { el, section } from './dom.ts';
 import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
 
 
 /* Slot for a carried symbiote, shown only when something is in it. */
 const CARRIED = 49;
 
-export type InventoryTab = 'pack' | 'equip' | 'floor';
+type InventoryTab = 'pack' | 'equip' | 'floor';
 
 function itemRow(api: GameApi, item: ItemState, place: ItemPlace, slot?: string): HTMLButtonElement {
   const button = el('button', 'item-row');
   button.type = 'button';
   button.dataset.nav = '';
   if (slot) button.append(el('span', 'item-slot', slot));
-  button.append(glyph(item.ch, api.palette()[item.attr] ?? '#fff'));
+  button.append(itemGlyph(api, item));
   const name = el('span', 'item-name', item.name);
   if (item.ins) name.append(el('span', 'item-ins', ` {${item.ins}}`));
   button.append(name, el('span', 'item-weight', pounds(item.weight * item.number)));
@@ -165,17 +165,14 @@ export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void 
     },
   }));
 
-  const description = el('div', 'description');
-  const paragraphs = descriptionParagraphs(api.engine.objectDescription(item.i));
-  if (paragraphs.length === 0) paragraphs.push('You know nothing more about this item yet.');
-  for (const p of paragraphs) description.append(el('p', undefined, p));
-  if (item.ins) description.append(el('p', 'muted', `Inscribed {${item.ins}}`));
-  body.append(description);
+  const text = description(api.engine.objectDescription(item.i), 'You know nothing more about this item yet.');
+  if (item.ins) text.append(el('p', 'muted', `Inscribed {${item.ins}}`));
+  body.append(text);
 
   api.sheets.open({
     title: titleName(item.name),
     subtitle: placeLabel(item, place, slot),
-    badge: glyph(item.ch, api.palette()[item.attr] ?? '#fff'),
+    badge: itemGlyph(api, item),
     body,
     actions,
     kind: 'card',

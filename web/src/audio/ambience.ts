@@ -1,4 +1,4 @@
-import type { AudioCore } from './core.ts';
+import { filter, gain, type AudioCore } from './core.ts';
 import type { Ambience } from './themes.ts';
 
 interface Bed {
@@ -38,8 +38,7 @@ const EVENT_GAP: Partial<Record<Ambience, [number, number]>> = {
 function lfo(core: AudioCore, rate: number, depth: number, target: AudioParam, nodes: AudioScheduledSourceNode[]): void {
   const o = core.ctx.createOscillator();
   o.frequency.value = rate;
-  const g = core.ctx.createGain();
-  g.gain.value = depth;
+  const g = gain(core, depth);
   o.connect(g);
   g.connect(target);
   o.start();
@@ -48,12 +47,8 @@ function lfo(core: AudioCore, rate: number, depth: number, target: AudioParam, n
 
 function bandNoise(core: AudioCore, out: AudioNode, nodes: AudioScheduledSourceNode[], brown: boolean, type: BiquadFilterType, frequency: number, q: number, level: number): BiquadFilterNode {
   const source = core.noiseSource(brown);
-  const f = core.ctx.createBiquadFilter();
-  f.type = type;
-  f.frequency.value = frequency;
-  f.Q.value = q;
-  const g = core.ctx.createGain();
-  g.gain.value = level;
+  const f = filter(core, type, frequency, q);
+  const g = gain(core, level);
   source.connect(f);
   f.connect(g);
   g.connect(out);
@@ -74,8 +69,7 @@ function buildBed(core: AudioCore, kind: Ambience, out: GainNode): AudioSchedule
   switch (kind) {
     case 'wind':
       for (const side of [-0.6, 0.6]) {
-        const g = core.ctx.createGain();
-        g.gain.value = 0.6;
+        const g = gain(core, 0.6);
         g.connect(panned(core, out, side));
         const f = bandNoise(core, g, nodes, false, 'bandpass', 520, 0.9, 1);
         lfo(core, side < 0 ? 0.061 : 0.083, 260, f.frequency, nodes);
@@ -88,8 +82,7 @@ function buildBed(core: AudioCore, kind: Ambience, out: GainNode): AudioSchedule
       break;
     }
     case 'rumble': {
-      const g = core.ctx.createGain();
-      g.gain.value = 0.6;
+      const g = gain(core, 0.6);
       g.connect(out);
       bandNoise(core, g, nodes, true, 'lowpass', 75, 0.8, 1);
       lfo(core, 0.031, 0.45, g.gain, nodes);
@@ -100,16 +93,14 @@ function buildBed(core: AudioCore, kind: Ambience, out: GainNode): AudioSchedule
         [900, 0.37],
         [2400, 0.53],
       ] as const) {
-        const g = core.ctx.createGain();
-        g.gain.value = 0.6;
+        const g = gain(core, 0.6);
         g.connect(out);
         bandNoise(core, g, nodes, false, 'bandpass', freq, 0.9, 1);
         lfo(core, rate, 0.35, g.gain, nodes);
       }
       break;
     case 'sea': {
-      const g = core.ctx.createGain();
-      g.gain.value = 0.5;
+      const g = gain(core, 0.5);
       g.connect(out);
       const f = bandNoise(core, g, nodes, true, 'lowpass', 700, 0.5, 1);
       lfo(core, 0.085, 500, f.frequency, nodes);
@@ -117,8 +108,7 @@ function buildBed(core: AudioCore, kind: Ambience, out: GainNode): AudioSchedule
       break;
     }
     case 'leaves': {
-      const g = core.ctx.createGain();
-      g.gain.value = 0.5;
+      const g = gain(core, 0.5);
       g.connect(out);
       bandNoise(core, g, nodes, false, 'highpass', 3200, 0.5, 1);
       lfo(core, 0.13, 0.45, g.gain, nodes);
@@ -132,8 +122,7 @@ function buildBed(core: AudioCore, kind: Ambience, out: GainNode): AudioSchedule
       ] as const) {
         const o = core.ctx.createOscillator();
         o.frequency.value = freq;
-        const g = core.ctx.createGain();
-        g.gain.value = freq > 100 ? 0.25 : 0.6;
+        const g = gain(core, freq > 100 ? 0.25 : 0.6);
         o.connect(g);
         g.connect(panned(core, out, pan));
         lfo(core, 0.05 + freq / 4000, 0.3, g.gain, nodes);
@@ -143,8 +132,7 @@ function buildBed(core: AudioCore, kind: Ambience, out: GainNode): AudioSchedule
       break;
     }
     case 'sand': {
-      const g = core.ctx.createGain();
-      g.gain.value = 0.5;
+      const g = gain(core, 0.5);
       g.connect(out);
       bandNoise(core, g, nodes, false, 'highpass', 4200, 0.6, 1);
       lfo(core, 0.21, 0.4, g.gain, nodes);
@@ -156,8 +144,7 @@ function buildBed(core: AudioCore, kind: Ambience, out: GainNode): AudioSchedule
     case 'crickets': {
       const o = core.ctx.createOscillator();
       o.frequency.value = 4300;
-      const g = core.ctx.createGain();
-      g.gain.value = 0.5;
+      const g = gain(core, 0.5);
       o.connect(g);
       g.connect(out);
       lfo(core, 27, 0.5, g.gain, nodes);
@@ -194,8 +181,7 @@ export class AmbiencePlayer {
     const now = this.core.now;
     for (const [kind, level] of this.targets) {
       if (BED_LEVEL[kind] > 0 && !this.beds.has(kind)) {
-        const out = this.core.ctx.createGain();
-        out.gain.value = 0;
+        const out = gain(this.core);
         out.connect(this.out);
         this.beds.set(kind, { out, nodes: buildBed(this.core, kind, out), level: 0, silentSince: 0 });
       }
@@ -274,8 +260,7 @@ export class AmbiencePlayer {
   }
 
   private voice(pan: number): GainNode {
-    const g = this.core.ctx.createGain();
-    g.gain.value = 0;
+    const g = gain(this.core);
     g.connect(panned(this.core, this.out, pan));
     return g;
   }
@@ -324,21 +309,14 @@ export class AmbiencePlayer {
   }
 
   private whisper(t: number, level: number): void {
-    const ctx = this.core.ctx;
     const pan = Math.random() * 1.8 - 0.9;
     const syllables = 2 + Math.floor(Math.random() * 4);
     let at = t;
     for (let i = 0; i < syllables; i++) {
       const dur = 0.12 + Math.random() * 0.22;
       const source = this.core.noiseSource();
-      const f1 = ctx.createBiquadFilter();
-      f1.type = 'bandpass';
-      f1.frequency.value = 500 + Math.random() * 500;
-      f1.Q.value = 5;
-      const f2 = ctx.createBiquadFilter();
-      f2.type = 'bandpass';
-      f2.frequency.value = 1500 + Math.random() * 1200;
-      f2.Q.value = 7;
+      const f1 = filter(this.core, 'bandpass', 500 + Math.random() * 500, 5);
+      const f2 = filter(this.core, 'bandpass', 1500 + Math.random() * 1200, 7);
       const g = this.voice(pan);
       g.gain.setValueAtTime(0.0001, at);
       g.gain.linearRampToValueAtTime(0.06 * level, at + dur * 0.4);
@@ -354,12 +332,8 @@ export class AmbiencePlayer {
   }
 
   private crackle(t: number, level: number): void {
-    const ctx = this.core.ctx;
     const source = this.core.noiseSource();
-    const f = ctx.createBiquadFilter();
-    f.type = 'bandpass';
-    f.frequency.value = 1500 + Math.random() * 3000;
-    f.Q.value = 1.5;
+    const f = filter(this.core, 'bandpass', 1500 + Math.random() * 3000, 1.5);
     const g = this.voice(Math.random() * 1.2 - 0.6);
     const peak = (0.02 + Math.random() * 0.06) * level;
     g.gain.setValueAtTime(0.0001, t);

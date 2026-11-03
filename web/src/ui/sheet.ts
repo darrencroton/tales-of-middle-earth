@@ -1,6 +1,6 @@
 import { el } from './dom.ts';
 import { ListNav } from './listnav.ts';
-import { defaultItem, renderFooter, type PopAction, type PopTab } from './popup.ts';
+import { defaultItem, renderFooter, renderHeader, type PopAction, type PopTab } from './popup.ts';
 
 /* Downward swipe on a sheet's header (CSS pixels) that dismisses it. */
 const SWIPE_CLOSE = 60;
@@ -15,7 +15,7 @@ export type SheetTab = PopTab;
  * - `card`: details or a question about one thing, as tall as its content, floating over whatever opened it.
  * Panels and menus opened from a panel or menu take its place (Back returns); cards and anything opened from a card float above.
  */
-export type SheetKind = 'panel' | 'menu' | 'card';
+type SheetKind = 'panel' | 'menu' | 'card';
 
 export interface SheetContent {
   title: string;
@@ -59,10 +59,10 @@ class Frame {
   readonly footer: HTMLElement;
   readonly nav: ListNav;
   readonly entries: SheetContent[] = [];
-  private readonly titleEl: HTMLElement;
-  private readonly subtitleEl: HTMLElement;
-  private readonly badgeEl: HTMLElement;
-  private readonly backButton: HTMLButtonElement;
+  private readonly header: HTMLElement;
+  private readonly titleId: string;
+  private readonly onBack: () => void;
+  private readonly onClose: () => void;
 
   constructor(id: string, onBack: () => void, onClose: () => void) {
     this.root = el('div', 'sheet-frame');
@@ -72,21 +72,11 @@ class Frame {
     this.panel.setAttribute('aria-modal', 'true');
     this.panel.tabIndex = -1;
 
-    const header = el('header', 'sheet-header');
-    this.backButton = el('button', 'sheet-back', '‹');
-    this.backButton.type = 'button';
-    this.backButton.setAttribute('aria-label', 'Back');
-    this.badgeEl = el('span', 'sheet-badge');
-    const titles = el('div', 'sheet-titles');
-    this.titleEl = el('h2', 'sheet-title');
-    this.titleEl.id = id;
+    const header = (this.header = el('header', 'sheet-header'));
+    this.titleId = id;
+    this.onBack = onBack;
+    this.onClose = onClose;
     this.panel.setAttribute('aria-labelledby', id);
-    this.subtitleEl = el('p', 'sheet-subtitle');
-    titles.append(this.titleEl, this.subtitleEl);
-    const close = el('button', 'sheet-close', '✕');
-    close.type = 'button';
-    close.setAttribute('aria-label', 'Close');
-    header.append(this.backButton, this.badgeEl, titles, close);
 
     this.body = el('div', 'sheet-body');
     this.footer = el('footer', 'sheet-actions');
@@ -95,8 +85,6 @@ class Frame {
     this.nav = new ListNav(this.panel, this.body);
 
     backdrop.addEventListener('click', onClose);
-    close.addEventListener('click', onClose);
-    this.backButton.addEventListener('click', onBack);
     let dragStart: number | null = null;
     header.addEventListener(
       'touchstart',
@@ -126,12 +114,14 @@ class Frame {
     const kind = top.kind ?? 'panel';
     this.root.className = `sheet-frame frame-${kind}${layered ? ' layered' : ''}${this.root.inert ? ' covered' : ''}`;
     this.panel.className = `sheet sheet-${kind} ${top.className ?? ''}`.trim();
-    this.titleEl.textContent = top.title;
-    this.subtitleEl.textContent = top.subtitle ?? '';
-    this.subtitleEl.hidden = !top.subtitle;
-    this.badgeEl.replaceChildren(...(top.badge ? [top.badge] : []));
-    this.badgeEl.hidden = !top.badge;
-    this.backButton.hidden = this.entries.length < 2;
+    renderHeader(this.header, {
+      title: top.title,
+      titleId: this.titleId,
+      subtitle: top.subtitle,
+      badge: top.badge,
+      back: this.entries.length < 2 ? undefined : this.onBack,
+      close: this.onClose,
+    });
     this.body.replaceChildren(top.body);
     renderFooter(this.footer, top.actions ?? [], top.tabs ?? []);
   }
@@ -287,9 +277,10 @@ export class Sheets {
   }
 
   /**
-   * Swaps a sheet's content in place, keeping its scroll position and,
-   * within the same view, its highlight (for views that update as the game
-   * answers). `previous` defaults to the top sheet.
+   * Swaps a sheet's content in place, keeping its scroll position and
+   * highlight within the same view (for views that update as the game
+   * answers); another view starts at the top. `previous` defaults to the
+   * top sheet.
    */
   update(content: SheetContent, previous?: SheetContent): void {
     const frame = previous ? this.frames.find((f) => f.entries.includes(previous)) : this.topFrame;
@@ -299,11 +290,11 @@ export class Sheets {
     const sameView = view(frame.entries[at]) === view(content);
     frame.entries[at] = content;
     if (at < frame.entries.length - 1) return;
-    /* The same view rebuilt keeps its highlight's place; another tab starts afresh. */
+    /* The same view rebuilt keeps its highlight's place and scroll; another tab starts afresh. */
     const mark = sameView ? frame.nav.mark() : null;
     const scroll = frame.body.scrollTop;
     frame.render(content, this.frames.indexOf(frame) > 0);
-    frame.body.scrollTop = scroll;
+    frame.body.scrollTop = sameView ? scroll : 0;
     frame.nav.setActive(content.initial ?? frame.nav.find(mark) ?? frame.fallback(), !!content.initial);
   }
 

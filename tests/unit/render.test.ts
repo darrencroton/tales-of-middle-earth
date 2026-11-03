@@ -11,10 +11,9 @@ import {
   CAVE_PLIT,
   CAVE_SEEN,
   LAYER_MONSTER,
-  LAYER_TERRAIN,
-  NO_EFFECT,
   type LevelSnapshot,
 } from '../../web/src/render/snapshot.ts';
+import { snapshot } from './fixtures.ts';
 
 const feature = (name: string, flags = 0, ch = '.', attr = 1): FeatureInfo => ({ name, ch: ch.charCodeAt(0), attr, flags });
 
@@ -24,40 +23,8 @@ const FEATURES: FeatureInfo[] = [
   feature('granite wall', FB_WALL | FB_NO_VISION | FB_NO_WALK, '#'),
   feature('pool of deep lava', FB_FLOOR, '.', 12),
 ];
-const FLOOR = 1;
 const WALL = 2;
 const LAVA = 3;
-
-function makeSnapshot(width: number, height: number, fill: Partial<Record<'feat' | 'info' | 'layer', number>> = {}): LevelSnapshot {
-  const n = width * height;
-  return {
-    inDungeon: true,
-    icky: false,
-    width,
-    height,
-    py: 0,
-    px: 0,
-    lightRadius: 2,
-    depth: 3,
-    wild: false,
-    blind: false,
-    hallucinating: false,
-    panelRow: 0,
-    panelCol: 0,
-    rowMap: 1,
-    colMap: 13,
-    atCommand: true,
-    turn: 0,
-    floorObjects: 0,
-    heroActing: false,
-    feat: new Uint8Array(n).fill(fill.feat ?? FLOOR),
-    info: new Uint16Array(n).fill(fill.info ?? 0),
-    glyph: new Uint8Array(n).fill('.'.charCodeAt(0)),
-    attr: new Uint8Array(n).fill(1),
-    layer: new Uint8Array(n).fill(fill.layer ?? LAYER_TERRAIN),
-    effect: new Uint8Array(n).fill(NO_EFFECT),
-  };
-}
 
 describe('colour helpers', () => {
   it('formats and clamps CSS colours', () => {
@@ -121,7 +88,7 @@ describe('lighting', () => {
   });
 
   it('blocks light behind walls', () => {
-    const snap = makeSnapshot(5, 1);
+    const snap = snapshot(5, 1);
     assert.equal(hasLineOfLight(snap, materials, 0, 0, 4, 0), true);
     snap.feat[2] = WALL;
     assert.equal(hasLineOfLight(snap, materials, 0, 0, 4, 0), false);
@@ -129,7 +96,7 @@ describe('lighting', () => {
   });
 
   it('spreads lava glow to visible cells only, stopping at walls', () => {
-    const snap = makeSnapshot(7, 1, { info: CAVE_SEEN });
+    const snap = snapshot(7, 1, { info: new Uint16Array(7).fill(CAVE_SEEN) });
     snap.feat[0] = LAVA;
     snap.feat[3] = WALL;
     snap.info[1] = 0;
@@ -141,7 +108,7 @@ describe('lighting', () => {
   });
 
   it('combines torch light, room light and a visibility floor', () => {
-    const snap = makeSnapshot(6, 1, { info: CAVE_SEEN });
+    const snap = snapshot(6, 1, { info: new Uint16Array(6).fill(CAVE_SEEN) });
     snap.info[0] |= CAVE_PLIT;
     snap.info[1] |= CAVE_PLIT;
     snap.info[3] |= CAVE_GLOW;
@@ -165,24 +132,24 @@ describe('cell appearance', () => {
   });
 
   it('hides unknown cells', () => {
-    const snap = makeSnapshot(1, 1, { layer: 0 });
+    const snap = snapshot(1, 1, { layer: new Uint8Array(1) });
     assert.equal(cellAppearance(context(snap), 0, 0), null);
   });
 
   it('uses Brogue glyphs or classic characters', () => {
-    const snap = makeSnapshot(1, 1, { info: CAVE_SEEN | CAVE_GLOW });
+    const snap = snapshot(1, 1, { info: new Uint16Array([CAVE_SEEN | CAVE_GLOW]) });
     assert.equal(cellAppearance(context(snap), 0, 0)?.glyph, '·');
     assert.equal(cellAppearance(context(snap, 'classic'), 0, 0)?.glyph, '.');
   });
 
   it('draws walls as solid blocks in Brogue mode only', () => {
-    const snap = makeSnapshot(1, 1, { info: CAVE_SEEN | CAVE_GLOW, feat: WALL });
+    const snap = snapshot(1, 1, { info: new Uint16Array([CAVE_SEEN | CAVE_GLOW]), feat: new Uint8Array([WALL]) });
     assert.equal(cellAppearance(context(snap), 0, 0)?.solid, true);
     assert.equal(cellAppearance(context(snap, 'classic'), 0, 0)?.solid, false);
   });
 
   it('tints remembered cells dim and blue', () => {
-    const snap = makeSnapshot(2, 1, { info: CAVE_MARK });
+    const snap = snapshot(2, 1, { info: new Uint16Array(2).fill(CAVE_MARK) });
     snap.info[1] = CAVE_SEEN | CAVE_GLOW;
     const remembered = cellAppearance(context(snap), 0, 0)!;
     const visible = cellAppearance(context(snap), 1, 0)!;
@@ -193,7 +160,7 @@ describe('cell appearance', () => {
   });
 
   it('keeps monsters vivid in dim light', () => {
-    const snap = makeSnapshot(1, 1, { info: CAVE_SEEN, layer: LAYER_MONSTER });
+    const snap = snapshot(1, 1, { info: new Uint16Array([CAVE_SEEN]), layer: new Uint8Array([LAYER_MONSTER]) });
     snap.attr[0] = 4;
     snap.glyph[0] = 'o'.charCodeAt(0);
     const cell = cellAppearance(context(snap), 0, 0)!;

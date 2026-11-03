@@ -57,5 +57,3 @@ export class MacroRunner {
     return result.value;
   }
 }
-
-export { keyCodes } from '../input/keys.ts';

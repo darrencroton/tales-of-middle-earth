@@ -24,7 +24,7 @@ export interface ItemAction {
 
 export const INVEN_WIELD = 24;
 
-export const TV = {
+const TV = {
   PARCHMENT: 8,
   CORPSE: 9,
   SHOT: 16,
@@ -47,7 +47,7 @@ export const TV = {
 const WEAPON_TVALS = new Set([6, 15, 19, 20, 21, 22, 23, 24]);
 
 /** Equipment index of the light source slot. */
-export const INVEN_LITE = 36;
+const INVEN_LITE = 36;
 /** Equipment indexes of the launcher and the quiver. */
 export const INVEN_BOW = 27;
 export const INVEN_AMMO = 50;
@@ -234,7 +234,7 @@ export interface GearSuggestion {
   command: 'E' | 'w' | 'F';
 }
 
-export interface Situation {
+interface Situation {
   /** Below the town, where a light is needed. */
   inDungeon: boolean;
   hungry: boolean;

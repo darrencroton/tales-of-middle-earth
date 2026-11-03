@@ -1,16 +1,17 @@
+import type { Engine } from '../engine.ts';
 import { DEEDS, type Chronicle, type Deed } from '../play/chronicle.ts';
 import { returnsText } from '../play/lives.ts';
 import { ABANDONED, dayOf, skillValue, type Memorial, type MemorialFoe, type MemorialItem, type MemorialLine } from '../play/memorial.ts';
 import { readableColour } from '../render/colour.ts';
-import type { ScoreEntry } from '../render/snapshot.ts';
-import { titleName } from './api.ts';
-import { el, glyph, iconText, section } from './dom.ts';
+import { FEET_PER_LEVEL, type ScoreEntry } from '../render/snapshot.ts';
+import { description, titleName } from './api.ts';
+import { count, el, glyph, iconText, section, signed, stat } from './dom.ts';
 import type { SheetContent, Sheets, SheetTab } from './sheet.ts';
 
 /** Where a hero fell, in words: "in the town", "on a quest", "at 250 ft". */
-export function fellWhere(entry: Pick<ScoreEntry, 'depth' | 'quest'>): string {
+function fellWhere(entry: Pick<ScoreEntry, 'depth' | 'quest'>): string {
   if (entry.quest) return 'on a quest';
-  return entry.depth > 0 ? `at ${entry.depth * 50} ft` : 'in the town';
+  return entry.depth > 0 ? `at ${entry.depth * FEET_PER_LEVEL} ft` : 'in the town';
 }
 
 /** "Killed by a Cave spider at 250 ft", "Abandoned in the town", or "Retired" for a winner who chose to stop. */
@@ -36,20 +37,6 @@ const TABS: [FallenTab, string][] = [
   ['end', 'Last moments'],
 ];
 
-function stat(label: string, value: string): HTMLElement {
-  const node = el('div', 'stat');
-  node.append(el('span', 'stat-label', label), el('span', 'stat-value', value));
-  return node;
-}
-
-function signed(n: number): string {
-  return `${n >= 0 ? '+' : ''}${n}`;
-}
-
-function number(n: number): string {
-  return n.toLocaleString('en-GB');
-}
-
 /** "Killed by Smaug the Golden", "Adventure abandoned", "Retired", "Starved to death". */
 export function fateLine(cause: string): string {
   if (cause === ABANDONED) return 'Adventure abandoned';
@@ -61,7 +48,7 @@ export function fateLine(cause: string): string {
 
 /** Where and when: "at 1,500 ft in Erebor · day 12". */
 export function fellWhereWhen(m: Pick<Memorial, 'feet' | 'place' | 'turn'>): string {
-  const where = m.feet ? `at ${number(m.feet)} ft${m.place ? ` in ${m.place}` : ''}` : m.place ? `in ${m.place}` : '';
+  const where = m.feet ? `at ${count(m.feet)} ft${m.place ? ` in ${m.place}` : ''}` : m.place ? `in ${m.place}` : '';
   return [where, `day ${dayOf(m.turn)}`].filter(Boolean).join(' · ');
 }
 
@@ -89,12 +76,12 @@ export function lastWordsList(lines: readonly MemorialLine[]): HTMLElement {
 }
 
 /** Kills, legends, depth and deeds from the hero's chronicle. */
-export function taleGrid(tale: Chronicle): HTMLElement {
+function taleGrid(tale: Chronicle): HTMLElement {
   const grid = el('div', 'stat-grid');
-  grid.append(stat('Creatures slain', number(tale.kills)), stat('Deepest', tale.deepestFeet ? `${number(tale.deepestFeet)} ft` : 'The surface'));
+  grid.append(stat('Creatures slain', count(tale.kills)), stat('Deepest', tale.deepestFeet ? `${count(tale.deepestFeet)} ft` : 'The surface'));
   if (tale.mightiest) grid.append(stat('Mightiest foe', titleName(tale.mightiest.name)));
   if (tale.uniques.length) grid.append(stat('Legends slain', String(tale.uniques.length)));
-  if (tale.peakGold) grid.append(stat('Most gold', number(tale.peakGold)));
+  if (tale.peakGold) grid.append(stat('Most gold', count(tale.peakGold)));
   if (tale.returns) grid.append(stat('Returned from death', returnsText(tale.returns)));
   return grid;
 }
@@ -112,8 +99,7 @@ function tabBar(current: FallenTab, open: (tab: FallenTab) => void, tabs: Fallen
 }
 
 function openItem(sheets: Sheets, item: MemorialItem): void {
-  const body = el('div', 'description');
-  for (const p of item.text.length ? item.text : ['Nothing more was known of it.']) body.append(el('p', undefined, p));
+  const body = description(item.text, 'Nothing more was known of it.');
   sheets.open({
     title: titleName(item.name),
     subtitle: item.slot ? `Worn · ${item.slot}` : 'Carried',
@@ -124,10 +110,16 @@ function openItem(sheets: Sheets, item: MemorialItem): void {
   });
 }
 
-export function openFoe(sheets: Sheets, foe: MemorialFoe): void {
+/** A creature's recall from tome2 as coloured runs (tome2's white, colour 1, left to the text colour). */
+export function recallLines(engine: Engine, palette: readonly string[], id: number): MemorialLine[] {
+  return (engine.monsterRecall(id)?.text ?? []).map(([attr, text]) => ({ text, colour: attr === 1 ? '' : (palette[attr] ?? '') }));
+}
+
+/** A creature's recall as paragraphs (tome2 breaks them with newlines), or `empty` when nothing is known. */
+export function recallParagraphs(lines: readonly MemorialLine[], empty: string): HTMLElement {
   const body = el('div', 'description recall');
   let paragraph = el('p');
-  for (const run of foe.recall) {
+  for (const run of lines) {
     run.text.split('\n').forEach((piece, i) => {
       if (i > 0 && paragraph.textContent?.trim()) {
         body.append(paragraph);
@@ -140,7 +132,12 @@ export function openFoe(sheets: Sheets, foe: MemorialFoe): void {
     });
   }
   if (paragraph.textContent?.trim()) body.append(paragraph);
-  if (!body.childElementCount) body.append(el('p', 'muted', 'Little was known of this creature.'));
+  if (!body.childElementCount) body.append(el('p', 'muted', empty));
+  return body;
+}
+
+export function openFoe(sheets: Sheets, foe: MemorialFoe): void {
+  const body = recallParagraphs(foe.recall, 'Little was known of this creature.');
   sheets.open({
     title: titleName(foe.name),
     subtitle: [foe.level ? `Level ${foe.level}` : '', foe.unique ? 'a creature of legend' : ''].filter(Boolean).join(' · ') || undefined,
@@ -196,10 +193,10 @@ function heroTab(sheets: Sheets, hero: FallenHero): HTMLElement[] {
   const level = m?.level ?? e?.level ?? 0;
   progress.append(stat('Level', String(level)));
   if (e && e.maxLevel > level) progress.append(stat('Highest level', String(e.maxLevel)));
-  if (m) progress.append(stat('Experience', number(m.exp)));
-  progress.append(stat('Gold', number(m?.gold ?? e?.gold ?? 0)));
-  if (e) progress.append(stat('Score', number(e.points)));
-  if (e && e.maxDepth > 0) progress.append(stat('Deepest', `${number(e.maxDepth * 50)} ft`));
+  if (m) progress.append(stat('Experience', count(m.exp)));
+  progress.append(stat('Gold', count(m?.gold ?? e?.gold ?? 0)));
+  if (e) progress.append(stat('Score', count(e.points)));
+  if (e && e.maxDepth > 0) progress.append(stat('Deepest', `${count(e.maxDepth * FEET_PER_LEVEL)} ft`));
   if (m?.god && m.god !== 'Nobody') progress.append(stat('God', m.god));
   parts.push(section('Progress', progress));
   if (m?.tale) {

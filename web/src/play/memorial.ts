@@ -1,12 +1,14 @@
 import type { Chronicle } from './chronicle.ts';
-import { isNotice, type CharacterState, type InventoryState, type MessageState, type MonsterState, type PlayerState, type ScoreEntry } from '../render/snapshot.ts';
+import { gridDistance } from './pathfinding.ts';
+import { feetOf, hasWords, isNotice, type CharacterState, type InventoryState, type MessageState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
+import { stripArticle } from './text.ts';
 
 /** Game turns in a day of Middle-earth (tome2's DAY at ten game turns a player turn). */
-export const TURNS_PER_DAY = 115200;
+const TURNS_PER_DAY = 115200;
 /** The end of a run the player abandoned, as tome2's Hall of Fame records it (engine `web_mark_abandoned`). */
 export const ABANDONED = 'Abandoned';
 /** Messages kept from the hero's last moments. */
-export const LAST_WORDS = 14;
+const LAST_WORDS = 14;
 
 export interface MemorialItem {
   name: string;
@@ -73,7 +75,7 @@ export function hasFallen(player: Pick<PlayerState, 'dead' | 'fate'> | null | un
 
 /** Strips a leading article so "a Cave spider" matches the creature "Cave spider". */
 export function bareName(name: string): string {
-  return name.replace(/^(a|an|the|some)\s+/i, '').trim().toLowerCase();
+  return stripArticle(name).trim().toLowerCase();
 }
 
 /** The creature in sight whose name matches what killed the hero, nearest first. */
@@ -81,14 +83,15 @@ export function findKiller(cause: string, monsters: readonly MonsterState[], px:
   const wanted = bareName(cause);
   if (!wanted) return null;
   const matches = monsters.filter((m) => bareName(m.name) === wanted);
-  matches.sort((a, b) => Math.max(Math.abs(a.x - px), Math.abs(a.y - py)) - Math.max(Math.abs(b.x - px), Math.abs(b.y - py)));
+  const hero = { x: px, y: py };
+  matches.sort((a, b) => gridDistance(a, hero) - gridDistance(b, hero));
   return matches[0] ?? null;
 }
 
 /** tome2's last messages before the end, oldest first, without blank or repeated filler lines. */
 export function lastWords(messages: readonly MessageState[], palette: readonly string[], count = LAST_WORDS): MemorialLine[] {
   return messages
-    .filter((m) => !isNotice(m) && /[^\s=\-_~*]/.test(m.text))
+    .filter((m) => !isNotice(m) && hasWords(m.text))
     .slice(0, count)
     .reverse()
     .map((m) => ({ text: m.text, colour: palette[m.color] ?? '' }));
@@ -104,10 +107,6 @@ export function memorialKey(hero: { name: string; turn: number }): string {
   return `${hero.name}@${hero.turn}`;
 }
 
-export function entryKey(entry: Pick<ScoreEntry, 'name' | 'turns'>): string {
-  return `${entry.name}@${entry.turns}`;
-}
-
 /** Skill values as tome2 shows them: thousandths to "12.345". */
 export function skillValue(value: number): string {
   const sign = value < 0 ? '−' : '';
@@ -115,7 +114,7 @@ export function skillValue(value: number): string {
   return `${sign}${Math.floor(v / 1000)}.${String(v % 1000).padStart(3, '0')}`;
 }
 
-export interface MemorialSources {
+interface MemorialSources {
   player: PlayerState;
   character: CharacterState | null;
   inventory: InventoryState | null;
@@ -160,7 +159,7 @@ export function buildMemorial(s: MemorialSources): Memorial {
     exp: p.exp,
     gold: p.au,
     turn: s.turn,
-    feet: p.wild ? 0 : p.depth * 50,
+    feet: feetOf(p),
     place: s.place,
     cause,
     date: (s.now ?? new Date()).toISOString(),

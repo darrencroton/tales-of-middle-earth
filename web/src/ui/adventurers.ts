@@ -37,14 +37,14 @@ function when(iso: string | undefined): string | null {
 
 /** Every saved hero, the one played last first: a row each, opening the hero's card. */
 export function openAdventurers(sheets: Sheets, saves: readonly SaveInfo[], handlers: AdventurerHandlers): void {
-  const list = el('div', 'adventurer-list');
+  const list = el('div', 'menu-list');
   for (const save of saves) {
     const details = handlers.details(save);
     const row = el('button', 'row-button adventurer-row');
     row.type = 'button';
     row.dataset.nav = '';
     row.dataset.key = save.name;
-    const text = el('span', 'adventurer-text');
+    const text = el('span', 'row-text');
     text.append(el('span', 'row-label', details.name), el('span', 'adventurer-line', adventurerSummary(details)));
     row.append(el('span', 'row-icon', iconText('@')), text);
     row.addEventListener('click', () => openAdventurer(sheets, save, handlers));

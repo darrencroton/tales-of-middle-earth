@@ -1,10 +1,10 @@
 export const KEY_BACKSPACE = 8;
-export const KEY_TAB = 9;
+const KEY_TAB = 9;
 export const KEY_ENTER = 13;
 export const KEY_ESCAPE = 27;
 export const KEY_SPACE = 32;
 export const KEY_BACKSLASH = 92;
-export const KEY_DELETE = 127;
+const KEY_DELETE = 127;
 
 const RUN_COMMAND = 46; // '.' in the original keyset, reached via '\' to bypass keymaps
 

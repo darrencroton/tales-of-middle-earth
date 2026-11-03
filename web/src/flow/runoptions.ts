@@ -1,5 +1,5 @@
 /** A birth option the last character creation screen offers, by the name the engine gives it. */
-export type RunOptionName = 'smallLevels' | 'fates' | 'preserve' | 'noSelling' | 'unusualRooms' | 'jokes';
+type RunOptionName = 'smallLevels' | 'fates' | 'preserve' | 'noSelling' | 'unusualRooms' | 'jokes';
 
 /** The run as tome2 will play it (`web_run_options_json`): its birth options, in order, its random quests and its lives. */
 export interface RunOptions {

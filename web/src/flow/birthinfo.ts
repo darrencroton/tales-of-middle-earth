@@ -1,9 +1,9 @@
 import type { BirthData, BirthEntry, BirthSkill } from '../render/snapshot.ts';
 import type { BirthStep } from './birth.ts';
 
-export const STAT_NAMES = ['STR', 'INT', 'WIS', 'DEX', 'CON', 'CHR'] as const;
+const STAT_NAMES = ['STR', 'INT', 'WIS', 'DEX', 'CON', 'CHR'] as const;
 
-export interface BirthTrait {
+interface BirthTrait {
   /** Character level it is gained at (1 = from the start). */
   level: number;
   text: string;

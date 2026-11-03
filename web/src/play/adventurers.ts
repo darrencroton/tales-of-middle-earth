@@ -1,11 +1,11 @@
 import type { PlayerState } from '../render/snapshot.ts';
-import type { EmscriptenFS } from '../saves.ts';
+import { JsonFile, type EmscriptenFS } from '../saves.ts';
 
 const FILE = 'adventurers.json';
 const VERSION = 1;
 
 /** What the title screen shows of a saved hero, noted whenever the game is saved. */
-export interface Adventurer {
+interface Adventurer {
   name: string;
   level: number;
   race: string;
@@ -64,12 +64,12 @@ export function nextRunName(name: string, taken: ReadonlySet<string>): string {
 }
 
 /** The files of a hero among those in the save directory: the savefile, its lives (`Base.adventure`) and the levels kept with it (`Base.lvl4_2`). */
-export function heroFiles(names: readonly string[], base: string): string[] {
+function heroFiles(names: readonly string[], base: string): string[] {
   return names.filter((n) => n === base || n.startsWith(`${base}.`));
 }
 
 /** tome2's savefile index (global.svg, "module@1base@description" a line) without the hero's line. */
-export function withoutIndexEntry(text: string, base: string): string {
+function withoutIndexEntry(text: string, base: string): string {
   return text
     .split('\n')
     .filter((line) => {
@@ -102,25 +102,28 @@ export function deleteHeroSave(fs: Pick<EmscriptenFS, 'readdir' | 'readFile' | '
   return removed;
 }
 
+interface Stored {
+  version: number;
+  heroes: Record<string, Adventurer>;
+}
+
+function sanitise(raw: unknown): Stored {
+  const heroes = Object.create(null) as Record<string, Adventurer>;
+  const data = (raw && typeof raw === 'object' ? raw : {}) as Partial<Stored>;
+  if (data.version === VERSION && data.heroes && typeof data.heroes === 'object') Object.assign(heroes, data.heroes);
+  return { version: VERSION, heroes };
+}
+
 /** Heroes' title-screen details, by name, kept as a file next to the savefiles. */
 export class AdventurerStore {
-  private heroes: Record<string, Adventurer> = Object.create(null) as Record<string, Adventurer>;
-  private fs: EmscriptenFS | null = null;
-  private path = '';
+  private readonly file = new JsonFile(FILE, sanitise, 'adventurers');
+  private heroes = sanitise(null).heroes;
   loaded = false;
 
   load(fs: EmscriptenFS | null, root: string | null): void {
     if (!fs || !root) return;
     this.loaded = true;
-    this.fs = fs;
-    this.path = `${root}/${FILE}`;
-    this.heroes = Object.create(null) as Record<string, Adventurer>;
-    try {
-      const data = JSON.parse(new TextDecoder().decode(fs.readFile(this.path))) as { version?: number; heroes?: Record<string, Adventurer> };
-      if (data.version === VERSION && data.heroes && typeof data.heroes === 'object') Object.assign(this.heroes, data.heroes);
-    } catch {
-      /* None kept yet. */
-    }
+    this.heroes = this.file.load(fs, root).heroes;
   }
 
   get(name: string): Adventurer | null {
@@ -142,11 +145,6 @@ export class AdventurerStore {
   }
 
   save(): void {
-    if (!this.fs || !this.path) return;
-    try {
-      this.fs.writeFile(this.path, new TextEncoder().encode(JSON.stringify({ version: VERSION, heroes: this.heroes })));
-    } catch (err) {
-      console.warn('Could not write the adventurers', err);
-    }
+    this.file.save({ version: VERSION, heroes: this.heroes });
   }
 }

@@ -43,12 +43,12 @@ export function attachPinch(
   element.addEventListener('touchcancel', end);
 }
 
-export const TAP_MAX_MOVE = 12;
-export const TAP_MAX_MS = 450;
+const TAP_MAX_MOVE = 12;
+const TAP_MAX_MS = 900;
 
-export const LONG_PRESS_MS = 500;
+const LONG_PRESS_MS = 500;
 
-export interface MapGestureHandlers {
+interface MapGestureHandlers {
   onTap(clientX: number, clientY: number, target: EventTarget | null): void;
   onLongPress(clientX: number, clientY: number, target: EventTarget | null): void;
   /** Incremental drag in CSS pixels. */
@@ -113,7 +113,7 @@ export function attachMapGestures(element: HTMLElement, handlers: MapGestureHand
 
   element.addEventListener('pointerup', (e) => {
     if (!active || e.pointerId !== active.id) return;
-    const tap = !panning && !pressed && performance.now() - active.t <= TAP_MAX_MS * 2;
+    const tap = !panning && !pressed && performance.now() - active.t <= TAP_MAX_MS;
     const { x, y, target } = active;
     reset();
     if (tap) handlers.onTap(x, y, target);

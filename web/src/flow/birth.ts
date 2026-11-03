@@ -7,7 +7,7 @@ const TERM_YELLOW = 11;
 
 export type BirthStep = 'race' | 'modifier' | 'class' | 'specialisation' | 'god';
 
-export interface BirthOption {
+interface BirthOption {
   key: string;
   label: string;
   current: boolean;
@@ -82,13 +82,17 @@ export function parseBirthChoice(rows: readonly TermRow[], screen: string): Birt
   }
   if (paragraph) description.push(paragraph);
 
-  const summary: { label: string; value: string }[] = [];
+  return { step, options, description, summary: parseHeader(lines) };
+}
+
+/** The Name, Race, Class and God fields on the first rows of a birth screen. */
+export function parseHeader(lines: readonly string[]): { label: string; value: string }[] {
+  const fields: { label: string; value: string }[] = [];
   for (const line of lines.slice(0, 8)) {
     const m = /^\s*(Name|Race|Class|God)\s*:\s*(.*?)\s*$/.exec(line.slice(0, 40));
-    if (m && m[2]) summary.push({ label: m[1], value: m[2] });
+    if (m && m[2]) fields.push({ label: m[1], value: m[2] });
   }
-
-  return { step, options, description, summary };
+  return fields;
 }
 
 /** Cursor keys that move tome2's selection from the current option to `target` ('6' steps forward and wraps). */
@@ -102,7 +106,7 @@ export function cursorKeysTo(options: readonly BirthOption[], target: string): s
   return forward <= back ? '6'.repeat(forward) : '4'.repeat(back);
 }
 
-export interface SavefileEntry {
+interface SavefileEntry {
   letter: string;
   name: string;
 }

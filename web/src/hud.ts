@@ -2,16 +2,16 @@ import type { Place } from './audio/places.ts';
 import { readableColour } from './render/colour.ts';
 import { bar, el, fraction, iconText } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
-import { isAlly, isHostile, isNotice, type GameState, type LevelQuest, type MessageState, type MonsterState, type ObjectState, type PlayerState } from './render/snapshot.ts';
+import { feetOf, hasWords, isAlly, isHostile, isNotice, type GameState, type LevelQuest, type MessageState, type MonsterState, type ObjectState, type PlayerState } from './render/snapshot.ts';
 
-export interface TextSegment {
+interface TextSegment {
   text: string;
   colour: string;
 }
 
 export type HudEntity = { kind: 'monster'; monster: MonsterState } | { kind: 'object'; object: ObjectState };
 
-export interface HudCallbacks {
+interface HudCallbacks {
   onEntity(entity: HudEntity): void;
   onPlayer(): void;
   /** The skill-points chip was tapped. */
@@ -51,7 +51,7 @@ export function depthLabel(player: Pick<PlayerState, 'depth' | 'dungeon' | 'wild
   if (player.depth === 0) return 'Town';
   /* A quest's own level belongs to no dungeon, whatever tome2 keeps as the dungeon. */
   const place = player.quest?.own ? player.quest.title : player.dungeon;
-  return `${place} · ${player.depth * 50} ft (L${player.depth})`;
+  return `${place} · ${feetOf(player)} ft (L${player.depth})`;
 }
 
 /* Wilderness terrain (wf_info.txt names) as places. */
@@ -366,7 +366,7 @@ export class Hud {
     const history: MessageState[] = [];
     let repeating = !!currentText;
     for (const m of messages) {
-      if (!/[^\s=\-_~*]/.test(m.text)) continue;
+      if (!hasWords(m.text)) continue;
       if (repeating && !isNotice(m) && currentText.includes(m.text.slice(0, 20))) continue;
       if (!isNotice(m)) repeating = false;
       history.push(m);

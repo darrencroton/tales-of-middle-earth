@@ -2,11 +2,11 @@ import { cellNoise, type RGB } from './colour.ts';
 import type { Material } from './materials.ts';
 import { CAVE_GLOW, CAVE_MLIT, CAVE_PLIT, CAVE_SEEN, type LevelSnapshot } from './snapshot.ts';
 
-export const TORCH_COLOUR: RGB = [1, 0.8, 0.55];
-export const ROOM_LIGHT: RGB = [0.95, 0.93, 1.0];
-export const DAYLIGHT: RGB = [0.92, 0.9, 0.84];
-export const MONSTER_LIGHT: RGB = [0.4, 0.45, 0.55];
-export const MIN_VISIBLE_LIGHT: RGB = [0.17, 0.17, 0.21];
+const TORCH_COLOUR: RGB = [1, 0.8, 0.55];
+const ROOM_LIGHT: RGB = [0.95, 0.93, 1.0];
+const DAYLIGHT: RGB = [0.92, 0.9, 0.84];
+const MONSTER_LIGHT: RGB = [0.4, 0.45, 0.55];
+const MIN_VISIBLE_LIGHT: RGB = [0.17, 0.17, 0.21];
 
 export interface LightSource {
   x: number;
