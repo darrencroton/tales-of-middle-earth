@@ -234,6 +234,22 @@ export interface LevelQuest {
 /** A fixed quest the hero has taken, and how it stands. */
 export type QuestStatus = Pick<LevelQuest, 'id' | 'state' | 'title'>;
 
+/** A quest in the hero's quest log (`web_quests_json`). */
+export interface LoggedQuest extends LevelQuest {
+  /** A fixed quest's danger level, as tome2's quest log gives it. */
+  level?: number;
+  /** 1 when the quest is done and its reward is still to be claimed (tome2's "Completed - Unrewarded"). */
+  unclaimed?: number;
+  /** A random quest's depth. */
+  depth?: number;
+}
+
+/** The hero's quest log: every fixed quest taken, done or failed, and the random quests done (with this level's own while under way). */
+export interface QuestLog {
+  quests: LoggedQuest[];
+  random: LoggedQuest[];
+}
+
 /** One entry of the Hall of Fame (tome2's scores file). */
 export interface ScoreEntry {
   name: string;

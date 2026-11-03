@@ -11,6 +11,7 @@ import {
   type GridState,
   type ItemInfo,
   type MonsterRecall,
+  type QuestLog,
   type ScoreEntry,
   type SkillTable,
   type SpellState,
@@ -69,6 +70,7 @@ interface EmscriptenModule {
   _web_clear_rows(first: number, last: number): void;
   _web_place_json(): number;
   _web_scores_json(): number;
+  _web_quests_json(): number;
   _web_birth_json(): number;
   _web_spells_json(): number;
   _web_skills_json(): number;
@@ -167,6 +169,12 @@ export class Engine {
 
   character(): CharacterState | null {
     const json = this.callJson<CharacterState>((mod) => mod._web_character_json());
+    return json && json.ready ? json : null;
+  }
+
+  /** The hero's quest log, or null before a game is running. */
+  quests(): QuestLog | null {
+    const json = this.callJson<QuestLog & { ready?: number }>((mod) => mod._web_quests_json());
     return json && json.ready ? json : null;
   }
 

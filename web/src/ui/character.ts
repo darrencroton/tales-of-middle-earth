@@ -8,6 +8,7 @@ import { fullSheetElements, sheetPageKeys, SHEET_PAGES, type FullSheet } from '.
 import { bar, el, navButton, section, signed, stat } from './dom.ts';
 import { faithLine, openHeroGod } from './gods.ts';
 import { openMenu } from './menus.ts';
+import { openQuestLog } from './quests.ts';
 import type { MessageBox } from './msgbox.ts';
 import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
 import { abilityTableElements, cursorKeys, raiseRefusal, selectedAbility, selectedSkill, skillTableElements, type AbilitiesScreen, type SkillsScreen } from './skills.ts';
@@ -561,6 +562,9 @@ function summaryBody(api: GameApi): HTMLElement | null {
   return body;
 }
 
+/** tome2's quest status, given way to our own quest log. */
+const QUESTS_KEY = '7';
+
 const KNOWLEDGE: [string, string, string][] = [
   ['Artifacts found', '★', '1'],
   ['Unique creatures', '♛', '2'],
@@ -568,17 +572,21 @@ const KNOWLEDGE: [string, string, string][] = [
   ['Recall depths', '↧', '4'],
   ['Corruptions', '☣', '5'],
   ['Companions', '♥', '6'],
-  ['Quests', '!', '7'],
+  ['Quests', '⚑', QUESTS_KEY],
   ['Fates', '☯', '8'],
   ['Dungeon towns', '⌂', '9'],
   ['Notes', '✎', '0'],
 ];
 
-/** What the character knows: each entry opens tome2's knowledge list. */
+/** What the character knows: each entry opens tome2's knowledge list, and Quests the quest log. */
 export function openKnowledge(api: GameApi): void {
+  const questLog = () => {
+    const log = api.engine.quests();
+    if (log) openQuestLog(api.sheets, log);
+  };
   openMenu(
     api.sheets,
     'Knowledge',
-    KNOWLEDGE.map(([label, icon, key]) => ({ label, icon, run: () => api.command(`~${key}`) })),
+    KNOWLEDGE.map(([label, icon, key]) => ({ label, icon, run: key === QUESTS_KEY ? questLog : () => api.command(`~${key}`) })),
   );
 }

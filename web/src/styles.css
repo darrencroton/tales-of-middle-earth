@@ -1919,7 +1919,8 @@ html.keyboard-open .tv-layer.panel {
 
 /* Saved heroes (title screen) */
 
-.adventurer-row {
+.adventurer-row,
+.quest-row {
   padding-top: 0.45rem;
   padding-bottom: 0.45rem;
 }
@@ -1932,9 +1933,25 @@ html.keyboard-open .tv-layer.panel {
   min-width: 0;
 }
 
-.adventurer-line {
+.adventurer-line,
+.quest-line {
   color: var(--muted);
   font-size: var(--fs-small);
+}
+
+/* The quest log: quests under way in violet, those done quieter, a reward waiting in gold. */
+.quest-row .row-icon {
+  color: var(--quest);
+}
+
+.quest-row.done .row-icon,
+.quest-row.failed .row-icon,
+.quest-row.failed .row-label {
+  color: var(--muted);
+}
+
+.quest-line.reward {
+  color: var(--accent);
 }
 
 .hero-facts {

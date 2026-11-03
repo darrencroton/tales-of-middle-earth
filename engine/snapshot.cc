@@ -255,6 +255,46 @@ static void json_quests(JsonWriter &w)
 	w.end_array();
 }
 
+/* A quest's description as tome2's quest log tells it, in lines, without the headings it colours ("#####y…"). */
+static std::vector<std::string> quest_lines(quest_type const &qt)
+{
+	std::string text = qt.gen_desc ? qt.gen_desc() : std::string();
+	if (text.empty())
+	{
+		for (int i = 0; i < 10 && qt.desc[i][0]; i++) text += std::string(qt.desc[i]) + '\n';
+	}
+	std::vector<std::string> lines;
+	std::size_t start = 0;
+	while (start < text.size())
+	{
+		auto end = text.find('\n', start);
+		if (end == std::string::npos) end = text.size();
+		auto line = text.substr(start, end - start);
+		while (!line.empty() && line.back() == ' ') line.pop_back();
+		if (!line.empty() && line.rfind("#####", 0) != 0) lines.push_back(line);
+		start = end + 1;
+	}
+	return lines;
+}
+
+/* The fields of the random quest of a depth, inside an object the caller opens and closes: its kind, the creature to defeat, how many, and how many are slain. */
+static void json_random_quest(JsonWriter &w, int depth)
+{
+	auto const &rq = random_quests[depth];
+	auto const &r_info = game->edit_data.r_info;
+	bool const sword = is_randhero(depth);
+	bool const here = depth == dun_level && level_quest() == QUEST_RANDOM;
+	w.field("id", QUEST_RANDOM);
+	w.field("state", rq.done ? "done" : "active");
+	w.field("title", sword ? "Lost sword!" : "Captured princess!");
+	w.key("random").begin_object();
+	w.field("kind", sword ? "sword" : "princess");
+	w.field("foe", rq.r_idx > 0 && static_cast<std::size_t>(rq.r_idx) < r_info.size() && r_info[rq.r_idx].name ? r_info[rq.r_idx].name : "");
+	w.field("count", rq.type);
+	w.field("slain", rq.done ? rq.type : here ? quest[QUEST_RANDOM].data[0] : 0);
+	w.end_object();
+}
+
 /*
  * The quest of the level the hero is on (memory.cc level_quest), and whether
  * it is active, done or failed: for a random quest its kind, the creature to
@@ -268,19 +308,8 @@ void json_level_quest(JsonWriter &w)
 	if (!q) return;
 	if (q == QUEST_RANDOM)
 	{
-		auto const &rq = random_quests[dun_level];
-		auto const &r_info = game->edit_data.r_info;
-		bool const sword = is_randhero(dun_level);
 		w.key("quest").begin_object();
-		w.field("id", q);
-		w.field("state", rq.done ? "done" : "active");
-		w.field("title", sword ? "Lost sword!" : "Captured princess!");
-		w.key("random").begin_object();
-		w.field("kind", sword ? "sword" : "princess");
-		w.field("foe", rq.r_idx > 0 && static_cast<std::size_t>(rq.r_idx) < r_info.size() && r_info[rq.r_idx].name ? r_info[rq.r_idx].name : "");
-		w.field("count", rq.type);
-		w.field("slain", rq.done ? rq.type : quest[QUEST_RANDOM].data[0]);
-		w.end_object();
+		json_random_quest(w, dun_level);
 		w.end_object();
 		return;
 	}
@@ -289,32 +318,13 @@ void json_level_quest(JsonWriter &w)
 	if (qt.silent) return;
 	auto const state = quest_state(qt.status);
 	if (!state) return;
-	std::string text = qt.gen_desc ? qt.gen_desc() : std::string();
-	if (text.empty())
-	{
-		for (int i = 0; i < 10 && qt.desc[i][0]; i++) text += std::string(qt.desc[i]) + '\n';
-	}
-
-	/* Lines, without the headings tome2's quest log colours ("#####y…"). */
-	std::vector<std::string> lines;
-	std::size_t start = 0;
-	while (start < text.size())
-	{
-		auto end = text.find('\n', start);
-		if (end == std::string::npos) end = text.size();
-		auto line = text.substr(start, end - start);
-		while (!line.empty() && line.back() == ' ') line.pop_back();
-		if (!line.empty() && line.rfind("#####", 0) != 0) lines.push_back(line);
-		start = end + 1;
-	}
-
 	w.key("quest").begin_object();
 	w.field("id", q);
 	w.field("own", q == p_ptr->inside_quest ? 1 : 0);
 	w.field("state", state);
 	w.field("title", qt.name);
 	w.key("lines").begin_array();
-	for (auto const &line : lines) w.value(line);
+	for (auto const &line : quest_lines(qt)) w.value(line);
 	w.end_array();
 	w.end_object();
 }
@@ -1912,6 +1922,55 @@ EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
 
 	w.field("name", name);
 	json_runs(w, "text", text_out_runs([m_ptr] { monster_description_out(m_ptr->r_idx, m_ptr->ego); }));
+	w.end_object();
+	return json.c_str();
+}
+
+/*
+ * The hero's quest log: every fixed quest taken, done or failed, with its
+ * danger level, its description as tome2's quest log tells it and whether
+ * its reward is still to be claimed (tome2's "Completed - Unrewarded"); and
+ * the random quests of the main dungeons done so far, with this level's own
+ * while it is under way, by depth.
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_quests_json()
+{
+	auto w = start_json();
+	if (!begin_ready(w)) return json.c_str();
+
+	w.key("quests").begin_array();
+	for (int q = QUEST_NULL + 1; q < MAX_Q_IDX; q++)
+	{
+		auto const &qt = quest[q];
+		if (q == QUEST_RANDOM || qt.silent) continue;
+		auto const state = quest_state(qt.status);
+		if (!state) continue;
+		w.begin_object();
+		w.field("id", q);
+		w.field("state", state);
+		w.field("title", qt.name);
+		w.field("level", qt.level);
+		w.field("unclaimed", qt.status == QUEST_STATUS_COMPLETED ? 1 : 0);
+		w.key("lines").begin_array();
+		for (auto const &line : quest_lines(qt)) w.value(line);
+		w.end_array();
+		w.end_object();
+	}
+	w.end_array();
+
+	w.key("random").begin_array();
+	for (int depth = 1; depth < MAX_RANDOM_QUEST; depth++)
+	{
+		auto const &rq = random_quests[depth];
+		if (!rq.type) continue;
+		if (!rq.done && !(depth == dun_level && level_quest() == QUEST_RANDOM)) continue;
+		w.begin_object();
+		w.field("depth", depth);
+		json_random_quest(w, depth);
+		w.end_object();
+	}
+	w.end_array();
+
 	w.end_object();
 	return json.c_str();
 }

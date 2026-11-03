@@ -331,12 +331,24 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
 
   await page.locator('#toolbar [data-action="menu"]').click();
   await page.locator('.sheet .row-button', { hasText: 'Knowledge' }).click();
-  await page.locator('.sheet .row-button', { hasText: 'Quests' }).click();
-  await expect(page.locator('.termview .sheet-title')).toHaveText(/Quest/);
+  await page.locator('.sheet .row-button', { hasText: 'Fates' }).click();
+  await expect(page.locator('.termview .sheet-title')).toHaveText(/Fate/);
   await page.locator('.termview .sheet-close').click();
   await waitAtCommand(page);
   await expect(page.locator('.sheet .sheet-title')).toHaveText('Knowledge');
-  await expect(page.locator('.sheet .row-button.is-active')).toContainText('Quests');
+  await expect(page.locator('.sheet .row-button.is-active')).toContainText('Fates');
+  /* Quests is our own log: those under way first, each opening its card. */
+  await page.locator('.sheet .row-button', { hasText: 'Quests' }).click();
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Quests');
+  const underWay = page.locator('.sheet .sheet-section', { hasText: 'Under way' });
+  await underWay.locator('.quest-row', { hasText: 'Dol Guldur' }).click();
+  await expect(page.locator('.sheet-quest .sheet-subtitle')).toHaveText('Under way · danger level 70');
+  await expect(page.locator('.sheet-quest')).toContainText('Necromancer');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-quest')).toBeHidden();
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Quests');
+  await page.locator('.sheet-back').click();
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Knowledge');
   await page.locator('.sheet-back').click();
   await expect(page.locator('.sheet .sheet-title')).toHaveText('Menu');
   await page.keyboard.press('Escape');
