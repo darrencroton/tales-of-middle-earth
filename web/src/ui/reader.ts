@@ -8,7 +8,7 @@ import type { TermView, TermViewOptions } from './termview.ts';
 /* Escapes allowed for leaving the viewer, or one more than the files known to be open. */
 const VIEWER_DEPTH = 12;
 
-export interface ReaderDeps {
+interface ReaderDeps {
   engine: Engine;
   buffer: TerminalBuffer;
   termView: TermView;
@@ -21,7 +21,7 @@ export interface ReaderDeps {
 }
 
 /** A file open in the viewer, once all of it has been gathered, with its links when it is a help file. */
-export interface ShownFile {
+interface ShownFile {
   key: string;
   file: FilePages;
   help: HelpFile | null;

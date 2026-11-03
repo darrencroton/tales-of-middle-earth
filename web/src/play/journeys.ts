@@ -16,7 +16,7 @@ import { approachTarget, outOfSight, pushPast, stopMessage, STOP_MESSAGES, Trave
 const TRAVEL_STEP_MS = 45;
 const RELAXED_STEP_MS = 120;
 
-export interface JourneyDeps {
+interface JourneyDeps {
   engine: Engine;
   buffer: TerminalBuffer;
   map: MapRenderer;
@@ -77,6 +77,11 @@ export class Journeys {
   /** A journey or a target pick is under way. */
   get active(): boolean {
     return !!this.travel || !!this.picker;
+  }
+
+  /** tome2's targeting cursor is being moved onto a place. */
+  get targeting(): boolean {
+    return this.picker !== null;
   }
 
   /** Travel or exploring is under way. */

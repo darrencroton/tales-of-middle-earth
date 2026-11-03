@@ -2,6 +2,8 @@
 
 Date: 3 November 2026. Revision reviewed: `dc9ffbf` (main). Read-only: no code was changed. Baseline verified on a fresh install: 317 unit tests pass, `npm run typecheck` is clean.
 
+Outcome: every finding below was implemented on the branch this document is committed with, in the order of section 6, with two corrections found on the way: `ScoreEntry.gold` is read by the memorial card, so it stays (E4); and the main.ts extraction (M2) went further than the six candidates named, since those alone left the file at about 2,700 lines, to thirteen modules (heroes, abilities, the look card, More, the viewport and the quit macros joined them). Verification beyond the tests: the engine's JSON exports dumped on the same savefile with both builds are byte-identical except the fields dropped; every sound rendered with seeded randomness on both builds is unchanged within the offline renderer's run-to-run noise; the e2e suite passes on all three layouts. The sections below are left as the review was written.
+
 ## 1. Scope, method and coverage
 
 Everything we own was reviewed: `web/src` (25,471 lines of TypeScript, 4,477 of CSS), `engine/` (3,559 lines of C++ glue), `tests/` (4,136 unit, 2,631 e2e) and the docs. The upstream engine in `external/tome2` is out of scope and was treated as a fixed boundary.

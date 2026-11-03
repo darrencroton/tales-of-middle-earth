@@ -23,7 +23,7 @@ function newLevelState(): LevelState {
   return { key: null, depth: -1, keepsVisits: false, explore: new LevelExploration(), memoryTurn: -1, memoryPos: -1 };
 }
 
-export interface HeroMemoryDeps {
+interface HeroMemoryDeps {
   engine: Engine;
   adventurers: AdventurerStore;
   /** Where the player is (`engine.place()`, as last read). */

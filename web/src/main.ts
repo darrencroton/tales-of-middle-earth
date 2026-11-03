@@ -636,7 +636,7 @@ function updatePromptCard(): void {
   }
   const menuShown = termView.visible && (termView.choices().length > 0 || termView.options().length > 0);
   const show =
-    CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !journeys.active && !title.isVisible && engine.pendingKeys === 0;
+    CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !journeys.targeting && !journeys.answering && !title.isVisible && engine.pendingKeys === 0;
   if (show) {
     promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()), leadMessages.map((m) => m.text));
     if (leadMessages.length) noteLeadShown();

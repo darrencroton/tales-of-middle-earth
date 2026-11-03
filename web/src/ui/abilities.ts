@@ -9,7 +9,7 @@ import { isHostile, type SpellState } from '../render/snapshot.ts';
 import { NOT_NOW, type GameApi } from './api.ts';
 import { openSpell } from './magic.ts';
 
-export interface AbilitiesDeps {
+interface AbilitiesDeps {
   api: GameApi;
   audio: GameAudio;
   castWatcher: CastWatcher;

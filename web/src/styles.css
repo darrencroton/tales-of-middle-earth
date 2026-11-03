@@ -1591,6 +1591,10 @@ html.keyboard-open .tv-layer.panel {
   padding-bottom: 0.55rem;
 }
 
+.sheet.sheet-menu {
+  max-height: min(100%, var(--popup-height));
+}
+
 .sheet {
   position: relative;
   display: flex;
@@ -3609,7 +3613,11 @@ html.keyboard-tight .prompt-card.text .card-title {
   font-weight: 600;
 }
 
-.fame-who,
+.fame-who {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
 .fame-fate {
   color: var(--fg);
   font-size: var(--fs-small);

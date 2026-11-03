@@ -3,7 +3,7 @@ import { commandGroups, commandKeys, GAME_OPTIONS, type CommandContext, type Com
 import type { GameApi } from './api.ts';
 import { el, iconText } from './dom.ts';
 
-export interface CommandsDeps {
+interface CommandsDeps {
   api: GameApi;
   openNative(view: NativeView): void;
   /** Shows a tome2 screen to read (sent as the player's keys); the sheets it covers reopen once it closes. */

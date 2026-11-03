@@ -25,7 +25,7 @@ export interface PopTab {
 }
 
 /** What a pop-up's header shows: back, a badge, the title and a line under it, a note, and close. */
-export interface PopHeader {
+interface PopHeader {
   title?: string;
   /** The title element's id (for aria-labelledby). */
   titleId?: string;

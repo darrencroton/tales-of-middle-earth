@@ -6,7 +6,7 @@ import { moduleKey, type ModuleChoice, type SaveInfo, type TitleChoice, type Tit
 import { birthCard } from '../ui/birthcard.ts';
 import { findSaveIndex } from '../saves.ts';
 import { nextRunName, saveBase } from '../play/adventurers.ts';
-import { el } from '../ui/dom.ts';
+import { el, stat } from '../ui/dom.ts';
 import { ListNav } from '../ui/listnav.ts';
 import { askText } from '../ui/menus.ts';
 import type { Sheets } from '../ui/sheet.ts';
@@ -739,11 +739,7 @@ export class Director {
 
         const card = el('article', 'birth-card hero');
         const grid = el('div', 'stat-grid six');
-        for (const s of stats) {
-          const node = el('div', 'stat');
-          node.append(el('span', 'stat-label', s.name), el('span', 'stat-value', s.value));
-          grid.append(node);
-        }
+        for (const s of stats) grid.append(stat(s.name, s.value));
         card.append(grid);
         const vitals = el('div', 'stat-grid');
         for (const [label, pattern] of [
@@ -752,10 +748,7 @@ export class Director {
           ['Sanity', 'Sanity'],
         ] as const) {
           const value = pair(pattern);
-          if (!value) continue;
-          const node = el('div', 'stat');
-          node.append(el('span', 'stat-label', label), el('span', 'stat-value', value));
-          vitals.append(node);
+          if (value) vitals.append(stat(label, value));
         }
         card.append(vitals);
         const skills = el('dl', 'ratings');

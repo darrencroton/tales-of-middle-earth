@@ -17,7 +17,7 @@ import { openFallen, openFoe, recallLines, type FallenTab } from './memorial.ts'
 import type { RecentStore } from './magic.ts';
 import type { SheetContent, Sheets } from './sheet.ts';
 
-export interface HeroesDeps {
+interface HeroesDeps {
   engine: Engine;
   sheets: Sheets;
   director: Director;

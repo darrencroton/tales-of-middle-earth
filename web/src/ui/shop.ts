@@ -20,7 +20,7 @@ const SHOP_ACTIONS: Action[] = [
   { id: 'menu', label: 'Menu', icon: '☰', effect: { kind: 'menu' } },
 ];
 
-export interface ShopDeps {
+interface ShopDeps {
   api: GameApi;
   buffer: TerminalBuffer;
   termView: TermView;

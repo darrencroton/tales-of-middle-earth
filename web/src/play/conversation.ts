@@ -11,7 +11,7 @@ import { titleName } from './text.ts';
 const TALK = 'Y'.charCodeAt(0);
 const GIVE = 'y'.charCodeAt(0);
 
-export interface ConversationDeps {
+interface ConversationDeps {
   engine: Engine;
   snapshot(): LevelSnapshot | null;
   state(): GameState | null;

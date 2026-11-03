@@ -6,7 +6,7 @@ import { describeCell, monsterSummary, openFloorObject, openMonster, type CellDe
 import { ListNav } from './listnav.ts';
 import { defaultItem } from './popup.ts';
 
-export interface LookCardDeps {
+interface LookCardDeps {
   api: GameApi;
   /** The card's element, at the foot of the map. */
   element: HTMLElement;

@@ -4,7 +4,7 @@ import { el } from './ui/dom.ts';
 import { confirmSheet, openMenu, openMessage } from './ui/menus.ts';
 import type { Sheets } from './ui/sheet.ts';
 
-export interface BackupDeps {
+interface BackupDeps {
   engine: Engine;
   sheets: Sheets;
   /** The file input a backup is chosen with. */
