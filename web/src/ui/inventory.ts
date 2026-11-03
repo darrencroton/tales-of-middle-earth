@@ -1,8 +1,9 @@
 import { SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
 import { itemRecent, recentItem, recentItemAction, recentKey } from '../play/recent.ts';
-import type { EquipSlot, InventoryState, ItemState } from '../render/snapshot.ts';
-import { capitalise, description, itemGlyph, pounds, titleName, type GameApi } from './api.ts';
+import type { EquipSlot, InventoryState, ItemState, SpellInfo } from '../render/snapshot.ts';
+import { capitalise, itemGlyph, pounds, titleName, type GameApi } from './api.ts';
 import { el, section } from './dom.ts';
+import { itemCardBody } from './inspect.ts';
 import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
 
 
@@ -132,6 +133,26 @@ function placeLabel(item: ItemState, place: ItemPlace, slot?: EquipSlot): string
   return `In your pack · ${weight}`;
 }
 
+/** What the hero knows of a carried or nearby item, with its inscription; its spells open over it (castable with `cast`). */
+function itemBody(api: GameApi, item: ItemState, cast?: (spell: SpellInfo, anyway: boolean) => void): HTMLElement {
+  const body = itemCardBody(api, api.engine.itemInfo(item.i), 'You know nothing more about this item yet.', cast);
+  if (item.ins) body.append(el('p', 'muted', `Inscribed {${item.ins}}`));
+  return body;
+}
+
+/** One item, only to look at, while tome2 asks which item to use: what is known about it, with nothing to do but close it. */
+export function openItemDetails(api: GameApi, item: ItemState, place: ItemPlace): void {
+  const slot = place === 'equip' ? api.engine.inventory()?.equip.find((s) => s.i === item.i) : undefined;
+  api.sheets.open({
+    title: titleName(item.name),
+    subtitle: placeLabel(item, place, slot),
+    badge: itemGlyph(api, item),
+    body: itemBody(api, item),
+    kind: 'card',
+    className: 'sheet-item',
+  });
+}
+
 /** One item: what is known about it and what you can do with it. */
 export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void {
   const inventory = api.engine.inventory();
@@ -165,9 +186,8 @@ export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void 
     },
   }));
 
-  const text = description(api.engine.objectDescription(item.i), 'You know nothing more about this item yet.');
-  if (item.ins) text.append(el('p', 'muted', `Inscribed {${item.ins}}`));
-  body.append(text);
+  const cast = place === 'floor' ? undefined : (spell: SpellInfo, anyway: boolean) => api.cast({ kind: 'spell', name: spell.name }, anyway);
+  body.append(itemBody(api, item, cast));
 
   api.sheets.open({
     title: titleName(item.name),

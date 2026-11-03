@@ -1,6 +1,6 @@
 import type { Chronicle } from './chronicle.ts';
 import { gridDistance } from './pathfinding.ts';
-import { feetOf, hasWords, placeName, isNotice, type CharacterState, type InventoryState, type MessageState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
+import { feetOf, hasWords, placeName, isNotice, type CharacterState, type InventoryState, type ItemInfo, type MessageState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
 import { stripArticle } from './text.ts';
 
 /** Game turns in a day of Middle-earth (tome2's DAY at ten game turns a player turn). */
@@ -16,8 +16,8 @@ export interface MemorialItem {
   slot?: string;
   ch: number;
   colour: string;
-  /** What the hero knew of it, as paragraphs. */
-  text: string[];
+  /** What the hero knew of it, as tome2's examining told it. */
+  info: ItemInfo | null;
 }
 
 export interface MemorialLine {
@@ -128,7 +128,7 @@ interface MemorialSources {
   turn: number;
   palette: readonly string[];
   slotName(part: number): string;
-  describe(item: number): string[];
+  describe(item: number): ItemInfo | null;
   recall(monster: MonsterState): MemorialLine[];
   now?: Date;
 }
@@ -143,7 +143,7 @@ export function buildMemorial(s: MemorialSources): Memorial {
     slot,
     ch: i.ch,
     colour: colour(i.attr),
-    text: s.describe(i.i),
+    info: s.describe(i.i),
   });
   const equipment: MemorialItem[] = [];
   for (const slot of s.inventory?.equip ?? []) {

@@ -37,14 +37,14 @@ import { NOT_NOW, type GameApi } from './ui/api.ts';
 import { titleName } from './play/text.ts';
 import { GameFeel, READ_MS, type FeelEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
-import { INVEN_WIELD, itemMacro, suggestedGear, type GearSuggestion } from './play/items.ts';
+import { INVEN_WIELD, itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { ABANDONED, hasFallen } from './play/memorial.ts';
 import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/lives.ts';
 import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
 import { el, iconText } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
 import { openFloorObject, openMonster, openQuest } from './ui/info.ts';
-import { openInventory } from './ui/inventory.ts';
+import { openInventory, openItemDetails } from './ui/inventory.ts';
 import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate, type AdventureRules } from './ui/menus.ts';
 import { Sheets, type SheetTrail } from './ui/sheet.ts';
 import { bufferRows, type OptionBlock } from './ui/termparse.ts';
@@ -201,6 +201,13 @@ const termView = new TermView(stage, () => buffer.palette, {
   },
   onDescribe(key, choice) {
     if (/which spell\?/i.test(rowZeroText()) && abilities.describeSpell(choice.label.text.trim(), choice.key)) return;
+    if (currentPrompt() === 'item') {
+      const inventory = engine.inventory();
+      const listed = inventory && listedItem(inventory, rowZeroText(), choice.key, choice.label.text);
+      if (listed) openItemDetails(api, listed.item, listed.place);
+      else refuse('There is nothing more to see there.');
+      return;
+    }
     send([key.charCodeAt(0)]);
   },
   onOption(option, _index, options) {
@@ -317,6 +324,7 @@ const api: GameApi = {
   askQuantity: (question) => askQuantity(sheets, question),
   recent: () => recents.list(game.lastState?.player?.name ?? ''),
   remember: (entry) => recents.remember(game.lastState?.player?.name ?? '', entry),
+  cast: (entry, anyway) => abilities.run(entry, false, anyway),
   refusal: (command) => commandRefusal(command, { worldMap: worldMap(game.lastSnap), controlling: controlling() }),
   travelRefusal,
   refuse,
@@ -403,7 +411,7 @@ function openNative(view: NativeView): void {
       break;
     case 'magic':
     case 'powers':
-      openMagic(api, api.recent(), { run: (entry, anyway) => abilities.run(entry, false, anyway) }, view);
+      openMagic(api, api.recent(), { run: (entry, anyway) => api.cast(entry, anyway) }, view);
       break;
     case 'recast': {
       const entry = abilities.quick();
@@ -575,7 +583,8 @@ function itemTabs(prompt: string): PopTab[] {
 function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
   const prompt = rowZeroText();
   const kind = currentPrompt();
-  const options: TermViewOptions = { layout, describe: describableRange(prompt), cursorRow: buffer.cursorY };
+  /* Items in tome2's item prompts are described by our own card, from the ⓘ beside each. */
+  const options: TermViewOptions = { layout, describe: kind === 'item' ? ['A', 'Z'] : describableRange(prompt), cursorRow: buffer.cursorY };
   if (prompt && kind !== 'more' && !CARD_KINDS.has(kind)) options.title = cleanPrompt(prompt) || undefined;
   if (kind === 'item') options.tabs = itemTabs(prompt);
   if (layout === 'panel' && leadMessages.length) {

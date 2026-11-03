@@ -189,12 +189,12 @@ describe('recent actions', () => {
   });
 
   describe('quick repeat', () => {
-    const spell = (name: string, extra = {}) => ({ name, school: 'arcane', level: 1, mana: 2, fail: 10, info: '', ok: 1, short: 0, desc: '', ...extra });
+    const spell = (name: string, extra = {}) => ({ name, school: 'arcane', level: 1, mana: 2, fail: 10, info: '', ok: 1, short: 0, desc: '', skill: 1, blind: 0, confused: 0, stat: 1, manaMin: 1, manaMax: 2, piety: 0, instrument: 0, ...extra });
     const spells: SpellState = {
       ready: 1,
       books: [{ i: 0, name: 'Magic Book', spells: [spell('Manathrust'), spell('Phase Door', { short: 1 })] }],
       powers: [{ label: 'Use Mindcraft', mkey: 2 }],
-      bonus: [{ name: 'Spit', desc: '', source: 'race', from: 'Dragon', level: 5, cost: 1 }],
+      bonus: [{ name: 'Spit', desc: '', source: 'race', from: 'Dragon', level: 5, cost: 1, stat: 4, diff: 10 }],
     };
     const wand = (name: string): ItemState => ({ i: 2, name, tval: 65, sval: 1, number: 1, weight: 1, ch: 45, attr: 1, wear: 0, activate: 0, ins: '' });
     const bolt: RecentAction = { kind: 'spell', name: 'Manathrust' };

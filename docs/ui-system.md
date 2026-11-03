@@ -16,12 +16,13 @@ Map (toolbar, HUD, gestures)
 │   own buttons in fixed places: quick spell or aimed item, Cast/Powers, Fire, Items, Rest, More,
 │   Menu; while exploring: Stop, Speed, Menu)
 │   ├── Items ─────────────── Inventory            panel, tabs Pack · Equipment · Floor     depth 1
-│   │                         └── Item              card over Inventory (actions)            depth 2
+│   │                         └── Item              card over Inventory (details, actions)   depth 2
+│   │                             ├── Spell         card over a book (Cast)                  depth 3
 │   │                             ├── How many?     card over Item (Drop, Destroy)           depth 3
 │   │                             └── Inscribe      card at the top (text field)             depth 3
 │   ├── Cast / Powers ─────── Magic · Powers       panel, two tabs, each headed by Recent:  depth 1
 │   │                         Magic: books, Magic arts · Powers: by race, class, form, gear, corruption; Techniques
-│   │                         └── Spell / power     card over the panel (Cast / Use)         depth 2
+│   │                         └── Spell / power     card over the panel (figures, needs; Cast / Use) depth 2
 │   ├── More ──────────────── Commands             panel: commands by intent (section 7)   depth 1
 │   │   ├── Look ──────────── look mode: banner + look card on the map (each creature and item → its card)
 │   │   ├── Magic, Powers ─── the Magic panel on that tab, in the same frame (Back returns to Commands)
@@ -56,13 +57,14 @@ Map (toolbar, HUD, gestures)
 ├── A quest begun or ended ─── quest card (the scene tome2 told, then what it asks) or its banner
 └── tome2 asks something ───── question card on the map (yes/no, how many, text, direction,
                                aim, lettered choice, message box) or a TermView panel
-                               (item prompts, spell lists, shops, options, other menus),
+                               (item prompts, each item with ⓘ for its card; spell lists, each spell with ⓘ;
+                               shops, options, other menus),
                                led by what tome2 said since it last waited for a command
 
 Shop, home, museum (walk in, or Enter shop on the door)
                 ─────────────── native panel: one scrolling list a tab — Buy · Sell · Exit (home: Stored ·
                                 Inventory · Exit; museum: Collection · Donate · Exit); services and their cost head the shelf
-                                ├── Shelf item      card over the shop (description, how many, Buy/Take)
+                                ├── Shelf item      card over the shop (details, how many, Buy/Take)
                                 └── Item carried    card over the shop (what it fetches or why not, how many,
                                                     Sell/Store/Donate; wear, take off, inscribe, destroy)
 Other buildings ─────────────── native panel: their services as rows · Exit
@@ -164,8 +166,30 @@ No key hints anywhere.
   asks), once tome2 waits for a command with nothing else open.
 - A card's ✕, a tap outside it, Escape or a swipe down on its header close
   **the card only**, returning to what is beneath.
-- Anything opened from a card (a question about the item) floats above it in
-  turn.
+- Anything opened from a card (a question about the item, a spell of a book)
+  floats above it in turn.
+
+### Inspection (item, spell and power cards)
+
+One view of each kind of thing, the same wherever it opens (`ui/inspect.ts`),
+showing only what tome2's examining would tell the hero:
+
+- **Item**: lore (the kind's and an artefact's text, a set's), *Average damage
+  a turn* (blows, then damage against each kind of creature it treats
+  differently) or *a shot* / *a throw* (with breakage), properties as chips
+  under *Bonuses*, *Attacks*, *Immunities*, *Resistances*, *Sustains*,
+  *Abilities*, *Drawbacks* (red), *Activation*, a wand's or staff's *Spell*, a
+  book's *Spells* (rows opening the spell's card), a corpse's or totem's
+  creature, then what such things are and where it was found. Unidentified,
+  only the last two and a note.
+- **Spell**: the hero's figures now in a grid (level, mana, fail, what it does
+  at that level), the description, then what never changes (skill needed,
+  casting stat, mana from spell level 1 to 50, blind or confused casting).
+  Cast at the foot when it can be cast.
+- **Power**: level and mana, the description, what grants it, and what its use
+  tests.
+- Inspecting never acts: actions sit in the footer; ⓘ on tome2's item and spell
+  lists opens the card without choosing.
 
 ### Reader (tome2 file viewer → panel)
 
@@ -232,6 +256,7 @@ Four things look different and never stand for each other:
 | Help | tome2's 80×24 help files under More, How to play under Menu; none on the title | One Help (Menu, title): search or browse our own topics; ‹ returns with the search kept; the original manual from Help, which reopens after |
 | Cast → spell ⓘ → Cast | Spell description filled the pop-up | Spell card over Magic; Cast casts, ✕ returns to Magic |
 | Map → creature chip → close | Tall pop-up | Card the size of the recall |
+| Items → book → spell → back | Browse opened tome2's spell list; item cards showed only tome2's flag sentences, without damage, a wand's spell or a book's spells | The book's card lists its spells; a spell's card floats over it with the hero's figures and Cast; weapons show damage, artefacts their properties grouped |
 | Menu → Saved games → Export | Two rows in Menu | On the title only, as Backup → Export game data: a backup of everything, not a way to save |
 | Shop → item | Paged tome2 list; a tap on an item could buy it, and a tap on a row of tome2's item prompt opened the wrong card (*Take 1* while storing) | Whole stock in one list; a tap opens the item's card; Buy (or Sell, Store, Take) with how many is the only way to trade |
 | Character → Skills → Raise → keep the points | Points were kept only by closing the sheet or changing tab, which then asked tome2's question; Raise looked available with no points | Raise and Lower are dimmed when tome2 would refuse, saying why; unsaved points show on their rows; Save asks (Discard · Save) and stays on Skills |
@@ -279,8 +304,9 @@ with why, and journeys are refused.
 | `H` `O` | drink at a fountain, sacrifice at an altar | changing button; More |
 | `x` | engrave a rune | More, once a rune is learnt |
 | `l` `M` `L` `*` | look, level map, locate, target | long-press; More (*Look*, *Level map*, *Choose target*); dragging the map |
-| `i` `e` `w` `t` `d` `k` `{` `}` `I` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |
-| `q` `r` `E` `a` `u` `z` `A` `F` `v` `f` `b` | use items, fire, throw, browse | item cards, *Recently used*, Again, Fire, gear suggestions; More → Use an item / Fight and magic |
+| `i` `e` `w` `t` `d` `k` `{` `}` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |
+| `q` `r` `E` `a` `u` `z` `A` `F` `v` `f` | use items, fire, throw | item cards, *Recently used*, Again, Fire, gear suggestions; More → Use an item / Fight and magic |
+| `b` `I` | browse a book, examine an item | the item's card (a book's card lists its spells, each with its own card) |
 | `h` `K` | butcher a corpse, cure meat | the corpse's or meat's card |
 | `m` `U` `p` | magic and skills, powers, pray | Cast/Powers; More (*Magic*, *Powers*, *Pray*/*Stop praying* for a god's follower): the Magic panel's tabs |
 | `G` `N` `C` | skills, abilities, character | HUD name; Menu → Character (tabs) |

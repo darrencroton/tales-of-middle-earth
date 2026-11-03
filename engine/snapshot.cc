@@ -11,6 +11,7 @@
 #include "ability_type.hpp"
 #include "cave.hpp"
 #include "cave_type.hpp"
+#include "cmd2.hpp"
 #include "cmd5.hpp"
 #include "corrupt.hpp"
 #include "defines.hpp"
@@ -18,6 +19,7 @@
 #include "feature_flag.hpp"
 #include "feature_type.hpp"
 #include "game.hpp"
+#include "gf_name_type.hpp"
 #include "hiscore.hpp"
 #include "deity_type.hpp"
 #include "inventory.hpp"
@@ -46,8 +48,10 @@
 #include "powers.hpp"
 #include "q_rand.hpp"
 #include "quest_type.hpp"
+#include "range.hpp"
 #include "school_book.hpp"
 #include "school_type.hpp"
+#include "set_type.hpp"
 #include "seed.hpp"
 #include "skill_descriptor.hpp"
 #include "skills.hpp"
@@ -66,6 +70,7 @@
 #include "store_type.hpp"
 #include "tables.hpp"
 #include "town_type.hpp"
+#include "tval_desc.hpp"
 #include "util.hpp"
 #include "variable.hpp"
 #include "wilderness_map.hpp"
@@ -78,8 +83,10 @@
 #include <boost/preprocessor/cat.hpp>
 
 #include <emscripten.h>
+#include <fmt/format.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -92,6 +99,10 @@
 /* Off-screen terminal (engine/main-web.cc). */
 void web_scratch_term_begin();
 void web_scratch_term_end();
+
+/* tome2's damage lines for examining a weapon or missile (object1.cc, not in its headers). */
+void display_weapon_damage(object_type *o_ptr);
+void display_ammo_damage(object_type *o_ptr);
 
 /* Map memory (engine/memory.cc), run options (engine/runoptions.cc) and lives (engine/adventure.cc). */
 void web_memory_tick();
@@ -656,6 +667,553 @@ object_type one_of(object_type const *o_ptr)
 	return one;
 }
 
+/*
+ * tome2's device ("stick") mode, off while spells are read for the hero and
+ * put back after: tome2 may be inside a wand's or staff's spell (asking where
+ * to aim it) while the hero looks at something, and its mode is not
+ * reentrant (set_stick_mode asserts, in debug builds only).
+ */
+struct stick_mode_kept
+{
+	s32b const use = get_level_use_stick;
+	s32b const max = get_level_max_stick;
+	stick_mode_kept()
+	{
+		get_level_use_stick = -1;
+		get_level_max_stick = -1;
+	}
+	~stick_mode_kept()
+	{
+		get_level_use_stick = use;
+		get_level_max_stick = max;
+	}
+};
+
+/* A spell's description lines (tome2's print_spell_desc), joined. */
+std::string spell_description(spell_type *spell)
+{
+	std::string desc;
+	spell_type_description_foreach(spell, [&](std::string const &line) {
+		if (!desc.empty()) desc += '\n';
+		desc += line;
+	});
+	return desc;
+}
+
+/* What tome2's spell list and its description say of a spell (print_spell, print_spell_desc), common to books and devices. */
+void json_spell_common(JsonWriter &w, spell_type *spell)
+{
+	w.field("name", spell_type_name(spell));
+	w.field("school", spell_schools(spell));
+	w.field("info", spell_type_info(spell));
+	w.field("desc", spell_description(spell));
+	w.field("skill", spell_type_skill_level(spell));
+	w.field("blind", spell_type_castable_while_blind(spell) ? 1 : 0);
+	w.field("confused", spell_type_castable_while_confused(spell) ? 1 : 0);
+}
+
+/*
+ * A school spell of a book whose pval is `pval`, as tome2's spell list shows
+ * it for the hero (print_spell): level (-1 when they cannot cast it at all),
+ * mana, failure, info; with what a book's browsing tells besides (piety,
+ * casting while blind or confused), the skill level it needs, the casting
+ * stat, its mana from the first spell level to the 50th, and for music the
+ * instrument's power it needs.
+ */
+void json_spell(JsonWriter &w, s32b spell_idx, s32b pval)
+{
+	spell_type *spell = spell_at(spell_idx);
+	s32b level;
+	bool na;
+	get_level_school(spell, 50, -50, &level, &na);
+	range_type mana;
+	spell_type_mana_range(spell, &mana);
+	bool const ok = is_ok_spell(spell_idx, pval);
+	w.begin_object();
+	json_spell_common(w, spell);
+	w.field("level", na ? -1 : level);
+	w.field("mana", get_mana(spell_idx));
+	w.field("fail", spell_chance_book(spell_idx));
+	w.field("ok", ok ? 1 : 0);
+	w.field("short", ok && get_mana(spell_idx) > get_power(spell_idx) ? 1 : 0);
+	w.field("stat", spell_type_casting_stat(spell));
+	w.field("manaMin", mana.min);
+	w.field("manaMax", mana.max);
+	w.field("piety", spell_type_uses_piety_to_cast(spell) ? 1 : 0);
+	w.field("instrument", spell_type_minimum_pval(spell) > pval ? spell_type_minimum_pval(spell) : 0);
+	w.end_object();
+}
+
+/* The spells an item holds, as tome2's browsing lists them (do_cmd_browse_aux): a book's or instrument's, or the one a spell-holding item stores; false for others. */
+bool spell_book_of(object_type const *o_ptr, int *sval, s32b *pval)
+{
+	bool const book = o_ptr->tval == TV_BOOK || o_ptr->tval == TV_DAEMON_BOOK || o_ptr->tval == TV_INSTRUMENT;
+	if (book)
+	{
+		*sval = o_ptr->sval;
+		*pval = o_ptr->pval;
+		return true;
+	}
+	if ((object_flags(o_ptr) & TR_SPELL_CONTAIN) && o_ptr->pval2 != -1)
+	{
+		*sval = BOOK_RANDOM;
+		*pval = o_ptr->pval2;
+		return true;
+	}
+	return false;
+}
+
+/* Text tome2 writes with text_out while `write` runs, as coloured runs. */
+std::vector<std::pair<byte, std::string>> text_out_runs(std::function<void()> const &write)
+{
+	auto const previous_hook = text_out_hook;
+	text_runs.clear();
+	web_scratch_term_begin();
+	text_out_hook = text_out_to_json;
+	write();
+	text_out_hook = previous_hook;
+	web_scratch_term_end();
+	auto runs = std::move(text_runs);
+	text_runs.clear();
+	return runs;
+}
+
+void json_runs(JsonWriter &w, char const *key, std::vector<std::pair<byte, std::string>> const &runs)
+{
+	w.key(key).begin_array();
+	for (auto const &[attr, text] : runs)
+	{
+		w.begin_array();
+		w.value(attr);
+		w.value(text);
+		w.end_array();
+	}
+	w.end_array();
+}
+
+/*
+ * The damage tome2's display_weapon_damage or display_ammo_damage tells
+ * (light green figures, each followed by " against" whom), as
+ * {blows, rows: [{against, damage}]}; with `blows` the first figure is the
+ * number of blows.
+ */
+void json_damage(JsonWriter &w, char const *key, std::vector<std::pair<byte, std::string>> const &runs, bool blows)
+{
+	std::vector<std::string> figures;
+	std::vector<std::string> against;
+	for (auto const &[attr, text] : runs)
+	{
+		if ((attr == TERM_L_GREEN || attr == TERM_L_RED) && !text.empty() && std::isdigit(static_cast<unsigned char>(text[0])))
+		{
+			figures.push_back(text.substr(0, text.find(' ')));
+		}
+		else if (text.rfind(" against ", 0) == 0)
+		{
+			against.push_back(text.substr(9));
+		}
+	}
+	std::size_t first = 0;
+	w.key(key).begin_object();
+	if (blows && !figures.empty())
+	{
+		w.field("blows", std::atol(figures[0].c_str()));
+		first = 1;
+	}
+	w.key("rows").begin_array();
+	for (std::size_t i = 0; i < against.size() && first + i < figures.size(); i++)
+	{
+		w.begin_object();
+		w.field("against", against[i]);
+		w.field("damage", figures[first + i]);
+		w.end_object();
+	}
+	w.end_array();
+	w.end_object();
+}
+
+/* Where an item was found (object_out_desc_where_found). */
+std::string found_where(s16b level, s16b dungeon)
+{
+	auto const &d_info = game->edit_data.d_info;
+	auto const &wf_info = game->edit_data.wf_info;
+	if (dungeon != DUNGEON_WILDERNESS) return fmt::format("on level {} of {}", level, d_info[dungeon].name);
+	if (level == 0) return "in the wilderness or in a town";
+	if (wf_info[level].terrain_idx == TERRAIN_TOWN) return fmt::format("in the town of {}", wf_info[level].name);
+	return fmt::format("in {}", wf_info[level].text);
+}
+
+/* How the hero came by an item, as object_out_desc tells it; empty when it does not say. */
+std::string found_text(object_type const *o_ptr)
+{
+	auto const &st_info = game->edit_data.st_info;
+	switch (o_ptr->found)
+	{
+	case OBJ_FOUND_MONSTER:
+	{
+		char m_name[80];
+		monster_race_desc(m_name, o_ptr->found_aux1, o_ptr->found_aux2);
+		return fmt::format("You found it in the remains of {} {}.", m_name, found_where(o_ptr->found_aux4, o_ptr->found_aux3));
+	}
+	case OBJ_FOUND_FLOOR:
+		return fmt::format("You found it lying on the ground {}.", found_where(o_ptr->found_aux2, o_ptr->found_aux1));
+	case OBJ_FOUND_VAULT:
+		return fmt::format("You found it lying in a vault {}.", found_where(o_ptr->found_aux2, o_ptr->found_aux1));
+	case OBJ_FOUND_SPECIAL:
+		return "You found it lying on the floor of a special level.";
+	case OBJ_FOUND_RUBBLE:
+		return "You found it while digging through rubble.";
+	case OBJ_FOUND_REWARD:
+		return "It was given to you as a reward.";
+	case OBJ_FOUND_STORE:
+		return fmt::format("You bought it from the {}.", st_info[o_ptr->found_aux1].name);
+	case OBJ_FOUND_STOLEN:
+		return fmt::format("You stole it from the {}.", st_info[o_ptr->found_aux1].name);
+	case OBJ_FOUND_SELFMADE:
+		return "You made it yourself.";
+	default:
+		return "";
+	}
+}
+
+/* One property of an item: its group, a label and, for a bonus, its amount (and unit). */
+void json_prop(JsonWriter &w, char const *group, std::string const &label, long value = 0, char const *unit = "")
+{
+	w.begin_object();
+	w.field("group", group);
+	w.field("label", label);
+	if (value) w.field("value", value);
+	if (*unit) w.field("unit", unit);
+	w.end_object();
+}
+
+struct flag_label {
+	object_flag_set flag;
+	char const *group;
+	char const *label;
+};
+
+/*
+ * The properties object_out_desc describes for an item the hero knows, in
+ * its order and with its rules (an immunity hides the resistance, a bane the
+ * slaying, telepathy the senses), grouped: stat (bonuses, with the pval),
+ * attack, immune, resist, sustain, ability and drawback. Stealth is among
+ * the bonuses too, as the character sheet shows it.
+ */
+void json_item_props(JsonWriter &w, object_type const *o_ptr, object_flag_set const &flags)
+{
+	static const flag_label stats[] = {
+		{ TR_STR, "stat", "Strength" },
+		{ TR_INT, "stat", "Intelligence" },
+		{ TR_WIS, "stat", "Wisdom" },
+		{ TR_DEX, "stat", "Dexterity" },
+		{ TR_CON, "stat", "Constitution" },
+		{ TR_CHR, "stat", "Charisma" },
+		{ TR_STEALTH, "stat", "Stealth" },
+		{ TR_INFRA, "stat", "Infravision" },
+		{ TR_TUNNEL, "stat", "Tunnelling" },
+		{ TR_SPEED, "stat", "Speed" },
+		{ TR_BLOWS, "stat", "Attack speed" },
+		{ TR_CRIT, "stat", "Critical hits" },
+		{ TR_LUCK, "stat", "Luck" },
+		{ TR_SPELL, "stat", "Spell power" },
+	};
+	static const flag_label plain[] = {
+		{ TR_BRAND_ACID, "attack", "Acid brand" },
+		{ TR_BRAND_ELEC, "attack", "Lightning brand" },
+		{ TR_BRAND_FIRE, "attack", "Fire brand" },
+		{ TR_BRAND_COLD, "attack", "Frost brand" },
+		{ TR_BRAND_POIS, "attack", "Poison brand" },
+		{ TR_CHAOTIC, "attack", "Chaotic" },
+		{ TR_VAMPIRIC, "attack", "Vampiric" },
+		{ TR_IMPACT, "attack", "Earthquakes" },
+		{ TR_VORPAL, "attack", "Sharp: cuts" },
+		{ TR_WOUNDING, "attack", "Sharp: bleeding" },
+	};
+	static const flag_label slays[] = {
+		{ TR_SLAY_ORC, "attack", "Slays orcs" },
+		{ TR_SLAY_TROLL, "attack", "Slays trolls" },
+		{ TR_SLAY_GIANT, "attack", "Slays giants" },
+	};
+	static const flag_label after_slays[] = {
+		{ TR_SLAY_EVIL, "attack", "Slays evil" },
+		{ TR_SLAY_ANIMAL, "attack", "Slays animals" },
+		{ TR_INVIS, "ability", "Invisibility" },
+		{ TR_SUST_STR, "sustain", "Strength" },
+		{ TR_SUST_INT, "sustain", "Intelligence" },
+		{ TR_SUST_WIS, "sustain", "Wisdom" },
+		{ TR_SUST_DEX, "sustain", "Dexterity" },
+		{ TR_SUST_CON, "sustain", "Constitution" },
+		{ TR_SUST_CHR, "sustain", "Charisma" },
+		{ TR_IM_ACID, "immune", "Acid" },
+		{ TR_IM_ELEC, "immune", "Lightning" },
+		{ TR_IM_FIRE, "immune", "Fire" },
+		{ TR_IM_COLD, "immune", "Cold" },
+		{ TR_IM_NETHER, "immune", "Nether" },
+		{ TR_FREE_ACT, "immune", "Paralysis" },
+		{ TR_RES_FEAR, "immune", "Fear" },
+		{ TR_HOLD_LIFE, "resist", "Life draining" },
+	};
+	static const flag_label resists[] = {
+		{ TR_RES_ACID, "resist", "Acid" },
+		{ TR_RES_ELEC, "resist", "Lightning" },
+		{ TR_RES_FIRE, "resist", "Fire" },
+		{ TR_RES_COLD, "resist", "Cold" },
+		{ TR_RES_POIS, "resist", "Poison" },
+		{ TR_RES_LITE, "resist", "Light" },
+		{ TR_RES_DARK, "resist", "Darkness" },
+		{ TR_RES_BLIND, "resist", "Blindness" },
+		{ TR_RES_CONF, "resist", "Confusion" },
+		{ TR_RES_SOUND, "resist", "Sound" },
+		{ TR_RES_SHARDS, "resist", "Shards" },
+		{ TR_RES_NETHER, "resist", "Nether" },
+		{ TR_RES_NEXUS, "resist", "Nexus" },
+		{ TR_RES_CHAOS, "resist", "Chaos" },
+		{ TR_RES_DISEN, "resist", "Disenchantment" },
+	};
+	static const object_flag_set immunity_of[] = {
+		TR_IM_ACID, TR_IM_ELEC, TR_IM_FIRE, TR_IM_COLD, {}, {}, {}, {}, {}, {}, {}, TR_IM_NETHER, {}, {}, {},
+	};
+	static const flag_label abilities[] = {
+		{ TR_SENS_FIRE, "drawback", "Vulnerable to fire" },
+		{ TR_WRAITH, "ability", "Incorporeal" },
+		{ TR_WATER_BREATH, "ability", "Breathes underwater" },
+		{ TR_MAGIC_BREATH, "ability", "Breathes without air" },
+		{ TR_FEATHER, "ability", "Levitation" },
+		{ TR_FLY, "ability", "Flight" },
+		{ TR_CLIMB, "ability", "Climbs mountains" },
+		{ TR_IMMOVABLE, "ability", "Immovable" },
+		{ TR_SEE_INVIS, "ability", "See invisible" },
+	};
+	static const flag_label senses[] = {
+		{ ESP_ORC, "ability", "Senses orcs" },
+		{ ESP_TROLL, "ability", "Senses trolls" },
+		{ ESP_DRAGON, "ability", "Senses dragons" },
+		{ ESP_SPIDER, "ability", "Senses spiders" },
+		{ ESP_GIANT, "ability", "Senses giants" },
+		{ ESP_DEMON, "ability", "Senses demons" },
+		{ ESP_UNDEAD, "ability", "Senses undead" },
+		{ ESP_EVIL, "ability", "Senses evil" },
+		{ ESP_ANIMAL, "ability", "Senses animals" },
+		{ ESP_THUNDERLORD, "ability", "Senses thunderlords" },
+		{ ESP_GOOD, "ability", "Senses good" },
+		{ ESP_NONLIVING, "ability", "Senses non-living things" },
+		{ ESP_UNIQUE, "ability", "Senses unique beings" },
+	};
+	static const flag_label later[] = {
+		{ TR_SLOW_DIGEST, "ability", "Slow digestion" },
+		{ TR_REGEN, "ability", "Regeneration" },
+		{ TR_REFLECT, "ability", "Reflects bolts and arrows" },
+		{ TR_SH_FIRE, "ability", "Fiery aura" },
+		{ TR_SH_ELEC, "ability", "Electric aura" },
+		{ TR_NO_MAGIC, "ability", "Anti-magic shell" },
+		{ TR_NO_TELE, "ability", "Prevents teleportation" },
+		{ TR_XTRA_MIGHT, "attack", "Extra might" },
+		{ TR_XTRA_SHOTS, "attack", "Extra shots" },
+		{ TR_DRAIN_MANA, "drawback", "Drains mana" },
+		{ TR_DRAIN_HP, "drawback", "Drains your health" },
+		{ TR_DRAIN_EXP, "drawback", "Drains experience" },
+		{ TR_BLESSED, "ability", "Blessed" },
+		{ TR_TELEPORT, "drawback", "Random teleportation" },
+		{ TR_AGGRAVATE, "drawback", "Aggravates creatures" },
+		{ TR_NEVER_BLOW, "drawback", "Cannot attack" },
+		{ TR_BLACK_BREATH, "drawback", "The Black Breath" },
+	};
+	static const flag_label curses[] = {
+		{ TR_TY_CURSE, "drawback", "Ancient foul curse" },
+		{ TR_DG_CURSE, "drawback", "Morgothian curse" },
+		{ TR_CLONE, "drawback", "Clones creatures" },
+		{ TR_CURSE_NO_DROP, "drawback", "Cannot be dropped while cursed" },
+		{ TR_AUTO_CURSE, "drawback", "Can curse itself again" },
+		{ TR_CAPACITY, "ability", "Holds more mana" },
+		{ TR_CHEAPNESS, "ability", "Cheaper spells" },
+		{ TR_FAST_CAST, "ability", "Faster casting" },
+		{ TR_CHARGING, "ability", "Regains mana faster" },
+		{ TR_RES_MORGUL, "ability", "Resists Morgul shattering" },
+	};
+	auto each = [&](auto const &table) {
+		for (auto const &entry : table)
+		{
+			if (flags & entry.flag) json_prop(w, entry.group, entry.label);
+		}
+	};
+
+	w.key("props").begin_array();
+	if (flags & TR_LEVELS)
+	{
+		std::string realms;
+		for (std::size_t j = 0; j < flags_groups().size(); j++)
+		{
+			if (!(BIT(j) & o_ptr->pval3)) continue;
+			realms += realms.empty() ? ": " : ", ";
+			realms += flags_groups()[j].name;
+		}
+		json_prop(w, "ability", "Sentient" + realms);
+	}
+	if (flags & TR_ULTIMATE) json_prop(w, "ability", (wield_slot(o_ptr) == INVEN_WIELD || wield_slot(o_ptr) == INVEN_BOW) ? "One of the ultimate weapons" : "The ultimate armour");
+	if (flags & TR_COULD2H) json_prop(w, "attack", "Can be wielded two-handed");
+	if (flags & TR_MUST2H) json_prop(w, "attack", "Two-handed");
+	{
+		int radius = 0;
+		if (flags & TR_LITE1) radius += 1;
+		if (flags & TR_LITE2) radius += 2;
+		if (flags & TR_LITE3) radius += 3;
+		radius = std::min(radius, 5);
+		if (radius > 0) json_prop(w, "ability", fmt::format("Light, radius {}{}", radius, (flags & TR_FUEL_LITE) ? " when fuelled" : ""));
+	}
+	if (o_ptr->name1 == ART_ANCHOR) json_prop(w, "ability", "Holds space and time steady");
+	if (flags & TR_ANTIMAGIC_50) json_prop(w, "ability", "Anti-magic field");
+	if (flags & TR_SPELL_CONTAIN) json_prop(w, "ability", o_ptr->pval2 == -1 ? "Can store a spell" : "Holds a stored spell");
+	if (o_ptr->pval)
+	{
+		for (auto const &entry : stats)
+		{
+			if (flags & entry.flag) json_prop(w, entry.group, entry.label, o_ptr->pval);
+		}
+		if (flags & TR_MANA) json_prop(w, "stat", "Mana", 100 * o_ptr->pval / 5, "%");
+		if (flags & TR_LIFE) json_prop(w, "stat", "Hit points", 100 * o_ptr->pval / 5, "%");
+	}
+	each(plain);
+	if (flags & TR_KILL_DRAGON) json_prop(w, "attack", "Bane of dragons");
+	else if (flags & TR_SLAY_DRAGON) json_prop(w, "attack", "Slays dragons");
+	each(slays);
+	if (flags & TR_KILL_DEMON) json_prop(w, "attack", "Bane of demons");
+	else if (flags & TR_SLAY_DEMON) json_prop(w, "attack", "Slays demons");
+	if (flags & TR_KILL_UNDEAD) json_prop(w, "attack", "Bane of undead");
+	else if (flags & TR_SLAY_UNDEAD) json_prop(w, "attack", "Slays undead");
+	each(after_slays);
+	for (std::size_t i = 0; i < std::size(resists); i++)
+	{
+		if ((flags & resists[i].flag) && !(flags & immunity_of[i])) json_prop(w, "resist", resists[i].label);
+	}
+	each(abilities);
+	if (flags & ESP_ALL) json_prop(w, "ability", "Telepathy");
+	else each(senses);
+	each(later);
+	if (cursed_p(o_ptr))
+	{
+		json_prop(w, "drawback", (flags & TR_PERMA_CURSE) ? "Permanently cursed" : (flags & TR_HEAVY_CURSE) ? "Heavily cursed" : "Cursed");
+	}
+	each(curses);
+	bool const ignores_all = (flags & TR_IGNORE_ACID) && (flags & TR_IGNORE_FIRE) && (flags & TR_IGNORE_COLD) && (flags & TR_IGNORE_ELEC);
+	if (ignores_all) json_prop(w, "ability", "Unharmed by the elements");
+	else
+	{
+		if (flags & TR_IGNORE_ACID) json_prop(w, "ability", "Unharmed by acid");
+		if (flags & TR_IGNORE_ELEC) json_prop(w, "ability", "Unharmed by lightning");
+		if (flags & TR_IGNORE_FIRE) json_prop(w, "ability", "Unharmed by fire");
+		if (flags & TR_IGNORE_COLD) json_prop(w, "ability", "Unharmed by cold");
+	}
+	w.end_array();
+}
+
+/*
+ * What the hero knows of an item, as tome2's examining tells it
+ * (object_out_desc on the screen, and a book's browsing as a shop's examine
+ * adds): see web_object_info.
+ */
+char const *item_info_json(object_type *o_ptr)
+{
+	auto w = start_json();
+	w.begin_object();
+	if (!o_ptr || !o_ptr->k_ptr)
+	{
+		w.end_object();
+		return json.c_str();
+	}
+	auto const &a_info = game->edit_data.a_info;
+	auto const &set_info = game->edit_data.set_info;
+	stick_mode_kept const kept;
+	bool const known = object_known_p(o_ptr);
+	auto const flags = object_flags(o_ptr);
+	w.field("known", known ? 1 : 0);
+	for (int tv = 0; tval_descs[tv].tval; tv++)
+	{
+		if (tval_descs[tv].tval != o_ptr->tval) continue;
+		w.field("kind", tval_descs[tv].desc);
+		break;
+	}
+
+	if (known)
+	{
+		w.key("lore").begin_array();
+		if (!o_ptr->k_ptr->text.empty()) w.value(o_ptr->k_ptr->text);
+		if (o_ptr->name1)
+		{
+			auto const &artifact = a_info[o_ptr->name1];
+			if (artifact.text && *artifact.text) w.value(artifact.text);
+		}
+		w.end_array();
+		if (o_ptr->name1 && a_info[o_ptr->name1].set != -1) w.field("set", set_info[a_info[o_ptr->name1].set].desc);
+
+		json_item_props(w, o_ptr, flags);
+		if (flags & TR_ACTIVATE)
+		{
+			w.field("activation", item_activation(o_ptr));
+			w.field("worn", (flags & TR_ACTIVATE_NO_WIELD) ? 0 : 1);
+		}
+		if (auto power_idx = object_power(o_ptr)) w.field("power", game->powers.at(*power_idx)->name);
+
+		if (wield_slot(o_ptr) == INVEN_WIELD)
+		{
+			json_damage(w, "melee", text_out_runs([o_ptr] { display_weapon_damage(o_ptr); }), true);
+		}
+		bool const ammo = wield_slot(o_ptr) == INVEN_AMMO;
+		if (o_ptr->tval == TV_BOOMERANG || ammo)
+		{
+			json_damage(w, o_ptr->tval == TV_BOOMERANG ? "thrown" : "missile", text_out_runs([o_ptr] { display_ammo_damage(o_ptr); }), false);
+			if (artifact_p(o_ptr)) w.field("breaks", 0);
+			else if (o_ptr->tval == TV_BOOMERANG) w.field("breaks", 1);
+			else if (o_ptr->pval2 == 0) w.field("breaks", breakage_chance(o_ptr));
+			if (ammo && o_ptr->pval2)
+			{
+				for (int i = 0; gf_names[i].gf != -1; i++)
+				{
+					if (gf_names[i].gf == o_ptr->pval2) w.field("explosion", gf_names[i].name);
+				}
+			}
+		}
+		if (o_ptr->tval == TV_TOTEM || o_ptr->tval == TV_CORPSE)
+		{
+			int const r_idx = o_ptr->tval == TV_TOTEM ? o_ptr->pval : o_ptr->pval2;
+			json_runs(w, "recall", text_out_runs([r_idx] { monster_description_out(r_idx, 0); }));
+		}
+	}
+
+	if (known && (o_ptr->tval == TV_WAND || o_ptr->tval == TV_STAFF))
+	{
+		/* set_stick_mode's levels, set here as the kept mode is put back after. */
+		get_level_use_stick = o_ptr->pval3 & 0xFFFF;
+		get_level_max_stick = o_ptr->pval3 >> 16;
+		spell_type *spell = spell_at(o_ptr->pval2);
+		w.key("device").begin_object();
+		json_spell_common(w, spell);
+		w.field("level", get_level(o_ptr->pval2, 50));
+		w.field("fail", spell_chance_device(spell));
+		w.end_object();
+		get_level_use_stick = -1;
+		get_level_max_stick = -1;
+	}
+
+	int sval;
+	s32b pval;
+	bool const holds = known || ((o_ptr->tval == TV_BOOK || o_ptr->tval == TV_DAEMON_BOOK || o_ptr->tval == TV_INSTRUMENT) && o_ptr->k_ptr->aware);
+	if (holds && spell_book_of(o_ptr, &sval, &pval))
+	{
+		random_book_setup(sval, pval);
+		if (school_book *sb = school_books_at(sval))
+		{
+			w.key("spells").begin_array();
+			for (auto spell_idx : sb->spell_idxs) json_spell(w, spell_idx, o_ptr->pval);
+			w.end_array();
+		}
+	}
+
+	auto const found = found_text(o_ptr);
+	if (!found.empty()) w.field("found", found);
+	w.end_object();
+	return json.c_str();
+}
+
 }
 
 /*
@@ -1087,51 +1645,30 @@ EMSCRIPTEN_KEEPALIVE char const *web_inventory_json()
 }
 
 /*
- * Returns what the player knows about an item (see web_inventory_json for
- * the index) as plain text, lines separated by newlines.
+ * What the player knows about an item (see web_inventory_json for the index)
+ * as JSON, as tome2's examining tells it: "known" (identified), "kind" (what
+ * such things are), "lore" (the kind's and an artifact's texts) and "set";
+ * "props" [{group, label, value, unit}] (see json_item_props); "activation"
+ * (and "worn": only while worn), "power" granted; "melee" and "missile"
+ * damage ({blows, rows: [{against, damage}]}, for the hero as they are),
+ * "thrown" for a boomerang, "breaks" (chance in percent), "explosion"; "recall" of a corpse's or
+ * totem's creature (coloured runs); "device" (a wand's or staff's spell),
+ * "spells" (a book's, an instrument's or a stored spell, as web_spells_json);
+ * "found" (how the hero came by it). Unidentified, only "kind", "found" and
+ * a known book's spells.
  */
-static char const *describe_object(object_type *o_ptr)
+EMSCRIPTEN_KEEPALIVE char const *web_object_info(int item)
 {
-	if (!o_ptr->k_ptr) return json.c_str();
-
-	char *buf = nullptr;
-	std::size_t len = 0;
-	FILE *fff = open_memstream(&buf, &len);
-	if (!fff) return json.c_str();
-
-	bool const known = object_out_desc(o_ptr, fff, false, false);
-	fclose(fff);
-
-	if (known && buf) json.assign(buf, len);
-	free(buf);
-	return json.c_str();
+	bool const valid = level_ready() && item < INVEN_TOTAL && (item >= 0 || -item < o_max);
+	return item_info_json(valid ? get_object(item) : nullptr);
 }
 
-EMSCRIPTEN_KEEPALIVE char const *web_object_desc(int item)
+/* What the player knows about an item on the shelf of the shop (or home) they are in, by its position in the stock, as web_object_info. */
+EMSCRIPTEN_KEEPALIVE char const *web_store_object_info(int index)
 {
-	json.clear();
-
-	if (!(level_ready())) return json.c_str();
-	if (item >= INVEN_TOTAL || (item < 0 && -item >= o_max)) return json.c_str();
-
-	return describe_object(get_object(item));
-}
-
-/*
- * Returns the description of an item on the shelf of the shop (or home)
- * the player is standing in, by its position in the stock.
- */
-EMSCRIPTEN_KEEPALIVE char const *web_store_object_desc(int index)
-{
-	json.clear();
-
 	store_type *st = store_here();
-	if (!st) return json.c_str();
-
-	auto &stock = st->stock;
-	if (index < 0 || index >= static_cast<int>(stock.size())) return json.c_str();
-
-	return describe_object(&stock[index]);
+	bool const valid = st && index >= 0 && index < static_cast<int>(st->stock.size());
+	return item_info_json(valid ? &st->stock[index] : nullptr);
 }
 
 /*
@@ -1271,26 +1808,9 @@ EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
 	char name[160];
 	monster_desc(name, m_ptr, 0x88);
 
-	auto const previous_hook = text_out_hook;
-	text_runs.clear();
-	web_scratch_term_begin();
-	text_out_hook = text_out_to_json;
-	monster_description_out(m_ptr->r_idx, m_ptr->ego);
-	text_out_hook = previous_hook;
-	web_scratch_term_end();
-
 	w.field("name", name);
-	w.key("text").begin_array();
-	for (auto const &[attr, text] : text_runs)
-	{
-		w.begin_array();
-		w.value(attr);
-		w.value(text);
-		w.end_array();
-	}
-	w.end_array();
+	json_runs(w, "text", text_out_runs([m_ptr] { monster_description_out(m_ptr->r_idx, m_ptr->ego); }));
 	w.end_object();
-	text_runs.clear();
 	return json.c_str();
 }
 
@@ -1680,18 +2200,16 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 {
 	auto w = start_json();
 	if (!begin_ready(w)) return json.c_str();
+	stick_mode_kept const kept;
 	w.key("books").begin_array();
 	for (int i = 0; i < INVEN_TOTAL; i++)
 	{
 		object_type *o_ptr = &p_ptr->inventory[i];
 		if (!o_ptr->k_ptr) continue;
-		auto const f = object_flags(o_ptr);
-		bool const book = o_ptr->tval == TV_BOOK || o_ptr->tval == TV_DAEMON_BOOK || o_ptr->tval == TV_INSTRUMENT;
-		bool const holds = (f & TR_SPELL_CONTAIN) && o_ptr->pval2 != -1;
-		if (!book && !holds) continue;
-		if ((wield_slot(o_ptr) != -1) && (i < INVEN_WIELD) && (f & TR_WIELD_CAST)) continue;
-		int const sval = book ? o_ptr->sval : BOOK_RANDOM;
-		s32b const pval = book ? o_ptr->pval : o_ptr->pval2;
+		int sval;
+		s32b pval;
+		if (!spell_book_of(o_ptr, &sval, &pval)) continue;
+		if ((wield_slot(o_ptr) != -1) && (i < INVEN_WIELD) && (object_flags(o_ptr) & TR_WIELD_CAST)) continue;
 		random_book_setup(sval, pval);
 		school_book *sb = school_books_at(sval);
 		if (!sb) continue;
@@ -1702,30 +2220,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 		w.field("i", i);
 		w.field("name", name);
 		w.key("spells").begin_array();
-		for (auto spell_idx : sb->spell_idxs)
-		{
-			spell_type *spell = spell_at(spell_idx);
-			s32b level;
-			bool na;
-			get_level_school(spell, 50, -50, &level, &na);
-			w.begin_object();
-			w.field("name", spell_type_name(spell));
-			w.field("school", spell_schools(spell));
-			w.field("level", na ? -1 : level);
-			w.field("mana", get_mana(spell_idx));
-			w.field("fail", spell_chance_book(spell_idx));
-			w.field("info", spell_type_info(spell));
-			bool const ok = is_ok_spell(spell_idx, o_ptr->pval);
-			w.field("ok", ok ? 1 : 0);
-			w.field("short", ok && get_mana(spell_idx) > get_power(spell_idx) ? 1 : 0);
-			std::string desc;
-			spell_type_description_foreach(spell, [&](std::string const &line) {
-				if (!desc.empty()) desc += ' ';
-				desc += line;
-			});
-			w.field("desc", desc);
-			w.end_object();
-		}
+		for (auto spell_idx : sb->spell_idxs) json_spell(w, spell_idx, o_ptr->pval);
 		w.end_array();
 		w.end_object();
 	}
@@ -1772,6 +2267,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 		w.field("from", from);
 		w.field("level", it->second->activation.level);
 		w.field("cost", it->second->activation.cost);
+		w.field("stat", it->second->activation.stat);
+		w.field("diff", it->second->activation.diff);
 		w.end_object();
 	}
 	w.end_array();

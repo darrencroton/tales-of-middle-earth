@@ -8,15 +8,15 @@ import {
   validCharacterName,
   describesHero,
 } from '../../web/src/flow/birth.ts';
-import { findListedItem, itemActions, itemLetter, itemMacro, quantityAnswer } from '../../web/src/play/items.ts';
+import { findListedItem, itemActions, listedItem, itemLetter, itemMacro, quantityAnswer } from '../../web/src/play/items.ts';
 import { MacroRunner, type MacroScreen } from '../../web/src/play/macro.ts';
 import { readableColour } from '../../web/src/render/colour.ts';
 import { STORE_ACTION, type ItemState, type StoreState } from '../../web/src/render/snapshot.ts';
-import { descriptionParagraphs } from '../../web/src/ui/api.ts';
 import { affordable, drawnBlocks, offerMacro, refusal, serviceReply, shelfMacro, shelfPage, shopModel, trades } from '../../web/src/ui/store.ts';
 import { cursorKeys, parseAbilities, parseSkills, raiseRefusal, selectedAbility, selectedSkill } from '../../web/src/ui/skills.ts';
 import { flagLabel, parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
 import { heroEntry } from '../../web/src/ui/gameover.ts';
+import { damageLabel, effectText, loreText, spellText, powerNotes, propGroups, propText, spellNotes } from '../../web/src/ui/inspect.ts';
 import { fateText } from '../../web/src/ui/memorial.ts';
 import { findMessageBox } from '../../web/src/ui/msgbox.ts';
 import { cleanPrompt } from '../../web/src/ui/prompttext.ts';
@@ -109,10 +109,6 @@ describe('item actions', () => {
     runner.start(itemMacro({ id: 'eat', label: 'Eat', command: 'E' }, item({ tval: 80 }), 'pack'));
     assert.deepEqual(runner.step(screen('You have nothing to eat.', true)), []);
     assert.equal(runner.running, false);
-  });
-
-  it('joins wrapped description lines into paragraphs', () => {
-    assert.deepEqual(descriptionParagraphs(['It is a fine', 'sword.', '', 'It glows.', ''].join('\n')), ['It is a fine sword.', 'It glows.']);
   });
 });
 
@@ -582,5 +578,78 @@ describe('a building service\'s reply', () => {
     const pages = [[['The Greatest of all the Human'], ['1) Bilbo the Human (Level 7)']], [['The Greatest of all the Elf']]];
     assert.deepEqual(serviceReply(pages, []), ['The Greatest of all the Human', '1) Bilbo the Human (Level 7)']);
     assert.deepEqual(serviceReply([[['The Greatest of all the Elf']], [['The Greatest of all the Dwarf']]], []), []);
+  });
+});
+
+describe('inspection', () => {
+  it('groups a known item\'s properties in a fixed order and words bonuses with their sign', () => {
+    const groups = propGroups([
+      { group: 'resist', label: 'Fire' },
+      { group: 'stat', label: 'Speed', value: 3 },
+      { group: 'drawback', label: 'Aggravates creatures' },
+      { group: 'stat', label: 'Mana', value: -20, unit: '%' },
+    ]);
+    assert.deepEqual(
+      groups.map((g) => [g.title, g.props.map(propText)]),
+      [
+        ['Bonuses', ['+3 Speed', '-20% Mana']],
+        ['Resistances', ['Fire']],
+        ['Drawbacks', ['Aggravates creatures']],
+      ],
+    );
+  });
+
+  it('names whom damage is against in plain words', () => {
+    assert.equal(damageLabel('all monsters'), 'Any creature');
+    assert.equal(damageLabel('other monsters'), 'Other creatures');
+    assert.equal(damageLabel('non fire resistant creatures'), 'Not resisting fire');
+    assert.equal(damageLabel('fire susceptible creatures'), 'Hurt by fire');
+    assert.equal(damageLabel('undeads'), 'Undead');
+    assert.equal(damageLabel('orcs'), 'Orcs');
+  });
+
+  it('finds the item a row of tome2\'s item prompt stands for', () => {
+    const it = (i: number, name: string): ItemState => ({ i, name, tval: 1, sval: 1, number: 1, weight: 1, ch: 1, attr: 1, wear: 0, activate: 0, ins: '' });
+    const inventory = {
+      ready: 1,
+      weight: 0,
+      limit: 0,
+      pack: [it(0, 'a Ration'), it(2, 'a Torch')],
+      equip: [{ ...it(24, 'a Dagger'), part: 24 }, { i: 25, empty: 1, part: 25 }],
+      floor: [it(-7, 'a Potion of Cure Light Wounds and Then Some')],
+    } as unknown as Parameters<typeof listedItem>[0];
+    assert.equal(listedItem(inventory, '(Inven: a-c, - for floor) Quaff which?', 'c', 'a Torch')?.item.name, 'a Torch');
+    assert.equal(listedItem(inventory, '(Inven: a-c) Quaff which?', 'b', ''), null);
+    assert.equal(listedItem(inventory, '(Equip: a-b) Take off which?', 'a', '')?.place, 'equip');
+    assert.equal(listedItem(inventory, '(Equip: a-b) Take off which?', 'b', '(Barehanded)'), null);
+    assert.equal(listedItem(inventory, '(Floor: a) Pick up which?', 'a', 'a Potion of Cure Light Wounds')?.item.i, -7);
+  });
+
+  it('reads tome2\'s wrapped text and key hints as prose', () => {
+    assert.equal(loreText("'E'ating this mushroom will\nblind you."), 'Eating this mushroom will blind you.');
+    assert.equal(loreText("Light and filling. You can 'E'at it."), 'Light and filling. You can eat it.');
+    assert.equal(loreText("You can 'f'ire it after you 'w'ield it."), 'You can fire it after you wield it.');
+    assert.equal(spellText('Conjures up a bolt\nAt level 5 it grows.'), 'Conjures up a bolt. At level 5 it grows.');
+  });
+
+  it('spells out tome2\'s short notes of what a spell does', () => {
+    assert.equal(effectText('dam 6d8 rad 2 dur 20+d20'), 'damage 6d8 radius 2 duration 20+d20');
+    assert.equal(effectText('AC 10 dist 5'), 'armour 10 distance 5');
+  });
+
+  it('says what a spell needs and how it grows, and what a power takes', () => {
+    const spell = { name: 'Manathrust', school: 'Mana', level: 3, fail: 20, info: 'dam 4d4', desc: '', skill: 1, blind: 0, confused: 1, stat: 1, manaMin: 1, manaMax: 25, piety: 0, instrument: 0 };
+    assert.deepEqual(spellNotes(spell), [
+      'Learnt at Mana skill 1.',
+      'Cast with Intelligence: the higher it is, the less often it fails.',
+      'Costs 1 mana at spell level 1, rising to 25 at level 50.',
+      'Can be cast while confused.',
+    ]);
+    assert.deepEqual(spellNotes({ ...spell, school: 'Fire/Air', skill: 10, confused: 0, manaMax: 1 }), ['Learnt at Fire and Air skill 10 (their average).', 'Cast with Intelligence: the higher it is, the less often it fails.']);
+    assert.deepEqual(spellNotes({ name: 'Fire Bolt', school: 'Fire', level: 7, fail: 12, info: '', desc: '', skill: 5, blind: 0, confused: 0 }, true), ['Its spell level rises with Magic Device skill from 5.']);
+    assert.deepEqual(powerNotes({ name: 'Spit', desc: '', source: 'race', from: 'Dragon', level: 5, cost: 4, stat: 4, diff: 10 }), [
+      'Costs hit points instead when your mana runs short.',
+      'Succeeds by Constitution, against a difficulty of 10 that eases as you gain levels.',
+    ]);
   });
 });

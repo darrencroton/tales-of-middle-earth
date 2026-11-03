@@ -67,7 +67,7 @@ describe('memorial', () => {
       turn: 900,
       palette: ['#000', '#fff', '#0f0', '#00f'],
       slotName: (part) => (part === 24 ? 'Weapon' : 'Slot'),
-      describe: (i) => [`About item ${i}.`],
+      describe: (i) => ({ known: 1, lore: [`About item ${i}.`] }),
       recall: (m) => [{ text: `${m.name} recall`, colour: '' }],
       now: new Date(Date.UTC(2026, 9, 28)),
     });
@@ -77,7 +77,7 @@ describe('memorial', () => {
     assert.equal(memorial.cause, 'a Cave troll');
     assert.deepEqual(memorial.stats, [{ name: 'STR', value: '18/50' }]);
     assert.deepEqual(memorial.skills.map((s) => s.name), ['Sword-mastery', 'Combat']);
-    assert.deepEqual(memorial.equipment, [{ name: 'a Long Sword (2d5)', slot: 'Weapon', ch: 124, colour: '#fff', text: ['About item 24.'] }]);
+    assert.deepEqual(memorial.equipment, [{ name: 'a Long Sword (2d5)', slot: 'Weapon', ch: 124, colour: '#fff', info: { known: 1, lore: ['About item 24.'] } }]);
     assert.equal(memorial.pack.length, 1);
     assert.equal(memorial.foe?.name, 'Cave troll');
     assert.deepEqual(memorial.foe?.recall, [{ text: 'Cave troll recall', colour: '' }]);

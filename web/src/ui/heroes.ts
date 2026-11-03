@@ -8,12 +8,13 @@ import { buildMemorial, memorialKey, type Memorial } from '../play/memorial.ts';
 import type { GameState, LevelSnapshot, PlayerState, ScoreEntry } from '../render/snapshot.ts';
 import { findSaveIndex, type EmscriptenFS } from '../saves.ts';
 import type { SaveInfo } from '../title.ts';
-import { descriptionParagraphs, titleName } from './api.ts';
+import { titleName } from './api.ts';
 import { adventurerSummary, openAdventurers, type AdventurerDetails } from './adventurers.ts';
 import { careerElements, ChronicleStore } from './deeds.ts';
 import { el, section } from './dom.ts';
 import { hallOfFameElements, openFameCard, tombElements, type Tomb } from './gameover.ts';
-import { openFallen, openFoe, recallLines, type FallenTab } from './memorial.ts';
+import { recallLines } from './inspect.ts';
+import { openFallen, openFoe, type FallenTab } from './memorial.ts';
 import type { RecentStore } from './magic.ts';
 import type { SheetContent, Sheets } from './sheet.ts';
 
@@ -139,7 +140,7 @@ export class Heroes {
       turn: snap.turn,
       palette,
       slotName: (part) => SLOT_NAMES[part] ?? 'Slot',
-      describe: (item) => descriptionParagraphs(engine.objectDescription(item)),
+      describe: (item) => engine.itemInfo(item),
       recall: (m) => recallLines(engine, palette, m.id),
     });
     const tale = this.chronicles.peek(player.name);

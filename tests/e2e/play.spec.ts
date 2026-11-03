@@ -217,6 +217,9 @@ test('items are dropped by the number chosen, used, wielded and taken off from t
   await dismissMore(page);
   await page.locator('#toolbar [data-action="inventory"]').click();
   await page.locator('.sheet .item-row', { hasText: /Sword|Dagger|Axe|Mace|Spear|Whip/ }).first().click();
+  /* A weapon's card tells the blows and damage it would give the hero, as tome2's examining does. */
+  await expect(page.locator('.sheet-item .sheet-section h3', { hasText: 'Average damage a turn' })).toBeVisible();
+  await expect(page.locator('.sheet-item .stat', { hasText: 'Blows a turn' })).toBeVisible();
   await page.locator('.sheet .sheet-action', { hasText: 'Wield' }).click();
   const weapon = () => page.evaluate(() => window.__tome!.engine.inventory()!.equip.find((e) => e.i === 24)?.name ?? '');
   await expect.poll(weapon, { timeout: 10_000 }).not.toBe('');
@@ -240,6 +243,13 @@ test('items are dropped by the number chosen, used, wielded and taken off from t
   const second = await page.locator('.termview .tv-choice.is-active').getAttribute('data-key');
   expect(second).not.toBe(first);
 
+  /* ⓘ beside an item tome2 offers opens its card over the list, which stays when the card closes. */
+  await page.locator('.termview .tv-row', { hasText: 'Torch' }).locator('.tv-info').click();
+  await expect(page.locator('.sheet-item .sheet-title')).toContainText('Torch');
+  await expect(page.locator('.sheet-item .sheet-action')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-item')).toBeHidden();
+  await expect(page.locator('.termview .sheet-title')).toHaveText(/Throw which item/);
   await page.locator('.termview .tv-choice', { hasText: 'Torch' }).click();
   await waitForScreen(page, /Direction/);
   await page.keyboard.press('Escape');
@@ -459,6 +469,20 @@ test.describe(() => {
 
     await openMagic();
     await expect(page.locator('.sheet .recent-button')).toHaveText(/Manathrust/);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+
+    /* A spell book's card lists its spells; each opens its own card over it, with the hero's figures and Cast. */
+    await page.locator('#toolbar [data-action="inventory"]').click();
+    await page.locator('.sheet .item-row', { hasText: 'Cantrips' }).click();
+    await expect(page.locator('.sheet-item .spell-row').first()).toContainText('Manathrust');
+    await page.locator('.sheet-item .spell-row', { hasText: 'Manathrust' }).click();
+    await expect(page.locator('.sheet-item .sheet-title').last()).toHaveText('Manathrust');
+    await expect(page.locator('.sheet-item .stat', { hasText: 'Fail' }).last()).toBeVisible();
+    await expect(page.locator('.sheet-item .sheet-action', { hasText: 'Cast Manathrust' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sheet-item .sheet-title')).toHaveText(/Cantrips/);
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     await expect(page.locator('.sheet-layer')).toBeHidden();
