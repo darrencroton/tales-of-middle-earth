@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { commandGroups, commandKeys, commandRefusal, contextActions, contextualAction, CONTROLLING, converseMacro, creaturePowersMacro, pickupCommand, releaseMacro, restMacro, speedAction, transitionUnderfoot, waitCommand, type CommandContext } from '../../web/src/play/actions.ts';
+import { commandGroups, commandKeys, commandRefusal, contextActions, contextualAction, CONTROLLING, converseMacro, creaturePowersMacro, exploreRefusal, pickupCommand, releaseMacro, restMacro, speedAction, transitionUnderfoot, waitCommand, WORLD_MAP_EXPLORE_LEVEL, type CommandContext } from '../../web/src/play/actions.ts';
 import { findPath, floodFill, gridDistance, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
@@ -428,7 +428,7 @@ describe('targeting', () => {
   });
 });
 
-const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', feat: 1, beside: false, pray: 0, runes: false, steals: false, magic: false, powers: false, controlling: false };
+const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', feat: 1, beside: false, pray: 0, runes: false, steals: false, magic: false, powers: false, controlling: false, town: false, level: 1 };
 
 describe('actions', () => {
   it('prefixes commands with a keymap bypass', () => {
@@ -566,7 +566,6 @@ describe('actions', () => {
     assert.deepEqual(first({}), ['explore', 'Explore']);
     assert.deepEqual(first({ exploreNext: 'down' }), ['explore', 'Way down']);
     assert.deepEqual(first({ exploreNext: 'up' }), ['explore', 'Way up']);
-    assert.deepEqual(first({ exploreNext: 'worldMap' }), ['explore', 'World map']);
     assert.deepEqual(first({ gear: 'light' }), ['equip', 'Light']);
     assert.deepEqual(first({ gear: 'light', underfoot: 'fountain' }), ['drink', 'Drink']);
     assert.deepEqual(first({ gear: 'light', floorObjects: 1 }), ['pickup', 'Pick up']);
@@ -580,20 +579,34 @@ describe('actions', () => {
   it('is always the stair underfoot, whatever else applies', () => {
     const base = { mode: 'map' as const, atCommand: true, underfoot: 'up staircase', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
     const first = (ctx: Partial<Parameters<typeof contextualAction>[0]>) => contextualAction({ ...base, ...ctx }).label;
-    for (const exploreNext of ['explore', 'down', 'up', 'none', 'worldMap'] as const) assert.equal(first({ exploreNext }), 'Ascend');
+    for (const exploreNext of ['explore', 'down', 'up', 'none'] as const) assert.equal(first({ exploreNext }), 'Ascend');
     assert.equal(first({ foe: '6', floorObjects: 1, gear: 'light' }), 'Ascend');
     assert.equal(first({ underfoot: 'down staircase', exploreNext: 'up' }), 'Descend');
-    assert.equal(first({ underfoot: 'down staircase', exploreNext: 'worldMap' }), 'Descend');
     assert.equal(first({ underfoot: 'path to the next area', exploreNext: 'here' }), 'Descend');
     assert.equal(first({ underfoot: 'open floor', exploreNext: 'down' }), 'Way down');
   });
 
-  it('is the way into a building the hero stands at, over Explore or the world map', () => {
+  it('is the way into a building the hero stands at, over Explore', () => {
     const base = { mode: 'map' as const, atCommand: true, underfoot: 'building', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
-    const shop = contextualAction({ ...base, entrance: 'Enter shop', exploreNext: 'worldMap', foe: '6' });
+    const shop = contextualAction({ ...base, entrance: 'Enter shop', foe: '6' });
     assert.equal(shop.label, 'Enter shop');
     assert.deepEqual(shop.effect, { kind: 'keys', keys: [92, ...keys('_')] });
-    assert.equal(contextualAction({ ...base, underfoot: 'open floor', exploreNext: 'worldMap' }).label, 'World map');
+    assert.equal(contextualAction({ ...base, underfoot: 'open floor' }).label, 'Explore');
+  });
+
+  it('explores towns, quests and dungeons, and the world map only from level 20', () => {
+    const at = (where: CommandContext['where'], town: boolean, level: number) => exploreRefusal({ where, town, level, controlling: false });
+    assert.equal(at('dungeon', false, 1), null);
+    assert.equal(at('land', true, 1), null);
+    assert.equal(at('land', false, 50), 'Explore works in towns and dungeons.');
+    assert.match(at('worldMap', false, WORLD_MAP_EXPLORE_LEVEL - 1) ?? '', /from level 20/);
+    assert.equal(at('worldMap', false, WORLD_MAP_EXPLORE_LEVEL), null);
+    assert.equal(exploreRefusal({ where: 'dungeon', town: false, level: 1, controlling: true }), CONTROLLING);
+    const base = { mode: 'map' as const, atCommand: true, underfoot: 'grass', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const dimmed = contextualAction({ ...base, exploreRefusal: 'Explore works in towns and dungeons.' });
+    assert.deepEqual([dimmed.id, dimmed.unavailable, dimmed.primary], ['explore', 'Explore works in towns and dungeons.', false]);
+    const explore = commandGroups({ ...COMMANDS, where: 'worldMap', level: 5 }).flatMap((g) => g.commands).find((c) => c.native === 'explore');
+    assert.match(explore?.unavailable ?? '', /perilous/);
   });
 
   it('shows Stop, Speed and Menu while exploring, between steps too; Speed leaves it running', () => {

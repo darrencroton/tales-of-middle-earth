@@ -12,7 +12,7 @@ import { FireEffect } from './render/fire.ts';
 import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapPoint } from './render/map.ts';
 import { drawnEffects, terminalCell } from './render/effects.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, type FeatureInfo, type Material } from './render/materials.ts';
-import { contextActions, contextualAction, commandRefusal, CONTROLLING, creaturePowersMacro, releaseMacro, restMacro, waitCommand, type Action, type ActionContext, type CommandContext, type NativeView } from './play/actions.ts';
+import { contextActions, contextualAction, commandRefusal, CONTROLLING, exploreRefusal, creaturePowersMacro, releaseMacro, restMacro, waitCommand, type Action, type ActionContext, type CommandContext, type NativeView } from './play/actions.ts';
 import { MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
 import { goAction, tapAction, type TapAction } from './play/travel.ts';
@@ -264,9 +264,12 @@ function hideToast(): void {
   stage.style.removeProperty('--toast-lift');
 }
 
+/* A refusal longer than this many words stays as long as a toast to be read. */
+const QUICK_READ_WORDS = 8;
+
 /** Says why something cannot be done, with the refusal sound. */
 function refuse(text: string): void {
-  showToast(text);
+  showToast(text, { read: text.split(/\s+/).length > QUICK_READ_WORDS });
   audio.cue('deny');
 }
 setRefusal(refuse);
@@ -939,6 +942,7 @@ function mapSituation(snap: LevelSnapshot): Partial<ActionContext> {
   return {
     talk: !!talkPartner(),
     exploreNext: journeys.exploreNext(snap),
+    exploreRefusal: exploreRefusal(surroundings()),
     entrance: entranceHere(snap),
     gear: gearSuggestion()?.kind ?? null,
     quick: quick ? { label: recentLabel(quick), unavailable: abilities.unavailable(quick, true) } : null,
@@ -1102,12 +1106,23 @@ function worldMap(snap: LevelSnapshot | null): boolean {
   return !!snap?.inDungeon && snap.depth === 0 && snap.wild;
 }
 
+/** Where the hero is, how far they have come, and whether they control another creature. */
+function surroundings(): Pick<CommandContext, 'where' | 'town' | 'level' | 'controlling'> {
+  const snap = game.lastSnap;
+  return {
+    where: worldMap(snap) ? 'worldMap' : !snap?.inDungeon || snap.depth > 0 ? 'dungeon' : 'land',
+    town: !!game.place && (game.place.town > 0 || game.place.quest > 0),
+    level: game.lastState?.player?.lev ?? 0,
+    controlling: controlling(),
+  };
+}
+
 /** What the More sheet needs to know of the hero's situation. */
 function commandContext(): CommandContext {
   const snap = game.lastSnap;
   const player = game.lastState?.player;
   return {
-    where: worldMap(snap) ? 'worldMap' : !snap?.inDungeon || snap.depth > 0 ? 'dungeon' : 'land',
+    ...surroundings(),
     underfoot: snap?.inDungeon ? underfootName(snap) : '',
     feat: snap?.inDungeon ? underfootFeat(snap) : -1,
     beside: !!snap && (game.lastState?.monsters ?? []).some((m) => isAdjacent(snap.px, snap.py, m.x, m.y)),
@@ -1116,7 +1131,6 @@ function commandContext(): CommandContext {
     steals: abilities.steals(),
     magic: hasMagic(abilities.spells()),
     powers: hasPowers(abilities.spells()),
-    controlling: controlling(),
   };
 }
 

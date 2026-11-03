@@ -124,6 +124,10 @@ export interface CommandContext {
   powers: boolean;
   /** The hero controls another creature. */
   controlling: boolean;
+  /** On the land, in a town or on a quest's own level. */
+  town: boolean;
+  /** The hero's experience level. */
+  level: number;
 }
 
 interface CommandEntry extends CommandDef {
@@ -149,6 +153,16 @@ const NOT_ON_WORLD_MAP = new Set(['o', 'c', 'B', 'j', 'T', 'y', 'Y', 'Z', 'P', '
 const NOT_WHILE_CONTROLLING = new Set(['w', 't', 'd', 'k', 'e', '+', 'T', '.', ',', 'g', 'R', '_', '<', '>', 'o', 'c', 'y', 'Y', 'j', 'B', 'G', 'N', 'b', 'm', 'p', 'P', 'h', 'K', 'Z', '{', '}', 'A', 'E', 'F', 'f', 'v', 'a', 'z', 'q', 'H', 'r', 'u', 'U', 'O', '*', 'x']);
 
 export const CONTROLLING = 'Not while you control another creature.';
+
+/** The hero's level from which Explore walks the world map. */
+export const WORLD_MAP_EXPLORE_LEVEL = 20;
+
+/** Why Explore cannot be used here: on the land only towns and quests are explored, and the world map only from `WORLD_MAP_EXPLORE_LEVEL`. */
+export function exploreRefusal(c: Pick<CommandContext, 'where' | 'town' | 'level' | 'controlling'>): string | null {
+  if (c.controlling) return CONTROLLING;
+  if (c.where === 'worldMap') return c.level < WORLD_MAP_EXPLORE_LEVEL ? `The wilds are perilous for a young hero: explore the world map from level ${WORLD_MAP_EXPLORE_LEVEL}.` : null;
+  return c.where === 'land' && !c.town ? 'Explore works in towns and dungeons.' : null;
+}
 
 /** Where the hero is and what holds them, for the commands tome2 will take. */
 interface CommandSituation {
@@ -186,7 +200,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
   {
     title: 'Get around',
     commands: [
-      { label: 'Explore', icon: '⇢', command: '', native: 'explore', refuse: (c) => (c.controlling ? CONTROLLING : null) },
+      { label: 'Explore', icon: '⇢', command: '', native: 'explore', refuse: exploreRefusal },
       { label: 'Rest', icon: '☾', command: 'R', native: 'rest', refuse: (c) => restRefusal(c.feat) },
       { label: 'Look', icon: '◉', command: 'l', native: 'look' },
       { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
@@ -285,8 +299,8 @@ export function commandGroups(ctx: CommandContext): { title: string; commands: C
   }));
 }
 
-/** What Explore does next: explore the level, go to the way on, take the way on underfoot, leave the land for the world map, or nothing. */
-export type ExploreNext = 'explore' | 'down' | 'up' | 'here' | 'worldMap' | 'none';
+/** What Explore does next: explore the level, go to the way on, take the way on underfoot, or nothing. */
+export type ExploreNext = 'explore' | 'down' | 'up' | 'here' | 'none';
 
 /** How fast exploring and travel walk on screen. */
 export type ExplorePace = 'normal' | 'relaxed';
@@ -327,6 +341,8 @@ export interface ActionContext {
   exploring?: ExplorePace | null;
   /** What Explore would do. */
   exploreNext?: ExploreNext;
+  /** Why Explore cannot be used here, if it cannot. */
+  exploreRefusal?: string | null;
   /** Gear the hero needs to go on: a light below the town, a weapon for a fighter, food when hungry. */
   gear?: 'weapon' | 'light' | 'eat' | null;
   /** The hero stands at a building's door: the button that goes in ('Enter shop', 'Enter home'…). */
@@ -413,7 +429,6 @@ const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {
   here: ['Explore', '⇢'],
   down: ['Way down', '↓'],
   up: ['Way up', '↑'],
-  worldMap: ['World map', '⇱'],
 };
 
 /**
@@ -422,7 +437,7 @@ const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {
  * underfoot (a staircase is always what it does); the door of a shop or
  * other building underfoot; Attack a foe alongside; what lies underfoot to
  * pick up or use; gear the hero needs to go on; Talk to someone alongside;
- * and Explore, named for what it will do.
+ * and Explore, named for what it will do (dimmed where it cannot be used).
  */
 export function contextualAction(ctx: ActionContext): Action {
   if (ctx.worldMap) return command('walkhere', WALK_HERE.label, WALK_HERE.icon, WALK_HERE, true);
@@ -440,7 +455,7 @@ export function contextualAction(ctx: ActionContext): Action {
   }
   if (ctx.talk) return { id: 'talk', label: 'Talk', icon: '❝', effect: { kind: 'native', view: 'talk' }, primary: true };
   const [label, icon] = EXPLORE_LABELS[ctx.exploreNext ?? 'explore'];
-  return { id: 'explore', label, icon, effect: { kind: 'native', view: 'explore' }, primary: true };
+  return { id: 'explore', label, icon, effect: { kind: 'native', view: 'explore' }, primary: !ctx.exploreRefusal, ...unavailable(ctx.exploreRefusal) };
 }
 
 function unavailable(why: string | null | undefined): Pick<Action, 'unavailable'> {
