@@ -173,7 +173,7 @@ test('the world map is entered from the commands and left from the toolbar, and 
   expect(await page.evaluate(() => window.__tome!.engine.snapshot()!.turn)).toBe(turn);
 });
 
-test("a quest level is never kept as the dungeon level of its depth, and Thráin's level is never kept", async ({ page }) => {
+test("a quest level is never kept as the dungeon level of its depth, Thráin's level is never kept, and a quest's end is told as its level is left", async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Warden');
@@ -227,4 +227,38 @@ test("a quest level is never kept as the dungeon level of its depth, and Thráin
     expect(await page.evaluate(() => window.__tome!.engine.place()?.kept)).toBe(0);
   }
   expect(await quest()).toBe(19);
+  await card.locator('[data-action="onward"]').click();
+  await expect(card).toBeHidden();
+
+  /* Nirnaeth Arnoediad ends as the hero takes its stairs out; its entrance in Gondolin, shown while it is taken, lies below the Dragons' one. */
+  await wizardCommand(page, 'q', 14);
+  await wizardCommand(page, 'T', 2);
+  const nirnaeth = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const snap = tome.engine.snapshot()!;
+    const features = tome.engine.features();
+    let lowest: { x: number; y: number } | null = null;
+    for (let i = 0; i < snap.feat.length; i++) {
+      if (/^quest entrance$/i.test(features[snap.feat[i]]?.name ?? '')) lowest = { x: i % snap.width, y: Math.floor(i / snap.width) };
+    }
+    return lowest;
+  });
+  expect(nirnaeth).not.toBeNull();
+  await travelTo(page, nirnaeth!);
+  await waitAtCommand(page);
+  await page.locator('#toolbar [data-action="enter"]').click();
+  await expect.poll(quest, { timeout: 30_000 }).toBe(14);
+  await waitAtCommand(page);
+  await card.locator('[data-action="onward"]').click();
+  await expect(card).toBeHidden();
+  /* A staircase underfoot, as the trolls stand between the hero and the way out. */
+  await wizardCommand(page, 'F', 6);
+  await sendText(page, '\\<');
+  await dismissMore(page);
+  await expect(card.locator('.sheet-subtitle')).toHaveText('Quest complete');
+  await expect(card.locator('.sheet-title')).toHaveText('Nirnaeth Arnoediad');
+  await expect(card.locator('.lead-in')).toContainText('You found a way out!');
+  expect(await page.evaluate(() => window.__tome!.engine.gameState()?.player?.quests ?? [])).toContainEqual({ id: 14, state: 'done', title: 'Nirnaeth Arnoediad' });
+  await card.locator('[data-action="onward"]').click();
+  await expect(page.locator('#hud .entity.quest')).toHaveCount(0);
 });

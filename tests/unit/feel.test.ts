@@ -39,7 +39,7 @@ describe('game feel events', () => {
     assert.deepEqual(playerEvents(base, { ...base, area: 'Grasslands' }), []);
   });
 
-  it('names the quest of a level arrived at, and its end there', () => {
+  it('names the quest of a level arrived at, and a random quest\'s end there', () => {
     const random = { kind: 'princess' as const, foe: 'Cave orc', count: 5, slain: 0 };
     const quest = { id: 5, state: 'active' as const, title: 'Captured princess!', random };
     const onQuest = { ...base, depth: 3, quest };
@@ -48,18 +48,52 @@ describe('game feel events', () => {
     const done = { ...quest, state: 'done' as const };
     assert.deepEqual(playerEvents({ ...onQuest, exp: 0 }, { ...onQuest, exp: 50, quest: done }), [
       { kind: 'exp', amount: 50 },
-      { kind: 'questEnd', title: 'Captured princess!', failed: false },
+      { kind: 'questEnd', id: 5, title: 'Captured princess!', failed: false },
     ]);
-    assert.deepEqual(playerEvents(onQuest, { ...onQuest, quest: { ...quest, state: 'failed' } }), [{ kind: 'questEnd', title: 'Captured princess!', failed: true }]);
-    /* tome2 hands a god's quest back once the relic is found: gone from the level it was on, it is done. */
-    const god = { id: 29, own: 0, state: 'active' as const, title: 'God quest', lines: [] };
-    assert.deepEqual(playerEvents({ ...base, depth: 4, quest: god }, { ...base, depth: 4 }), [{ kind: 'questEnd', title: 'God quest', failed: false }]);
-    assert.deepEqual(playerEvents({ ...base, depth: 4, quest: god }, { ...base, depth: 5, quest: { ...god, state: 'failed' as const } }), [
-      { kind: 'depth', place: 'Barrow-Downs', feet: 250, deeper: true, surface: 'land' },
-      { kind: 'questEnd', title: 'God quest', failed: true },
-    ]);
+    assert.deepEqual(playerEvents(onQuest, { ...onQuest, quest: { ...quest, state: 'failed' } }), [{ kind: 'questEnd', id: 5, title: 'Captured princess!', failed: true }]);
+    /* Leaving a random quest's level only resets it; the next depth's random quest is another. */
     assert.deepEqual(playerEvents(onQuest, { ...base, depth: 4 }), [{ kind: 'depth', place: 'Barrow-Downs', feet: 200, deeper: true, surface: 'land' }]);
+    assert.deepEqual(playerEvents(onQuest, { ...onQuest, depth: 8, quest: done }), [{ kind: 'depth', place: 'Barrow-Downs', feet: 400, deeper: true, surface: 'land' }]);
     assert.deepEqual(playerEvents({ ...base, depth: 2 }, { ...onQuest, quest: done }), [{ kind: 'depth', place: 'Barrow-Downs', feet: 150, deeper: true, surface: 'land' }]);
+  });
+
+  it('tells the end of a fixed quest wherever it comes', () => {
+    const wolves = { id: 22, state: 'active' as const, title: 'Wolves!' };
+    const necro = { id: 1, state: 'active' as const, title: 'Dol Guldur' };
+    const own = { id: 22, own: 1, state: 'active' as const, title: 'Wolves!', lines: [] };
+    const hunting = { ...base, depth: 15, quest: own, quests: [necro, wolves] };
+    /* Still hunting, and left unfinished: nothing ends. */
+    assert.deepEqual(playerEvents(hunting, { ...hunting, chp: 20 }), []);
+    assert.deepEqual(playerEvents(hunting, { ...base, area: 'Lothlorien', quests: [necro, wolves] }), [
+      { kind: 'depth', place: 'Lothlorien', feet: 0, deeper: false, surface: 'land' },
+    ]);
+    /* On its level. */
+    const doneWolves = { ...wolves, state: 'done' as const };
+    assert.deepEqual(playerEvents(hunting, { ...hunting, quest: { ...own, state: 'done' }, quests: [necro, doneWolves] }), [
+      { kind: 'questEnd', id: 22, title: 'Wolves!', failed: false },
+    ]);
+    /* As the hero leaves it (Nirnaeth Arnoediad ends on its stairs; Eol, the invasion of Gondolin, the library and the old mage's quest fail there). */
+    const nirnaeth = { id: 14, state: 'active' as const, title: 'Nirnaeth Arnoediad' };
+    const trapped = { ...base, depth: 30, quest: { ...nirnaeth, own: 1 }, quests: [nirnaeth] };
+    assert.deepEqual(playerEvents(trapped, { ...base, area: 'Grasslands', quests: [{ ...nirnaeth, state: 'done' }] }), [
+      { kind: 'depth', place: 'Grasslands', feet: 0, deeper: false, surface: 'land' },
+      { kind: 'questEnd', id: 14, title: 'Nirnaeth Arnoediad', failed: false },
+    ]);
+    assert.deepEqual(playerEvents(trapped, { ...base, area: 'Grasslands', quests: [{ ...nirnaeth, state: 'failed' }] }), [
+      { kind: 'depth', place: 'Grasslands', feet: 0, deeper: false, surface: 'land' },
+      { kind: 'questEnd', id: 14, title: 'Nirnaeth Arnoediad', failed: true },
+    ]);
+    /* Away from any quest's level: the Dark Horseman on the road, the Necromancer in Dol Guldur. */
+    assert.deepEqual(playerEvents({ ...base, depth: 70, quests: [necro] }, { ...base, depth: 70, quests: [{ ...necro, state: 'done' }] }), [
+      { kind: 'questEnd', id: 1, title: 'Dol Guldur', failed: false },
+    ]);
+    /* Gone from the hero's quests: a god's relic found, a bounty paid. */
+    const god = { id: 29, state: 'active' as const, title: 'God quest' };
+    assert.deepEqual(playerEvents({ ...base, depth: 4, quests: [god] }, { ...base, depth: 4, quests: [] }), [{ kind: 'questEnd', id: 29, title: 'God quest', failed: false }]);
+    /* A quest taken, a reward collected, or no quests read: nothing ends. */
+    assert.deepEqual(playerEvents({ ...base, quests: [] }, { ...base, quests: [wolves] }), []);
+    assert.deepEqual(playerEvents({ ...base, quests: [doneWolves] }, { ...base, quests: [] }), []);
+    assert.deepEqual(playerEvents({ ...base, quests: [wolves] }, base), []);
   });
 
   it('names a fixed quest\'s level by its quest, not the dungeon tome2 last kept', () => {

@@ -217,6 +217,44 @@ bool begin_ready(JsonWriter &w)
 	return ready;
 }
 
+/* A quest's state for the frontend: active, done or failed, or null while not taken. */
+static char const *quest_state(s16b status)
+{
+	switch (status)
+	{
+	case QUEST_STATUS_TAKEN: return "active";
+	case QUEST_STATUS_COMPLETED:
+	case QUEST_STATUS_REWARDED:
+	case QUEST_STATUS_FINISHED: return "done";
+	case QUEST_STATUS_FAILED:
+	case QUEST_STATUS_FAILED_DONE: return "failed";
+	default: return nullptr;
+	}
+}
+
+/*
+ * Every fixed quest the hero has taken, done or failed, with its state, so
+ * the end of a quest is seen wherever it comes: on its level, as the hero
+ * leaves it, or away from any quest's level. Random quests are told by the
+ * level's own quest.
+ */
+static void json_quests(JsonWriter &w)
+{
+	w.key("quests").begin_array();
+	for (int q = QUEST_NULL + 1; q < MAX_Q_IDX; q++)
+	{
+		if (q == QUEST_RANDOM || quest[q].silent) continue;
+		auto const state = quest_state(quest[q].status);
+		if (!state) continue;
+		w.begin_object();
+		w.field("id", q);
+		w.field("state", state);
+		w.field("title", quest[q].name);
+		w.end_object();
+	}
+	w.end_array();
+}
+
 /*
  * The quest of the level the hero is on (memory.cc level_quest), and whether
  * it is active, done or failed: for a random quest its kind, the creature to
@@ -249,17 +287,8 @@ void json_level_quest(JsonWriter &w)
 
 	auto const &qt = quest[q];
 	if (qt.silent) return;
-	char const *state = "active";
-	switch (qt.status)
-	{
-	case QUEST_STATUS_TAKEN: break;
-	case QUEST_STATUS_COMPLETED:
-	case QUEST_STATUS_REWARDED:
-	case QUEST_STATUS_FINISHED: state = "done"; break;
-	case QUEST_STATUS_FAILED:
-	case QUEST_STATUS_FAILED_DONE: state = "failed"; break;
-	default: return;
-	}
+	auto const state = quest_state(qt.status);
+	if (!state) return;
 	std::string text = qt.gen_desc ? qt.gen_desc() : std::string();
 	if (text.empty())
 	{
@@ -1474,6 +1503,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	w.field("diedFrom", game->died_from);
 	json_adventure(w);
 	json_level_quest(w);
+	json_quests(w);
 	w.key("status").begin_object();
 	w.field("blind", p_ptr->blind);
 	w.field("confused", p_ptr->confused);

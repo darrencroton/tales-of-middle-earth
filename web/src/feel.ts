@@ -6,6 +6,9 @@ import { el, iconText } from './ui/dom.ts';
 /** Health below this fraction of the maximum counts as low. */
 export const LOW_HEALTH = 0.3;
 
+/** A quest's arrival or end. */
+export type QuestEvent = Extract<FeelEvent, { kind: 'quest' | 'questEnd' }>;
+
 /** Where on the surface a new place is: the world map, a town, or the land around. */
 type Surface = 'world' | 'town' | 'land';
 
@@ -13,9 +16,10 @@ export type FeelEvent =
   | { kind: 'hurt'; fraction: number }
   | { kind: 'levelup'; level: number; skillPoints: number }
   | { kind: 'depth'; place: string; feet: number; deeper: boolean; surface: Surface }
-  /** A level that holds a quest, arrived at (`place` is its dungeon, empty on a quest's own level); or that level's quest ended there. */
+  /** A level that holds a quest, arrived at (`place` is its dungeon, empty on a quest's own level). */
   | { kind: 'quest'; title: string; place: string; feet: number }
-  | { kind: 'questEnd'; title: string; failed: boolean }
+  /** A quest done or failed, wherever it ended. */
+  | { kind: 'questEnd'; id: number; title: string; failed: boolean }
   /** One more of a random quest's creatures slain, the quest not yet done. */
   | { kind: 'questProgress'; slain: number; count: number }
   | { kind: 'gold'; amount: number }
@@ -23,7 +27,7 @@ export type FeelEvent =
   /** Back from death in Adventure mode, with `lives` left (this one included); played by main.ts (`followReturn`). */
   | { kind: 'returned'; lives: number };
 
-type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown' | 'quest'>;
+type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown' | 'quest' | 'quests'>;
 
 /** What changed for the player between two states, as feedback events. */
 export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
@@ -40,20 +44,37 @@ export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
     const feet = feetOf(next);
     if (level && next.quest?.state === 'active') quest = { kind: 'quest', title: next.quest.title, place: ownLevel ? '' : place, feet };
     else events.push({ kind: 'depth', place, feet, deeper: next.depth > prev.depth, surface });
-    /* A quest can fail as the next level is made (a god's temple made twice). */
-    if (prev.quest?.state === 'active' && next.quest?.id === prev.quest.id && next.quest.state === 'failed') quest = { kind: 'questEnd', title: prev.quest.title, failed: true };
-  } else if (prev.quest?.state === 'active' && (!next.quest || next.quest.id === prev.quest.id) && next.quest?.state !== 'active') {
-    /* Done or failed, or gone from the level it was on (tome2 hands a god's quest back once the relic is found). */
-    quest = { kind: 'questEnd', title: prev.quest.title, failed: next.quest?.state === 'failed' };
   } else if (next.quest?.state === 'active' && next.quest.random && prev.quest?.random && next.quest.random.slain > prev.quest.random.slain) {
     quest = { kind: 'questProgress', slain: next.quest.random.slain, count: next.quest.random.count };
   }
+  quest = endedQuest(prev, next, level) ?? quest;
   if (next.lev > prev.lev) events.push({ kind: 'levelup', level: next.lev, skillPoints: next.skillPoints ?? 0 });
   else if (next.exp > prev.exp) events.push({ kind: 'exp', amount: next.exp - prev.exp });
   if (next.chp < prev.chp && next.mhp > 0) events.push({ kind: 'hurt', fraction: Math.min(1, (prev.chp - next.chp) / next.mhp) });
   if (next.au > prev.au) events.push({ kind: 'gold', amount: next.au - prev.au });
   if (quest) events.push(quest);
   return events;
+}
+
+/**
+ * A quest that ended between two states: a random quest done or failed on its
+ * level (leaving it only resets it), or a fixed quest no longer active,
+ * wherever that came (on its level, as the hero left it, or away from any
+ * quest's level). One gone from the hero's quests is done: tome2 hands a
+ * god's quest back once the relic is found, and a bounty once it is paid.
+ */
+function endedQuest(prev: Tracked, next: Tracked, level: boolean): Extract<QuestEvent, { kind: 'questEnd' }> | null {
+  const random = prev.quest?.random ? prev.quest : null;
+  if (!level && random?.state === 'active' && next.quest?.random && next.quest.state !== 'active') {
+    return { kind: 'questEnd', id: random.id, title: random.title, failed: next.quest.state === 'failed' };
+  }
+  if (!prev.quests || !next.quests) return null;
+  for (const was of prev.quests) {
+    if (was.state !== 'active') continue;
+    const now = next.quests.find((q) => q.id === was.id);
+    if (now?.state !== 'active') return { kind: 'questEnd', id: was.id, title: was.title, failed: now?.state === 'failed' };
+  }
+  return null;
 }
 
 export function isLowHealth(player: Pick<PlayerState, 'chp' | 'mhp'>): boolean {
@@ -216,14 +237,17 @@ export class GameFeel {
     this.deed.classList.remove('visible');
   }
 
-  /** Compares with the last state seen and plays its feedback, except events `hold` keeps back (to be shown another way, or played later with `play`); returns those. */
-  update(player: Tracked, hold: (event: FeelEvent) => boolean = () => false): FeelEvent[] {
+  /** Compares with the last state seen and plays its feedback, except a quest's arrival or end, which it returns (to be told in a card, or played later with `play`). */
+  update(player: Tracked): QuestEvent[] {
     const events = playerEvents(this.prev, player);
     this.prev = { ...player };
     this.layer.classList.toggle('low', isLowHealth(player));
     this.layer.classList.toggle('still', this.animation() === 'off');
-    const held = events.filter(hold);
-    for (const event of events) if (!held.includes(event)) this.play(event);
+    const held: QuestEvent[] = [];
+    for (const event of events) {
+      if (event.kind === 'quest' || event.kind === 'questEnd') held.push(event);
+      else this.play(event);
+    }
     return held;
   }
 

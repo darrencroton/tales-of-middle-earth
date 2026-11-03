@@ -405,7 +405,7 @@ export class GameAudio {
     this.play(release ? (MISSILES.has(release.id) && kind === 'bolt' ? [release] : [release, drawn]) : [drawn]);
   }
 
-  /** Plays a sound that is not tied to game state (shop bell, menus). */
+  /** Plays one sound now (shop bell, menus, a quest done). */
   cue(id: CueId, strength?: number): void {
     this.play([{ id, strength }]);
   }

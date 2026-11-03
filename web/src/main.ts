@@ -36,7 +36,7 @@ import { openMagic, RecentStore } from './ui/magic.ts';
 import { CastWatcher, fireMacro, hasMagic, hasPowers, recentLabel } from './play/recent.ts';
 import { NOT_NOW, type GameApi } from './ui/api.ts';
 import { titleName } from './play/text.ts';
-import { GameFeel, READ_MS, type FeelEvent } from './feel.ts';
+import { GameFeel, READ_MS, type QuestEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
 import { INVEN_WIELD, itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { ABANDONED, hasFallen } from './play/memorial.ts';
@@ -574,7 +574,7 @@ function noteLeadShown(): void {
  * arrival what the quest asks. `led`: tome2 asked something meanwhile and
  * showed those words with it (a princess's reward), so the banner suffices.
  */
-let questMoment: { event: Extract<FeelEvent, { kind: 'quest' | 'questEnd' }>; quest: LevelQuest; since: GameState | null; led: boolean } | null = null;
+let questMoment: { event: QuestEvent; quest: LevelQuest; since: GameState | null; led: boolean } | null = null;
 
 const CARD_KINDS = new Set<PromptKind>(['yesno', 'quantity', 'text', 'direction', 'aim', 'choice']);
 
@@ -803,12 +803,14 @@ function refresh(): void {
     memory.level.explore.noteGold(state.objects ?? [], snap);
     hud.update(state, snap.py, snap.px);
     if (state.player) {
-      const quest = state.player.quest ?? previous?.player?.quest;
-      for (const event of feel.update(state.player, (e) => (e.kind === 'quest' || e.kind === 'questEnd') && !!quest)) {
+      for (const event of feel.update(state.player)) {
         if (questMoment) feel.play(questMoment.event);
+        if (event.kind === 'questEnd' && !event.failed) audio.cue('quest');
         /* tome2 can ask (a princess's reward) before it marks the quest done, and with Pause its -more- has shown every word. */
         const led = ledSince || leadShown || (event.kind === 'questEnd' && settings.messages !== 'flow');
-        questMoment = { event: event as NonNullable<typeof questMoment>['event'], quest: quest!, since: lastCommandState, led };
+        const quest: LevelQuest =
+          event.kind === 'quest' ? state.player.quest! : { id: event.id, state: event.failed ? 'failed' : 'done', title: event.title };
+        questMoment = { event, quest, since: lastCommandState, led };
       }
       feel.setQuest(
         state.player.quest?.state === 'active' && !state.player.dead,

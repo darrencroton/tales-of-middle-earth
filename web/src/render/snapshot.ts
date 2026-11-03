@@ -190,6 +190,8 @@ export interface PlayerState {
   closed?: 'astral' | 'held' | 'none';
   /** The quest of the level the hero is on, when it holds one. */
   quest?: LevelQuest;
+  /** Every fixed quest the hero has taken, done or failed (a random quest is the level's own `quest`). */
+  quests?: QuestStatus[];
   /** Name of the town or land walked on the surface (set by the frontend from the place). */
   area?: string;
   /** The surface area is a town (set by the frontend from the place). */
@@ -228,6 +230,9 @@ export interface LevelQuest {
   /** A random quest: who holds the princess or took the sword, how many, and how many are slain. */
   random?: { kind: 'princess' | 'sword'; foe: string; count: number; slain: number };
 }
+
+/** A fixed quest the hero has taken, and how it stands. */
+export type QuestStatus = Pick<LevelQuest, 'id' | 'state' | 'title'>;
 
 /** One entry of the Hall of Fame (tome2's scores file). */
 export interface ScoreEntry {
