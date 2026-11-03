@@ -568,6 +568,10 @@ describe('actions', () => {
     assert.deepEqual(first({ exploreNext: 'up' }), ['explore', 'Way up']);
     assert.deepEqual(first({ gear: 'light' }), ['equip', 'Light']);
     assert.deepEqual(first({ gear: 'light', underfoot: 'fountain' }), ['drink', 'Drink']);
+    assert.deepEqual(first({ gear: 'light', altar: 'worship' }), ['worship', 'Worship']);
+    assert.deepEqual(first({ altar: 'offer' }), ['offer', 'Sacrifice']);
+    assert.deepEqual(contextualAction({ ...base, altar: 'worship' }).effect, { kind: 'native', view: 'altar' });
+    assert.deepEqual(first({ underfoot: 'altar of being', altar: null }), ['explore', 'Explore']);
     assert.deepEqual(first({ gear: 'light', floorObjects: 1 }), ['pickup', 'Pick up']);
     assert.deepEqual(first({ floorObjects: 1, foe: '6' }), ['attack', 'Attack']);
     assert.deepEqual(contextualAction({ ...base, foe: '6' }).effect, { kind: 'keys', keys: [92, 59, 54] });
@@ -636,7 +640,8 @@ describe('actions', () => {
     const why = (label: string, ctx: Partial<CommandContext>) => commandGroups({ ...COMMANDS, ...ctx }).flatMap((g) => g.commands).find((c) => c.label === label)?.unavailable;
     assert.equal(why('Drink from fountain', {}), 'There is no fountain here.');
     assert.equal(why('Drink from fountain', { underfoot: 'fountain' }), undefined);
-    assert.equal(why('Sacrifice at altar', { underfoot: 'altar of Eru' }), undefined);
+    assert.equal(why('Kneel at altar', {}), 'There is no altar here.');
+    assert.equal(why('Kneel at altar', { underfoot: 'altar of being' }), undefined);
     assert.equal(why('Rest', { feat: 160 }), 'Resting on a Void Jumpgate is too dangerous.');
     assert.equal(why('Rest', { feat: 176 }), undefined);
     assert.equal(why('Talk', { where: 'worldMap', beside: true }), 'Not on the world map.');

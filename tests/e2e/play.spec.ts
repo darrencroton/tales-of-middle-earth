@@ -899,3 +899,35 @@ test('knowledge and the manual read as whole files, help is searchable, links op
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
 });
+
+test('a hero without a god worships at an altar, prays, and finds their faith on the HUD and the character sheet', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Pilgrim');
+  expect(await page.evaluate(() => window.__tome!.engine.gameState()!.player!.god)).toBe('');
+
+  /* An altar of Eru underfoot: the changing button is Worship, opening his card. */
+  await wizardCommand(page, 'F', 161);
+  await page.locator('#toolbar [data-action="worship"]').click();
+  const card = page.locator('.sheet-god');
+  await expect(card.locator('.sheet-title')).toHaveText('Eru Ilúvatar');
+  await expect(card.locator('.god-gifts li')).toHaveCount(4);
+  await card.locator('.sheet-action', { hasText: 'Worship Eru Ilúvatar' }).click();
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.gameState()!.player!.god)).toBe('Eru Iluvatar');
+  await dismissMore(page);
+  await waitAtCommand(page);
+  expect(await actionIds(page)).not.toContain('worship');
+
+  /* Praying shows in the HUD; the chip opens the god's card, which stops it. */
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await page.locator('.sheet .command', { hasText: 'Pray' }).click();
+  await page.locator('#hud .entity.praying').click();
+  await expect(card.locator('.sheet-subtitle')).toContainText('praying');
+  await card.locator('.sheet-action', { hasText: 'Stop praying' }).click();
+  await expect(page.locator('#hud .entity.praying')).toBeHidden();
+  await waitAtCommand(page);
+
+  await page.locator('#hud .hud-player').click();
+  await page.locator('.sheet .row-button', { hasText: 'Eru Ilúvatar' }).click();
+  await expect(card.locator('.sheet-subtitle')).toContainText('not praying');
+});

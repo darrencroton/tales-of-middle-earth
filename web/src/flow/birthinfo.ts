@@ -1,4 +1,5 @@
 import type { BirthData, BirthEntry, BirthSkill } from '../render/snapshot.ts';
+import { godTitle } from '../play/gods.ts';
 import type { BirthStep } from './birth.ts';
 
 const STAT_NAMES = ['STR', 'INT', 'WIS', 'DEX', 'CON', 'CHR'] as const;
@@ -232,7 +233,7 @@ export function birthDetails(entry: BirthEntry, step: BirthStep): BirthDetails {
   const choices = entry.classes?.length
     ? { label: 'Classes', values: entry.classes }
     : entry.gods?.length
-      ? { label: 'Gods', values: entry.gods }
+      ? { label: 'Gods', values: entry.gods.map(godTitle) }
       : null;
 
   return {

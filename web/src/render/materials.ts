@@ -13,6 +13,8 @@ export interface FeatureInfo {
   ch: number;
   attr: number;
   flags: number;
+  /** The god of an altar. */
+  god?: string;
 }
 
 interface Emission {
@@ -144,4 +146,12 @@ export function classifyFeature(f: FeatureInfo): Material {
 
 export function buildMaterials(features: readonly FeatureInfo[]): Material[] {
   return features.map(classifyFeature);
+}
+
+/** Materials as the hero walks them: terrain in `passes` (trees for a tree walker, a flyer or Yavanna's praying follower) becomes walkable. */
+export function walkableFor(materials: readonly Material[], passes: readonly number[] | undefined): readonly Material[] {
+  if (!passes?.length) return materials;
+  const out = materials.slice();
+  for (const i of passes) if (out[i]) out[i] = { ...out[i], walkable: true };
+  return out;
 }

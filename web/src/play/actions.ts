@@ -22,6 +22,7 @@ export type NativeView =
   | 'fallen'
   | 'explore'
   | 'equip'
+  | 'altar'
   | 'halt'
   | 'pace'
   | 'closeFile';
@@ -207,7 +208,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
       { label: 'Go down', icon: '>', command: '>' },
       { label: 'Go up', icon: '<', command: '<' },
       { label: 'Drink from fountain', icon: '⌂', command: 'H', refuse: (c) => (/fountain/.test(c.underfoot) ? null : 'There is no fountain here.') },
-      { label: 'Sacrifice at altar', icon: '0', command: 'O', refuse: (c) => (/altar/.test(c.underfoot) ? null : 'There is no altar here.') },
+      { label: 'Kneel at altar', icon: '☼', command: 'O', native: 'altar', refuse: (c) => (/altar/.test(c.underfoot) ? null : 'There is no altar here.') },
       { label: 'Engrave a rune', icon: 'ᚱ', command: 'x', when: (c) => c.runes },
     ],
   },
@@ -351,6 +352,8 @@ export interface ActionContext {
   foe?: string | null;
   /** A neutral creature stands next to the player (someone to talk to). */
   talk?: boolean;
+  /** What the altar underfoot offers the hero: worship, or Melkor's offerings. */
+  altar?: 'worship' | 'offer' | null;
   /** The hero controls another creature: walking moves it, and the hero's own actions wait. */
   controlling?: boolean;
   /** The hero's one-tap repeat: their last (or first) spell or power, or the last aimed thing they used. */
@@ -436,7 +439,7 @@ const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {
  * world map's Walk here; Release the creature the hero controls; the way on
  * underfoot (a staircase is always what it does); the door of a shop or
  * other building underfoot; Attack a foe alongside; what lies underfoot to
- * pick up or use; gear the hero needs to go on; Talk to someone alongside;
+ * pick up or use (an altar only when it offers worship or offerings); gear the hero needs to go on; Talk to someone alongside;
  * and Explore, named for what it will do (dimmed where it cannot be used).
  */
 export function contextualAction(ctx: ActionContext): Action {
@@ -448,7 +451,7 @@ export function contextualAction(ctx: ActionContext): Action {
   if (ctx.foe) return { id: 'attack', label: 'Attack', icon: '⚔', effect: { kind: 'keys', keys: [92, 59, ctx.foe.charCodeAt(0)] }, primary: true };
   if (ctx.floorObjects > 0) return command('pickup', 'Pick up', '⇡', { command: pickupCommand(ctx.alwaysPickup) }, true);
   if (/fountain/.test(ctx.underfoot)) return command('drink', 'Drink', '⌂', { command: 'H' }, true);
-  if (/altar/.test(ctx.underfoot)) return command('sacrifice', 'Sacrifice', '0', { command: 'O' }, true);
+  if (ctx.altar) return { id: ctx.altar, label: ctx.altar === 'worship' ? 'Worship' : 'Sacrifice', icon: '☼', effect: { kind: 'native', view: 'altar' }, primary: true };
   if (ctx.gear) {
     const [label, icon] = GEAR_ACTIONS[ctx.gear];
     return { id: 'equip', label, icon, effect: { kind: 'native', view: 'equip' }, primary: true };

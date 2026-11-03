@@ -1,7 +1,9 @@
 import type { MapPoint, MapRenderer } from '../render/map.ts';
 import { isHostile } from '../render/snapshot.ts';
 import { titleName, type GameApi } from './api.ts';
-import { el, glyph } from './dom.ts';
+import { godTitle } from '../play/gods.ts';
+import { el, glyph, iconText } from './dom.ts';
+import { openAltarGod } from './gods.ts';
 import { describeCell, monsterSummary, openFloorObject, openMonster, type CellDescription } from './info.ts';
 import { ListNav } from './listnav.ts';
 import { defaultItem } from './popup.ts';
@@ -20,7 +22,7 @@ interface LookCardDeps {
 /* How the look card says where a cell's contents are known from. */
 const LOOK_NOTES: Readonly<Record<CellDescription['note'], string>> = { here: 'Where you stand', view: 'In view', remembered: 'Remembered', unknown: '' };
 
-/** What is at a map cell, as a card at the foot of the map: its terrain, then each creature and item there (a tap opens its card), and Go there. */
+/** What is at a map cell, as a card at the foot of the map: its terrain, then an altar's god, each creature and each item there (a tap opens its card), and Go there. */
 export class LookCard {
   private readonly deps: LookCardDeps;
   /** The card's highlight: its rows and buttons, moved by arrows and swipes. */
@@ -56,17 +58,20 @@ export class LookCard {
     const note = LOOK_NOTES[description.note];
     if (note) head.append(el('span', 'look-note', note));
     const rows = el('div', 'look-rows');
-    const row = (ch: number, attr: number, name: string, aside: string, open: () => void) => {
+    const row = (symbol: HTMLElement, name: string, aside: string, open: () => void) => {
       const button = el('button', 'look-row');
       button.type = 'button';
       button.dataset.nav = '';
-      button.append(glyph(ch, api.palette()[attr] ?? '#fff'), el('span', 'look-name', name));
+      button.append(symbol, el('span', 'look-name', name));
       if (aside) button.append(el('span', 'look-aside', aside));
       button.addEventListener('click', open);
       rows.append(button);
     };
-    for (const m of description.monsters) row(m.ch, m.attr, titleName(m.name), monsterSummary(m), () => openMonster(api, m));
-    for (const o of description.objects) row(o.ch, o.attr, o.name, '', () => openFloorObject(api, o));
+    const mark = (thing: { ch: number; attr: number }) => glyph(thing.ch, api.palette()[thing.attr] ?? '#fff');
+    const god = description.god;
+    if (god) row(el('span', 'glyph', iconText('☼')), godTitle(god), 'Its god', () => openAltarGod(api, god, description.player));
+    for (const m of description.monsters) row(mark(m), titleName(m.name), monsterSummary(m), () => openMonster(api, m));
+    for (const o of description.objects) row(mark(o), o.name, '', () => openFloorObject(api, o));
     if (description.blurred) rows.append(el('p', 'look-text', 'You cannot make out what is there.'));
     else if (!description.known && !rows.childElementCount) rows.append(el('p', 'look-text', 'You have not explored there.'));
     const buttons = el('div', 'look-buttons');

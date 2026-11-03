@@ -1,4 +1,5 @@
 import type { Engine } from '../engine.ts';
+import { godTitle } from '../play/gods.ts';
 import type { MemorialLine } from '../play/memorial.ts';
 import { readableColour } from '../render/colour.ts';
 import type { ItemDamage, ItemInfo, ItemProp, PowerInfo, SpellBasics, SpellInfo } from '../render/snapshot.ts';
@@ -125,7 +126,8 @@ export function spellNotes(spell: SpellBasics & Partial<SpellInfo>, device = fal
   if (device) {
     if (spell.skill > 0) notes.push(`Its spell level rises with Magic Device skill from ${spell.skill}.`);
   } else {
-    if (spell.skill > 0) notes.push(`Learnt at ${school} skill ${spell.skill}${school.includes(' and ') ? ' (their average)' : ''}.`);
+    if (spell.god) notes.push(`A prayer to ${godTitle(spell.god)}, learnt at Prayer skill ${spell.skill}: only their followers can pray it.`);
+    else if (spell.skill > 0) notes.push(`Learnt at ${school} skill ${spell.skill}${school.includes(' and ') ? ' (their average)' : ''}.`);
     if (spell.stat !== undefined && STAT_NAMES[spell.stat]) notes.push(`Cast with ${STAT_NAMES[spell.stat]}: the higher it is, the less often it fails.`);
     if (spell.manaMin !== undefined && spell.manaMax !== undefined && spell.manaMax > spell.manaMin) {
       notes.push(`Costs ${spell.manaMin} ${spell.piety ? 'piety' : 'mana'} at spell level 1, rising to ${spell.manaMax} at level 50.`);
@@ -245,6 +247,10 @@ export function itemDetails(info: ItemInfo | null, options: ItemDetailsOptions):
   for (const group of propGroups(info.props ?? [])) {
     body.append(section(group.title, chips(group.props, group.group === 'drawback' ? 'bad' : '')));
   }
+  if (info.unholy) {
+    const god = godTitle(info.unholy);
+    body.append(section(god, el('p', 'description', `${god} frowns on edged weapons that are not blessed: wielding it costs 15 to hit and to damage, and spells fail more often.`)));
+  }
 
   if (info.activation || info.power) {
     const text = el('div', 'description');
@@ -295,16 +301,18 @@ export function openSpellCard(api: GameApi, spell: SpellInfo, cast?: (spell: Spe
   const body = spellDetails(spell);
   const why = spell.ok
     ? null
-    : spell.instrument
-      ? 'This instrument is not powerful enough for it.'
-      : spell.level === 0
-        ? 'Your skills are not yet high enough to cast it.'
-        : 'You cannot cast it yet.';
+    : spell.god && spell.god !== api.state()?.player?.god
+      ? `Only followers of ${godTitle(spell.god)} can pray it.`
+      : spell.instrument
+        ? 'This instrument is not powerful enough for it.'
+        : spell.level === 0
+          ? 'Your skills are not yet high enough to cast it.'
+          : 'You cannot cast it yet.';
   if (why) body.append(el('p', 'muted', why));
-  else if (spell.short && cast) body.append(el('p', 'muted', 'You do not have the mana for it. You may try anyway, at a much greater risk of failure.'));
+  else if (spell.short && cast) body.append(el('p', 'muted', `You do not have the ${spell.piety ? 'piety' : 'mana'} for it. You may try anyway, at a much greater risk of failure.`));
   api.sheets.open({
     title: spell.name,
-    subtitle: spell.school,
+    subtitle: spell.god ? `Prayer to ${godTitle(spell.god)}` : spell.school,
     body,
     kind: 'card',
     className: 'sheet-item',

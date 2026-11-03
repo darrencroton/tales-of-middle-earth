@@ -11,6 +11,7 @@
 #include "ability_type.hpp"
 #include "cave.hpp"
 #include "cave_type.hpp"
+#include "cmd1.hpp"
 #include "cmd2.hpp"
 #include "cmd5.hpp"
 #include "corrupt.hpp"
@@ -20,6 +21,7 @@
 #include "feature_type.hpp"
 #include "game.hpp"
 #include "gf_name_type.hpp"
+#include "gods.hpp"
 #include "hiscore.hpp"
 #include "deity_type.hpp"
 #include "inventory.hpp"
@@ -701,6 +703,26 @@ std::string spell_description(spell_type *spell)
 }
 
 /* What tome2's spell list and its description say of a spell (print_spell, print_spell_desc), common to books and devices. */
+/* The god a spell is prayed to (its school's deity), or null for other spells. */
+deity_type const *spell_god(spell_type *spell)
+{
+	for (s32b school_idx : spell_type_get_schools(spell))
+	{
+		int const god = school_at(school_idx)->deity_idx;
+		if (god > 0 && god < MAX_GODS) return &deity_info[god];
+	}
+	return nullptr;
+}
+
+/* The god an altar is raised to (tome2's FEAT_ALTAR_HEAD + god - 1), or null for other terrain and gods of other modules. */
+deity_type const *altar_god(int feat)
+{
+	if (feat < FEAT_ALTAR_HEAD || feat > FEAT_ALTAR_TAIL) return nullptr;
+	int const god = feat - FEAT_ALTAR_HEAD + 1;
+	if (god >= MAX_GODS || !god_enabled(&deity_info[god])) return nullptr;
+	return &deity_info[god];
+}
+
 void json_spell_common(JsonWriter &w, spell_type *spell)
 {
 	w.field("name", spell_type_name(spell));
@@ -710,6 +732,7 @@ void json_spell_common(JsonWriter &w, spell_type *spell)
 	w.field("skill", spell_type_skill_level(spell));
 	w.field("blind", spell_type_castable_while_blind(spell) ? 1 : 0);
 	w.field("confused", spell_type_castable_while_confused(spell) ? 1 : 0);
+	if (auto const *god = spell_god(spell)) w.field("god", god->name);
 }
 
 /*
@@ -1126,6 +1149,8 @@ char const *item_info_json(object_type *o_ptr)
 	bool const known = object_known_p(o_ptr);
 	auto const flags = object_flags(o_ptr);
 	w.field("known", known ? 1 : 0);
+	bool const edged = o_ptr->tval == TV_SWORD || o_ptr->tval == TV_AXE || o_ptr->tval == TV_POLEARM;
+	if (edged && forbid_non_blessed() && !p_ptr->bless_blade && !blessed(o_ptr)) w.field("unholy", deity_info[p_ptr->pgod].name);
 	for (int tv = 0; tval_descs[tv].tval; tv++)
 	{
 		if (tval_descs[tv].tval != o_ptr->tval) continue;
@@ -1358,11 +1383,32 @@ EMSCRIPTEN_KEEPALIVE char const *web_features_json()
 		w.field("ch", static_cast<unsigned char>(f.x_char));
 		w.field("attr", f.x_attr);
 		w.field("flags", bits);
+		if (auto const *god = altar_god(static_cast<int>(i))) w.field("god", god->name);
 		w.end_object();
 	}
 
 	w.end_array();
 	return json.c_str();
+}
+
+/*
+ * Terrain that tome2 does not let one walk on but the hero can enter now, by
+ * feature index (player_can_enter): trees for a tree walker, a flyer or a
+ * follower of Yavanna praying with enough piety, and the like. Walls that
+ * neither flying nor climbing passes (tome2 counts trees as walls) are left
+ * out, so walking through them in a wraith's form shapes no journey.
+ */
+static void json_passes(JsonWriter &w)
+{
+	auto const &f_info = game->edit_data.f_info;
+	w.key("passes").begin_array();
+	for (std::size_t i = 0; i < f_info.size() && i < 256; i++)
+	{
+		auto const flags = f_info[i].flags;
+		bool const wall = (flags & FF_WALL) && !(flags & (FF_CAN_FLY | FF_CAN_CLIMB));
+		if ((flags & FF_NO_WALK) && !wall && player_can_enter(static_cast<byte>(i))) w.value(static_cast<int>(i));
+	}
+	w.end_array();
 }
 
 /*
@@ -1400,6 +1446,10 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	w.field("alwaysPickup", options->always_pickup ? 1 : 0);
 	w.field("skillPoints", p_ptr->skill_points);
 	w.field("pray", p_ptr->pgod == GOD_NONE ? 0 : p_ptr->praying ? 2 : 1);
+	w.field("god", p_ptr->pgod == GOD_NONE ? "" : deity_info[p_ptr->pgod].name);
+	w.field("piety", p_ptr->grace);
+	w.field("faithless", get_skill(SKILL_ANTIMAGIC) > 0 ? 1 : 0);
+	json_passes(w);
 	w.field("runes", static_cast<int>(std::count(p_ptr->inscriptions.begin(), p_ptr->inscriptions.end(), true)));
 	w.field("control", p_ptr->control);
 	w.field("dead", death ? 1 : 0);
@@ -1539,6 +1589,10 @@ EMSCRIPTEN_KEEPALIVE char const *web_grid_json(int y, int x)
 		else name = f_info[feat].name;
 	}
 	w.field("name", name);
+	if (known)
+	{
+		if (auto const *god = altar_god(c_ptr->mimic ? c_ptr->mimic : c_ptr->feat)) w.field("god", god->name);
+	}
 
 	std::vector<object_type const *> objects;
 	if (c_ptr->m_idx)
@@ -2069,6 +2123,62 @@ EMSCRIPTEN_KEEPALIVE int web_remove_score(int index)
 	return (fclose(out) == 0 && written) ? 1 : 0;
 }
 
+/* A kind of object's name without tome2's article and plural marks ("Holy Tome of Eru Iluvatar"). */
+static std::string kind_name(int tval, int sval)
+{
+	auto const &k_info = game->edit_data.k_info;
+	auto const k_idx = lookup_kind(tval, sval);
+	if (!k_idx) return "";
+	std::string name;
+	for (char ch : k_info.at(k_idx)->name)
+	{
+		if (ch != '&' && ch != '~') name += ch;
+	}
+	auto const start = name.find_first_not_of(' ');
+	return start == std::string::npos ? "" : name.substr(start);
+}
+
+/*
+ * The gods of this module: name, the altar raised to them, and the tome of
+ * their prayers with each prayer (name, skill level, description).
+ */
+static void json_gods(JsonWriter &w)
+{
+	auto const &f_info = game->edit_data.f_info;
+	w.key("gods").begin_array();
+	for (int g = 1; g < MAX_GODS; g++)
+	{
+		deity_type &god = deity_info[g];
+		if (!god_enabled(&god)) continue;
+		w.begin_object();
+		w.field("name", god.name);
+		int const altar = FEAT_ALTAR_HEAD + g - 1;
+		if (altar <= FEAT_ALTAR_TAIL && static_cast<std::size_t>(altar) < f_info.size()) w.field("altar", f_info[altar].name);
+		for (int sval = 0; sval < SCHOOL_BOOKS_SIZE; sval++)
+		{
+			school_book *sb = school_books_at(sval);
+			if (!sb || sb->spell_idxs.empty()) continue;
+			bool const ours = std::all_of(sb->spell_idxs.begin(), sb->spell_idxs.end(), [&](s32b idx) { return spell_god(spell_at(idx)) == &god; });
+			if (!ours) continue;
+			w.field("book", kind_name(TV_BOOK, sval));
+			w.key("prayers").begin_array();
+			for (auto spell_idx : sb->spell_idxs)
+			{
+				spell_type *spell = spell_at(spell_idx);
+				w.begin_object();
+				w.field("name", spell_type_name(spell));
+				w.field("skill", spell_type_skill_level(spell));
+				w.field("desc", spell_description(spell));
+				w.end_object();
+			}
+			w.end_array();
+			break;
+		}
+		w.end_object();
+	}
+	w.end_array();
+}
+
 /*
  * Returns what character creation offers: every race, race modifier and
  * class (with specialisations), with stat adjustments, skills, abilities
@@ -2145,7 +2255,12 @@ EMSCRIPTEN_KEEPALIVE char const *web_birth_json()
 			json_race_flags(w, sp.flags);
 			json_skill_mods(w, sp.skill_modifiers);
 			json_abilities(w, sp.abilities);
-			json_bit_names(w, "gods", { sp.gods, 0 }, [](std::size_t g) { return g < MAX_GODS ? std::string(deity_info[g].name) : std::string(); }, MAX_GODS);
+			w.key("gods").begin_array();
+			for (int g = 0; g < MAX_GODS; g++)
+			{
+				if (((c.gods | sp.gods) & BIT(g)) && god_enabled(&deity_info[g])) w.value(deity_info[g].name);
+			}
+			w.end_array();
 			w.field("index", j);
 			w.end_object();
 		}
@@ -2154,6 +2269,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_birth_json()
 		w.end_object();
 	}
 	w.end_array();
+	json_gods(w);
 	w.end_object();
 	return json.c_str();
 }

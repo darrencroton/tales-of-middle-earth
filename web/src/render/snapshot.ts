@@ -158,6 +158,14 @@ export interface PlayerState {
   skillPoints?: number;
   /** 0 without a god, 1 when the hero may pray to theirs, 2 while praying. */
   pray?: number;
+  /** tome2's name of the hero's god, empty without one. */
+  god?: string;
+  /** How pleased the hero's god is (tome2's grace). */
+  piety?: number;
+  /** 1 when the hero cannot follow a god (any Antimagic skill). */
+  faithless?: number;
+  /** Terrain tome2 does not let one walk on that the hero can enter now (trees for a tree walker), by feature index. */
+  passes?: number[];
   /** Runes (tome2's inscriptions) the hero has learnt to engrave. */
   runes?: number;
   /** The id of the creature the hero controls (a Fire Golem, or one taken by Mind Steal), 0 when none. */
@@ -297,6 +305,8 @@ export interface GridState {
   name?: string;
   /** Objects noticed there, seen now or remembered (no position: they are all at the grid). */
   objects?: Omit<ObjectState, 'x' | 'y'>[];
+  /** The god of an altar there. */
+  god?: string;
 }
 
 export interface MessageState {
@@ -575,6 +585,16 @@ export interface BirthData {
   races: BirthEntry[];
   mods: BirthEntry[];
   classes: BirthEntry[];
+  gods: GodData[];
+}
+
+/** A god as tome2 describes them: their altar and the tome of their prayers. */
+export interface GodData {
+  name: string;
+  /** The name of the altar raised to them. */
+  altar?: string;
+  book?: string;
+  prayers?: { name: string; skill: number; desc: string }[];
 }
 
 /** What tome2's spell list says of a spell, for books and devices alike. */
@@ -592,6 +612,8 @@ export interface SpellBasics {
   /** Castable while blind or confused. */
   blind: number;
   confused: number;
+  /** The god it is prayed to: only their followers can cast it. */
+  god?: string;
 }
 
 /** A spell in a book, as the hero would cast it. */
@@ -658,6 +680,8 @@ export interface ItemDamage {
 /** What the hero knows of an item, as tome2's examining tells it (web_object_info); empty when there is no such item. */
 export interface ItemInfo {
   known?: number;
+  /** The hero's god, who frowns on wielding this edged weapon that is not blessed. */
+  unholy?: string;
   kind?: string;
   lore?: string[];
   set?: string;

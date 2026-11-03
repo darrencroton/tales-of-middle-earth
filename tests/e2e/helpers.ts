@@ -126,7 +126,7 @@ function birthState(page: Page): Promise<string> {
 export async function createCharacter(
   page: Page,
   name: string,
-  picks: { race?: string; cls?: string; beforeBegin?: () => Promise<void> } = {},
+  picks: { race?: string; cls?: string; god?: string; beforeBegin?: () => Promise<void> } = {},
 ): Promise<void> {
   await beginNewCharacter(page, name);
   /* Enter (or a tap) ends the intro. */
@@ -148,7 +148,7 @@ export async function createCharacter(
     }
     const before = await birthState(page);
     const heading = (await page.locator('.director .birth-header h2').textContent().catch(() => '')) ?? '';
-    const pick = /your race/.test(heading) ? picks.race : /your class/.test(heading) ? picks.cls : undefined;
+    const pick = /your race/.test(heading) ? picks.race : /your class/.test(heading) ? picks.cls : /god/.test(heading) ? picks.god : undefined;
     if (pick && (await page.locator('.director .birth-option.current').textContent()) !== pick) {
       await page.locator('.director .birth-option', { hasText: pick }).first().click();
     } else {
