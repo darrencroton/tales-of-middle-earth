@@ -172,8 +172,8 @@ No key hints anywhere.
 - tome2 shows files (knowledge lists, help, notes, command help) 20 lines at a
   time. `ui/filepages.ts` gathers every page as tome2 shows it (one Space per
   idle, read at once, so the player only ever sees the whole file) and the
-  panel shows the whole file as one scrolling list (`renderViewer` in
-  `main.ts`).
+  panel shows the whole file as one scrolling list (`Reader.render` in
+  `ui/reader.ts`).
 - A file opened part-way down (a help link to an anchor) opens scrolled there.
 - Help links are tappable wherever they are: lettered links as rows, links
   inside the text as inline links. The help file itself is read from the

@@ -9,7 +9,7 @@ import type { SheetAction, Sheets } from './sheet.ts';
 import { deedChips, fateLine, fateText, fellWhereWhen, foeChip, gearStrip, lastWordsList, type FallenHero, type FallenTab } from './memorial.ts';
 import { rowText, type TermRow } from './termparse.ts';
 
-interface Tomb {
+export interface Tomb {
   name: string;
   title: string;
   cls: string;

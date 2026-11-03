@@ -231,3 +231,23 @@ export function exportFilename(now: Date = new Date()): string {
   const stamp = now.toISOString().slice(0, 19).replace(/[:T]/g, '-');
   return `tome2-saves-${stamp}${SAVE_FILE_EXTENSION}`;
 }
+
+/**
+ * Holds an exclusive lock for this page so that two tabs never load and sync
+ * the same saves. Resolves false when another tab already holds it.
+ */
+export function acquireSessionLock(): Promise<boolean> {
+  if (!('locks' in navigator)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    navigator.locks
+      .request('tome2mobile-session', { ifAvailable: true }, (lock) => {
+        if (!lock) {
+          resolve(false);
+          return undefined;
+        }
+        resolve(true);
+        return new Promise<void>(() => undefined);
+      })
+      .catch(() => resolve(true));
+  });
+}
