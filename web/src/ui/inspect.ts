@@ -92,6 +92,11 @@ export function recallLines(engine: Engine, palette: readonly string[], id: numb
   return recallRuns(engine.monsterRecall(id)?.text ?? [], palette);
 }
 
+/** The hero's recall of a creature race (by its r_info index), as for one in view. */
+export function raceRecallLines(engine: Engine, palette: readonly string[], race: number): MemorialLine[] {
+  return recallRuns(engine.raceRecall(race)?.text ?? [], palette);
+}
+
 /** A creature's recall as paragraphs (tome2 breaks them with newlines), or `empty` when nothing is known. */
 export function recallParagraphs(lines: readonly MemorialLine[], empty: string): HTMLElement {
   const body = el('div', 'description recall');

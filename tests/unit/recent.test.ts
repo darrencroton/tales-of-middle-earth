@@ -107,7 +107,7 @@ describe('recent actions', () => {
     assert.equal(macro.next(screen('')).done, true);
   });
 
-  it('follows a menu path by labels, and fires at the nearest foe', () => {
+  it('follows a menu path by labels, and fires at the target, else the nearest foe', () => {
     const macro = pathMacro('m', ['Use Mindcraft', 'Neural Blast']);
     macro.next();
     assert.deepEqual(macro.next(screen('Select a skill (a-b), @ to select by name, +/- to scroll:', SKILL_MENU)).value, keys('b'));
@@ -120,6 +120,9 @@ describe('recent actions', () => {
     const fire = fireMacro();
     assert.deepEqual(fire.next().value, [92, ...keys('f')]);
     assert.deepEqual(fire.next(screen("Direction ('*' to choose a target, Escape to cancel)?")).value, keys('*t'));
+    const atTarget = fireMacro();
+    atTarget.next();
+    assert.deepEqual(atTarget.next(screen("Direction ('5' for target, '*' to re-target, Escape to cancel)? ")).value, keys('5'));
     const aimed = thenAim(pathMacro('m', []), true);
     assert.deepEqual(aimed.next().value, [92, ...keys('m')]);
     assert.deepEqual(aimed.next(screen("Direction ('*' to choose a target, Escape to cancel)?")).value, keys('*t'));

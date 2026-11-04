@@ -1934,8 +1934,51 @@ html.keyboard-open .tv-layer.panel {
 }
 
 .adventurer-line,
-.quest-line {
+.quest-line,
+.row-line {
   color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+/* Knowledge and companions: creatures as rows opening their card, and lines that only tell something */
+.race-row {
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.info-row:last-child {
+  border-bottom: 0;
+}
+
+.sheet-knowledge .menu-list:has(.info-row) {
+  gap: 0;
+}
+
+.sheet-companions .segmented {
+  margin-bottom: 0.4rem;
+}
+
+.sheet-companions .segment {
+  flex: 1 1 0;
+}
+
+.sheet-companions .segment.unavailable,
+.run-option.unavailable .run-option-text,
+.run-option.unavailable .switch {
+  opacity: 0.45;
+}
+
+.companions-upkeep {
+  margin: 0.2rem 0 0.8rem;
+  color: var(--accent);
   font-size: var(--fs-small);
 }
 

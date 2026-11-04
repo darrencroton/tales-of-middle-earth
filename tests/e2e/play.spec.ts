@@ -337,9 +337,8 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
   await page.locator('#toolbar [data-action="menu"]').click();
   await page.locator('.sheet .row-button', { hasText: 'Knowledge' }).click();
   await page.locator('.sheet .row-button', { hasText: 'Fates' }).click();
-  await expect(page.locator('.termview .sheet-title')).toHaveText(/Fate/);
-  await page.locator('.termview .sheet-close').click();
-  await waitAtCommand(page);
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Fates');
+  await page.locator('.sheet-back').click();
   await expect(page.locator('.sheet .sheet-title')).toHaveText('Knowledge');
   await expect(page.locator('.sheet .row-button.is-active')).toContainText('Fates');
   /* Quests is our own log: those under way first, each opening its card. */
@@ -864,24 +863,35 @@ test('a random quest is told on arrival, its chip tells what it asks, it survive
   }
 });
 
-test('knowledge and the manual read as whole files, help is searchable, links open more, and cards float over the list that opened them', { tag: '@layout' }, async ({ page }) => {
+test('knowledge lists are native, the manual reads as whole files, help is searchable, links open more, and cards float over the list that opened them', { tag: '@layout' }, async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Reader', { cls: 'Mage' });
   const rowZero = () => page.evaluate(() => window.__tome!.screenText().split('\n')[0]);
 
-  /* A knowledge list is one scrolling list, with nothing to page. */
+  /* Knowledge lists are native: uniques still at large as rows, each opening the hero's recall of it as a card over the list. */
   await page.locator('#toolbar [data-action="menu"]').click();
   await page.locator('.sheet .row-button', { hasText: 'Knowledge' }).click();
   await page.locator('.sheet .row-button', { hasText: 'Unique' }).click();
-  await expect(page.locator('.termview .sheet-title')).toHaveText('Known Uniques');
-  const size = Number(/Line \d+\/(\d+)\]/.exec(await rowZero())?.[1]);
-  expect(size).toBeGreaterThan(40);
-  await expect(page.locator('.termview .tv-text')).toHaveCount(size);
-  await expect(page.locator('.termview .tv-footer')).toBeHidden();
-  await page.locator('.termview .sheet-close').click();
-  await waitAtCommand(page);
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Unique creatures');
+  const uniques = page.locator('.sheet .sheet-section', { hasText: 'Still at large' }).locator('.race-row');
+  expect(await uniques.count()).toBeGreaterThan(40);
+  await uniques.nth(3).click();
+  await expect(page.locator('.sheet-frame.frame-card .sheet-monster .recall')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-monster')).toBeHidden();
+  await expect(uniques.nth(3)).toHaveClass(/is-active/);
+  await page.locator('.sheet-back').click();
   await expect(page.locator('.sheet .row-button.is-active')).toContainText('Unique');
+  /* Notes, newest first: one written there heads the list. */
+  await page.locator('.sheet .row-button', { hasText: 'Notes' }).click();
+  await page.locator('.sheet [data-action="note"]').click();
+  await page.locator('.ask-text input').fill('Found the old road');
+  await page.locator('.ask-text .sheet-action.primary').click();
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Notes');
+  await expect(page.locator('.sheet .info-row').first()).toContainText('Found the old road');
+  await expect(page.locator('.sheet .info-row').first()).toContainText(/Day 1/);
+  await expect(page.locator('.sheet .info-row').last()).toContainText('Reader the');
   await page.locator('.sheet .sheet-close').click();
   await expect(page.locator('.sheet-layer')).toBeHidden();
 

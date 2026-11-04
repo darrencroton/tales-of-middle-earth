@@ -18,6 +18,8 @@ import {
   type StoreState,
 } from './render/snapshot.ts';
 import type { RunOptions } from './flow/runoptions.ts';
+import type { Companions } from './play/companions.ts';
+import type { Knowledge } from './play/knowledge.ts';
 import type { ScreenCopy, TerminalBuffer } from './terminal.ts';
 import { syncToStorage, type EmscriptenFS } from './saves.ts';
 import { keyCodes } from './input/keys.ts';
@@ -81,6 +83,12 @@ interface EmscriptenModule {
   _web_mark_known(): number;
   _web_notice_buffer(bytes: number): number;
   _web_add_notice(): void;
+  _web_knowledge_json(): number;
+  _web_race_recall(race: number): number;
+  _web_companions_json(): number;
+  _web_order_companions(follow: number, doors: number, pickup: number): number;
+  _web_companions_target(target: number, calloff: number): number;
+  _web_dismiss_companion(index: number): number;
 }
 
 interface ModuleOptions {
@@ -316,6 +324,45 @@ export class Engine {
   monsterRecall(index: number): MonsterRecall | null {
     const json = this.callJson<Partial<MonsterRecall>>((mod) => mod._web_monster_desc(index));
     return json && json.name ? (json as MonsterRecall) : null;
+  }
+
+  /** The hero's recall of a creature race (by r_info index), as for a creature in view. */
+  raceRecall(race: number): MonsterRecall | null {
+    const json = this.callJson<Partial<MonsterRecall>>((mod) => mod._web_race_recall(race));
+    return json && json.name ? (json as MonsterRecall) : null;
+  }
+
+  /** What tome2's knowledge menu lists, or null before a game is running. */
+  knowledge(): Knowledge | null {
+    const json = this.callJson<Knowledge & { ready?: number }>((mod) => mod._web_knowledge_json());
+    return json && json.ready ? json : null;
+  }
+
+  /** The hero's creatures on this level and their orders, or null before a game is running. */
+  companions(): Companions | null {
+    const json = this.callJson<Companions & { ready?: number }>((mod) => mod._web_companions_json());
+    return json && json.ready ? json : null;
+  }
+
+  /** Orders the hero's creatures as tome2's `P` does (a leash of 1, 6 or 255, or 0 to keep it; doors and pickup 0/1, or -1 to keep them); false when refused. */
+  orderCompanions(order: { follow?: number; doors?: boolean; pickup?: boolean }): boolean {
+    const flag = (on: boolean | undefined) => (on === undefined ? -1 : on ? 1 : 0);
+    return this.running()?._web_order_companions(order.follow ?? 0, flag(order.doors), flag(order.pickup)) === 1;
+  }
+
+  /** Sets the hero's creatures on a creature (its monster index); false when refused. */
+  setCompanionsOn(target: number): boolean {
+    return this.running()?._web_companions_target(target, 0) === 1;
+  }
+
+  /** Calls one of the hero's creatures off its target; false when refused. */
+  callOff(companion: number): boolean {
+    return this.running()?._web_companions_target(0, companion) === 1;
+  }
+
+  /** Sends one of the hero's creatures away for good; false when refused. */
+  dismissCompanion(companion: number): boolean {
+    return this.running()?._web_dismiss_companion(companion) === 1;
   }
 
   /** The module while the engine runs, else null. */

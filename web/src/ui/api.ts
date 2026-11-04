@@ -32,7 +32,13 @@ export interface GameApi {
   /** Talks to (`Y`) or gives to (`y`) the creature in a keypad direction (closing any sheets). */
   converse(command: 'Y' | 'y', digit: string): void;
   travelTo(point: MapPoint): void;
+  /** Makes a creature in view tome2's target (closing any sheets). */
+  target(point: MapPoint): void;
   highlight(point: MapPoint): void;
+  /** Tells the player what happened (a toast, kept in the message log). */
+  tell(text: string): void;
+  /** Redraws the map and HUD from the engine (after an export changed the game). */
+  redraw(): void;
   /** Asks the player for a line of text in a native sheet. */
   askText(title: string, label: string, initial?: string): Promise<string | null>;
   /** Asks how many of a stack to use, starting at one. */

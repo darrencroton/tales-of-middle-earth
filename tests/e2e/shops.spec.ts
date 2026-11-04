@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { createCharacter, equipSuggested, expect, findFeature, jumpToLevel, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
+import { createCharacter, equipSuggested, expect, findFeature, jumpToLevel, sendText, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
 
 /** The door of a town building, by the glyph and colour tome2 draws it with (st_info.txt). */
 async function door(page: Page, glyph: string, colour: number): Promise<{ x: number; y: number }> {
@@ -140,7 +140,7 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
   await leave(page);
 });
 
-test('travel walks through a companion, pushing past it; someone neutral is talked to', async ({ page }) => {
+test('travel walks through a companion, pushing past it; someone neutral is talked to; companions take orders and a foe is targeted', async ({ page }) => {
   test.setTimeout(200_000);
   await page.goto('./?wizard');
   await waitForEngine(page);
@@ -183,8 +183,14 @@ test('travel walks through a companion, pushing past it; someone neutral is talk
 
   /* Someone neutral beside the hero is talked to: from the changing button, a tap on them, or their card, which also offers Give. */
   await equipSuggested(page);
-  await wizardCommand(page, 'z');
-  await summonBeside(page, 1041);
+  /* Talk leads the toolbar only where nothing underfoot (stairs, an item, a fountain) comes first: blink until it does. */
+  const first = async () => (await page.evaluate(() => window.__tome!.actions()))[0] ?? '';
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await wizardCommand(page, 'z');
+    await summonBeside(page, 1041);
+    if ((await first()) === 'talk') break;
+    await wizardCommand(page, 'p');
+  }
   const melinda = () => page.evaluate(() => window.__tome!.engine.gameState()!.monsters!.find((m) => /Melinda/.test(m.name))!);
   const heard = () => page.evaluate(() => window.__tome!.engine.gameState(20)!.messages!.filter((m) => /poor Merton/.test(m.text)).length);
   const reply = page.locator('.sheet', { hasText: 'poor Merton' });
@@ -210,4 +216,40 @@ test('travel walks through a companion, pushing past it; someone neutral is talk
   await waitForScreen(page, /What item do you want to offer/);
   await page.keyboard.press('Escape');
   await waitAtCommand(page);
+
+  /* Companions: tome2's pet command typed opens them; orders change at once, and each creature's card dismisses it. */
+  await summonBeside(page, 35, true);
+  const companions = () => page.evaluate(() => window.__tome!.engine.companions()!);
+  const before = await companions();
+  expect(before.list.length).toBeGreaterThan(0);
+  await sendText(page, 'P');
+  await expect(page.locator('.sheet .sheet-title')).toHaveText('Companions');
+  await expect(page.locator('.sheet-companions .race-row')).toHaveCount(before.list.length);
+  await page.locator('.sheet-companions .segment', { hasText: 'Stay close' }).click();
+  await page.locator('.sheet-companions .run-option', { hasText: 'Open doors' }).click();
+  await expect.poll(async () => [(await companions()).follow, (await companions()).doors]).toEqual([1, before.doors ? 0 : 1]);
+  await expect(page.locator('.sheet-companions .run-option', { hasText: 'Open doors' })).toHaveAttribute('aria-checked', String(!before.doors));
+  await page.locator('.sheet-companions .race-row').first().click();
+  await page.locator('.sheet-monster [data-action="dismiss"]').click();
+  await page.locator('.sheet-action.danger:not([data-action])', { hasText: 'Dismiss' }).click();
+  await expect(page.locator('.sheet-monster')).toBeHidden();
+  await expect(page.locator('.sheet-companions .race-row')).toHaveCount(before.list.length - 1);
+  expect((await companions()).list.length).toBe(before.list.length - 1);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  /* A foe in view: More's Choose target lists it, and its card sends the companions at it. */
+  await summonBeside(page, 60);
+  const foe = await page.evaluate(() => window.__tome!.engine.gameState()!.monsters!.find((m) => m.status < 0 && m.target)!);
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await page.locator('.sheet .command', { hasText: 'Choose target' }).click();
+  await expect(page.locator('.sheet-targets .sheet-title')).toHaveText('Choose target');
+  await page.locator('.sheet-targets .race-row').first().click();
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.gameState(5)!.messages!.some((m) => /Target Selected/.test(m.text)))).toBe(true);
+  await waitAtCommand(page);
+  await page.locator('[data-hud="monster"].foe').first().click();
+  await expect(page.locator('.sheet-monster .sheet-title')).toHaveText(foe.name);
+  await page.locator('.sheet-monster [data-action="seton"]').click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  expect((await companions()).list.filter((c) => c.status >= 3).every((c) => c.target === foe.name)).toBe(true);
 });

@@ -1,6 +1,7 @@
 import { KEY_BACKSLASH, keyCodes, typedAnswer } from '../input/keys.ts';
 import type { Macro, MacroScreen } from './macro.ts';
 import { classifyPrompt, type PromptKind } from './prompts.ts';
+import { NO_TARGET } from './recent.ts';
 
 export type NativeView =
   | 'inventory'
@@ -23,6 +24,8 @@ export type NativeView =
   | 'explore'
   | 'equip'
   | 'altar'
+  | 'companions'
+  | 'target'
   | 'halt'
   | 'pace'
   | 'closeFile';
@@ -129,6 +132,8 @@ export interface CommandContext {
   town: boolean;
   /** The hero's experience level. */
   level: number;
+  /** A creature in view can be targeted. */
+  targets: boolean;
 }
 
 interface CommandEntry extends CommandDef {
@@ -155,6 +160,8 @@ const NOT_WHILE_CONTROLLING = new Set(['w', 't', 'd', 'k', 'e', '+', 'T', '.', '
 
 export const CONTROLLING = 'Not while you control another creature.';
 
+const NOT_ON_WORLD_MAP_TEXT = 'Not on the world map.';
+
 /** The hero's level from which Explore walks the world map. */
 export const WORLD_MAP_EXPLORE_LEVEL = 20;
 
@@ -175,7 +182,7 @@ interface CommandSituation {
 /** Why tome2 will not take one of the hero's commands now, or null. */
 export function commandRefusal(command: string, situation: CommandSituation): string | null {
   if (situation.controlling && NOT_WHILE_CONTROLLING.has(command)) return CONTROLLING;
-  return situation.worldMap && NOT_ON_WORLD_MAP.has(command) ? 'Not on the world map.' : null;
+  return situation.worldMap && NOT_ON_WORLD_MAP.has(command) ? NOT_ON_WORLD_MAP_TEXT : null;
 }
 
 /** Lets go of the creature the hero controls, for now (tome2's abandon, not for good: control comes back with Fire Golem cast again, a load or a return to its level). */
@@ -219,7 +226,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
       { label: 'Powers', icon: '❂', command: 'U', native: 'powers', refuse: (c) => (c.powers ? null : 'You have no powers yet.') },
       { label: 'Fire', icon: '➶', command: 'f' },
       { label: 'Throw', icon: '↗', command: 'v' },
-      { label: 'Choose target', icon: '◎', command: '*' },
+      { label: 'Choose target', icon: '◎', command: '*', native: 'target', refuse: (c) => (c.targets ? null : NO_TARGET) },
       { label: 'Pray', icon: '☼', command: 'p', when: (c) => c.pray === 1 },
       { label: 'Stop praying', icon: '☼', command: 'p', when: (c) => c.pray === 2 },
     ],
@@ -248,7 +255,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
       { label: 'Talk', icon: '❝', command: 'Y', refuse: beside },
       { label: 'Give', icon: '⇄', command: 'y', refuse: beside },
       { label: 'Steal', icon: '☚', command: 'Z', refuse: beside, when: (c) => c.steals },
-      { label: 'Command allies', icon: '♥', command: 'P' },
+      { label: 'Companions', icon: '♥', command: 'P', native: 'companions', refuse: (c) => (c.where === 'worldMap' ? NOT_ON_WORLD_MAP_TEXT : null) },
     ],
   },
   {

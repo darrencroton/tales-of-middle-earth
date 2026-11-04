@@ -16,9 +16,9 @@ import { el, navButton, section, stepper } from './dom.ts';
 import { runElements } from './adventure.ts';
 import { relabelAction } from './popup.ts';
 import type { RunOptions } from '../flow/runoptions.ts';
-import type { Sheets } from './sheet.ts';
+import type { SheetContent, Sheets } from './sheet.ts';
 
-interface MenuItem {
+export interface MenuItem {
   label: string;
   icon: string;
   hint?: string;
@@ -29,6 +29,11 @@ interface MenuItem {
 
 /** A sheet listing menu items as large rows. */
 export function openMenu(sheets: Sheets, title: string, items: MenuItem[], subtitle?: string): void {
+  sheets.open(menuContent(title, items, subtitle));
+}
+
+/** A menu's sheet, to open (or rebuild) as it is. */
+export function menuContent(title: string, items: MenuItem[], subtitle?: string): SheetContent {
   const list = el('div', 'menu-list');
   for (const item of items) {
     if (item.hidden) continue;
@@ -41,7 +46,7 @@ export function openMenu(sheets: Sheets, title: string, items: MenuItem[], subti
       }),
     );
   }
-  sheets.open({ title, subtitle, body: list, kind: 'menu' });
+  return { title, subtitle, body: list, kind: 'menu' };
 }
 
 /** A row of mutually exclusive buttons, the current one selected; `onChange` gets the value tapped. */

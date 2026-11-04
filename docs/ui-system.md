@@ -28,6 +28,9 @@ Map (toolbar, HUD, gestures)
 │   │   ├── Magic, Powers ─── the Magic panel on that tab, in the same frame (Back returns to Commands)
 │   │   ├── Kneel at altar ── the altar's god card (Worship; Melkor's offerings for his own; why not, else; a follower's prayers carried)
 │   │   ├── item commands (Drink potion, Read scroll…) → tome2 item prompt (TermView panel, tabs)
+│   │   ├── Choose target ─── card: the foes in reach, nearest first → tome2 targets the one tapped
+│   │   ├── Companions ────── panel: orders (Stay close · Follow me · Seek and destroy; doors; picking up),
+│   │   │                     then each creature → its card (Call off · Dismiss → confirmation)
 │   │   ├── Talk, Give, Steal, doors → direction card on the map (Give then asks which item)
 │   │   ├── while controlling a creature: Release creature, Creature powers (its powers, TermView panel),
 │   │   │   Creature's pack (tome2 screen), Creature picks up, Creature drops all
@@ -37,8 +40,11 @@ Map (toolbar, HUD, gestures)
 │       │                     ├── Faith (Summary) ─ God card over Character (gifts lit; prayers carried, a tap prays; Pray · Stop praying)
 │       │                     └── Save skill points? card over Character (Discard · Save)
 │       ├── Messages ──────── Messages             panel (log, newest at the foot)
-│       ├── Knowledge ─────── Knowledge            menu                                     depth 2
-│       │                     ├── list ─────────── reader (TermView panel); Knowledge reopens after
+│       ├── Knowledge ─────── Knowledge            menu, each entry with its count          depth 2
+│       │                     ├── list ─────────── panel (artifacts, uniques, kills, recall depths, corruptions,
+│       │                     │                    fates, dungeon towns, notes with Add a note)  depth 3
+│       │                     │   └── creature ─── card: the hero's recall of its kind          depth 4
+│       │                     ├── Companions ───── Companions panel (as from More)
 │       │                     └── Quests ───────── Quests panel (under way, completed, failed) → quest card
 │       ├── Save game (toast)
 │       ├── Save and quit ─── confirmation         card
@@ -56,7 +62,8 @@ Map (toolbar, HUD, gestures)
 │   ├── quest chip ────────── Quest                card (what the level's quest asks, how many are slain);
 │   │                         while it lasts the map's edges glow violet and its foes' chips are marked ⚑
 │   ├── Praying chip ──────── God                  card (gifts lit as the hero has them; prayers carried, a tap prays; Stop praying)
-│   ├── creature / item chip ─ Creature / Item     card (a creature beside you, not hostile: Talk · Give)
+│   ├── creature / item chip ─ Creature / Item     card (a creature beside you, not hostile: Talk · Give; a foe: Target,
+│   │                                              Send companions; one of yours: Call off, Dismiss)
 │   └── message log ───────── Messages             panel
 ├── Map tap / long-press ───── travel (a neutral creature beside you: talk) / look card (terrain; an altar's god, each creature and item there → its card)
 ├── A quest begun or ended ─── quest card (the scene tome2 told, then what it asks) or its banner
@@ -114,9 +121,9 @@ where the code comes from.
 
 | Type | Purpose | Examples | Size | Where |
 |---|---|---|---|---|
-| **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, Help and its topics; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
+| **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, Help and its topics, the Knowledge lists, Companions, Quests; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
 | **Menu** | A short list of places to go | Menu, Knowledge, Backup | its rows, capped at `--popup-height` | bottom sheet |
-| **Card** | Details of one thing, or a question | Item, spell, creature, shop item, memorial item/foe, a saved hero (Game Roster), a hero of the Hall of Fame, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
+| **Card** | Details of one thing, or a question | Item, spell, creature (also a kind of creature from Knowledge), Choose target, shop item, memorial item/foe, a saved hero (Game Roster), a hero of the Hall of Fame, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
 | **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card (what is at a cell, each creature and item a row opening its card), the Halls of Waiting, death card | its content | bottom of the map, no backdrop |
 | **Full screen** | A screen that replaces the game | title, character creation, end of game, Hall of Fame after death | whole screen | — |
 
@@ -198,7 +205,7 @@ showing only what tome2's examining would tell the hero:
 
 ### Reader (tome2 file viewer → panel)
 
-- tome2 shows files (knowledge lists, help, notes, command help) 20 lines at a
+- tome2 shows files (help, parchments, command help) 20 lines at a
   time. `ui/filepages.ts` gathers every page as tome2 shows it (one Space per
   idle, read at once, so the player only ever sees the whole file) and the
   panel shows the whole file as one scrolling list (`Reader.render` in
@@ -257,7 +264,10 @@ Four things look different and never stand for each other:
 |---|---|---|
 | Items → item → look → back | Item replaced the list; ✕ closed both | Item card floats over the list; ✕ / tap outside returns to the list at the same row |
 | Items → item → Drop → how many → Drop | Each step replaced the last | Question floats over the item over the list; Drop closes all and shows the map |
-| Menu → Knowledge → Unique creatures → back | Paged list, Page down × 6, Done | One scrolling list (119 rows); ✕ returns to Knowledge with Unique creatures highlighted |
+| Menu → Knowledge → Unique creatures → back | Paged list, Page down × 6, Done; then tome2's text in the reader, *is alive* on every line | A native panel: those slain, the latest first, then those still at large; each a row opening what the hero knows of it; ‹ returns to Knowledge with Unique creatures highlighted |
+| Menu → Knowledge → Notes | tome2's notes file, oldest first, with its banners | Newest first, each dated by day and depth; *Add a note* writes one and the list comes back with it at the top |
+| More → Command allies | An untitled list of tome2's lowercase commands (*dismiss pets*, *give target to a friend*), none showing what was in force; dismissing asked about each creature by name | More → *Companions*: the orders as they stand, changed in place; each creature's card dismisses or calls off that one; a foe's card sends them at it |
+| More → Choose target | tome2's look mode with its key hints (`[q,t,p,m,+,-,'dir']`) and cursor buttons | A card of the foes in reach, nearest first; a tap targets one |
 | Menu → Knowledge → Quests | tome2's quest status: quests under way only (and "Completed - Unrewarded"); a finished quest vanished | Our quest log: Under way, Completed (a reward still to claim in gold), Failed, random quests done by depth; each row opens the quest's card |
 | Help | tome2's 80×24 help files under More, How to play under Menu; none on the title | One Help (Menu, title): search or browse our own topics; ‹ returns with the search kept; the original manual from Help, which reopens after |
 | Cast → spell ⓘ → Cast | Spell description filled the pop-up | Spell card over Magic; Cast casts, ✕ returns to Magic |
@@ -306,18 +316,18 @@ with why, and journeys are refused.
 | `Y` | talk | tap a neutral creature beside you; changing button *Talk*; its card; More |
 | `y` | give | a creature's card beside you; More |
 | `Z` | steal from a creature | More (with the Stealing skill); in a shop, *Steal one* on a shelf card |
-| `P` | command allies | More → *Command allies* |
+| `P` | command allies | More → *Companions* (also Knowledge; `P` typed opens it): orders, and each creature's card (Call off, Dismiss); a foe's card: *Send companions* |
 | `H` `O` | drink at a fountain; worship or make offerings at an altar | changing button (*Drink*; *Worship* or *Sacrifice* only where tome2's `O` does something), the altar's card (the god's card, from the button, the look card's god row and More's *Kneel at altar*) |
 | `x` | engrave a rune | More, once a rune is learnt |
-| `l` `M` `L` `*` | look, level map, locate, target | long-press; More (*Look*, *Level map*, *Choose target*); dragging the map |
+| `l` `M` `L` `*` | look, level map, locate, target | long-press; More (*Look*, *Level map*, *Choose target*: the foes in reach as a card); a foe's card (*Target*); dragging the map |
 | `i` `e` `w` `t` `d` `k` `{` `}` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |
 | `q` `r` `E` `a` `u` `z` `A` `F` `v` `f` | use items, fire, throw | item cards, *Recently used*, Again, Fire, gear suggestions; More → Use an item / Fight and magic |
 | `b` `I` | browse a book, examine an item | the item's card (a book's card lists its spells, each with its own card) |
 | `h` `K` | butcher a corpse, cure meat | the corpse's or meat's card |
 | `m` `U` `p` | magic and skills, powers, pray | Cast/Powers; More (*Magic*, *Powers*, *Pray*/*Stop praying* for a god's follower): the Magic panel's tabs |
 | `G` `N` `C` | skills, abilities, character | HUD name; Menu → Character (tabs) |
-| `~` `^P` `^O` | knowledge, messages | Menu → Knowledge, Messages; the HUD log |
-| `^F` `^T` `:` | level feeling, time of day, write a note | More → Journal (notes are read in Knowledge) |
+| `~` `^P` `^O` | knowledge, messages | Menu → Knowledge (native lists), Messages; the HUD log |
+| `^F` `^T` `:` | level feeling, time of day, write a note | More → Journal; Knowledge → Notes (*Add a note*), where notes are read |
 | `^S` `^X` `Q` | save, save and quit, quit | Menu (*Save game*, *Save and quit*, *Abandon adventure*) |
 | `=` | options | More → *Game options*; our own in Settings |
 | `?` `V` | help, version | Menu → Help, About |
@@ -340,7 +350,9 @@ and the Menu.
 Checked in the real game (headless Chromium, `?wizard`) with targeted
 Playwright scripts in phone portrait and phone landscape, and the e2e suite
 on all three projects (phone portrait, phone landscape, tablet): Knowledge
-lists (119 rows, scroll, ✕ back to Knowledge with its highlight), help
+lists (native panels: uniques, a creature's card and back, notes with a note
+added), Companions (orders, a creature dismissed, `P` typed), Choose target
+and a foe's *Send companions* (`shops.spec.ts`), help
 (lettered link, inline link in the 572-line index, letter jumps within the
 index, two-space command names in the 1223-line command list, a link back to
 the main menu, ‹ back with scroll kept, ✕ and Escape out of three levels),
@@ -360,6 +372,10 @@ the top in landscape. A new e2e test covers the reader, help links and cards
   and all; our Help topics are what the player is meant to read.
 - **Spell lists, options and other tome2 menus** remain TermView panels
   (modern rows, not native views); see AGENTS.md *Known gaps*.
+- **Game options** leaves out what the app sets itself or that means nothing
+  on a phone (Base Delay Factor, Hitpoint Warning, Window Flags, option files)
+  and the **Automatizer**, a keyboard-only rule editor, still reached from a
+  hardware keyboard; a native rule editor is a next refinement.
 
 ## 10. Sources
 
