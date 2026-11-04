@@ -183,8 +183,14 @@ test('travel walks through a companion, pushing past it; someone neutral is talk
 
   /* Someone neutral beside the hero is talked to: from the changing button, a tap on them, or their card, which also offers Give. */
   await equipSuggested(page);
-  await wizardCommand(page, 'z');
-  await summonBeside(page, 1041);
+  /* Talk leads the toolbar only where nothing underfoot (stairs, an item, a fountain) comes first: blink until it does. */
+  const first = async () => (await page.evaluate(() => window.__tome!.actions()))[0] ?? '';
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await wizardCommand(page, 'z');
+    await summonBeside(page, 1041);
+    if ((await first()) === 'talk') break;
+    await wizardCommand(page, 'p');
+  }
   const melinda = () => page.evaluate(() => window.__tome!.engine.gameState()!.monsters!.find((m) => /Melinda/.test(m.name))!);
   const heard = () => page.evaluate(() => window.__tome!.engine.gameState(20)!.messages!.filter((m) => /poor Merton/.test(m.text)).length);
   const reply = page.locator('.sheet', { hasText: 'poor Merton' });
