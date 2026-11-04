@@ -74,6 +74,19 @@ bool level_quest_open()
 	}
 }
 
+/* Clears tome2's view (grids in view, seen, lit by the hero or a creature) that a level loaded from a file brings back from the hero's last turn there. */
+void forget_saved_view()
+{
+	if (!cave) return;
+	for (int y = 0; y < cur_hgt; y++)
+	{
+		for (int x = 0; x < cur_wid; x++)
+		{
+			cave[y][x].info &= ~(CAVE_VIEW | CAVE_SEEN | CAVE_TEMP | CAVE_PLIT | CAVE_MLIT);
+		}
+	}
+}
+
 namespace {
 
 /* Prefix of the save extensions this frontend gives to levels (tome2's own special levels keep theirs). */
@@ -272,6 +285,12 @@ bool level_begin_hook(void *, void *, void *)
 	return false;
 }
 
+bool level_made_hook(void *, void *, void *)
+{
+	forget_saved_view();
+	return false;
+}
+
 bool end_turn_hook(void *, void *, void *)
 {
 	remember_seen();
@@ -288,6 +307,7 @@ void web_memory_tick()
 	{
 		add_hook_new(HOOK_GEN_LEVEL_BEGIN, level_begin_hook, "web_level_begin", nullptr);
 		add_hook_new(HOOK_END_TURN, end_turn_hook, "web_end_turn", nullptr);
+		add_hook_new(HOOK_LEVEL_END_GEN, level_made_hook, "web_level_made", nullptr);
 		hooks_added = true;
 	}
 	apply_persistence();

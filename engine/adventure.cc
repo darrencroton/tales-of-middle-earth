@@ -59,6 +59,8 @@
 /* The question asked between death and life; the frontend shows it as its own card. */
 #define RETURN_PROMPT "Halls of Waiting: [B]attlefield, [S]afety or [A]ccept death? "
 
+void forget_saved_view();
+
 namespace {
 
 /* Lives in all, the first included. */
@@ -445,7 +447,8 @@ bool __wrap__Z11save_playerv()
 
 /*
  * tome2's load_player, with the frontend's defaults for a new hero first
- * (Adventure mode, small levels) and the side file after. A hero begun
+ * (Adventure mode, small levels), and after it the side file and the level
+ * loaded cleared of the view it was saved with. A hero begun
  * from a fallen one's savefile keeps the mode, as tome2 keeps the birth
  * options, but has every life.
  */
@@ -457,6 +460,7 @@ bool __wrap__Z11load_playerRK12program_args(program_args const &args)
 	options->always_small_level = true;
 	bool const ok = __real__Z11load_playerRK12program_args(args);
 	read_side_file();
+	forget_saved_view();
 	if (!character_loaded)
 	{
 		adventure.spent = 0;

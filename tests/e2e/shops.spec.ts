@@ -239,8 +239,14 @@ test('travel walks through a companion, pushing past it; someone neutral is talk
   await expect(page.locator('.sheet-layer')).toBeHidden();
 
   /* A foe in view: More's Choose target lists it, and its card sends the companions at it. */
-  await summonBeside(page, 60);
-  const foe = await page.evaluate(() => window.__tome!.engine.gameState()!.monsters!.find((m) => m.status < 0 && m.target)!);
+  /* tome2 summons only onto open ground beside the hero: blink until a foe can be aimed at. */
+  const targetable = () => page.evaluate(() => window.__tome!.engine.gameState()!.monsters!.find((m) => m.status < 0 && m.target) ?? null);
+  for (let attempt = 0; attempt < 6 && !(await targetable()); attempt++) {
+    if (attempt) await wizardCommand(page, 'p');
+    await summonBeside(page, 60);
+  }
+  const foe = (await targetable())!;
+  expect(foe, 'no foe could be summoned in view').not.toBeNull();
   await page.locator('#toolbar [data-action="commands"]').click();
   await page.locator('.sheet .command', { hasText: 'Choose target' }).click();
   await expect(page.locator('.sheet-targets .sheet-title')).toHaveText('Choose target');
