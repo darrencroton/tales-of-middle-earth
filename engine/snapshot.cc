@@ -1907,7 +1907,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 }
 
 /*
- * Returns the player's recall of a visible monster as JSON
+ * Returns the player's recall of a visible monster (or one on the hero's side, wherever it is) as JSON
  * {"name": ..., "text": [[attr, "text"], ...]}.
  */
 EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
@@ -1922,7 +1922,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
 	}
 
 	monster_type const *m_ptr = &m_list[m_idx];
-	if (!m_ptr->r_idx || !m_ptr->ml)
+	if (!m_ptr->r_idx || (!m_ptr->ml && m_ptr->status < MSTATUS_FRIEND))
 	{
 		w.end_object();
 		return json.c_str();
@@ -1933,6 +1933,21 @@ EMSCRIPTEN_KEEPALIVE char const *web_monster_desc(int m_idx)
 
 	w.field("name", name);
 	json_runs(w, "text", text_out_runs([m_ptr] { monster_description_out(m_ptr->r_idx, m_ptr->ego); }));
+	w.end_object();
+	return json.c_str();
+}
+
+/* The hero's recall of a creature race ({name, text: runs}), as its card shows it for one in view. */
+EMSCRIPTEN_KEEPALIVE char const *web_race_recall(int r_idx)
+{
+	auto w = start_json();
+	w.begin_object();
+	auto const &r_info = game->edit_data.r_info;
+	if (level_ready() && r_idx > 0 && static_cast<std::size_t>(r_idx) < r_info.size())
+	{
+		w.field("name", r_info[r_idx].name ? r_info[r_idx].name : "");
+		json_runs(w, "text", text_out_runs([r_idx] { monster_description_out(r_idx, 0); }));
+	}
 	w.end_object();
 	return json.c_str();
 }

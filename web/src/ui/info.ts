@@ -1,8 +1,10 @@
+import { bondName, FRIEND, orderRefusal, PET, type Companion } from '../play/companions.ts';
 import { directionDigit } from '../play/prompts.ts';
 import type { MapPoint } from '../render/map.ts';
 import { isAlly, isHostile, isNeutral, type LevelQuest, type MonsterState, type ObjectState } from '../render/snapshot.ts';
 import { capitalise, itemGlyph, NOT_NOW, titleName, type GameApi } from './api.ts';
 import { el, fraction, iconText, leadIn } from './dom.ts';
+import { confirmSheet } from './menus.ts';
 import { openItem } from './inventory.ts';
 import { itemCardBody, recallLines, recallParagraphs } from './inspect.ts';
 import type { SheetAction, Sheets } from './sheet.ts';
@@ -23,7 +25,8 @@ export function monsterSummary(m: MonsterState): string {
   parts.push(m.asleep ? 'asleep' : 'awake');
   if (m.afraid) parts.push('afraid');
   parts.push(healthWord(m.hp, m.maxhp));
-  if (isAlly(m)) parts.push('ally');
+  if (m.status >= FRIEND) parts.push(bondName(m).toLowerCase());
+  else if (isAlly(m)) parts.push('ally');
   else if (!isHostile(m)) parts.push('neutral');
   return parts.join(' · ');
 }
@@ -32,8 +35,92 @@ function distance(a: MapPoint, b: MapPoint): number {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
 
-/** Details and recall for a visible creature. */
-export function openMonster(api: GameApi, m: MonsterState): void {
+/** Why the hero cannot give their creatures orders now, or null: tome2's `P` waits for the command prompt, is refused while confused, and ignored on the world map or while controlling a creature. */
+export function orderUnavailable(api: GameApi): string | null {
+  if (!api.snapshot()?.atCommand) return NOT_NOW;
+  return api.refusal('P') ?? orderRefusal((api.state()?.player?.status.confused ?? 0) > 0);
+}
+
+/** A creature on the hero's side as the creature card takes it: where it stands, and whether the hero can see it. */
+export function companionMonster(c: Companion): MonsterState {
+  return { id: c.id, name: c.name, ch: c.ch, attr: c.attr, x: c.x, y: c.y, hp: c.hp, maxhp: c.maxhp, asleep: c.asleep, afraid: 0, unique: c.unique, status: c.status, level: c.level, view: c.seen };
+}
+
+/**
+ * The card actions for a creature on the hero's side: call it off the foe it
+ * is set on, and dismiss it for good (asked first; not one that cannot die).
+ * `changed` runs once it has gone or been called off.
+ */
+export function companionActions(api: GameApi, m: Pick<MonsterState, 'id' | 'name' | 'status'>, changed: () => void = () => undefined): SheetAction[] {
+  if (m.status < FRIEND) return [];
+  const c = api.engine.companions()?.list.find((x) => x.id === m.id);
+  if (!c) return [];
+  const why = orderUnavailable(api);
+  const name = titleName(c.name);
+  const actions: SheetAction[] = [];
+  if (c.target && c.status >= PET) {
+    actions.push({
+      id: 'calloff',
+      label: 'Call off',
+      unavailable: why,
+      run: () => {
+        if (!api.engine.callOff(c.id)) return;
+        api.tell(`${name} leaves ${titleName(c.target!)} alone.`);
+        api.sheets.back();
+        changed();
+      },
+    });
+  }
+  if (!c.stays) {
+    actions.push({
+      id: 'dismiss',
+      label: 'Dismiss',
+      danger: true,
+      unavailable: why,
+      run: () =>
+        confirmSheet(
+          api.sheets,
+          `Dismiss ${name}?`,
+          `${name} leaves your side for good.`,
+          'Dismiss',
+          () => {
+            api.sheets.back();
+            if (!api.engine.dismissCompanion(c.id)) return;
+            api.sheets.back();
+            api.tell(`You dismiss ${name}.`);
+            api.redraw();
+            changed();
+          },
+          true,
+        ),
+    });
+  }
+  return actions;
+}
+
+/** Sets the hero's creatures on a hostile creature (tome2's "give target to all friends"), offered while any are with them. */
+export function setOnAction(api: GameApi, m: MonsterState): SheetAction | null {
+  if (!isHostile(m)) return null;
+  const pack = api.engine.companions()?.list.filter((c) => c.status >= PET) ?? [];
+  if (!pack.length) return null;
+  return {
+    id: 'seton',
+    label: pack.length === 1 ? `Send ${titleName(pack[0].name)}` : 'Send companions',
+    unavailable: orderUnavailable(api),
+    run: () => {
+      if (!api.engine.setCompanionsOn(m.id)) return;
+      api.sheets.closeAll();
+      api.tell(`${pack.length === 1 ? titleName(pack[0].name) : 'Your companions'} turn${pack.length === 1 ? 's' : ''} on ${titleName(m.name)}.`);
+    },
+  };
+}
+
+/**
+ * Details and recall for a creature: one in view, or one on the hero's side
+ * wherever it is (from Companions). `changed` runs once a creature on the
+ * hero's side has been called off or dismissed.
+ */
+export function openMonster(api: GameApi, m: MonsterState, changed?: () => void): void {
   const snap = api.snapshot();
   const body = el('div', 'monster-detail');
   const health = el('div', `health ${isAlly(m) ? 'ally' : ''}`);
@@ -42,6 +129,7 @@ export function openMonster(api: GameApi, m: MonsterState): void {
   body.append(health);
 
   const fallen = !!api.state()?.player?.dead;
+  const seen = (api.state()?.monsters ?? []).some((x) => x.id === m.id);
   const friendly = !isHostile(m);
   const near = snap ? distance({ x: snap.px, y: snap.py }, m) : 99;
   /* Beside the hero, someone neutral can be talked to, and anyone not hostile given something (tome2's Y and y, with its direction). */
@@ -55,7 +143,7 @@ export function openMonster(api: GameApi, m: MonsterState): void {
       if (digit) api.converse(command, digit);
     },
   });
-  const actions: SheetAction[] = fallen
+  const where: SheetAction[] = !seen
     ? []
     : [
         ...(friendly && near === 1
@@ -70,17 +158,52 @@ export function openMonster(api: GameApi, m: MonsterState): void {
           },
         },
       ];
+  const target: SheetAction[] =
+    seen && isHostile(m) && m.target
+      ? [{ id: 'target', label: 'Target', unavailable: snap?.atCommand ? api.refusal('*') : NOT_NOW, run: () => api.target({ x: m.x, y: m.y }) }]
+      : [];
+  const setOn = seen ? setOnAction(api, m) : null;
+  const actions: SheetAction[] = fallen ? [] : [...where, ...target, ...(setOn ? [setOn] : []), ...companionActions(api, m, changed)];
 
   body.append(recallParagraphs(recallLines(api.engine, api.palette(), m.id), 'You know nothing more about this creature.'));
 
   api.sheets.open({
     title: titleName(m.name),
-    subtitle: monsterSummary(m),
+    subtitle: seen ? monsterSummary(m) : `${monsterSummary(m)} · out of sight`,
     badge: itemGlyph(api, m),
     body,
     actions,
     kind: 'card',
     className: 'sheet-monster',
+  });
+}
+
+/** Choose target: the foes a spell or missile can be aimed at, nearest first; one tapped becomes tome2's target. */
+export function openTargets(api: GameApi): void {
+  const snap = api.snapshot();
+  if (!snap) return;
+  const hero = { x: snap.px, y: snap.py };
+  const foes = (api.state()?.monsters ?? []).filter((m) => isHostile(m) && m.target).sort((a, b) => distance(hero, a) - distance(hero, b));
+  const list = el('div', 'menu-list');
+  for (const m of foes) {
+    const row = el('button', 'row-button race-row');
+    row.type = 'button';
+    row.dataset.nav = '';
+    row.dataset.key = String(m.id);
+    const text = el('span', 'row-text');
+    const steps = distance(hero, m);
+    text.append(el('span', 'row-label', titleName(m.name)), el('span', 'row-line', `${monsterSummary(m)} · ${steps <= 1 ? 'beside you' : `${steps} steps away`}`));
+    row.append(itemGlyph(api, m), text);
+    row.addEventListener('click', () => api.target({ x: m.x, y: m.y }));
+    list.append(row);
+  }
+  if (!foes.length) list.append(el('p', 'empty', 'No target in sight.'));
+  api.sheets.open({
+    title: 'Choose target',
+    subtitle: 'Spells and missiles aimed at your target strike it',
+    body: list,
+    kind: 'card',
+    className: 'sheet-targets',
   });
 }
 

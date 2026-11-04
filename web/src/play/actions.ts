@@ -23,6 +23,8 @@ export type NativeView =
   | 'explore'
   | 'equip'
   | 'altar'
+  | 'companions'
+  | 'target'
   | 'halt'
   | 'pace'
   | 'closeFile';
@@ -129,6 +131,8 @@ export interface CommandContext {
   town: boolean;
   /** The hero's experience level. */
   level: number;
+  /** A creature in view can be targeted. */
+  targets: boolean;
 }
 
 interface CommandEntry extends CommandDef {
@@ -219,7 +223,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
       { label: 'Powers', icon: '❂', command: 'U', native: 'powers', refuse: (c) => (c.powers ? null : 'You have no powers yet.') },
       { label: 'Fire', icon: '➶', command: 'f' },
       { label: 'Throw', icon: '↗', command: 'v' },
-      { label: 'Choose target', icon: '◎', command: '*' },
+      { label: 'Choose target', icon: '◎', command: '*', native: 'target', refuse: (c) => (c.targets ? null : 'No target in sight.') },
       { label: 'Pray', icon: '☼', command: 'p', when: (c) => c.pray === 1 },
       { label: 'Stop praying', icon: '☼', command: 'p', when: (c) => c.pray === 2 },
     ],
@@ -248,7 +252,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
       { label: 'Talk', icon: '❝', command: 'Y', refuse: beside },
       { label: 'Give', icon: '⇄', command: 'y', refuse: beside },
       { label: 'Steal', icon: '☚', command: 'Z', refuse: beside, when: (c) => c.steals },
-      { label: 'Command allies', icon: '♥', command: 'P' },
+      { label: 'Companions', icon: '♥', command: 'P', native: 'companions' },
     ],
   },
   {

@@ -428,7 +428,7 @@ describe('targeting', () => {
   });
 });
 
-const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', feat: 1, beside: false, pray: 0, runes: false, steals: false, magic: false, powers: false, controlling: false, town: false, level: 1 };
+const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', feat: 1, beside: false, pray: 0, runes: false, steals: false, magic: false, powers: false, controlling: false, town: false, level: 1, targets: false };
 
 describe('actions', () => {
   it('prefixes commands with a keymap bypass', () => {
@@ -633,7 +633,7 @@ describe('actions', () => {
     assert.equal(talk({})?.unavailable, 'There is no one beside you.');
     assert.equal(talk({ beside: true })?.unavailable, undefined);
     assert.deepEqual(commandKeys(talk({ beside: true })!), [92, ...keys('Y')]);
-    assert.ok(labels({}).includes('Give') && labels({}).includes('Command allies'));
+    assert.ok(labels({}).includes('Give') && labels({}).includes('Companions'));
     assert.ok(!labels({}).includes('Steal') && labels({ steals: true }).includes('Steal'));
     assert.ok(!labels({}).includes('Pray') && labels({ pray: 1 }).includes('Pray') && labels({ pray: 2 }).includes('Stop praying'));
     assert.ok(!labels({}).includes('Engrave a rune') && labels({ runes: true }).includes('Engrave a rune'));
@@ -648,6 +648,8 @@ describe('actions', () => {
     assert.equal(why('Read scroll', { where: 'worldMap' }), 'Not on the world map.');
     assert.equal(why('Eat', { where: 'worldMap' }), undefined);
     assert.equal(why('Level map', { where: 'worldMap' }), undefined);
+    assert.equal(why('Choose target', {}), 'No target in sight.');
+    assert.equal(why('Choose target', { targets: true }), undefined);
     assert.equal(why('Magic', {}), 'You know no magic yet.');
     assert.equal(why('Powers', { magic: true }), 'You have no powers yet.');
     assert.equal(why('Powers', { powers: true }), undefined);

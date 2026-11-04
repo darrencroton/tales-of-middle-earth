@@ -30,8 +30,8 @@ export function openCommands(deps: CommandsDeps, context: CommandContext): void 
   const { api } = deps;
   const body = el('div', 'commands');
   const run = (def: CommandDef) => {
-    if (def.native === 'magic' || def.native === 'powers' || def.native === 'altar') {
-      /* Over the Commands sheet, so Back (or closing the altar's card) returns to it. */
+    if (def.native === 'magic' || def.native === 'powers' || def.native === 'altar' || def.native === 'companions' || def.native === 'target') {
+      /* Over the Commands sheet, so Back (or closing a card) returns to it. */
       deps.openNative(def.native);
     } else if (def.native) {
       api.sheets.closeAll();

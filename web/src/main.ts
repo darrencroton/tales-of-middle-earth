@@ -41,11 +41,13 @@ import { Coach } from './ui/coach.ts';
 import { INVEN_WIELD, itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { ABANDONED, hasFallen } from './play/memorial.ts';
 import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/lives.ts';
-import { CharacterPanel, openKnowledge, type CharacterScreen } from './ui/character.ts';
+import { CharacterPanel, type CharacterScreen } from './ui/character.ts';
+import { openCompanions } from './ui/companions.ts';
+import { openKnowledge } from './ui/knowledge.ts';
 import { el, iconText } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
 import { openAltarGod, openHeroGod } from './ui/gods.ts';
-import { openFloorObject, openMonster, openQuest } from './ui/info.ts';
+import { openFloorObject, openMonster, openQuest, openTargets } from './ui/info.ts';
 import { openInventory, openItemDetails } from './ui/inventory.ts';
 import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate, type AdventureRules } from './ui/menus.ts';
 import { Sheets, type SheetTrail } from './ui/sheet.ts';
@@ -332,7 +334,18 @@ const api: GameApi = {
     look.hide();
     journeys.travelTo(point);
   },
+  target: (point) => {
+    if (!game.lastSnap?.atCommand) {
+      refuse(NOT_NOW);
+      return;
+    }
+    sheets.closeAll();
+    look.hide();
+    journeys.target(point);
+  },
   highlight: (point) => flash(point),
+  tell: (text) => showToast(text),
+  redraw: () => redraw(),
   askText: (title, label, initial) => askText(sheets, title, label, initial),
   askQuantity: (question) => askQuantity(sheets, question),
   recent: () => recents.list(game.lastState?.player?.name ?? ''),
@@ -482,6 +495,12 @@ function openNative(view: NativeView): void {
       if (god) openAltarGod(api, god, true);
       break;
     }
+    case 'companions':
+      openCompanions(api);
+      break;
+    case 'target':
+      openTargets(api);
+      break;
     case 'overview':
       setOverview(true);
       break;
@@ -612,8 +631,16 @@ function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
   if (reader.heading()?.size === 0) options.empty = 'Nothing here yet.';
   const box = currentBox();
   if (box) options.hideRow = (row) => row >= box.top && row <= box.bottom;
+  else if (/\(1\) User Interface Options/.test(buffer.screenText())) options.hideRow = (row) => OWNED_OPTIONS.test(buffer.rowText(row));
   return options;
 }
+
+/*
+ * Entries of tome2's options menu left out: what the app sets itself (Settings → Animation sets the delay; the map's
+ * edge pulses at low health), what means nothing here (windows, option files), the Automatizer (a keyboard editor)
+ * and the menu's own key prompt.
+ */
+const OWNED_OPTIONS = /\((D|H|T|W|U|O)\) (Base Delay Factor|Hitpoint Warning|Automatizer|Window Flags|Dump Options setting|Load Options setting)|^Command:/;
 
 /** Flips a tome2 option: moves its cursor to the row, then answers y or n. */
 function toggleOption(option: OptionBlock, options: OptionBlock[]): void {
@@ -1173,6 +1200,7 @@ function commandContext(): CommandContext {
     steals: abilities.steals(),
     magic: hasMagic(abilities.spells()),
     powers: hasPowers(abilities.spells()),
+    targets: (game.lastState?.monsters ?? []).some((m) => isHostile(m) && !!m.target),
   };
 }
 
@@ -1222,7 +1250,7 @@ function changingButton(snap: LevelSnapshot): Action {
 /**
  * tome2's own inventory and equipment screens treat the next key as a new
  * command (so tapping "a" would aim a wand); they are replaced by the
- * native sheets.
+ * native sheets, as are its knowledge menu and pet command.
  */
 function redirectNativeScreen(): boolean {
   if (macros.running) return false;
@@ -1230,6 +1258,12 @@ function redirectNativeScreen(): boolean {
   if (m) {
     engine.sendKeys([KEY_ESCAPE]);
     openInventory(api, m[1] === 'Equipment' ? 'equip' : 'pack');
+    return true;
+  }
+  /* tome2's pet command (`P` typed) gives way to Companions. */
+  if (/Select a command:/.test(rowZeroText()) && /a\) dismiss pets/.test(buffer.screenText())) {
+    engine.sendKeys([KEY_ESCAPE]);
+    openCompanions(api);
     return true;
   }
   if (/Display current knowledge/.test(buffer.screenText())) {
@@ -1258,7 +1292,8 @@ function stepMacro(): void {
     engine.sendKeys(keys);
     return;
   }
-  /* The macro ended at a question for the player: show its card now. */
+  /* The macro has ended: sheets it covered come back, or a question it ended at shows its card now. */
+  reopenSheets();
   updatePromptCard();
   updateActionBar();
 }
