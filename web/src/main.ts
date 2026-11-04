@@ -42,7 +42,7 @@ import { INVEN_WIELD, itemMacro, listedItem, suggestedGear, type GearSuggestion 
 import { ABANDONED, hasFallen } from './play/memorial.ts';
 import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/lives.ts';
 import { CharacterPanel, type CharacterScreen } from './ui/character.ts';
-import { openCompanions } from './ui/companions.ts';
+import { companionsLater, openCompanions } from './ui/companions.ts';
 import { openKnowledge } from './ui/knowledge.ts';
 import { el, iconText } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
@@ -1263,7 +1263,7 @@ function redirectNativeScreen(): boolean {
   /* tome2's pet command (`P` typed) gives way to Companions. */
   if (/Select a command:/.test(rowZeroText()) && /a\) dismiss pets/.test(buffer.screenText())) {
     engine.sendKeys([KEY_ESCAPE]);
-    openCompanions(api);
+    game.returnTo = { stack: [companionsLater(api)], places: [] };
     return true;
   }
   if (/Display current knowledge/.test(buffer.screenText())) {

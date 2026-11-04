@@ -102,8 +102,13 @@ function companionsContent(api: GameApi): SheetContent | null {
   return content;
 }
 
-/** Companions: the hero's creatures and their orders (Menu → Knowledge, More's Companions, tome2's `P` typed). */
+/** Companions: the hero's creatures and their orders (Menu → Knowledge, More's Companions). */
 export function openCompanions(api: GameApi): void {
   const content = companionsContent(api);
   if (content) api.sheets.open(content);
+}
+
+/** Companions to open once tome2 is back at the command prompt (its pet command typed gives way to them), built then. */
+export function companionsLater(api: GameApi): SheetContent {
+  return { title: 'Companions', body: el('div'), rebuild: () => companionsContent(api) };
 }

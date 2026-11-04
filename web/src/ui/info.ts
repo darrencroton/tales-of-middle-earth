@@ -65,7 +65,7 @@ export function companionActions(api: GameApi, m: Pick<MonsterState, 'id' | 'nam
       label: 'Call off',
       unavailable: why,
       run: () => {
-        if (!api.engine.callOff(c.id)) return;
+        if (!api.engine.callOff(c.id)) return api.refuse(NOT_NOW);
         api.tell(`${name} turns from ${titleName(c.target!)}, free to choose its own foe.`);
         api.sheets.back();
         changed();
@@ -86,7 +86,7 @@ export function companionActions(api: GameApi, m: Pick<MonsterState, 'id' | 'nam
           'Dismiss',
           () => {
             api.sheets.back();
-            if (!api.engine.dismissCompanion(c.id)) return;
+            if (!api.engine.dismissCompanion(c.id)) return api.refuse(NOT_NOW);
             api.sheets.back();
             api.tell(`You dismiss ${name}.`);
             api.redraw();
@@ -109,7 +109,7 @@ export function setOnAction(api: GameApi, m: MonsterState): SheetAction | null {
     label: pack.length === 1 ? `Send ${titleName(pack[0].name)}` : 'Send companions',
     unavailable: orderUnavailable(api),
     run: () => {
-      if (!api.engine.setCompanionsOn(m.id)) return;
+      if (!api.engine.setCompanionsOn(m.id)) return api.refuse(NOT_NOW);
       api.sheets.closeAll();
       api.tell(`${pack.length === 1 ? titleName(pack[0].name) : 'Your companions'} turn${pack.length === 1 ? 's' : ''} on ${titleName(m.name)}.`);
     },
