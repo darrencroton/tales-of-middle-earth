@@ -1970,6 +1970,18 @@ html.keyboard-open .tv-layer.panel {
   flex: 1 1 0;
 }
 
+.sheet-companions .segment.unavailable,
+.run-option.unavailable .run-option-text,
+.run-option.unavailable .switch {
+  opacity: 0.45;
+}
+
+.companions-upkeep {
+  margin: 0.2rem 0 0.8rem;
+  color: var(--accent);
+  font-size: var(--fs-small);
+}
+
 /* Quest log: quests under way in violet, those done quieter, a reward waiting in gold. */
 .quest-row .row-icon {
   color: var(--quest);

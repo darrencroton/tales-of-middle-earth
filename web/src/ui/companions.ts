@@ -1,5 +1,5 @@
 import { bondName, companionOrder, companionsLine, LEASHES, type Companion, type Leash } from '../play/companions.ts';
-import { itemGlyph, titleName, type GameApi } from './api.ts';
+import { itemGlyph, NOT_NOW, titleName, type GameApi } from './api.ts';
 import { el, section } from './dom.ts';
 import { companionMonster, openMonster, orderUnavailable } from './info.ts';
 import { segmented } from './menus.ts';
@@ -28,8 +28,8 @@ function companionRow(api: GameApi, c: Companion, open: (c: Companion) => void):
 }
 
 /** A switch row: what it does, and whether it is on. */
-function switchRow(label: string, detail: string, on: boolean, key: string, toggle: () => void): HTMLButtonElement {
-  const row = el('button', 'run-option');
+function switchRow(label: string, detail: string, on: boolean, key: string, unavailable: boolean, toggle: () => void): HTMLButtonElement {
+  const row = el('button', unavailable ? 'run-option unavailable' : 'run-option');
   row.type = 'button';
   row.dataset.nav = '';
   row.dataset.key = key;
@@ -45,8 +45,9 @@ function switchRow(label: string, detail: string, on: boolean, key: string, togg
 /**
  * The hero's creatures on this level and their orders, as tome2's pet
  * command gives them (none take time): how far they stray, whether they
- * open doors and pick things up; each creature opens its card (call it
- * off, dismiss it).
+ * open doors and pick things up, and what too many pets cost in mana;
+ * each creature opens its card (call it off, dismiss it). Orders that
+ * cannot be given now are dimmed and say why.
  */
 function companionsContent(api: GameApi): SheetContent | null {
   const data = api.engine.companions();
@@ -64,13 +65,16 @@ function companionsContent(api: GameApi): SheetContent | null {
     const next = companionsContent(api);
     if (next) api.sheets.update(next, content);
   };
+  const why = orderUnavailable(api);
   const order = (o: Parameters<GameApi['engine']['orderCompanions']>[0]) => {
-    const why = orderUnavailable(api);
-    if (why) api.refuse(why);
-    else api.engine.orderCompanions(o);
+    if (why || !api.engine.orderCompanions(o)) api.refuse(why ?? NOT_NOW);
     update();
   };
 
+  if (api.snapshot()?.wild) {
+    body.append(el('p', 'empty', 'No orders on the world map: your companions rejoin you when you leave it.'));
+    return content;
+  }
   if (!creatures.length) {
     body.append(
       el('p', 'empty', 'No one fights at your side.'),
@@ -82,14 +86,16 @@ function companionsContent(api: GameApi): SheetContent | null {
   const leash = segmented<string>('How far they stray', LEASHES.map(([n, label]) => [String(n), label]), String(data.follow), (value) =>
     order({ follow: Number(value) as Leash }),
   );
+  if (why) for (const segment of leash.querySelectorAll('.segment')) segment.classList.add('unavailable');
   body.append(
     section(
       'Orders',
       leash,
-      switchRow('Open doors', 'They may open doors to follow you or reach a foe.', !!data.doors, 'doors', () => order({ doors: !data.doors })),
-      switchRow('Pick things up', 'They may carry what they find. Turning this off makes them drop it.', !!data.pickup, 'pickup', () => order({ pickup: !data.pickup })),
+      switchRow('Open doors', 'They may open doors to follow you or reach a foe.', !!data.doors, 'doors', !!why, () => order({ doors: !data.doors })),
+      switchRow('Pick things up', 'They may carry what they find. Turning this off makes them drop it.', !!data.pickup, 'pickup', !!why, () => order({ pickup: !data.pickup })),
     ),
   );
+  if (data.upkeep) body.append(el('p', 'companions-upkeep', `So many pets slow the return of your mana by ${data.upkeep}%.`));
   const rows = el('div', 'menu-list');
   rows.append(...creatures.map((c) => companionRow(api, c, (picked) => openMonster(api, companionMonster(picked), update))));
   body.append(section('With you', rows), el('p', 'muted', 'Companions follow you from level to level; pets and allies stay behind.'));

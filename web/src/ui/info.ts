@@ -1,5 +1,6 @@
 import { bondName, FRIEND, orderRefusal, PET, type Companion } from '../play/companions.ts';
 import { directionDigit } from '../play/prompts.ts';
+import { NO_TARGET } from '../play/recent.ts';
 import type { MapPoint } from '../render/map.ts';
 import { isAlly, isHostile, isNeutral, type LevelQuest, type MonsterState, type ObjectState } from '../render/snapshot.ts';
 import { capitalise, itemGlyph, NOT_NOW, titleName, type GameApi } from './api.ts';
@@ -48,7 +49,7 @@ export function companionMonster(c: Companion): MonsterState {
 
 /**
  * The card actions for a creature on the hero's side: call it off the foe it
- * is set on, and dismiss it for good (asked first; not one that cannot die).
+ * is set on (tome2's *friend forget target*: it chooses its own again), and dismiss it for good (asked first; not one that cannot die).
  * `changed` runs once it has gone or been called off.
  */
 export function companionActions(api: GameApi, m: Pick<MonsterState, 'id' | 'name' | 'status'>, changed: () => void = () => undefined): SheetAction[] {
@@ -65,7 +66,7 @@ export function companionActions(api: GameApi, m: Pick<MonsterState, 'id' | 'nam
       unavailable: why,
       run: () => {
         if (!api.engine.callOff(c.id)) return;
-        api.tell(`${name} leaves ${titleName(c.target!)} alone.`);
+        api.tell(`${name} turns from ${titleName(c.target!)}, free to choose its own foe.`);
         api.sheets.back();
         changed();
       },
@@ -197,10 +198,10 @@ export function openTargets(api: GameApi): void {
     row.addEventListener('click', () => api.target({ x: m.x, y: m.y }));
     list.append(row);
   }
-  if (!foes.length) list.append(el('p', 'empty', 'No target in sight.'));
+  if (!foes.length) list.append(el('p', 'empty', NO_TARGET));
   api.sheets.open({
     title: 'Choose target',
-    subtitle: 'Spells and missiles aimed at your target strike it',
+    subtitle: 'Spells and missiles go to your target while it is in reach',
     body: list,
     kind: 'card',
     className: 'sheet-targets',

@@ -7,7 +7,7 @@ import { itemGlyph, NOT_NOW, titleName, type GameApi } from './api.ts';
 import { openCompanions } from './companions.ts';
 import { count, el, iconText, section } from './dom.ts';
 import { raceRecallLines, recallParagraphs } from './inspect.ts';
-import { openMenu } from './menus.ts';
+import { menuContent, type MenuItem } from './menus.ts';
 import { openQuestLog } from './quests.ts';
 import type { SheetContent } from './sheet.ts';
 
@@ -171,10 +171,15 @@ function notes(api: GameApi, k: Knowledge): SheetContent {
   };
 }
 
-/** What the hero knows, each list a panel of its own (Quests our quest log, Companions the companions and their orders). */
+/** What the hero knows, each list a panel of its own (Quests our quest log, Companions the companions and their orders); counts are taken afresh when it is reopened. */
 export function openKnowledge(api: GameApi): void {
+  const content = knowledgeMenu(api);
+  if (content) api.sheets.open(content);
+}
+
+function knowledgeMenu(api: GameApi): SheetContent | null {
   const k = api.engine.knowledge();
-  if (!k) return;
+  if (!k) return null;
   const { slain } = uniqueGroups(k);
   const { total } = killList(k);
   const companions = api.engine.companions()?.list.length ?? 0;
@@ -184,7 +189,7 @@ export function openKnowledge(api: GameApi): void {
     if (log) openQuestLog(api.sheets, log);
   };
   const hint = (n: number, what: string, one = what) => (n ? `${count(n)} ${n === 1 ? one : what}` : 'None yet');
-  openMenu(api.sheets, 'Knowledge', [
+  const items: MenuItem[] = [
     { label: 'Artifacts found', icon: '★', hint: hint(k.artifacts.length, 'found'), run: open(artifacts) },
     { label: 'Unique creatures', icon: '♛', hint: `${slain.length} of ${k.uniques.length} slain`, run: open(uniques) },
     { label: 'Kills', icon: '⚔', hint: hint(total, 'slain'), run: open(kills) },
@@ -195,5 +200,6 @@ export function openKnowledge(api: GameApi): void {
     { label: 'Fates', icon: '☯', hint: k.fates.length ? `${k.fates.length} known` : 'None known', run: open(fates) },
     { label: 'Dungeon towns', icon: '⌂', hint: hint(k.towns.length, 'found'), run: open(towns) },
     { label: 'Notes', icon: '✎', hint: hint(journal(k.notes).length, 'notes', 'note'), run: open(notes) },
-  ]);
+  ];
+  return { ...menuContent('Knowledge', items), rebuild: () => knowledgeMenu(api) };
 }

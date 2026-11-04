@@ -257,7 +257,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'Blows, missiles, and choosing your battles.',
         keywords: 'attack melee combat missile shoot fire throw bow arrow target foe enemy creature monster',
         body: [
-          'Walk into a creature, tap it beside you, or tap *Attack* to strike. *Fire* shoots the nearest foe with your launcher; throwing, wands and *Choose target* (the foes in sight, nearest first) are under *More*.',
+          'Walk into a creature, tap it beside you, or tap *Attack* to strike. *Fire* shoots the nearest foe with your launcher; throwing, wands and *Choose target* (the foes your spells and missiles can reach, nearest first) are under *More*. *Fire* and the quick spell keep to the target you chose while it is in reach.',
           'Press and hold a creature before you fight it: once you have met its kind, its description tells you what it can do.',
           {
             list: [
@@ -278,8 +278,8 @@ export const HELP: readonly HelpGroup[] = [
         keywords: 'companions pets allies friends charm tame dismiss follow seek destroy doors pick up orders command send target',
         body: [
           'Creatures you charm or tame become your *pets*, and some, such as an adventurer whose sword you win back, join you as *companions*. Companions follow you from level to level; pets and other allies stay behind when you leave.',
-          'More → *Companions* (also in Menu → Knowledge) lists them with how they fare, and your orders, which take no time: *Stay close*, *Follow me* or *Seek and destroy*, and whether they may open doors and pick things up. Confused, you cannot give orders.',
-          'Tap a creature at your side for its card: *Call off* stops it fighting the foe you sent it at, and *Dismiss* sends it away for good. On a foe\'s card, *Send companions* sets them all on it.',
+          'More → *Companions* (also in Menu → Knowledge) lists them with how they fare, and your orders, which take no time: *Stay close*, *Follow me* or *Seek and destroy*, and whether they may open doors and pick things up. Confused, you cannot give orders. Too many pets slow the return of your mana; companions do not.',
+          'Tap a creature at your side for its card: *Call off* turns it from the foe it is fighting, free to choose its own again, and *Dismiss* sends it away for good. On a foe\'s card, *Send companions* sets them all on it, until they find another foe.',
           'You walk through your companions, swapping places, unless you are confused, stunned or seeing things.',
         ],
         see: ['fighting', 'knowledge'],

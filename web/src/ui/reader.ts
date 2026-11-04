@@ -31,7 +31,7 @@ function viewerKey(heading: ViewerHeading): string {
   return `${heading.caption}\u0000${heading.size}`;
 }
 
-/** tome2's file viewer (knowledge lists, help, notes), read as whole files by scrolling (docs/ui-system.md). */
+/** tome2's file viewer (help, parchments, building files), read as whole files by scrolling (docs/ui-system.md). */
 export class Reader {
   private readonly deps: ReaderDeps;
   /** Files gathered while the viewer is open, by caption and length. */

@@ -37,6 +37,8 @@ export interface Companions {
   follow: number;
   doors: number;
   pickup: number;
+  /** How much the hero's pets slow the return of mana, in percent (none while they are few). */
+  upkeep: number;
   list: Companion[];
 }
 

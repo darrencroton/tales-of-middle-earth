@@ -45,8 +45,16 @@ const NOTE_CODES: Readonly<Record<string, NoteKind>> = { ' ': 'note', A: 'artifa
 /* tome2's add_note: "Turn %12ld" padded to 20, "  Town" or "Lev%3d", the code, then the text. */
 const NOTE_LINE = /^Turn\s+(\d+)\s+(?:Town|Lev\s*(\d+))\s(.):\s?(.*)$/;
 
-/** The notes file as notes, oldest first: dated lines, the hero's birth and a victory; session banners left out. */
-export function parseNotes(lines: readonly string[]): Note[] {
+/**
+ * The notes file as notes, oldest first: dated lines, the hero's birth and a
+ * victory; session banners left out. tome2 keeps one file for a name, so a
+ * hero begun under the name of an earlier one shares it: only what follows
+ * the last birth is this hero's.
+ */
+export function parseNotes(file: readonly string[]): Note[] {
+  let born = file.length;
+  while (born > 0 && !/^Born on /.test(file[born - 1])) born--;
+  const lines = file.slice(Math.max(0, born - 2));
   const notes: Note[] = [];
   lines.forEach((line, i) => {
     const m = NOTE_LINE.exec(line);
@@ -84,8 +92,8 @@ export function journal(lines: readonly string[]): Note[] {
 
 /**
  * Uniques as the player looks for them: those slain, the latest first (tome2
- * notes each kill of a unique), then those still at large, weakest first as
- * tome2 lists them.
+ * notes each kill of a unique), then those still at large, by level as the
+ * engine lists them (tome2's order, Morgoth last).
  */
 export function uniqueGroups(knowledge: Pick<Knowledge, 'uniques' | 'notes'>): { slain: Knowledge['uniques']; alive: Knowledge['uniques'] } {
   const killed = new Map<string, number>();

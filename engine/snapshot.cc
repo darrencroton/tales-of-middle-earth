@@ -114,6 +114,37 @@ void web_run_options_tick();
 void web_adventure_tick();
 void json_adventure(JsonWriter &w);
 
+/* Shared with the other exports (engine/knowledge.cc). */
+/*
+ * True once the character has a level, including while a new level is being
+ * generated: quest hooks print messages (with -more-) before the engine marks
+ * the dungeon ready, and the map must stay native through them.
+ */
+bool level_ready()
+{
+	return character_generated && cave && p_ptr;
+}
+
+/* The export buffer each JSON export writes and returns. */
+std::string json;
+
+/* Clears the export buffer and returns a writer for it. */
+JsonWriter start_json()
+{
+	json.clear();
+	return JsonWriter(json);
+}
+
+/* Opens an object with "ready": 1 when a level is ready; else writes {"ready":0} and returns false. */
+bool begin_ready(JsonWriter &w)
+{
+	bool const ready = level_ready();
+	w.begin_object();
+	w.field("ready", ready ? 1 : 0);
+	if (!ready) w.end_object();
+	return ready;
+}
+
 namespace {
 
 /* Header layout shared with web/src/snapshot.ts (int32 slots). */
@@ -171,16 +202,6 @@ enum FeatureBits : uint32_t {
 	FB_REMEMBER = 1 << 7
 };
 
-/*
- * True once the character has a level, including while a new level is being
- * generated: quest hooks print messages (with -more-) before the engine marks
- * the dungeon ready, and the map must stay native through them.
- */
-bool level_ready()
-{
-	return character_generated && cave && p_ptr;
-}
-
 /* -1 leaves tome2's auto_more option alone; 0 or 1 overrides it on every snapshot. */
 int auto_more_override = -1;
 /* -1 leaves tome2's delay_factor alone; 0..9 overrides it on every snapshot. */
@@ -193,28 +214,9 @@ std::vector<uint8_t> glyph_buf(MAX_HGT * MAX_WID);
 std::vector<uint8_t> attr_buf(MAX_HGT * MAX_WID);
 std::vector<uint8_t> layer_buf(MAX_HGT * MAX_WID);
 std::vector<uint8_t> effect_buf(MAX_HGT * MAX_WID);
-std::string json;
-
 int32_t ptr(void const *p)
 {
 	return static_cast<int32_t>(reinterpret_cast<uintptr_t>(p));
-}
-
-/* Clears the export buffer and returns a writer for it. */
-JsonWriter start_json()
-{
-	json.clear();
-	return JsonWriter(json);
-}
-
-/* Opens an object with "ready": 1 when a level is ready; else writes {"ready":0} and returns false. */
-bool begin_ready(JsonWriter &w)
-{
-	bool const ready = level_ready();
-	w.begin_object();
-	w.field("ready", ready ? 1 : 0);
-	if (!ready) w.end_object();
-	return ready;
 }
 
 /* A quest's state for the frontend: active, done or failed, or null while not taken. */

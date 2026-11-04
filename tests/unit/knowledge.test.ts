@@ -5,6 +5,9 @@ import { adventureDay, journal, killList, noteWhen, parseNotes, recallList, uniq
 
 /* A notes file as tome2 writes it: its birth banner, dated notes (add_note) and session banners. */
 const NOTES = [
+  'Elder the Hobbit Warrior',
+  'Born on 2026-10-01 at 10:00:00',
+  'Turn            99999 Lev  5 U: Killed Smeagol',
   '',
   '================================================',
   'Elder the Hobbit Warrior',
@@ -12,6 +15,7 @@ const NOTES = [
   '================================================',
   '',
   'Turn                1   Town  : Off to see the world',
+  'Turn              500 Lev  3  : Down the stairs',
   'Turn           123456 Lev  3 U: Killed Grip, Farmer Maggot\'s dog',
   'Turn           234567 Lev 12 L: Reached level 10',
   'Turn           345678 Lev  7 U: Killed Bullroarer the Hobbit',
@@ -23,20 +27,21 @@ const NOTES = [
 const race = (r: number, name: string, level: number) => ({ r, name, level, ch: 112, attr: 1 });
 
 describe('knowledge', () => {
-  it('reads the notes file: dated notes with their kind, the birth; session banners left out', () => {
+  it('reads the notes file: dated notes with their kind, the birth; session banners and an earlier hero of the name left out', () => {
     const notes = parseNotes(NOTES);
     assert.deepEqual(
       notes.map((n) => [n.kind, n.text]),
       [
         ['born', 'Elder the Hobbit Warrior is born.'],
         ['note', 'Off to see the world'],
+        ['note', 'Down the stairs'],
         ['unique', "Killed Grip, Farmer Maggot's dog"],
         ['level', 'Reached level 10'],
         ['unique', 'Killed Bullroarer the Hobbit'],
         ['artifact', 'Found The Phial of Galadriel'],
       ],
     );
-    assert.deepEqual([notes[1].turn, notes[1].depth, notes[3].depth], [1, 0, 12]);
+    assert.deepEqual([notes[1].turn, notes[1].depth, notes[2].depth, notes[4].depth], [1, 0, 3, 12]);
     assert.equal(journal(NOTES)[0].text, 'Found The Phial of Galadriel');
   });
 

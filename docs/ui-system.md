@@ -121,9 +121,9 @@ where the code comes from.
 
 | Type | Purpose | Examples | Size | Where |
 |---|---|---|---|---|
-| **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, Help and its topics; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
+| **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, Help and its topics, the Knowledge lists, Companions, Quests; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
 | **Menu** | A short list of places to go | Menu, Knowledge, Backup | its rows, capped at `--popup-height` | bottom sheet |
-| **Card** | Details of one thing, or a question | Item, spell, creature, shop item, memorial item/foe, a saved hero (Game Roster), a hero of the Hall of Fame, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
+| **Card** | Details of one thing, or a question | Item, spell, creature (also a kind of creature from Knowledge), Choose target, shop item, memorial item/foe, a saved hero (Game Roster), a hero of the Hall of Fame, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
 | **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card (what is at a cell, each creature and item a row opening its card), the Halls of Waiting, death card | its content | bottom of the map, no backdrop |
 | **Full screen** | A screen that replaces the game | title, character creation, end of game, Hall of Fame after death | whole screen | — |
 

@@ -319,9 +319,9 @@ function choiceFor(choices: readonly MenuChoice[], step: string): MenuChoice | n
   return choices.find((c) => c.label.toLowerCase() === wanted) ?? null;
 }
 
-/** When asked for a direction, aims at the nearest foe if `aim` (the toolbar's one-tap attacks). */
+/** When asked for a direction, aims if `aim` (the toolbar's one-tap attacks): at the target while tome2 still offers it, else at the nearest foe. */
 function* aimIfAsked(s: MacroScreen, aim: boolean): Macro {
-  if (aim && classifyPrompt(s.prompt) === 'aim') yield keyCodes('*t');
+  if (aim && classifyPrompt(s.prompt) === 'aim') yield keyCodes(/'5' for target/.test(s.prompt) ? '5' : '*t');
 }
 
 /** Runs another macro, then aims at the nearest foe if it ends at a direction prompt and `aim`. */

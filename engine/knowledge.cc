@@ -41,37 +41,26 @@
 #include <emscripten.h>
 #include <fmt/format.h>
 
+#include <algorithm>
 #include <fstream>
 #include <set>
 #include <sstream>
 #include <string>
 #include <vector>
 
+/* engine/snapshot.cc */
+bool level_ready();
+JsonWriter start_json();
+bool begin_ready(JsonWriter &w);
+extern std::string json;
+
+/* Whether tome2 would take the hero's pet command now: at the command prompt, off the world map, not controlling a creature, not confused (dungeon.cc, do_cmd_pet). */
+static bool orders_taken()
+{
+	return level_ready() && inkey_flag && !character_icky && !p_ptr->wild_mode && !p_ptr->control && !p_ptr->confused;
+}
+
 namespace {
-
-std::string json;
-
-/* True once the character has a level (engine/snapshot.cc's level_ready). */
-bool level_ready()
-{
-	return character_generated && cave && p_ptr;
-}
-
-/* Clears the export buffer and opens its object with "ready"; false (and closed) before a level is ready. */
-bool begin_ready(JsonWriter &w)
-{
-	bool const ready = level_ready();
-	w.begin_object();
-	w.field("ready", ready ? 1 : 0);
-	if (!ready) w.end_object();
-	return ready;
-}
-
-JsonWriter start_json()
-{
-	json.clear();
-	return JsonWriter(json);
-}
 
 /* An artifact somewhere the hero has not yet identified it, which tome2's list leaves out (do_cmd_knowledge_artifacts). */
 static void note_unknown(object_type const *o_ptr, std::vector<bool> &okay, std::set<int> &okayk)
@@ -158,12 +147,21 @@ static void json_race(JsonWriter &w, std::size_t r_idx)
 static void json_uniques(JsonWriter &w)
 {
 	auto const &r_info = game->edit_data.r_info;
-	w.key("uniques").begin_array();
+	std::vector<std::size_t> listed;
 	for (std::size_t k = 1; k < r_info.size(); k++)
 	{
 		auto const &r = r_info[k];
 		if (!(r.flags & RF_UNIQUE) || (r.flags & RF_PET) || (r.flags & RF_NEUTRAL)) continue;
 		if (!options->joke_monsters && (r.flags & RF_JOKEANGBAND)) continue;
+		listed.push_back(k);
+	}
+	/* By level, Morgoth always last (monster_get_race_level). */
+	auto const level = [&r_info](std::size_t k) { return k == 862 ? 20000 : r_info[k].level; };
+	std::stable_sort(listed.begin(), listed.end(), [&level](std::size_t a, std::size_t b) { return level(a) < level(b); });
+	w.key("uniques").begin_array();
+	for (auto const k : listed)
+	{
+		auto const &r = r_info[k];
 		w.begin_object();
 		json_race(w, k);
 		w.field("dead", r.max_num == 0 ? 1 : 0);
@@ -294,6 +292,23 @@ static void json_notes(JsonWriter &w)
 	w.end_array();
 }
 
+/* How much the hero's pets slow the return of mana, in percent (tome2's upkeep: process_monsters counts pets, process_world slows mana by their levels once there are too many). */
+int companion_upkeep()
+{
+	int friends = 0;
+	int levels = 0;
+	for (int i = m_max - 1; i >= 1; i--)
+	{
+		auto const &m = m_list[i];
+		if (!m.r_idx || m.status != MSTATUS_PET) continue;
+		friends++;
+		levels += m.level;
+	}
+	int const divider = p_ptr->has_ability(AB_PERFECT_CASTING) ? 15 : 20;
+	if (friends <= 1 + p_ptr->lev / divider) return 0;
+	return std::min(100, std::max(10, levels));
+}
+
 } // namespace
 
 extern "C" {
@@ -322,7 +337,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_knowledge_json()
  * The creatures on the hero's side on this level (status friend, pet or
  * companion), in tome2's order (the last made first), with the orders they
  * follow: follow (the leash: 1 close, 6 following, 255 seek and destroy),
- * doors and pickup.
+ * doors and pickup; and how much they slow the return of mana (upkeep, percent).
  */
 EMSCRIPTEN_KEEPALIVE char const *web_companions_json()
 {
@@ -331,6 +346,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_companions_json()
 	w.field("follow", p_ptr->pet_follow_distance);
 	w.field("doors", p_ptr->pet_open_doors ? 1 : 0);
 	w.field("pickup", p_ptr->pet_pickup_items ? 1 : 0);
+	w.field("upkeep", companion_upkeep());
 	w.key("list").begin_array();
 	for (int i = m_max - 1; i >= 1; i--)
 	{
@@ -369,11 +385,11 @@ EMSCRIPTEN_KEEPALIVE char const *web_companions_json()
  * Gives the hero's creatures an order, as do_cmd_pet does (taking no time):
  * follow 1, 6 or 255 sets the leash; doors and pickup (0 or 1, -1 to leave
  * alone) whether they open doors and pick things up (stopping drops what
- * they carry). Refused (0) while confused, as tome2 refuses.
+ * they carry). Refused (0) whenever tome2 would not take the command (orders_taken).
  */
 EMSCRIPTEN_KEEPALIVE int web_order_companions(int follow, int doors, int pickup)
 {
-	if (!level_ready() || p_ptr->confused) return 0;
+	if (!orders_taken()) return 0;
 	if (follow == 1 || follow == 6 || follow == 255) p_ptr->pet_follow_distance = follow;
 	if (doors >= 0) p_ptr->pet_open_doors = doors != 0;
 	if (pickup >= 0)
@@ -393,11 +409,11 @@ EMSCRIPTEN_KEEPALIVE int web_order_companions(int follow, int doors, int pickup)
 /*
  * Sets the hero's creatures on a creature (target > 0), as tome2's "give
  * target to all friends", or calls one creature off its target (calloff),
- * as "friend forget target". Refused (0) while confused.
+ * as "friend forget target". Refused (0) whenever tome2 would not take the command.
  */
 EMSCRIPTEN_KEEPALIVE int web_companions_target(int target, int calloff)
 {
-	if (!level_ready() || p_ptr->confused) return 0;
+	if (!orders_taken()) return 0;
 	if (calloff > 0)
 	{
 		if (calloff >= m_max || m_list[calloff].status < MSTATUS_PET) return 0;
@@ -414,11 +430,11 @@ EMSCRIPTEN_KEEPALIVE int web_companions_target(int target, int calloff)
 
 /*
  * Sends one of the hero's creatures away for good, as tome2's dismissing
- * does (not one that cannot die, RF_NO_DEATH). Refused (0) while confused.
+ * does (not one that cannot die, RF_NO_DEATH). Refused (0) whenever tome2 would not take the command.
  */
 EMSCRIPTEN_KEEPALIVE int web_dismiss_companion(int m_idx)
 {
-	if (!level_ready() || p_ptr->confused || m_idx <= 0 || m_idx >= m_max) return 0;
+	if (!orders_taken() || m_idx <= 0 || m_idx >= m_max) return 0;
 	auto const &m = m_list[m_idx];
 	if (!m.r_idx || m.status < MSTATUS_FRIEND || (m.race()->flags & RF_NO_DEATH)) return 0;
 	delete_monster_idx(m_idx);
