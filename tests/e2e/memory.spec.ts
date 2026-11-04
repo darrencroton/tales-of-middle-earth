@@ -72,6 +72,21 @@ test('kept levels stay as the hero left them, the way back is known, the heading
   expect(await playerPos(page)).toEqual(back);
   expect(await heading()).toBe('up');
 
+  /* tome2's view from the last visit is not brought back with the level: away from there, no grid is still in view, and the light reaches every grid beside the hero. */
+  await wizardCommand(page, 't');
+  const view = await page.evaluate(() => {
+    const snap = window.__tome!.engine.snapshot()!;
+    let beyondSight = 0;
+    let darkBeside = 0;
+    for (let i = 0; i < snap.info.length; i++) {
+      const reach = Math.max(Math.abs((i % snap.width) - snap.px), Math.abs(Math.floor(i / snap.width) - snap.py));
+      if ((snap.info[i] & 0x20) && reach > 20) beyondSight++;
+      if (reach === 1 && !(snap.info[i] & 0x10)) darkBeside++;
+    }
+    return { beyondSight, darkBeside };
+  });
+  expect(view).toEqual({ beyondSight: 0, darkBeside: 0 });
+
   /* Once the level is mapped, exploring has nothing left but the way on. */
   await wizardCommand(page, 'w');
   expect((await page.evaluate(() => window.__tome!.exploreStop()))?.kind).not.toBe('frontier');
