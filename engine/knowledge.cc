@@ -370,9 +370,10 @@ EMSCRIPTEN_KEEPALIVE char const *web_companions_json()
 		w.field("seen", m.ml ? 1 : 0);
 		w.field("asleep", m.csleep ? 1 : 0);
 		w.field("stays", (r_ptr->flags & RF_NO_DEATH) ? 1 : 0);
-		if (m.target > 0 && m.target < m_max && m_list[m.target].r_idx && m_list[m.target].ml)
+		if (m.target > 0 && m.target < m_max && m_list[m.target].r_idx)
 		{
-			w.field("target", m_list[m.target].race()->name);
+			w.field("hunting", 1);
+			if (m_list[m.target].ml) w.field("target", m_list[m.target].race()->name);
 		}
 		w.end_object();
 	}

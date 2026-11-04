@@ -11,9 +11,12 @@ import { menuContent, type MenuItem } from './menus.ts';
 import { openQuestLog } from './quests.ts';
 import type { SheetContent } from './sheet.ts';
 
-/** A line of a list that only tells something: a glyph or icon, the label, a line under it and a figure at the end. */
+/** A line of a list that only tells something (highlighted as the list is moved through): a glyph or icon, the label, a line under it and a figure at the end. */
 function infoRow(lead: HTMLElement, label: string, line?: string, hint?: string): HTMLElement {
   const row = el('div', 'info-row');
+  row.dataset.nav = '';
+  row.dataset.key = label;
+  row.tabIndex = -1;
   const text = el('span', 'row-text');
   text.append(el('span', 'row-label', label));
   if (line) text.append(el('span', 'row-line', line));

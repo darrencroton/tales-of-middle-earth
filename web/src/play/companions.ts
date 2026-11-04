@@ -25,7 +25,8 @@ export interface Companion {
   asleep: number;
   /** It cannot die, so cannot be dismissed (RF_NO_DEATH). */
   stays: number;
-  /** The creature it is set on, when the hero can see that one. */
+  /** It is set on a creature; `target` names it when the hero can see that one. */
+  hunting?: number;
   target?: string;
 }
 

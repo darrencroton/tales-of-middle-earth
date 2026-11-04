@@ -59,14 +59,14 @@ export function companionActions(api: GameApi, m: Pick<MonsterState, 'id' | 'nam
   const why = orderUnavailable(api);
   const name = titleName(c.name);
   const actions: SheetAction[] = [];
-  if (c.target && c.status >= PET) {
+  if (c.hunting && c.status >= PET) {
     actions.push({
       id: 'calloff',
       label: 'Call off',
       unavailable: why,
       run: () => {
         if (!api.engine.callOff(c.id)) return api.refuse(NOT_NOW);
-        api.tell(`${name} turns from ${titleName(c.target!)}, free to choose its own foe.`);
+        api.tell(`${name} turns from ${c.target ? titleName(c.target) : 'its foe'}, free to choose its own.`);
         api.sheets.back();
         changed();
       },
