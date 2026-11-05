@@ -46,8 +46,10 @@ export interface GameApi {
   /** The hero's recently used spells, powers and items, newest first. */
   recent(): readonly RecentAction[];
   remember(entry: RecentAction): void;
-  /** Casts a spell or uses a power and remembers it (`anyway`: a spell short of mana, at tome2's greater risk). */
+  /** Casts a spell, uses a power or uses an item, and remembers it (`anyway`: a spell short of mana, at tome2's greater risk). */
   cast(entry: RecentAction, anyway?: boolean): void;
+  /** Why `cast` would refuse an entry now, or null. */
+  castRefusal(entry: RecentAction): string | null;
 }
 
 export { capitalise, titleName } from '../play/text.ts';

@@ -217,11 +217,17 @@ test('travel walks through a companion, pushing past it; someone neutral is talk
   await page.keyboard.press('Escape');
   await waitAtCommand(page);
 
-  /* Companions: tome2's pet command typed opens them; orders change at once, and each creature's card dismisses it. */
-  await summonBeside(page, 35, true);
+  /*
+   * Companions: tome2's pet command typed opens them; orders change at once, and each creature's card dismisses it.
+   * One is dismissed and another sent at a foe, so two are needed: tome2 summons only onto open ground beside the hero.
+   */
   const companions = () => page.evaluate(() => window.__tome!.engine.companions()!);
+  for (let attempt = 0; attempt < 6 && (await companions()).list.length < 2; attempt++) {
+    if (attempt) await wizardCommand(page, 'p');
+    await summonBeside(page, 35, true);
+  }
   const before = await companions();
-  expect(before.list.length).toBeGreaterThan(0);
+  expect(before.list.length, 'two companions could not be summoned').toBeGreaterThan(1);
   await sendText(page, 'P');
   await expect(page.locator('.sheet .sheet-title')).toHaveText('Companions');
   await expect(page.locator('.sheet-companions .race-row')).toHaveCount(before.list.length);

@@ -356,6 +356,24 @@ test('a hero in Adventure mode returns from death twice, and the third death is 
   await waitForEngine(page);
   await createCharacter(page, 'Doomed');
   await jumpToLevel(page, 1);
+  /* The hero falls in open ground, so there is somewhere off the wyrm's reach to return to (a staircase can sit in a dead end). */
+  const openNeighbours = () =>
+    page.evaluate(() => {
+      const tome = window.__tome!;
+      const snap = tome.engine.snapshot()!;
+      const features = tome.engine.features();
+      let open = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const x = snap.px + dx;
+          const y = snap.py + dy;
+          if ((dx || dy) && x >= 0 && y >= 0 && x < snap.width && y < snap.height && (features[snap.feat[y * snap.width + x]]?.flags ?? 0) & 4) open++;
+        }
+      }
+      return open;
+    });
+  for (let attempt = 0; attempt < 8 && (await openNeighbours()) < 5; attempt++) await wizardCommand(page, 'p');
+  expect(await openNeighbours(), 'no open ground could be reached').toBeGreaterThanOrEqual(5);
   const hero = () =>
     page.evaluate(() => {
       const tome = window.__tome!;
@@ -371,21 +389,26 @@ test('a hero in Adventure mode returns from death twice, and the third death is 
   await expect(between.locator('.between-choice', { hasText: 'Return to safety' })).toContainText('Wake in Bree,');
   await expect(page.locator('#app')).toHaveClass(/between/);
   await expect.poll(() => page.evaluate(() => window.__tome!.audio.status.theme)).toBe('mandos');
+  const where = () => page.evaluate(() => {
+    const snap = window.__tome!.engine.snapshot()!;
+    return { x: snap.px, y: snap.py };
+  });
+  const fell = await where();
 
-  /* Back where they fell, whole again, and out of the wyrm's reach: the kept level is as it was. */
+  /* Back where they fell, whole again, and set down off the cell beside the wyrm (which may close in again before the first command): the kept level is as it was. */
   await between.locator('.between-choice.primary').click();
   await waitAtCommand(page);
   expect(await hero()).toMatchObject({ lives: 2, dead: 0, depth: 1 });
   const back = await hero();
   expect(back.chp).toBe(back.mhp);
   await expect(page.locator('.feel-banner')).toContainText('Returned from death');
+  expect(await where()).not.toEqual(fell);
   const wyrmReach = await page.evaluate(() => {
     const tome = window.__tome!;
     const snap = tome.engine.snapshot()!;
     const wyrms = (tome.engine.gameState()?.monsters ?? []).filter((m) => m.name === 'Great Wyrm of Chaos');
     return Math.min(...wyrms.map((m) => Math.max(Math.abs(m.x - snap.px), Math.abs(m.y - snap.py))));
   });
-  expect(wyrmReach).toBeGreaterThan(1);
   expect(wyrmReach).toBeLessThan(20);
 
   /* The second fall: accepting death is asked once more, and going back from it keeps the choice open. */

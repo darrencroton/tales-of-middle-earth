@@ -5,7 +5,7 @@ import type { Slot } from '../play/actions.ts';
 import { fightingStyle, INVEN_AMMO, INVEN_BOW, INVEN_WIELD, itemMacro, type FightingStyle } from '../play/items.ts';
 import type { Macro } from '../play/macro.ts';
 import { hasActivePowers, hasMagic, NO_TARGET, quickRecent, recentBlocked, recentItem, recentItemAction, recentMagicMacro, thenAim, type CastWatcher, type RecentAction } from '../play/recent.ts';
-import { isHostile, type SpellState } from '../render/snapshot.ts';
+import { isHostile, type InventoryState, type SpellState } from '../render/snapshot.ts';
 import { NOT_NOW, type GameApi } from './api.ts';
 import { openSpellCard } from './inspect.ts';
 
@@ -95,16 +95,26 @@ export class Abilities {
     this.deps.audio.setGear(weaponKind(held(INVEN_WIELD)?.tval), launcherKind(launcher?.tval, launcher?.sval));
   }
 
+  /** What the hero carries and wears. */
+  private carried(): Pick<InventoryState, 'pack' | 'equip'> {
+    return this.deps.api.engine.inventory() ?? { pack: [], equip: [] };
+  }
+
   /** The toolbar's quick repeat (`quickRecent`), while the game waits for a command. */
   quick(): RecentAction | null {
     const { api } = this.deps;
     if (!api.snapshot()?.atCommand) return null;
-    return quickRecent(api.recent(), this.spells(), api.engine.inventory()?.pack ?? [], this.style().magic, api.state()?.player?.lev ?? 0);
+    return quickRecent(api.recent(), this.spells(), this.carried(), this.style().magic, api.state()?.player?.lev ?? 0);
   }
 
   /** Why a recent action cannot be done now (`recentBlocked`). */
   unavailable(entry: RecentAction, needTarget: boolean): string | null {
-    return recentBlocked(entry, this.spells(), this.deps.api.engine.inventory()?.pack ?? [], needTarget, this.targetInSight());
+    return recentBlocked(entry, this.spells(), this.carried(), needTarget, this.targetInSight());
+  }
+
+  /** Why a spell, power or item use cannot be had now: tome2 will not take its command here, or `unavailable`. */
+  refusal(entry: RecentAction): string | null {
+    return this.deps.api.refusal(entry.kind === 'spell' ? 'm' : entry.command) ?? this.unavailable(entry, false);
   }
 
   /** A hostile creature a spell or missile can be aimed at, as tome2's "nearest target" needs. */
@@ -112,11 +122,14 @@ export class Abilities {
     return (this.deps.api.state()?.monsters ?? []).some((m) => isHostile(m) && !!m.target);
   }
 
-  /** Casts a spell or uses a power again (aiming at the nearest foe when `aim`); it is remembered once tome2 has taken it. */
+  /**
+   * Casts a spell, uses a power or uses an item (again), aiming at the
+   * nearest foe when `aim`; it is remembered once tome2 has taken it.
+   * `anyway` tries a spell short of mana.
+   */
   run(entry: RecentAction, aim = false, anyway = false): void {
     const { api, castWatcher } = this.deps;
-    const command = entry.kind === 'spell' ? 'm' : entry.kind === 'path' ? entry.command : null;
-    const why = (command && api.refusal(command)) || (anyway ? null : this.unavailable(entry, false));
+    const why = anyway ? api.refusal('m') : this.refusal(entry);
     if (why) {
       api.refuse(why);
       return;
@@ -125,16 +138,16 @@ export class Abilities {
       api.refuse(NOT_NOW);
       return;
     }
-    api.sheets.closeAll();
     if (entry.kind === 'item') {
-      const item = recentItem(entry, api.engine.inventory()?.pack ?? []);
-      const action = item ? recentItemAction(entry, item) : null;
-      if (!item || !action) return;
-      api.remember(entry);
+      const found = recentItem(entry, this.carried());
+      const action = found ? recentItemAction(entry, found.item) : null;
+      if (!found || !action) return;
+      castWatcher.useItem({ ...entry, i: found.item.i });
       this.deps.watchAttempt();
-      this.deps.runMacro(thenAim(itemMacro(action, item, 'pack', '', this.deps.alwaysPickup()), aim));
+      api.runMacro(thenAim(itemMacro(action, found.item, found.place, '', this.deps.alwaysPickup()), aim), !!action.reading);
       return;
     }
+    api.sheets.closeAll();
     const macro = recentMagicMacro(entry, aim);
     if (!macro) return;
     if (entry.kind === 'spell') castWatcher.begin('m', [], entry.name);

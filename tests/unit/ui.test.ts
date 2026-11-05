@@ -30,7 +30,7 @@ const rows = (lines: string[], colours: Record<number, [number, number, number][
   Array.from({ length: 24 }, (_, y) => termRow(lines[y] ?? '', { colours: colours[y] }));
 
 function item(extra: Partial<ItemState>): ItemState {
-  return { i: 0, name: 'a thing', tval: 0, number: 1, weight: 10, ch: 63, attr: 1, wear: 0, activate: 0, ins: '', ...extra };
+  return { i: 0, name: 'a thing', tval: 0, number: 1, weight: 10, ch: 63, attr: 1, base: '', wear: 0, activate: 0, ins: '', ...extra };
 }
 
 describe('item actions', () => {
@@ -272,7 +272,7 @@ describe('shops', () => {
 
   it('sells with the quantity chosen, reading on past messages, and confirms', () => {
     const runner = new MacroRunner();
-    const item = { i: 1, name: '3 Flasks of oil', tval: 77, number: 3, weight: 10, ch: 33, attr: 1, wear: 0, activate: 0, ins: '' };
+    const item = { i: 1, name: '3 Flasks of oil', tval: 77, number: 3, weight: 10, ch: 33, attr: 1, base: '', wear: 0, activate: 0, ins: '' };
     assert.deepEqual(runner.start(offerMacro('s', 'Sell', item, 'pack', 2)), [92, ...codes('s')]);
     assert.deepEqual(runner.step(screen('(Inven: b-c, / for Equip, ESC) Sell which item? ')), codes('b'));
     assert.deepEqual(runner.step(screen('Quantity (1-3): 1')), [...codes('2'), 13]);
@@ -609,7 +609,7 @@ describe('inspection', () => {
   });
 
   it('finds the item a row of tome2\'s item prompt stands for', () => {
-    const it = (i: number, name: string): ItemState => ({ i, name, tval: 1, sval: 1, number: 1, weight: 1, ch: 1, attr: 1, wear: 0, activate: 0, ins: '' });
+    const it = (i: number, name: string): ItemState => ({ i, name, tval: 1, sval: 1, number: 1, weight: 1, ch: 1, attr: 1, base: '', wear: 0, activate: 0, ins: '' });
     const inventory = {
       ready: 1,
       weight: 0,

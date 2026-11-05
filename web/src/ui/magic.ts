@@ -1,9 +1,27 @@
-import { displayName, hasMagic, hasPowers, magicArts, recentKey, recentLabel, recentSource, rememberRecent, skillActionName, techniques, usableRecents, validRecent, type RecentAction } from '../play/recent.ts';
-import { stripArticle } from '../play/text.ts';
-import type { PowerInfo, SpellInfo, SpellState } from '../render/snapshot.ts';
+import { INVEN_WIELD } from '../play/items.ts';
+import {
+  displayName,
+  hasMagic,
+  hasPowers,
+  itemRecent,
+  magicArts,
+  recentKey,
+  recentLabel,
+  recentMagicItem,
+  recentSource,
+  rememberRecent,
+  skillActionName,
+  techniques,
+  usableRecents,
+  validRecent,
+  type RecentAction,
+} from '../play/recent.ts';
+import { capitalise, stripArticle } from '../play/text.ts';
+import type { InventoryState, ItemState, MagicItem, PowerInfo, SpellInfo, SpellState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { el, iconText, section, stat } from './dom.ts';
-import { openSpellCard, powerNotes, spellRow } from './inspect.ts';
+import { abilityRow, openSpellCard, powerNotes, spellRow } from './inspect.ts';
+import { openItem } from './inventory.ts';
 
 const STORAGE_KEY = 'tome2mobile.recent.v1';
 
@@ -71,12 +89,51 @@ export function magicSpellRow(api: GameApi, spell: SpellInfo, handlers: MagicHan
   return row;
 }
 
-function recentDetail(entry: RecentAction, spells: SpellState | null): string {
+function recentDetail(entry: RecentAction, spells: SpellState | null, carried: Pick<InventoryState, 'pack' | 'equip'>): string {
   if (entry.kind === 'spell') {
     const spell = spells?.books.flatMap((b) => b.spells).find((s) => s.name === entry.name);
     return spell ? `${spell.mana} mana · ${spell.fail}%` : 'Spell';
   }
-  return recentSource(entry);
+  if (entry.kind === 'path') return recentSource(entry);
+  const item = recentMagicItem(entry, spells, carried);
+  return [entry.verb, item ? itemState(item) : ''].filter(Boolean).join(' · ');
+}
+
+/* What a tap on an item used as magic does. */
+const ITEM_VERBS: Readonly<Record<MagicItem['command'], string>> = { A: 'Activate', a: 'Aim', u: 'Use', z: 'Zap' };
+
+/** Whether an item used as magic is ready: worn only, its charges, charging; empty when that is not known. */
+function itemState(item: MagicItem): string {
+  if (item.wear) return 'Not worn';
+  if (item.charges !== undefined) return item.charges ? `${item.charges} charge${item.charges === 1 ? '' : 's'}` : 'No charges';
+  if (item.charging) return item.command === 'A' ? 'Recharging' : 'Charging';
+  return item.fail === undefined ? '' : 'Ready';
+}
+
+/** The carried or worn item an entry of the spells export's items stands for. */
+function carriedItem(api: GameApi, index: number): ItemState | null {
+  const inventory = api.engine.inventory();
+  const found = index >= INVEN_WIELD ? inventory?.equip.find((slot) => slot.i === index && !slot.empty && !!slot.name) : inventory?.pack.find((i) => i.i === index);
+  return (found as ItemState | undefined) ?? null;
+}
+
+/** An item used as magic as a tappable row (one tap activates, aims, uses or zaps it; dimmed, saying why, when it cannot), with ⓘ for its card. */
+function magicItemRow(api: GameApi, item: MagicItem, handlers: MagicHandlers): HTMLElement {
+  const name = capitalise(item.base);
+  const entry = itemRecent(item.command, ITEM_VERBS[item.command], item);
+  const figures = [itemState(item), item.fail === undefined ? '' : `${item.fail}% fail`].filter(Boolean).join(' · ');
+  const button = abilityRow(recentKey(entry), name, ITEM_VERBS[item.command], figures, capitalise(item.effect ?? ''), api.castRefusal(entry) ? 'unavailable' : '');
+  button.addEventListener('click', () => handlers.run(entry));
+  const row = el('div', 'spell-line');
+  const info = el('button', 'tv-info', 'i');
+  info.type = 'button';
+  info.setAttribute('aria-label', `About ${name}`);
+  info.addEventListener('click', () => {
+    const carried = carriedItem(api, item.i);
+    if (carried) openItem(api, carried, item.i >= INVEN_WIELD ? 'equip' : 'pack');
+  });
+  row.append(button, info);
+  return row;
 }
 
 function rowButton(label: string, hint: string, icon: string, key: string, run: () => void): HTMLButtonElement {
@@ -173,28 +230,35 @@ function skillList(entries: SpellState['powers'], icon: string, handlers: MagicH
 
 /**
  * Magic and Powers, one panel with a tab each (only the tabs with something
- * in them). Both start with every spell and power recently used, so a repeat
- * is one tap from either. Magic: each spell book, then the magic arts
- * (Necromancy, Mindcraft, Copy a spell…). Powers: the powers of the hero's
- * race, class, form, gear and corruptions, each under what grants them, then
- * techniques (Piercing shots, Mimicry, Forge ammo…). One tap casts or uses.
+ * in them). Both start with every spell, power and item used as magic
+ * recently, so a repeat is one tap from either. Magic: each spell book,
+ * then the magic arts (Necromancy, Mindcraft, Copy a spell…). Powers: the
+ * powers of the hero's race, class and form, then their gear (powers it
+ * grants and what activates, worn or carried), devices (wands, staffs,
+ * rods), corruptions, then techniques (Piercing shots, Mimicry, Forge
+ * ammo…). One tap casts or uses; `items` highlights the first of the gear
+ * and devices that can be used now (worn gear first).
  */
-export function openMagic(api: GameApi, recents: readonly RecentAction[], handlers: MagicHandlers, tab: MagicTab = 'magic', replace = false): void {
+export function openMagic(api: GameApi, recents: readonly RecentAction[], handlers: MagicHandlers, tab: MagicTab = 'magic', replace = false, items = false): void {
   const spells = api.engine.spells();
   const player = api.state()?.player;
+  const carried = api.engine.inventory() ?? { pack: [], equip: [] };
   const shown: MagicTab[] = [...(hasMagic(spells) ? ['magic' as const] : []), ...(hasPowers(spells) ? ['powers' as const] : [])];
   const current = shown.includes(tab) ? tab : (shown[0] ?? tab);
   const body = el('div', 'magic');
+  let initial: HTMLElement | null = null;
 
-  const recent = usableRecents(recents, spells);
+  const recent = usableRecents(recents, spells, carried);
   if (recent.length) {
     const grid = el('div', 'action-grid recent-grid');
     for (const entry of recent) {
-      const button = el('button', 'action-button recent-button');
+      const why = api.castRefusal(entry);
+      const button = el('button', why ? 'action-button recent-button unavailable' : 'action-button recent-button');
       button.type = 'button';
       button.dataset.nav = '';
       button.dataset.key = recentKey(entry);
-      button.append(el('span', 'row-label', recentLabel(entry)), el('span', 'row-hint', recentDetail(entry, spells)));
+      button.append(el('span', 'row-label', recentLabel(entry)), el('span', 'row-hint', recentDetail(entry, spells, carried)));
+      if (why) button.setAttribute('aria-description', why);
       button.addEventListener('click', () => handlers.run(entry));
       grid.append(button);
     }
@@ -210,13 +274,24 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
     const arts = magicArts(spells);
     if (arts.length) body.append(section('Magic arts', skillList(arts, '✧', handlers)));
   } else {
-    const bonus = [...(spells?.bonus ?? [])].sort((a, b) => SOURCE_ORDER.indexOf(a.source) - SOURCE_ORDER.indexOf(b.source));
-    const groups = new Map<string, PowerInfo[]>();
-    for (const power of bonus) groups.set(powerHeading(power), [...(groups.get(powerHeading(power)) ?? []), power]);
-    for (const [heading, powers] of groups) {
+    const magicItems = spells?.items ?? [];
+    const groups = new Map<string, HTMLElement[]>();
+    const add = (heading: string, row: HTMLElement) => groups.set(heading, [...(groups.get(heading) ?? []), row]);
+    for (const source of SOURCE_ORDER) {
+      for (const power of spells?.bonus ?? []) if (power.source === source) add(powerHeading(power), powerRow(api, power, handlers));
+      if (source !== 'gear') continue;
+      const worn = (item: MagicItem) => (item.i >= INVEN_WIELD ? 0 : 1);
+      for (const item of magicItems.filter((m) => m.command === 'A').sort((a, b) => worn(a) - worn(b))) add('Gear', magicItemRow(api, item, handlers));
+      for (const item of magicItems) if (item.command !== 'A') add('Devices', magicItemRow(api, item, handlers));
+    }
+    for (const [heading, rows] of groups) {
       const list = el('div', 'menu-list');
-      for (const power of powers) list.append(powerRow(api, power, handlers));
+      list.append(...rows);
       body.append(section(heading, list));
+    }
+    if (items) {
+      const rows = [...(groups.get('Gear') ?? []), ...(groups.get('Devices') ?? [])].map((row) => row.querySelector<HTMLElement>('.spell-row[data-key^="item:"]'));
+      initial = rows.find((row) => row && !row.classList.contains('unavailable')) ?? null;
     }
     const moves = techniques(spells);
     if (moves.length) body.append(section('Techniques', skillList(moves, '✪', handlers)));
@@ -235,6 +310,7 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
         ? shown.map((id) => ({ id, label: id === 'magic' ? 'Magic' : 'Powers', icon: id === 'magic' ? '✦' : '❂', active: id === current, run: () => openMagic(api, recents, handlers, id, true) }))
         : undefined,
     className: 'sheet-magic',
+    initial,
   };
   if (replace) api.sheets.replace(content);
   else api.sheets.open(content);

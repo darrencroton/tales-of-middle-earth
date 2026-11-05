@@ -1,3 +1,4 @@
+import { freshMessages } from '../audio/cues.ts';
 import { KEY_BACKSLASH as BACKSLASH, KEY_ESCAPE, KEY_SPACE as SPACE } from '../input/keys.ts';
 import type { Action } from '../play/actions.ts';
 import type { PromptKind } from '../play/prompts.ts';
@@ -246,8 +247,7 @@ export class ShopController {
     this.deps.restoreEngineSettings();
     if (inside) this.keepPage(run);
     const state = engine.gameState(SERVICE_MESSAGES);
-    /* Oldest first, without tome2's count of a repeated message ("… <2x>"). */
-    const said = run.state && state ? newMessages(run.state, state).map((m) => m.text.replace(/\s*<\d+x>$/, '')).reverse() : [];
+    const said = state ? freshMessages(run.state, state) : [];
     const reply = serviceReply(run.pages.filter((page) => page.length), said);
     if (reply.length) {
       openMessage(sheets, run.name, reply, 'sheet-service');

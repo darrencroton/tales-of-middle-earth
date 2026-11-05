@@ -34,6 +34,7 @@ const TV = {
   LITE: 39,
   STAFF: 55,
   WAND: 65,
+  ROD: 66,
   ROD_MAIN: 67,
   SCROLL: 70,
   POTION: 71,
@@ -89,6 +90,8 @@ export function useAction(tval: number): ItemAction | null {
       return { id: 'use', label: 'Use', command: 'u' };
     case TV.ROD_MAIN:
       return { id: 'zap', label: 'Zap', command: 'z' };
+    case TV.ROD:
+      return { id: 'attach', label: 'Attach to a rod', command: 'z' };
     case TV.FLASK:
       return { id: 'refuel', label: 'Refuel light', command: 'F' };
     case TV.SHOT:
@@ -120,7 +123,7 @@ export function itemActions(item: ItemState, place: ItemPlace): ItemAction[] {
 
   if (place === 'floor') {
     actions.push({ id: 'pickup', label: 'Pick up', command: 'g', primary: true });
-    if (use && use.id !== 'fire' && use.id !== 'refuel') actions.push(use);
+    if (use && use.id !== 'fire' && use.id !== 'refuel' && use.id !== 'attach') actions.push(use);
     if (corpse) actions.push(corpse);
     return actions;
   }
@@ -135,6 +138,7 @@ export function itemActions(item: ItemState, place: ItemPlace): ItemAction[] {
   }
 
   if (use) actions.push({ ...use, primary: true });
+  if (item.activate === 2) actions.push({ id: 'activate', label: 'Activate', command: 'A', primary: actions.length === 0 });
   if (corpse) actions.push(corpse);
   if (item.wear) {
     const weapon = WEAPON_TVALS.has(item.tval);

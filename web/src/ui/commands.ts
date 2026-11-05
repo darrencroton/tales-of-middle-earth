@@ -25,13 +25,15 @@ function commandButton(api: GameApi, icon: string, label: string, onClick: () =>
   return button;
 }
 
+/* Views opened over the Commands sheet, so Back (or closing a card) returns to it. */
+const OVER_COMMANDS: ReadonlySet<NativeView> = new Set(['magic', 'powers', 'magicItems', 'altar', 'companions', 'target']);
+
 /** More: every player-facing tome2 command not reached more naturally, grouped by intent (`commandGroups`), then the keyboard and options. */
 export function openCommands(deps: CommandsDeps, context: CommandContext): void {
   const { api } = deps;
   const body = el('div', 'commands');
   const run = (def: CommandDef) => {
-    if (def.native === 'magic' || def.native === 'powers' || def.native === 'altar' || def.native === 'companions' || def.native === 'target') {
-      /* Over the Commands sheet, so Back (or closing a card) returns to it. */
+    if (def.native && OVER_COMMANDS.has(def.native)) {
       deps.openNative(def.native);
     } else if (def.native) {
       api.sheets.closeAll();

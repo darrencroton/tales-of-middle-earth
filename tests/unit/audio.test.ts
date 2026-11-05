@@ -389,7 +389,7 @@ describe('sound cues', () => {
       'The orc hits you.',
       'You miss the orc.',
     ]);
-    assert.deepEqual(freshMessages(prev, { messageTotal: 10, messages: msgs(['You hit the orc. (x2)', 'older']) }), ['You hit the orc.']);
+    assert.deepEqual(freshMessages(prev, { messageTotal: 10, messages: msgs(['You hit the orc. <2x>', 'older']) }), ['You hit the orc.']);
     assert.deepEqual(freshMessages(null, prev), []);
   });
 

@@ -351,6 +351,7 @@ const api: GameApi = {
   recent: () => recents.list(game.lastState?.player?.name ?? ''),
   remember: (entry) => recents.remember(game.lastState?.player?.name ?? '', entry),
   cast: (entry, anyway) => abilities.run(entry, false, anyway),
+  castRefusal: (entry) => abilities.refusal(entry),
   refusal: (command) => commandRefusal(command, { worldMap: worldMap(game.lastSnap), controlling: controlling() }),
   travelRefusal,
   refuse,
@@ -437,7 +438,8 @@ function openNative(view: NativeView): void {
       break;
     case 'magic':
     case 'powers':
-      openMagic(api, api.recent(), { run: (entry, anyway) => api.cast(entry, anyway) }, view);
+    case 'magicItems':
+      openMagic(api, api.recent(), { run: (entry, anyway) => api.cast(entry, anyway) }, view === 'magic' ? 'magic' : 'powers', false, view === 'magicItems');
       break;
     case 'recast': {
       const entry = abilities.quick();
@@ -1200,6 +1202,7 @@ function commandContext(): CommandContext {
     steals: abilities.steals(),
     magic: hasMagic(abilities.spells()),
     powers: hasPowers(abilities.spells()),
+    magicItems: !!abilities.spells()?.items.length,
     targets: (game.lastState?.monsters ?? []).some((m) => isHostile(m) && !!m.target),
   };
 }

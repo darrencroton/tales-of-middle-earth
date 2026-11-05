@@ -53,9 +53,9 @@ describe('memorial', () => {
       },
       inventory: {
         ready: 1, weight: 100, limit: 1000,
-        pack: [{ i: 0, name: 'a Potion of Cure Light Wounds', tval: 71, number: 1, weight: 4, ch: 33, attr: 3, wear: 0, activate: 0, ins: '' }],
+        pack: [{ i: 0, name: 'a Potion of Cure Light Wounds', tval: 71, number: 1, weight: 4, ch: 33, attr: 3, base: '', wear: 0, activate: 0, ins: '' }],
         equip: [
-          { i: 24, part: 24, name: 'a Long Sword (2d5)', ch: 124, attr: 1, tval: 23, number: 1, weight: 130, wear: 1, activate: 0, ins: '' },
+          { i: 24, part: 24, name: 'a Long Sword (2d5)', ch: 124, attr: 1, tval: 23, number: 1, weight: 130, base: '', wear: 1, activate: 0, ins: '' },
           { i: 25, part: 24, empty: 1 },
         ],
         floor: [],

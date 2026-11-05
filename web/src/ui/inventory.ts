@@ -1,5 +1,5 @@
 import { SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
-import { itemRecent, recentItem, recentItemAction, recentKey } from '../play/recent.ts';
+import { itemRecent, recentItem, recentKey } from '../play/recent.ts';
 import type { EquipSlot, InventoryState, ItemState, SpellInfo } from '../render/snapshot.ts';
 import { capitalise, itemGlyph, pounds, titleName, type GameApi } from './api.ts';
 import { el, section } from './dom.ts';
@@ -58,7 +58,7 @@ export function openInventory(api: GameApi, tab: InventoryTab = 'pack', replace 
   body.append(burden);
 
   if (current === 'pack') {
-    const quick = quickUse(api, inventory.pack);
+    const quick = quickUse(api, inventory);
     if (quick) body.append(quick);
   }
 
@@ -93,34 +93,25 @@ export function openInventory(api: GameApi, tab: InventoryTab = 'pack', replace 
   else api.sheets.open(content);
 }
 
-/* Item actions worth offering again from the pack. */
-const QUICK_USES = new Set(['quaff', 'read', 'eat', 'aim', 'use', 'zap', 'throw']);
+/* Item actions remembered as recent and repeated from Recently used, the Magic panel and the toolbar. */
+const QUICK_USES = new Set(['quaff', 'read', 'eat', 'aim', 'use', 'zap', 'throw', 'activate']);
 
 /** Recently used items still in the pack, one tap to use again. */
-function quickUse(api: GameApi, pack: readonly ItemState[]): HTMLElement | null {
+function quickUse(api: GameApi, inventory: InventoryState): HTMLElement | null {
   const grid = el('div', 'action-grid recent-grid');
-  const alwaysPickup = !!api.state()?.player?.alwaysPickup;
   for (const entry of api.recent()) {
     if (entry.kind !== 'item') continue;
-    const item = recentItem(entry, pack);
-    const action = item ? recentItemAction(entry, item) : null;
-    if (!item || !action) continue;
-    const why = api.refusal(action.command);
+    const found = recentItem(entry, inventory);
+    if (found?.place !== 'pack') continue;
+    const why = api.castRefusal(entry);
     const button = el('button', why ? 'action-button recent-button unavailable' : 'action-button recent-button');
     button.type = 'button';
     button.dataset.nav = '';
     button.dataset.key = recentKey(entry);
     button.append(el('span', 'row-label', `${entry.verb} · ${entry.name}`));
-    if (item.number > 1) button.append(el('span', 'row-hint', `×${item.number}`));
+    if (found.item.number > 1) button.append(el('span', 'row-hint', `×${found.item.number}`));
     if (why) button.setAttribute('aria-description', why);
-    button.addEventListener('click', () => {
-      if (why) {
-        api.refuse(why);
-        return;
-      }
-      api.remember(itemRecent(action.command, action.label, item));
-      api.runMacro(itemMacro(action, item, 'pack', '', alwaysPickup));
-    });
+    button.addEventListener('click', () => api.cast(entry));
     grid.append(button);
   }
   return grid.childElementCount ? section('Recently used', grid) : null;
@@ -160,31 +151,37 @@ export function openItem(api: GameApi, item: ItemState, place: ItemPlace): void 
   const body = el('div', 'item-detail');
 
   const alwaysPickup = !!api.state()?.player?.alwaysPickup;
-  const actions: SheetAction[] = itemActions(item, place).map((action) => ({
-    id: action.id,
-    label: action.label,
-    primary: action.primary,
-    danger: action.danger,
-    unavailable: api.refusal(action.command),
-    run: () => {
-      if (action.needsText) {
-        api.askText('Inscribe', `Inscription for ${item.name}`, item.ins).then((text) => {
-          if (text !== null) api.runMacro(itemMacro(action, item, place, text, alwaysPickup));
-        });
-        return;
-      }
-      if (action.quantity === 'ask') {
-        api
-          .askQuantity({ title: `${action.label} how many?`, label: capitalise(item.name), max: item.number, verb: action.label, danger: action.danger })
-          .then((count) => {
-            if (count !== null) api.runMacro(itemMacro({ ...action, quantity: count }, item, place, '', alwaysPickup));
+  const actions: SheetAction[] = itemActions(item, place).map((action) => {
+    const recent = place !== 'floor' && QUICK_USES.has(action.id) ? itemRecent(action.command, action.label, item) : null;
+    return {
+      id: action.id,
+      label: action.label,
+      primary: action.primary,
+      danger: action.danger,
+      unavailable: recent ? api.castRefusal(recent) : api.refusal(action.command),
+      run: () => {
+        if (recent) {
+          api.cast(recent);
+          return;
+        }
+        if (action.needsText) {
+          api.askText('Inscribe', `Inscription for ${item.name}`, item.ins).then((text) => {
+            if (text !== null) api.runMacro(itemMacro(action, item, place, text, alwaysPickup));
           });
-        return;
-      }
-      if (place === 'pack' && QUICK_USES.has(action.id)) api.remember(itemRecent(action.command, action.label, item));
-      api.runMacro(itemMacro(action, item, place, '', alwaysPickup), action.reading);
-    },
-  }));
+          return;
+        }
+        if (action.quantity === 'ask') {
+          api
+            .askQuantity({ title: `${action.label} how many?`, label: capitalise(item.name), max: item.number, verb: action.label, danger: action.danger })
+            .then((count) => {
+              if (count !== null) api.runMacro(itemMacro({ ...action, quantity: count }, item, place, '', alwaysPickup));
+            });
+          return;
+        }
+        api.runMacro(itemMacro(action, item, place, '', alwaysPickup), action.reading);
+      },
+    };
+  });
 
   const cast = place === 'floor' ? undefined : (spell: SpellInfo, anyway: boolean) => api.cast({ kind: 'spell', name: spell.name }, anyway);
   body.append(itemBody(api, item, cast));

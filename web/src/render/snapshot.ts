@@ -402,7 +402,10 @@ export interface ItemState {
   weight: number;
   ch: number;
   attr: number;
+  /** One of it, named without article, count or what changes with use (charges, bonuses, inscription): with tval and sval, which item this is. */
+  base: string;
   wear: number;
+  /** Known to activate (tome2's `A`): 1 while worn, 2 from the pack too; 0 otherwise. */
   activate: number;
   /** Turns of light left, for a light that burns fuel. */
   fuel?: number;
@@ -675,6 +678,26 @@ export interface PowerInfo {
   diff: number;
 }
 
+/** One way the hero can use a carried or worn item as magic: activate it (`A`), aim a wand, use a staff or zap a rod. */
+export interface MagicItem {
+  /** Inventory index (equipment from 24). */
+  i: number;
+  base: string;
+  tval: number;
+  sval: number;
+  command: 'A' | 'a' | 'u' | 'z';
+  /** What activating it does, and how often it can (tome2's activation text). */
+  effect?: string;
+  /** Recharging (an activation), or a rod without the mana for its tip yet. */
+  charging?: number;
+  /** Carried, and works only when worn. */
+  wear?: number;
+  /** A known wand's or staff's charges. */
+  charges?: number;
+  /** The chance in a hundred that it fails now. */
+  fail?: number;
+}
+
 export interface SpellState {
   ready: number;
   books: SpellBook[];
@@ -682,6 +705,8 @@ export interface SpellState {
   powers: { label: string; mkey: number }[];
   /** tome2's powers (its "use a power" menu): from race, class, form, gear, corruptions and others, in order. */
   bonus: PowerInfo[];
+  /** Items the hero can use as magic, in inventory order. */
+  items: MagicItem[];
 }
 
 /** One property of a known item, grouped as object_out_desc describes it; `value` for a bonus (with its unit). */

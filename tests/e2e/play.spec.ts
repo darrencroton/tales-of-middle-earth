@@ -23,6 +23,7 @@ import {
   waitForScreen,
   waitForSettle,
   wizardCommand,
+  wizardGive,
 } from './helpers.ts';
 
 async function actionIds(page: Page): Promise<string[]> {
@@ -505,8 +506,8 @@ test.describe(() => {
   });
 });
 
-test('race powers are under their race in Powers, their lettered questions are buttons, and they are offered again', async ({ page }) => {
-  await page.goto('./');
+test('race powers are under their race in Powers, their lettered questions are buttons, and they are offered again; gear and devices are there too', async ({ page }) => {
+  await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Stormwing', { race: 'Thunderlord', cls: 'Warrior' });
 
@@ -547,6 +548,49 @@ test('race powers are under their race in Powers, their lettered questions are b
   await openMagic();
   await expect(page.locator('.sheet .recent-button')).toContainText('Thunder strike');
   await page.keyboard.press('Escape');
+
+  /* What activates is under Gear, the wands carried under Devices: carried, the Phial says it must be worn, and its card wears it. */
+  await wizardGive(page, 'C', 1);
+  await wizardGive(page, '-', 270);
+  await page.locator('#toolbar [data-action="commands"]').click();
+  await page.locator('.sheet .command', { hasText: 'Activate or zap' }).click();
+  const phial = page.locator('.sheet .spell-line', { hasText: 'Phial of Galadriel' });
+  await expect(phial.locator('.spell-row.unavailable')).toContainText('Not worn');
+  const wand = page.locator('.sheet .sheet-section', { hasText: 'Devices' }).locator('.spell-row');
+  await expect(wand).toContainText(/Wand of Manathrust.*Aim.*\d+ charges/s);
+  await expect(wand).toHaveClass(/is-active/);
+  await phial.locator('.spell-row').click();
+  await expect(page.locator('#toast')).toHaveText('Wear the Phial of Galadriel to activate it.');
+  await phial.locator('.tv-info').click();
+  await page.locator('.sheet-item .sheet-action', { hasText: 'Wear' }).click();
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.inventory()!.equip.some((e) => /Phial/.test(e.name ?? '')))).toBe(true);
+  await dismissMore(page);
+  await waitAtCommand(page);
+
+  /* Activated from Powers (it may fail, as tome2 rolls it), it joins Recent; a wand aimed from there becomes the quick repeat. */
+  await openMagic();
+  await expect(phial.locator('.spell-row:not(.unavailable)')).toContainText('Ready');
+  await phial.locator('.spell-row').click();
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  await dismissMore(page);
+  await waitAtCommand(page);
+  await openMagic();
+  await expect(page.locator('.sheet .recent-button', { hasText: 'Phial of Galadriel' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  for (let attempt = 0; attempt < 4 && !(await aimed()); attempt++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await openMagic();
+    await page.locator('.sheet .spell-row', { hasText: 'Wand of Manathrust' }).click();
+    await expect
+      .poll(async () => (await aimed()) || (await page.evaluate(() => window.__tome!.engine.snapshot()?.atCommand ?? false)), { timeout: 10_000 })
+      .toBe(true);
+  }
+  await waitForScreen(page, /^Direction/);
+  await page.keyboard.press('Escape');
+  await dismissMore(page);
+  await waitAtCommand(page);
+  await expect(page.locator('#toolbar [data-action="recast"]')).toContainText('Wand of Manathrust');
 });
 
 test('dragging pans the map without moving, long press describes (an altar\'s god too, who can be worshipped), sheets open from the HUD, and a tap acts once on what was pressed', { tag: '@layout' }, async ({ page }) => {

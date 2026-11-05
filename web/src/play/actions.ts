@@ -11,6 +11,7 @@ export type NativeView =
   | 'skills'
   | 'magic'
   | 'powers'
+  | 'magicItems'
   | 'recast'
   | 'fire'
   | 'rest'
@@ -126,6 +127,8 @@ export interface CommandContext {
   magic: boolean;
   /** The hero has powers or techniques to use. */
   powers: boolean;
+  /** The hero carries or wears an item to use as magic (activate, aim, use or zap). */
+  magicItems: boolean;
   /** The hero controls another creature. */
   controlling: boolean;
   /** On the land, in a town or on a quest's own level. */
@@ -237,10 +240,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
       { label: 'Drink potion', icon: '!', command: 'q' },
       { label: 'Read scroll', icon: '?', command: 'r' },
       { label: 'Eat', icon: '◓', command: 'E' },
-      { label: 'Aim wand', icon: '-', command: 'a' },
-      { label: 'Use staff', icon: '_', command: 'u' },
-      { label: 'Zap rod', icon: '⌁', command: 'z' },
-      { label: 'Activate', icon: '✧', command: 'A' },
+      { label: 'Activate or zap', icon: '✧', command: 'A', native: 'magicItems', refuse: (c) => (c.magicItems ? null : 'You have nothing to activate, aim, use or zap.') },
       { label: 'Refuel light', icon: '~', command: 'F' },
     ],
   },
