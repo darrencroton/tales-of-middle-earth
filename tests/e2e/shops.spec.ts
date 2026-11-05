@@ -255,6 +255,12 @@ test('travel walks through a companion, pushing past it; someone neutral is talk
   await waitAtCommand(page);
   await page.locator('[data-hud="monster"].foe').first().click();
   await expect(page.locator('.sheet-monster .sheet-title')).toHaveText(foe.name);
+  const diag = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const state = tome.engine.gameState(20)!;
+    return { companions: tome.engine.companions(), monsters: state.monsters?.map((m) => [m.name, m.x, m.y, m.status]), messages: state.messages?.map((m) => m.text), actions: [...document.querySelectorAll('.sheet-monster [data-action]')].map((b) => b.getAttribute('data-action')) };
+  });
+  expect(await page.locator('.sheet-monster [data-action="seton"]').count(), `DIAG ${JSON.stringify(diag)}`).toBe(1);
   await page.locator('.sheet-monster [data-action="seton"]').click();
   await expect(page.locator('.sheet-layer')).toBeHidden();
   expect((await companions()).list.filter((c) => c.status >= 3).every((c) => c.target === foe.name)).toBe(true);

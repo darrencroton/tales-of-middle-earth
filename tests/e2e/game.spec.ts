@@ -387,7 +387,12 @@ test('a hero in Adventure mode returns from death twice, and the third death is 
   const back = await hero();
   expect(back.chp).toBe(back.mhp);
   await expect(page.locator('.feel-banner')).toContainText('Returned from death');
-  expect(await where()).not.toEqual(fell);
+  const diag = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const state = tome.engine.gameState(20)!;
+    return { pos: [tome.engine.snapshot()!.px, tome.engine.snapshot()!.py], monsters: state.monsters?.map((m) => [m.name, m.x, m.y, m.status]), messages: state.messages?.map((m) => m.text), place: tome.engine.place(), items: tome.engine.spells()?.items, recent: localStorage.getItem('tome2mobile.recent.v1') };
+  });
+  expect(await where(), `DIAG ${JSON.stringify({ fell, ...diag })}`).not.toEqual(fell);
   const wyrmReach = await page.evaluate(() => {
     const tome = window.__tome!;
     const snap = tome.engine.snapshot()!;
