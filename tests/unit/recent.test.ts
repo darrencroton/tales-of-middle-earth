@@ -4,9 +4,10 @@ import {
   castSpellMacro,
   CastWatcher,
   fireMacro,
-  itemBaseName,
+  isAbility,
   itemRecent,
   listedChoices,
+  magicItemRefusal,
   numberedMenu,
   pathMacro,
   NO_TARGET,
@@ -28,7 +29,7 @@ import {
 } from '../../web/src/play/recent.ts';
 import { bracketChoices, choiceQuestion, classifyPrompt } from '../../web/src/play/prompts.ts';
 import type { MacroScreen } from '../../web/src/play/macro.ts';
-import type { ItemState, SpellState } from '../../web/src/render/snapshot.ts';
+import type { EquipSlot, ItemState, MagicItem, SpellState } from '../../web/src/render/snapshot.ts';
 
 const keys = (text: string) => [...text].map((c) => c.charCodeAt(0));
 const screen = (prompt: string, rest = ''): MacroScreen => ({ prompt, screen: `${prompt}\n${rest}`, atCommand: false });
@@ -41,28 +42,43 @@ const SKILL_MENU = [
 ].join('\n');
 
 describe('recent actions', () => {
-  it('keeps the newest first, without repeats, and at most five of each group', () => {
+  it('keeps the newest first, without repeats, and at most five of each group (items used as magic count with spells)', () => {
     let list: RecentAction[] = [];
-    for (const name of ['A', 'B', 'C', 'D', 'E', 'F']) list = rememberRecent(list, { kind: 'spell', name });
+    for (const name of ['A', 'B', 'C', 'D', 'E']) list = rememberRecent(list, { kind: 'spell', name });
     list = rememberRecent(list, { kind: 'item', command: 'q', verb: 'Quaff', tval: 71, sval: 1, name: 'Potion' });
+    list = rememberRecent(list, { kind: 'item', command: 'A', verb: 'Activate', tval: 39, sval: 4, name: 'Phial' });
     list = rememberRecent(list, { kind: 'spell', name: 'D' });
     assert.deepEqual(
-      list.map((e) => (e.kind === 'item' ? 'item' : e.kind === 'spell' ? e.name : '')),
-      ['D', 'item', 'F', 'E', 'C', 'B'],
+      list.map((e) => (e.kind === 'item' ? e.verb : e.kind === 'spell' ? e.name : '')),
+      ['D', 'Activate', 'Quaff', 'E', 'C', 'B'],
     );
+    assert.ok(isAbility({ kind: 'item', command: 'z', verb: 'Zap', tval: 67, sval: 10, name: 'Wooden Rod of Detection' }));
+    const wand: RecentAction = { kind: 'item', command: 'a', verb: 'Aim', tval: 65, sval: 1, name: 'Wand of Fire Bolt', aimed: true };
+    const failed = rememberRecent([wand], { ...wand, aimed: false });
+    assert.deepEqual(failed, [wand]);
+    assert.equal(rememberRecent(failed, { ...wand, name: 'Wand of Stone to Mud', aimed: false }).length, 2);
+    assert.ok(!isAbility({ kind: 'item', command: 'q', verb: 'Quaff', tval: 71, sval: 1, name: 'Potion' }));
   });
 
-  it('names items without their count and finds them again by kind', () => {
-    assert.equal(itemBaseName('3 Potions of Cure Light Wounds'), 'Potions of Cure Light Wounds');
-    assert.equal(itemBaseName('a Wand of Magic Missile (5 charges)'), 'Wand of Magic Missile');
-    const entry = itemRecent('q', 'Quaff', { tval: 71, sval: 4, name: 'a Potion of Cure Light Wounds' });
-    assert.ok(entry.kind === 'item');
-    const pack = [
-      { i: 0, name: 'a Ration', tval: 80, sval: 1, number: 1, weight: 1, ch: 44, attr: 1, wear: 0, activate: 0, ins: '' },
-      { i: 1, name: '2 Potions of Cure Light Wounds', tval: 71, sval: 4, number: 2, weight: 4, ch: 33, attr: 1, wear: 0, activate: 0, ins: '' },
-    ];
-    assert.equal(recentItem(entry, pack)?.i, 1);
-    assert.equal(recentItem({ ...entry, sval: 9 }, pack), null);
+  it('finds an item again by kind, at its last place first, and an activation or rod only by its name', () => {
+    const item = (i: number, base: string, tval: number, sval: number, number = 1): ItemState => ({ i, name: base, base, tval, sval, number, weight: 1, ch: 33, attr: 1, wear: 0, activate: 0, ins: '' });
+    const potions = [item(0, 'Ration', 80, 1), item(1, 'Potion of Cure Light Wounds', 71, 4, 2), item(2, 'Potion of Cure Light Wounds', 71, 4)];
+    const quaff = itemRecent('q', 'Quaff', potions[2]);
+    assert.equal(quaff.name, 'Potion of Cure Light Wounds');
+    assert.deepEqual(recentItem(quaff, { pack: potions, equip: [] }), { item: potions[2], place: 'pack' });
+    assert.equal(recentItem({ ...quaff, i: 7 }, { pack: potions, equip: [] })?.item.i, 1);
+    assert.equal(recentItem({ ...quaff, sval: 9 }, { pack: potions, equip: [] }), null);
+
+    const rods = [item(3, 'Wooden Rod of Detection', 67, 10), item(4, 'Wooden Rod of Lightning Bolts', 67, 10)];
+    assert.equal(recentItem(itemRecent('z', 'Zap', rods[1]), { pack: rods, equip: [] })?.item.i, 4);
+    assert.equal(recentItem({ ...itemRecent('z', 'Zap', rods[1]), name: 'Wooden Rod of Light' }, { pack: rods, equip: [] }), null);
+
+    const ring = item(5, 'Ring of Speed', 45, 30);
+    const worn: EquipSlot = { ...item(28, 'Ring of Speed', 45, 30), part: 28 };
+    const activate = itemRecent('A', 'Activate', ring);
+    assert.deepEqual(recentItem({ ...activate, i: undefined }, { pack: [ring], equip: [{ i: 24, part: 24, empty: 1 }, worn] })?.place, 'equip');
+    assert.equal(recentItem(activate, { pack: [ring], equip: [worn] })?.item.i, 5);
+    assert.equal(recentItemAction(activate, ring)?.command, 'A');
   });
 
   it('reads tome2 skill menus, power menus and lettered lists drawn over the map', () => {
@@ -153,6 +169,16 @@ describe('recent actions', () => {
     watcher.note('', '', keys('m')[0], true);
     watcher.note(skillPrompt, SKILL_MENU, 27, false);
     assert.equal(watcher.idle('', true), null);
+
+    const phial = itemRecent('A', 'Activate', { i: 36, tval: 39, sval: 4, base: 'Phial of Galadriel' });
+    watcher.useItem(phial);
+    assert.equal(watcher.idle('(Equip: a-l, / for Inven, ESC) Activate which item? ', false), null);
+    assert.deepEqual(watcher.idle('', true), { ...phial, aimed: false });
+    watcher.useItem(phial);
+    assert.deepEqual(watcher.idle(aim, false), { ...phial, aimed: true });
+    watcher.useItem(phial);
+    watcher.note('(Equip: a-l, / for Inven, ESC) Activate which item? ', '', 27, false);
+    assert.equal(watcher.idle('', true), null);
   });
 
   it('splits tome2\'s skill actions into magic arts and techniques, leaving school spells and stealing out', () => {
@@ -160,6 +186,7 @@ describe('recent actions', () => {
       ready: 1,
       books: [],
       bonus: [],
+      items: [],
       powers: [
         { label: 'Cast a spell', mkey: 17 },
         { label: 'Use Necromancy', mkey: 7 },
@@ -171,12 +198,13 @@ describe('recent actions', () => {
     };
     assert.deepEqual(magicArts(spells).map((p) => p.label), ['Use Necromancy', 'Copy a spell']);
     assert.deepEqual(techniques(spells).map((p) => p.label), ['Fire piercing shots', 'Change melee mode']);
-    const dodger = { ready: 1, books: [], bonus: [], powers: [{ label: 'Check dodge chance', mkey: 16 }] };
+    const dodger: SpellState = { ready: 1, books: [], bonus: [], items: [], powers: [{ label: 'Check dodge chance', mkey: 16 }] };
     assert.equal(hasActivePowers(dodger), false);
     assert.equal(hasActivePowers(spells), true);
+    assert.equal(hasActivePowers({ ...dodger, items: [{ i: 28, base: 'Ring of Speed', tval: 45, sval: 30, command: 'A' }] }), true);
   });
 
-  it('labels recents, keeps throws and wands aimed, and drops entries it does not know', () => {
+  it('labels recents, and drops entries it does not know', () => {
     assert.equal(recentLabel({ kind: 'path', command: 'U', steps: ["Thunderlord's Powers", 'Thunder strike'] }), 'Thunder strike');
     assert.equal(recentLabel({ kind: 'path', command: 'm', steps: ['Cast a thaumaturgy spell', '#a', 'Fire bolt'] }), 'Fire bolt');
     assert.equal(recentSource({ kind: 'path', command: 'm', steps: ['Cast a thaumaturgy spell', '#a', 'Fire bolt'] }), 'Thaumaturgy');
@@ -184,10 +212,10 @@ describe('recent actions', () => {
     assert.equal(recentLabel({ kind: 'path', command: 'm', steps: ['Use Necromancy'] }), 'Necromancy');
     assert.equal(recentSource({ kind: 'path', command: 'm', steps: ['Use Mimicry'] }), 'Technique');
     assert.equal(recentSource({ kind: 'path', command: 'm', steps: ['Copy a spell'] }), 'Magic');
-    const oil = itemRecent('v', 'Throw', { tval: 77, sval: 0, name: '5 Flasks of oil' });
-    assert.ok(oil.aimed);
-    assert.equal(oil.kind === 'item' && recentItemAction(oil, { tval: 77 })?.command, 'v');
+    const oil = itemRecent('v', 'Throw', { i: 0, tval: 77, sval: 0, base: 'Flask of oil' });
+    assert.equal(recentItemAction(oil, { tval: 77 })?.command, 'v');
     assert.ok(!validRecent({ kind: 'power', skill: 'x', power: 'y' }));
+    assert.ok(!validRecent({ kind: 'item', command: 'q', tval: 71 }));
     assert.ok(validRecent({ kind: 'spell', name: 'Manathrust' }));
   });
 
@@ -198,38 +226,52 @@ describe('recent actions', () => {
       books: [{ i: 0, name: 'Magic Book', spells: [spell('Manathrust'), spell('Phase Door', { short: 1 })] }],
       powers: [{ label: 'Use Mindcraft', mkey: 2 }],
       bonus: [{ name: 'Spit', desc: '', source: 'race', from: 'Dragon', level: 5, cost: 1, stat: 4, diff: 10 }],
+      items: [],
     };
-    const wand = (name: string): ItemState => ({ i: 2, name, tval: 65, sval: 1, number: 1, weight: 1, ch: 45, attr: 1, wear: 0, activate: 0, ins: '' });
+    const wand: ItemState = { i: 2, name: 'a Wand of Magic Missile (5 charges)', base: 'Wand of Magic Missile', tval: 65, sval: 1, number: 1, weight: 1, ch: 45, attr: 1, wear: 0, activate: 0, ins: '' };
+    const carrying = (charges: number) => ({ ...spells, items: [{ i: 2, base: 'Wand of Magic Missile', tval: 65, sval: 1, command: 'a', charges, fail: 10 } as MagicItem] });
+    const carried = { pack: [wand], equip: [] };
+    const nothing = { pack: [], equip: [] };
     const bolt: RecentAction = { kind: 'spell', name: 'Manathrust' };
-    const aimedWand = itemRecent('a', 'Aim', { tval: 65, sval: 1, name: 'a Wand of Magic Missile (5 charges)' });
+    const aimedWand: RecentAction = { ...itemRecent('a', 'Aim', wand), aimed: true };
 
-    it('keeps spells and powers still known, and drops those not', () => {
-      assert.deepEqual(usableRecents([bolt, { kind: 'spell', name: 'Gone' }, { kind: 'path', command: 'U', steps: ['Spit'] }, aimedWand], spells), [bolt, { kind: 'path', command: 'U', steps: ['Spit'] }]);
+    it('keeps spells, powers and items used as magic still had, and drops those not', () => {
+      const spit: RecentAction = { kind: 'path', command: 'U', steps: ['Spit'] };
+      const potion = itemRecent('q', 'Quaff', { i: 3, tval: 71, sval: 4, base: 'Potion of Cure Light Wounds' });
+      assert.deepEqual(usableRecents([bolt, { kind: 'spell', name: 'Gone' }, spit, aimedWand, potion], carrying(5), carried), [bolt, spit, aimedWand]);
+      assert.deepEqual(usableRecents([aimedWand], spells, carried), []);
     });
 
-    it('repeats the last usable spell of a caster, else their first spell, else a power', () => {
+    it('repeats the last usable spell or device of a caster, else their first spell, else a power', () => {
       const gone: RecentAction = { kind: 'spell', name: 'Gone' };
-      assert.deepEqual(quickRecent([gone, aimedWand, bolt], spells, [wand('a Wand of Magic Missile (5 charges)')], true, 1), bolt);
-      assert.deepEqual(quickRecent([gone], spells, [], true, 1), { kind: 'spell', name: 'Manathrust' });
+      assert.deepEqual(quickRecent([gone, aimedWand, bolt], carrying(5), carried, true, 1), aimedWand);
+      assert.deepEqual(quickRecent([gone, aimedWand, bolt], spells, carried, true, 1), bolt);
+      assert.deepEqual(quickRecent([gone], spells, nothing, true, 1), { kind: 'spell', name: 'Manathrust' });
       const noBooks = { ...spells, books: [] };
-      assert.deepEqual(quickRecent([], noBooks, [], true, 5), { kind: 'path', command: 'U', steps: ['Spit'] });
-      assert.equal(quickRecent([], noBooks, [], true, 4), null);
+      assert.deepEqual(quickRecent([], noBooks, nothing, true, 5), { kind: 'path', command: 'U', steps: ['Spit'] });
+      assert.equal(quickRecent([], noBooks, nothing, true, 4), null);
     });
 
     it('repeats only the last aimed thing still carried for a hero who does not cast', () => {
-      const pack = [wand('a Wand of Magic Missile (5 charges)')];
-      assert.deepEqual(quickRecent([bolt, aimedWand], spells, pack, false, 1), aimedWand);
-      assert.equal(quickRecent([bolt, aimedWand], spells, [], false, 1), null);
+      assert.deepEqual(quickRecent([bolt, aimedWand], carrying(5), carried, false, 1), aimedWand);
+      assert.equal(quickRecent([bolt, aimedWand], carrying(5), nothing, false, 1), null);
+      assert.equal(quickRecent([bolt, { ...aimedWand, aimed: false }], carrying(5), carried, false, 1), null);
     });
 
     it('says why a recent action cannot be done', () => {
-      const pack = [wand('a Wand of Magic Missile (0 charges)')];
-      assert.equal(recentBlocked({ kind: 'spell', name: 'Phase Door' }, spells, [], false, true), 'Not enough mana for Phase Door.');
-      assert.equal(recentBlocked(aimedWand, spells, pack, false, true), 'The Wand of Magic Missile is out of charges.');
-      const charged = [wand('a Wand of Magic Missile (3 charges)')];
-      assert.equal(recentBlocked(aimedWand, spells, charged, true, false), NO_TARGET);
-      assert.equal(recentBlocked(aimedWand, spells, charged, false, false), null);
-      assert.equal(recentBlocked(bolt, spells, [], true, true), null);
+      assert.equal(recentBlocked({ kind: 'spell', name: 'Phase Door' }, spells, nothing, false, true), 'Not enough mana for Phase Door.');
+      assert.equal(recentBlocked(aimedWand, carrying(0), carried, false, true), 'The Wand of Magic Missile has no charges left.');
+      assert.equal(recentBlocked(aimedWand, carrying(3), carried, true, false), NO_TARGET);
+      assert.equal(recentBlocked(aimedWand, carrying(3), carried, false, false), null);
+      assert.equal(recentBlocked(bolt, spells, nothing, true, true), null);
+    });
+
+    it('says why an item cannot be used as magic now', () => {
+      const ring: MagicItem = { i: 5, base: 'Ring of Speed', tval: 45, sval: 30, command: 'A', effect: 'haste self (20+d20 turns) every 100+d100 turns', fail: 4 };
+      assert.equal(magicItemRefusal(ring, 'Ring of Speed'), null);
+      assert.equal(magicItemRefusal({ ...ring, wear: 1 }, 'Ring of Speed'), 'Wear the Ring of Speed to activate it.');
+      assert.equal(magicItemRefusal({ ...ring, charging: 1 }, 'Ring of Speed'), 'The Ring of Speed is still recharging.');
+      assert.equal(magicItemRefusal({ ...ring, command: 'z', charging: 1 }, 'Rod of Light'), 'The Rod of Light is still charging.');
     });
   });
 });

@@ -184,15 +184,20 @@ export function powerNotes(power: PowerInfo): string[] {
 
 /** A spell as a row of a list: name and school, the hero's figures and what it does now; `className` adds a state. */
 export function spellRow(spell: SpellInfo, className = ''): HTMLButtonElement {
+  return abilityRow(`spell-${spell.name}`, spell.name, spell.god ? godTitle(spell.god) : spell.school, spellMeta(spell), spell.info ? effectText(spell.info) : '', className);
+}
+
+/** Something the hero can do as a tappable row: its name and where it comes from, then its figures and what it does. */
+export function abilityRow(key: string, name: string, source: string, figures: string, effect: string, className = ''): HTMLButtonElement {
   const button = el('button', `spell-row ${className}`.trim());
   button.type = 'button';
   button.dataset.nav = '';
-  button.dataset.key = `spell-${spell.name}`;
+  button.dataset.key = key;
   const main = el('span', 'spell-main');
-  main.append(el('span', 'spell-name', spell.name), el('span', 'spell-school', spell.god ? godTitle(spell.god) : spell.school));
+  main.append(el('span', 'spell-name', name), el('span', 'spell-school', source));
   const meta = el('span', 'spell-meta');
-  meta.append(el('span', undefined, spellMeta(spell)));
-  if (spell.info) meta.append(el('span', 'spell-info', effectText(spell.info)));
+  if (figures) meta.append(el('span', undefined, figures));
+  if (effect) meta.append(el('span', 'spell-info', effect));
   button.append(main, meta);
   return button;
 }

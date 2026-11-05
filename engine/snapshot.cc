@@ -342,6 +342,24 @@ void json_level_quest(JsonWriter &w)
 	w.end_object();
 }
 
+/* What one of an item is called, without article, count or what changes as it is used (charges, bonuses, inscription). */
+std::string base_name(object_type const *o_ptr)
+{
+	object_type one;
+	object_copy(&one, const_cast<object_type *>(o_ptr));
+	one.number = 1;
+	char name[160];
+	object_desc(name, &one, false, 0);
+	return name;
+}
+
+/* How a known item activates (tome2's `A`): 1 while worn, 2 from the pack too (ACTIVATE_NO_WIELD); 0 when it does not, or is not known to. */
+int activates(object_type const *o_ptr, object_flag_set const &flags)
+{
+	if (!(flags & TR_ACTIVATE) || !object_known_p(o_ptr)) return 0;
+	return (flags & TR_ACTIVATE_NO_WIELD) ? 2 : 1;
+}
+
 /* An item's fields, inside an object the caller opens and closes. */
 void json_object_fields(JsonWriter &w, int index, object_type const *o_ptr)
 {
@@ -357,8 +375,9 @@ void json_object_fields(JsonWriter &w, int index, object_type const *o_ptr)
 	w.field("weight", o_ptr->weight);
 	w.field("ch", static_cast<unsigned char>(object_char(o_ptr)));
 	w.field("attr", object_attr(o_ptr));
+	w.field("base", base_name(o_ptr));
 	w.field("wear", wield_slot(o_ptr) >= 0 ? 1 : 0);
-	w.field("activate", (flags & TR_ACTIVATE) ? 1 : 0);
+	w.field("activate", activates(o_ptr, flags));
 	if (flags & TR_FUEL_LITE) w.field("fuel", o_ptr->timeout);
 	w.field("ins", o_ptr->inscription);
 }
@@ -740,6 +759,21 @@ struct stick_mode_kept
 	{
 		get_level_use_stick = use;
 		get_level_max_stick = max;
+	}
+};
+
+/* set_stick_mode for a wand or staff, inside a stick_mode_kept (whose mode is put back after). */
+struct stick_mode_of
+{
+	explicit stick_mode_of(object_type const *o_ptr)
+	{
+		get_level_use_stick = o_ptr->pval3 & 0xFFFF;
+		get_level_max_stick = o_ptr->pval3 >> 16;
+	}
+	~stick_mode_of()
+	{
+		get_level_use_stick = -1;
+		get_level_max_stick = -1;
 	}
 };
 
@@ -1275,17 +1309,13 @@ char const *item_info_json(object_type *o_ptr)
 
 	if (known && (o_ptr->tval == TV_WAND || o_ptr->tval == TV_STAFF))
 	{
-		/* set_stick_mode's levels, set here as the kept mode is put back after. */
-		get_level_use_stick = o_ptr->pval3 & 0xFFFF;
-		get_level_max_stick = o_ptr->pval3 >> 16;
+		stick_mode_of const device(o_ptr);
 		spell_type *spell = spell_at(o_ptr->pval2);
 		w.key("device").begin_object();
 		json_spell_common(w, spell);
 		w.field("level", get_level(o_ptr->pval2, 50));
 		w.field("fail", spell_chance_device(spell));
 		w.end_object();
-		get_level_use_stick = -1;
-		get_level_max_stick = -1;
 	}
 
 	int sval;
@@ -2423,9 +2453,108 @@ static std::pair<std::string, std::string> power_source(int idx)
 }
 
 /*
+ * The chance in a hundred that activating an item or zapping a rod of level
+ * `lev` fails, as do_cmd_activate and do_cmd_zap_rod roll it: the hero's
+ * device skill (halved while confused) less the level (at most 50), at least
+ * 1, ten times that for an easy one; below USE_DEVICE a slight chance still.
+ */
+static int device_fail(int lev, object_flag_set const &flags)
+{
+	int chance = p_ptr->skill_dev;
+	if (p_ptr->confused) chance /= 2;
+	chance -= std::min(lev, 50);
+	if (chance <= 0) chance = 1;
+	if (flags & TR_EASY_USE) chance *= 10;
+	double const ok = chance < USE_DEVICE ? 1.0 / ((USE_DEVICE - chance + 1) * USE_DEVICE) : static_cast<double>(chance - USE_DEVICE + 1) / chance;
+	return static_cast<int>(std::lround(100 * (1 - ok)));
+}
+
+/* The level do_cmd_activate tests an item's activation against: its kind's, or its artifact's. */
+static int activation_level(object_type const *o_ptr)
+{
+	if (!artifact_p(o_ptr)) return o_ptr->k_ptr->level;
+	if (o_ptr->tval == TV_RANDART) return game->random_artifacts[o_ptr->sval].level;
+	return game->edit_data.a_info[o_ptr->name1].level;
+}
+
+/* An entry of "items": one way the hero can use the item at inventory index `i`, by its command. */
+static void json_item_use(JsonWriter &w, int i, object_type const *o_ptr, char const *command)
+{
+	w.field("i", i);
+	w.field("base", base_name(o_ptr));
+	w.field("tval", o_ptr->tval);
+	w.field("sval", o_ptr->sval);
+	w.field("command", command);
+}
+
+/*
+ * The items the hero can use as magic (see web_spells_json): those known to
+ * activate (but eggs, whose activation stops or resumes their hatching),
+ * worn or carried (`wear` when tome2 would ask for it to be worn
+ * first; `effect` tome2's activation text; `charging` while it recharges,
+ * as tome2's "(charging)"), and the wands, staffs and rods carried
+ * (`charges` of a known wand or staff; `charging` for a known rod without
+ * the mana for its tip yet). `fail` is the chance in a hundred of failing,
+ * as tome2 rolls it now.
+ */
+static void json_magic_items(JsonWriter &w)
+{
+	auto const &k_info = game->edit_data.k_info;
+	w.key("items").begin_array();
+	for (int i = 0; i < INVEN_TOTAL; i++)
+	{
+		object_type *o_ptr = &p_ptr->inventory[i];
+		if (i == INVEN_PACK || !o_ptr->k_ptr) continue;
+		auto const flags = object_flags(o_ptr);
+		bool const known = object_known_p(o_ptr);
+		int const how = o_ptr->tval == TV_EGG ? 0 : activates(o_ptr, flags);
+		if (how)
+		{
+			w.begin_object();
+			json_item_use(w, i, o_ptr, "A");
+			w.field("effect", item_activation(o_ptr));
+			if (o_ptr->timeout) w.field("charging", 1);
+			if (i < INVEN_WIELD && how == 1) w.field("wear", 1);
+			w.field("fail", device_fail(activation_level(o_ptr), flags));
+			w.end_object();
+		}
+		if (i >= INVEN_WIELD) continue;
+		if (o_ptr->tval == TV_WAND || o_ptr->tval == TV_STAFF)
+		{
+			w.begin_object();
+			json_item_use(w, i, o_ptr, o_ptr->tval == TV_WAND ? "a" : "u");
+			if (known)
+			{
+				w.field("charges", o_ptr->pval);
+				stick_mode_of const device(o_ptr);
+				int chance = spell_chance_device(spell_at(o_ptr->pval2));
+				if (flags & TR_EASY_USE) chance /= 3;
+				w.field("fail", chance);
+			}
+			w.end_object();
+		}
+		else if (o_ptr->tval == TV_ROD_MAIN && o_ptr->pval != SV_ROD_NOTHING)
+		{
+			w.begin_object();
+			json_item_use(w, i, o_ptr, "z");
+			if (known)
+			{
+				auto const &tip = k_info.at(lookup_kind(TV_ROD, o_ptr->pval));
+				int const cost = (flags & TR_CHEAPNESS) ? tip->pval / 2 : tip->pval;
+				if (o_ptr->timeout < cost) w.field("charging", 1);
+				w.field("fail", device_fail(tip->level, flags));
+			}
+			w.end_object();
+		}
+	}
+	w.end_array();
+}
+
+/*
  * Returns the spells the player can see in the books and spell-holding
- * items carried (as tome2's spell lists show them), and the skills and
- * abilities that can be activated, in the order of tome2's menu.
+ * items carried (as tome2's spell lists show them), the skills and
+ * abilities that can be activated, in the order of tome2's menu, tome2's
+ * powers, and the items used as magic (json_magic_items).
  */
 EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 {
@@ -2512,6 +2641,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_spells_json()
 		w.end_object();
 	}
 	w.end_array();
+	json_magic_items(w);
 	w.end_object();
 	return json.c_str();
 }

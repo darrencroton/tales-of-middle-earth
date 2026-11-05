@@ -140,7 +140,7 @@ export const HELP: readonly HelpGroup[] = [
           'These keep their places, so your thumb learns them:',
           {
             terms: [
-              ['Again', 'Named for what it repeats: your last spell or power, or for heroes who do not cast, the last thing you aimed. It aims at the nearest foe.'],
+              ['Again', 'Named for what it repeats: your last spell, power, device or activation, or for heroes who do not cast, the last thing you aimed. It aims at the nearest foe.'],
               ['Cast or Powers', 'Your spells and powers.'],
               ['Fire', 'Shoot the nearest foe, while a bow, sling or crossbow is wielded.'],
               ['Items', 'Your pack, your equipment and what lies at your feet.'],
@@ -257,7 +257,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'Blows, missiles, and choosing your battles.',
         keywords: 'attack melee combat missile shoot fire throw bow arrow target foe enemy creature monster',
         body: [
-          'Walk into a creature, tap it beside you, or tap *Attack* to strike. *Fire* shoots the nearest foe with your launcher; throwing, wands and *Choose target* (the foes your spells and missiles can reach, nearest first) are under *More*. *Fire* and the quick spell keep to the target you chose while it is in reach.',
+          'Walk into a creature, tap it beside you, or tap *Attack* to strike. *Fire* shoots the nearest foe with your launcher; wands, rods and what your gear activates are under *Powers*; throwing and *Choose target* (the foes your spells and missiles can reach, nearest first) are under *More*. *Fire* and the quick spell keep to the target you chose while it is in reach.',
           'Press and hold a creature before you fight it: once you have met its kind, its description tells you what it can do.',
           {
             list: [
@@ -397,7 +397,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Rods', 'Zap them. They recharge by themselves.'],
               ['Food', 'Eat when hungry.'],
               ['Ammunition', 'Arrows, bolts and shots, fired from the quiver by a launcher.'],
-              ['Artifacts', 'Unique treasures, often with powers of their own.'],
+              ['Artifacts', 'Unique treasures, often with powers of their own: what one activates is listed under *Powers*, with the wands, staffs and rods you carry.'],
             ],
           },
         ],
@@ -489,7 +489,7 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Magic and powers',
         icon: '✦',
         summary: 'Spells, books, mana and powers.',
-        keywords: 'magic spell cast school book mana fail failure power powers again device wand golem control release mind steal',
+        keywords: 'magic spell cast school book mana fail failure power powers again device wand staff rod activate activation artifact recharge charges golem control release mind steal',
         body: [
           'Spells are written in books and belong to schools: Mana, Fire, Water, Air, Earth, Nature, Conveyance, Divination, Temporal, Mind, Meta and more. Your skill in a school decides which of its spells you can cast and how well.',
           '*Cast* opens your magic: what you used recently first, then every spell in the books you carry, then your *magic arts* (Necromancy, Mindcraft, Copy a spell and the like). Tap ⓘ beside a spell to read what it does. *Again* on the toolbar repeats your last spell at the nearest foe.',
@@ -497,7 +497,7 @@ export const HELP: readonly HelpGroup[] = [
           '*Powers* are gifts of your race, your class, what you wear, a form you have taken or what has changed you, each listed under what grants it. Below them are *techniques* your skills and abilities bring: piercing shots, mimicry, forging ammunition and others. Magic and Powers are the two tabs of one panel, both headed by what you used recently: the toolbar button (*Cast*, or *Powers* for heroes who do not cast) and More → *Magic* or *Powers* open it.',
           'Some classes have magic of their own: songs, mindcraft, necromancy, thaumaturgy and others.',
           'Some spells put another creature under your control: *Fire Golem* makes one from a torch or lantern, and *Mind Steal* takes a foe. While you control it, a tap on the map moves the creature a step that way, and your own actions wait. More offers its powers, its pack and *Release creature*. The toolbar\'s first button, *Release*, lets it go for now: it stays where it is, and you take control of it again when you cast Fire Golem, load the game or come back to its level.',
-          'Wands, staffs and rods let anyone use magic; skill with magic devices makes them work better.',
+          '*Powers* also lists your *gear*: the powers what you wear grants and what activates, each with what it does and how often, then your *devices*, the wands, staffs and rods you carry, with their charges. A tap uses it; ⓘ opens the item. Something still recharging, out of charges or needing to be worn first is dimmed and says so. Wands, staffs and rods let anyone use magic; skill with magic devices makes them, and activations, work better.',
         ],
         see: ['gods', 'skills'],
       },

@@ -428,7 +428,7 @@ describe('targeting', () => {
   });
 });
 
-const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', feat: 1, beside: false, pray: 0, runes: false, steals: false, magic: false, powers: false, controlling: false, town: false, level: 1, targets: false };
+const COMMANDS: CommandContext = { where: 'dungeon', underfoot: '', feat: 1, beside: false, pray: 0, runes: false, steals: false, magic: false, powers: false, magicItems: false, controlling: false, town: false, level: 1, targets: false };
 
 describe('actions', () => {
   it('prefixes commands with a keymap bypass', () => {

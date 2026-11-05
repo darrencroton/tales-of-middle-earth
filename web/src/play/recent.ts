@@ -1,8 +1,7 @@
 import { KEY_BACKSLASH as BACKSLASH, KEY_ESCAPE, keyCodes, typedAnswer } from '../input/keys.ts';
-import type { ItemState, SpellState } from '../render/snapshot.ts';
-import { useAction, type ItemAction } from './items.ts';
+import type { InventoryState, ItemState, MagicItem, SpellState } from '../render/snapshot.ts';
+import { INVEN_WIELD, useAction, type ItemAction, type ItemPlace } from './items.ts';
 import { bracketChoices, classifyPrompt } from './prompts.ts';
-import { stripArticle } from './text.ts';
 import type { Macro, MacroScreen } from './macro.ts';
 
 /** Something the player does often, kept so it can be done again in one tap. */
@@ -14,8 +13,16 @@ export type RecentAction =
    * the labels picked; "#x" stands for an unlabelled choice made with key x.
    */
   | { kind: 'path'; command: 'm' | 'U'; steps: string[]; aimed?: boolean }
-  /** An item used from the pack, by kind so it survives the stack changing size. */
-  | { kind: 'item'; command: string; verb: string; tval: number; sval: number; name: string; aimed?: boolean };
+  /**
+   * An item used (from the pack, or activated where it is worn): by its kind
+   * and, where the kind does not say what it does (activations, rods), its
+   * name, so it survives the stack changing size and never finds another
+   * item; `i` is where it was, preferred while the same item is there.
+   */
+  | { kind: 'item'; command: string; verb: string; tval: number; sval: number; name: string; i?: number; aimed?: boolean };
+
+/** Something to use as a recent item: what `itemRecent` and `recentItem` read of an item. */
+type ItemKind = Pick<ItemState, 'i' | 'tval' | 'sval' | 'base'>;
 
 const MAX_RECENT = 5;
 
@@ -78,21 +85,31 @@ export function hasMagic(spells: SpellState | null): boolean {
   return !!spells?.books.length || magicArts(spells).length > 0;
 }
 
-/** The hero has a power (from race, class, gear, corruption or form) or a technique to use. */
+/** The hero has a power (from race, class, gear, corruption or form), an item to use as magic or a technique. */
 export function hasPowers(spells: SpellState | null): boolean {
-  return !!spells?.bonus.length || techniques(spells).length > 0;
+  return !!spells?.bonus.length || !!spells?.items.length || techniques(spells).length > 0;
 }
 
 /* Techniques that only check or switch something, not worth a toolbar button of their own. */
 const MINOR_TECHNIQUES: ReadonlySet<string> = new Set(['Check dodge chance', 'Change melee mode']);
 
-/** The hero has a power, or a technique that acts (not only a check or a switch), worth the toolbar's Powers button. */
+/** The hero has a power, an item to use as magic, or a technique that acts (not only a check or a switch), worth the toolbar's Powers button. */
 export function hasActivePowers(spells: SpellState | null): boolean {
-  return !!spells?.bonus.length || techniques(spells).some((t) => !MINOR_TECHNIQUES.has(t.label));
+  return !!spells?.bonus.length || !!spells?.items.length || techniques(spells).some((t) => !MINOR_TECHNIQUES.has(t.label));
 }
 
-/* Item commands that ask for a direction. */
-const AIMED_ITEM_COMMANDS = new Set(['a', 'z', 'v']);
+/*
+ * Item commands that use an item as magic: activate it, aim a wand, use a
+ * staff, zap a rod. Its kind does not say what it does (an ego's or
+ * artifact's activation, a rod's tip, the spell of a wand or staff), so its
+ * name must match too.
+ */
+const MAGIC_ITEM_COMMANDS: ReadonlySet<string> = new Set(['A', 'a', 'u', 'z']);
+
+/** A spell, a power or an item used as magic: what the Magic panel's Recent offers, and the quick repeat of a hero who uses magic. */
+export function isAbility(entry: RecentAction): boolean {
+  return entry.kind !== 'item' || MAGIC_ITEM_COMMANDS.has(entry.command);
+}
 
 export function recentKey(entry: RecentAction): string {
   switch (entry.kind) {
@@ -101,7 +118,7 @@ export function recentKey(entry: RecentAction): string {
     case 'path':
       return `path:${entry.command}:${entry.steps.join('/')}`;
     case 'item':
-      return `item:${entry.command}:${entry.tval}:${entry.sval}`;
+      return `item:${entry.command}:${entry.tval}:${entry.sval}${MAGIC_ITEM_COMMANDS.has(entry.command) ? `:${entry.name}` : ''}`;
   }
 }
 
@@ -111,17 +128,22 @@ export function validRecent(entry: unknown): entry is RecentAction {
   if (!e || typeof e !== 'object') return false;
   if (e.kind === 'spell') return typeof e.name === 'string';
   if (e.kind === 'path') return (e.command === 'm' || e.command === 'U') && Array.isArray(e.steps) && e.steps.length > 0;
-  if (e.kind === 'item') return typeof e.command === 'string' && typeof e.tval === 'number';
+  if (e.kind === 'item') return typeof e.command === 'string' && typeof e.tval === 'number' && typeof e.sval === 'number' && typeof e.name === 'string';
   return false;
 }
 
-/** The list with `entry` moved (or added) to the front, keeping at most `max` of each kind. */
+/**
+ * The list with `entry` moved (or added) to the front, keeping at most `max`
+ * of each kind. Once aimed, it stays so: a use that failed before tome2 asked
+ * where says nothing of it.
+ */
 export function rememberRecent(list: readonly RecentAction[], entry: RecentAction, max = MAX_RECENT): RecentAction[] {
   const key = recentKey(entry);
-  const next = [entry, ...list.filter((e) => recentKey(e) !== key)];
+  const aimed = entry.aimed || list.some((e) => recentKey(e) === key && e.aimed);
+  const next = [{ ...entry, ...(aimed ? { aimed } : {}) }, ...list.filter((e) => recentKey(e) !== key)];
   const counts = new Map<string, number>();
   return next.filter((e) => {
-    const group = e.kind === 'item' ? 'item' : 'magic';
+    const group = isAbility(e) ? 'magic' : 'item';
     const n = (counts.get(group) ?? 0) + 1;
     counts.set(group, n);
     return n <= max;
@@ -146,78 +168,94 @@ export function recentLabel(entry: RecentAction): string {
   }
 }
 
-/** A second line for a recent action: where it comes from. */
-export function recentSource(entry: RecentAction): string {
-  if (entry.kind === 'path') {
-    const named = namedSteps(entry.steps);
-    if (named.length > 1) return entry.command === 'm' ? skillActionName(named[0]) : displayName(named[0]);
-    return entry.command === 'U' ? 'Power' : isMagicArt(entry.steps[0]) ? 'Magic' : 'Technique';
-  }
-  return entry.kind === 'item' ? entry.verb : 'Spell';
+/** A second line for a recent menu path: where it comes from. */
+export function recentSource(entry: Extract<RecentAction, { kind: 'path' }>): string {
+  const named = namedSteps(entry.steps);
+  if (named.length > 1) return entry.command === 'm' ? skillActionName(named[0]) : displayName(named[0]);
+  return entry.command === 'U' ? 'Power' : isMagicArt(entry.steps[0]) ? 'Magic' : 'Technique';
 }
 
-/** An item's name without its count, article or charges, for labels ("3 Potions of X" → "Potions of X"). */
-export function itemBaseName(name: string): string {
-  return stripArticle(name.replace(/^\d+ /, '')).replace(/ \(\d+ charges?\)/, '');
+type ItemRecent = Extract<RecentAction, { kind: 'item' }>;
+type Carried = Pick<InventoryState, 'pack' | 'equip'>;
+
+/** Using an item again: `command` with `verb` (its button's label) on this item. */
+export function itemRecent(command: string, verb: string, item: ItemKind): ItemRecent {
+  return { kind: 'item', command, verb, tval: item.tval, sval: item.sval ?? -1, name: item.base, i: item.i };
 }
 
-export function itemRecent(command: string, verb: string, item: Pick<ItemState, 'tval' | 'sval' | 'name'>): RecentAction {
-  return {
-    kind: 'item',
-    command,
-    verb,
-    tval: item.tval,
-    sval: item.sval ?? -1,
-    name: itemBaseName(item.name),
-    aimed: AIMED_ITEM_COMMANDS.has(command),
-  };
+/**
+ * The item a recent item action refers to and where it is, if still carried
+ * (an activation also where it is worn, the worn one first): the one at its
+ * last place when that is still it, else the first of its kind.
+ */
+export function recentItem(entry: ItemRecent, carried: Carried): { item: ItemState; place: ItemPlace } | null {
+  const named = MAGIC_ITEM_COMMANDS.has(entry.command);
+  const fits = (i: Partial<ItemKind>) => i.tval === entry.tval && (i.sval ?? -1) === entry.sval && (!named || i.base === entry.name);
+  const worn = entry.command === 'A' ? carried.equip.filter((slot): slot is typeof slot & ItemState => !slot.empty && !!slot.name && fits(slot)) : [];
+  const found = [...worn, ...carried.pack.filter(fits)];
+  const item = found.find((i) => i.i === entry.i) ?? found[0];
+  return item ? { item, place: item.i >= INVEN_WIELD ? 'equip' : 'pack' } : null;
 }
 
-/** The pack item a recent item action refers to, if one is still carried. */
-export function recentItem(entry: Extract<RecentAction, { kind: 'item' }>, pack: readonly ItemState[]): ItemState | null {
-  return pack.find((i) => i.tval === entry.tval && (i.sval ?? -1) === entry.sval) ?? null;
-}
-
-/** The item action a recent item entry repeats (its use, or a throw). */
-export function recentItemAction(entry: Extract<RecentAction, { kind: 'item' }>, item: Pick<ItemState, 'tval'>): ItemAction | null {
+/** The item action a recent item entry repeats (its use, an activation or a throw). */
+export function recentItemAction(entry: ItemRecent, item: Pick<ItemState, 'tval'>): ItemAction | null {
   if (entry.command === 'v') return { id: 'throw', label: 'Throw', command: 'v', quantity: 'one' };
+  if (entry.command === 'A') return { id: 'activate', label: 'Activate', command: 'A' };
   const use = useAction(item.tval);
   return use && use.command === entry.command ? use : null;
 }
 
-/** Whether a recent spell or power can be used now (the spell is in a book carried, the skill or power is known). */
-function recentUsable(entry: RecentAction, spells: SpellState | null): boolean {
+/** How the hero can use an item as magic now, for a recent item action that is one (`web_spells_json`'s items). */
+export function recentMagicItem(entry: ItemRecent, spells: SpellState | null, carried: Carried): MagicItem | null {
+  if (!MAGIC_ITEM_COMMANDS.has(entry.command)) return null;
+  const found = recentItem(entry, carried);
+  return (found && spells?.items.find((m) => m.i === found.item.i && m.command === entry.command)) ?? null;
+}
+
+/** Whether a recent action can be had now: the spell is in a book carried, the skill or power is known, the item is carried (and usable as magic, when used so). */
+function recentUsable(entry: RecentAction, spells: SpellState | null, carried: Carried): boolean {
   if (entry.kind === 'spell') return !!spells?.books.some((b) => b.spells.some((s) => s.ok && s.name === entry.name));
   if (entry.kind === 'path' && entry.command === 'm') return !!spells?.powers.some((p) => p.label === entry.steps[0]);
   if (entry.kind === 'path') return !!spells?.bonus.some((p) => p.name === entry.steps[0]);
-  return false;
+  if (MAGIC_ITEM_COMMANDS.has(entry.command)) return !!recentMagicItem(entry, spells, carried);
+  const found = recentItem(entry, carried);
+  return !!found && !!recentItemAction(entry, found.item);
 }
 
-/** Spells and powers recently used that can be used now. */
-export function usableRecents(recents: readonly RecentAction[], spells: SpellState | null): RecentAction[] {
-  return recents.filter((e) => recentUsable(e, spells));
+/** Spells, powers and items used as magic recently that the hero still has. */
+export function usableRecents(recents: readonly RecentAction[], spells: SpellState | null, carried: Carried): RecentAction[] {
+  return recents.filter((e) => isAbility(e) && recentUsable(e, spells, carried));
 }
 
 /**
- * The toolbar's quick repeat. For a hero who uses magic, the last spell or
- * power that can be used again, or before any, the first spell in their
- * books (or their first race or class power); for others, the last aimed
- * thing they did that can be done again (a wand or rod, a thrown flask, a power).
+ * Why an item cannot be used as magic now, as tome2 would refuse it or spend
+ * a turn for nothing: worn only, no charges, recharging. `name` is what the
+ * player calls it.
+ */
+export function magicItemRefusal(item: MagicItem, name: string): string | null {
+  if (item.wear) return `Wear the ${name} to activate it.`;
+  if (item.charges === 0) return `The ${name} has no charges left.`;
+  if (item.charging) return `The ${name} is still ${item.command === 'A' ? 'recharging' : 'charging'}.`;
+  return null;
+}
+
+/**
+ * The toolbar's quick repeat. For a hero who uses magic, the last spell,
+ * power or item used as magic that can be used again, or before any, the
+ * first spell in their books (or their first race or class power); for
+ * others, the last aimed thing they did that can be done again (a wand or
+ * rod, an activation, a thrown flask, a power).
  */
 export function quickRecent(
   recent: readonly RecentAction[],
   spells: SpellState | null,
-  pack: readonly ItemState[],
+  carried: Carried,
   usesMagic: boolean,
   level: number,
 ): RecentAction | null {
-  const usable = (e: RecentAction) => {
-    if (e.kind !== 'item') return recentUsable(e, spells);
-    const item = recentItem(e, pack);
-    return !!item && !!recentItemAction(e, item);
-  };
+  const usable = (e: RecentAction) => recentUsable(e, spells, carried);
   if (usesMagic) {
-    const magic = recent.find((e) => e.kind !== 'item' && usable(e));
+    const magic = recent.find((e) => isAbility(e) && usable(e));
     if (magic) return magic;
     const first = spells?.books.flatMap((b) => b.spells).find((spell) => spell.ok);
     if (first) return { kind: 'spell', name: first.name };
@@ -232,14 +270,14 @@ export const NO_TARGET = 'No target in sight.';
 
 /**
  * Why a recent spell, power or item cannot be done now: too little mana for
- * the spell (tome2 would only let it be tried at great risk), a wand or
- * staff out of charges, or, for the toolbar's one tap (`needTarget`),
- * nothing in sight to aim it at.
+ * the spell (tome2 would only let it be tried at great risk), an item that
+ * cannot be used as magic now (`magicItemRefusal`), or, for the toolbar's
+ * one tap (`needTarget`), nothing in sight to aim it at.
  */
 export function recentBlocked(
   entry: RecentAction,
   spells: SpellState | null,
-  pack: readonly ItemState[],
+  carried: Carried,
   needTarget: boolean,
   targetInSight: boolean,
 ): string | null {
@@ -247,8 +285,10 @@ export function recentBlocked(
     const spell = spells?.books.flatMap((b) => b.spells).find((s) => s.name === entry.name);
     if (spell?.short) return `Not enough ${spell.piety ? 'piety' : 'mana'} for ${entry.name}.`;
   }
-  if (entry.kind === 'item' && /\(0 charges\)/.test(recentItem(entry, pack)?.name ?? '')) {
-    return `The ${entry.name} is out of charges.`;
+  if (entry.kind === 'item') {
+    const item = recentMagicItem(entry, spells, carried);
+    const why = item ? magicItemRefusal(item, entry.name) : entry.command === 'z' && recentItem(entry, carried) ? `Attach a rod tip to the ${entry.name} first.` : null;
+    if (why) return why;
   }
   if (needTarget && entry.aimed && !targetInSight) return NO_TARGET;
   return null;
@@ -379,15 +419,17 @@ export function recentMagicMacro(entry: RecentAction, aim = false): Macro | null
 
 /**
  * Follows the player through tome2's menus after `m` or `U` (typed keys or
- * taps on its lists and cards) and reports what was done once tome2 asks
- * for a direction or is back at the command prompt, so it joins the
- * recent list and is known to be aimed or not.
+ * taps on its lists and cards), and an item used from a button, and reports
+ * what was done once tome2 asks for a direction or is back at the command
+ * prompt, so it joins the recent list and is known to be aimed or not.
  */
 export class CastWatcher {
   private command: 'm' | 'U' | null = null;
   private steps: string[] = [];
   private spell: string | null = null;
   private spellMode = false;
+  /* An item being used from a button, reported (aimed or not) as a spell is. */
+  private item: ItemRecent | null = null;
 
   /** The spell being cast, once it is known. */
   get casting(): string | null {
@@ -396,10 +438,17 @@ export class CastWatcher {
 
   /** A command that opens tome2's menus was given (or a recent one is being replayed). */
   begin(command: 'm' | 'U', steps: readonly string[] = [], spell: string | null = null): void {
+    this.item = null;
     this.command = command;
     this.steps = [...steps];
     this.spell = spell;
     this.spellMode = spell !== null;
+  }
+
+  /** An item is being used from a button. */
+  useItem(entry: ItemRecent): void {
+    this.command = null;
+    this.item = entry;
   }
 
   /** Called with each single key the player sends and the screen it answers. */
@@ -409,11 +458,12 @@ export class CastWatcher {
       if (ch === 'm' || ch === 'U') this.begin(ch);
       return;
     }
-    if (!this.command) return;
     if (key === KEY_ESCAPE) {
       this.command = null;
+      this.item = null;
       return;
     }
+    if (!this.command) return;
     if (this.spellMode) {
       if (SPELL_PROMPT.test(prompt)) this.spell = listedChoices(screen, SPELL_NAME_WIDTH).find((c) => c.key === ch)?.label ?? this.spell;
       return;
@@ -429,13 +479,15 @@ export class CastWatcher {
 
   /** Called whenever tome2 waits; returns the finished action once it asks for a direction or is back at the command prompt. */
   idle(prompt: string, atCommand: boolean): RecentAction | null {
-    if (!this.command) return null;
+    if (!this.command && !this.item) return null;
     const kind = classifyPrompt(prompt);
     const aimed = kind === 'aim' || kind === 'direction';
     if (!aimed && !atCommand) return null;
-    const command = this.command;
+    const { command, item } = this;
     this.command = null;
+    this.item = null;
+    if (item) return { ...item, aimed };
     if (this.spellMode) return this.spell ? { kind: 'spell', name: this.spell, aimed } : null;
-    return this.steps.length ? { kind: 'path', command, steps: this.steps, aimed } : null;
+    return command && this.steps.length ? { kind: 'path', command, steps: this.steps, aimed } : null;
   }
 }

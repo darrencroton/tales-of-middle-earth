@@ -95,12 +95,12 @@ export interface Cue {
   distance?: number;
 }
 
-/** Messages newer than the previous state, oldest first, without repeat counts. */
+/** Messages newer than the previous state, oldest first, without tome2's count of a repeated message ("… <2x>"). */
 export function freshMessages(prev: Pick<GameState, 'messageTotal' | 'messages'> | null, next: Pick<GameState, 'messageTotal' | 'messages'>): string[] {
   if (!prev) return [];
   return newMessages(prev, next)
     .reverse()
-    .map((m) => m.text.replace(/\s*\(x\d+\)\s*$/, ''));
+    .map((m) => m.text.replace(/\s*<\d+x>$/, ''));
 }
 
 const ELEMENT_WORDS: [RegExp, Element][] = [

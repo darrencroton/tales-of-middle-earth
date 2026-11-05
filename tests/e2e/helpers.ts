@@ -275,6 +275,29 @@ export async function wizardCommand(page: Page, key: string, arg?: number): Prom
   await waitAtCommand(page);
 }
 
+/**
+ * Uses tome2's wizard commands (page loaded with ?wizard) to make an item and
+ * pick it up: an artifact (`C`) or any object (`-`) by its index in a_info or
+ * k_info.
+ */
+export async function wizardGive(page: Page, key: 'C' | '-', index: number): Promise<void> {
+  let text = await openDebugMenu(page);
+  await sendText(page, key);
+  text = await waitForSettle(page, text, 5_000);
+  await sendText(page, `${index}\r`);
+  await waitForSettle(page, text, 5_000);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  const floor = () => page.evaluate(() => window.__tome!.engine.inventory()!.floor.length);
+  expect(await floor()).toBeGreaterThan(0);
+  text = await screenText(page);
+  await sendText(page, '\\g');
+  text = await waitForSettle(page, text, 5_000);
+  if (/Floor:/.test(await firstRow(page))) await sendText(page, 'a');
+  await dismissMore(page);
+  await waitAtCommand(page);
+}
+
 /** Uses tome2's wizard commands (page loaded with ?wizard) to summon a creature (by r_info index, asleep) beside the hero; `friendly` makes it a pet. */
 export async function summonBeside(page: Page, raceIndex: number, friendly = false): Promise<void> {
   await wizardCommand(page, friendly ? 'N' : 'n', raceIndex);

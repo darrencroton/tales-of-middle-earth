@@ -21,11 +21,14 @@ Map (toolbar, HUD, gestures)
 │   │                             ├── How many?     card over Item (Drop, Destroy)           depth 3
 │   │                             └── Inscribe      card at the top (text field)             depth 3
 │   ├── Cast / Powers ─────── Magic · Powers       panel, two tabs, each headed by Recent:  depth 1
-│   │                         Magic: books, Magic arts · Powers: by race, class, form, gear, corruption; Techniques
-│   │                         └── Spell / power     card over the panel (figures, needs; Cast / Use) depth 2
+│   │                         Magic: books, Magic arts · Powers: by race, class, form; Gear (its powers, what
+│   │                         activates), Devices (wands, staffs, rods); corruption; Techniques — a tap uses it
+│   │                         ├── Spell / power     card over the panel (figures, needs; Cast / Use) depth 2
+│   │                         └── Item              ⓘ on gear or a device: its item card (Activate, Aim, Zap…) depth 2
 │   ├── More ──────────────── Commands             panel: commands by intent (section 7)   depth 1
 │   │   ├── Look ──────────── look mode: banner + look card on the map (each creature and item → its card)
 │   │   ├── Magic, Powers ─── the Magic panel on that tab, in the same frame (Back returns to Commands)
+│   │   ├── Activate or zap ─ the Powers tab at its first gear or device, likewise
 │   │   ├── Kneel at altar ── the altar's god card (Worship; Melkor's offerings for his own; why not, else; a follower's prayers carried)
 │   │   ├── item commands (Drink potion, Read scroll…) → tome2 item prompt (TermView panel, tabs)
 │   │   ├── Choose target ─── card: the foes in reach, nearest first → tome2 targets the one tapped
@@ -321,7 +324,8 @@ with why, and journeys are refused.
 | `x` | engrave a rune | More, once a rune is learnt |
 | `l` `M` `L` `*` | look, level map, locate, target | long-press; More (*Look*, *Level map*, *Choose target*: the foes in reach as a card); a foe's card (*Target*); dragging the map |
 | `i` `e` `w` `t` `d` `k` `{` `}` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |
-| `q` `r` `E` `a` `u` `z` `A` `F` `v` `f` | use items, fire, throw | item cards, *Recently used*, Again, Fire, gear suggestions; More → Use an item / Fight and magic |
+| `q` `r` `E` `F` `v` `f` | use items, fire, throw | item cards, *Recently used*, Again, Fire, gear suggestions; More → Use an item / Fight and magic |
+| `a` `u` `z` `A` | aim a wand, use a staff, zap a rod, activate | Powers → Gear and Devices (ready, charges, failure, effect; dimmed with why), its Recent, Again; item cards; More → *Activate or zap* (the Powers tab) |
 | `b` `I` | browse a book, examine an item | the item's card (a book's card lists its spells, each with its own card) |
 | `h` `K` | butcher a corpse, cure meat | the corpse's or meat's card |
 | `m` `U` `p` | magic and skills, powers, pray | Cast/Powers; More (*Magic*, *Powers*, *Pray*/*Stop praying* for a god's follower): the Magic panel's tabs |
@@ -341,7 +345,8 @@ phone), `^W` `^A` (wizard and debug modes: `?wizard` is for testing). The
 Keyboard and Ctrl buttons at the foot of More still reach any of them.
 
 Removed from More: *Search* (`s`, which this tome2 no longer has), *Bonus
-power* (the Powers tab), and the inventory, equipment, character,
+power* (the Powers tab), *Aim wand*, *Use staff*, *Zap rod* and *Activate*
+(the Powers tab's Gear and Devices, reached by *Activate or zap*), and the inventory, equipment, character,
 skills, abilities, knowledge, messages and save buttons that repeated Items
 and the Menu.
 
