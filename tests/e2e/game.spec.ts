@@ -356,6 +356,24 @@ test('a hero in Adventure mode returns from death twice, and the third death is 
   await waitForEngine(page);
   await createCharacter(page, 'Doomed');
   await jumpToLevel(page, 1);
+  /* The hero falls in open ground, so there is somewhere off the wyrm's reach to return to (a staircase can sit in a dead end). */
+  const openNeighbours = () =>
+    page.evaluate(() => {
+      const tome = window.__tome!;
+      const snap = tome.engine.snapshot()!;
+      const features = tome.engine.features();
+      let open = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const x = snap.px + dx;
+          const y = snap.py + dy;
+          if ((dx || dy) && x >= 0 && y >= 0 && x < snap.width && y < snap.height && (features[snap.feat[y * snap.width + x]]?.flags ?? 0) & 4) open++;
+        }
+      }
+      return open;
+    });
+  for (let attempt = 0; attempt < 8 && (await openNeighbours()) < 5; attempt++) await wizardCommand(page, 'p');
+  expect(await openNeighbours(), 'no open ground could be reached').toBeGreaterThanOrEqual(5);
   const hero = () =>
     page.evaluate(() => {
       const tome = window.__tome!;
@@ -376,37 +394,15 @@ test('a hero in Adventure mode returns from death twice, and the third death is 
     return { x: snap.px, y: snap.py };
   });
   const fell = await where();
-  const around = () => page.evaluate(() => {
-    const tome = window.__tome!;
-    const snap = tome.engine.snapshot()!;
-    const rows: string[] = [];
-    for (let y = snap.py - 5; y <= snap.py + 5; y++) {
-      const row: string[] = [];
-      for (let x = snap.px - 7; x <= snap.px + 7; x++) row.push(x < 0 || y < 0 || x >= snap.width || y >= snap.height ? '--' : String(snap.feat[y * snap.width + x]).padStart(2, '0'));
-      rows.push(row.join(' '));
-    }
-    return { rows, monsters: tome.engine.gameState()!.monsters?.map((m) => [m.name, m.x, m.y]) };
-  });
-  const atDeath = await around();
 
-  /*
-   * Back where they fell, whole again, and set down off the cell beside the wyrm (which may close in
-   * again before the first command): the kept level is as it was.
-   */
+  /* Back where they fell, whole again, and set down off the cell beside the wyrm (which may close in again before the first command): the kept level is as it was. */
   await between.locator('.between-choice.primary').click();
   await waitAtCommand(page);
   expect(await hero()).toMatchObject({ lives: 2, dead: 0, depth: 1 });
   const back = await hero();
   expect(back.chp).toBe(back.mhp);
   await expect(page.locator('.feel-banner')).toContainText('Returned from death');
-  const diag = await page.evaluate(() => {
-    const tome = window.__tome!;
-    const state = tome.engine.gameState(20)!;
-    return { pos: [tome.engine.snapshot()!.px, tome.engine.snapshot()!.py], monsters: state.monsters?.map((m) => [m.name, m.x, m.y, m.status]), messages: state.messages?.map((m) => m.text), place: tome.engine.place(), items: tome.engine.spells()?.items, recent: localStorage.getItem('tome2mobile.recent.v1') };
-  });
-  const afterReturn = await around();
-  console.log(`DIAG ${JSON.stringify({ fell, atDeath, afterReturn, ...diag })}`);
-  expect(await where(), `DIAG ${JSON.stringify({ fell, atDeath, afterReturn, ...diag })}`).not.toEqual(fell);
+  expect(await where()).not.toEqual(fell);
   const wyrmReach = await page.evaluate(() => {
     const tome = window.__tome!;
     const snap = tome.engine.snapshot()!;
