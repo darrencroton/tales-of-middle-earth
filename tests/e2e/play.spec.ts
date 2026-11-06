@@ -620,9 +620,9 @@ test('a Demonologist sees Doom Shield take hold, what it does and the turns it h
   const cast = (await shield())!;
   expect(cast.armour).toBeLessThan(0);
 
-  /* A blessing is two letters over a full bar in the strip; its card says what it does and how long it has. */
+  /* A blessing alone in the strip shows its name over a full bar; its card says what it does and how long it has. */
   const chip = page.locator('#hud .effect-tile.boon[data-id="shield"]');
-  await expect(chip).toHaveText('DS');
+  await expect(chip).toHaveText('Doom shield');
   await expect(chip).toHaveAttribute('aria-label', `Doom shield, ${cast.turns} turns left`);
   const left = () => chip.locator('.effect-bar').evaluate((bar) => parseFloat((bar as HTMLElement).style.getPropertyValue('--left')));
   expect(await left()).toBe(100);

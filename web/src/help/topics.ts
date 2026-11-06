@@ -341,7 +341,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'Poison, cuts, fear, hunger; shields, haste and other blessings.',
         keywords: 'status effect effects buff buffs debuff duration turns left poison poisoned cut bleeding stun stunned confused blind afraid fear paralysed paralyzed hallucinating slow fast haste hasted hungry hunger weak food eat eating starving shield doom blessing blessed heroism resistance song sustained fading',
         body: [
-          'Effects on you show as small tiles in the strip below your health, two letters each: ailments in red (bright and glowing when dangerous), blessings such as a shield, haste or resistance in green, and what you keep going (a song, prayer) in blue. The bar under each empties as it runs down, and a blessing breathes gently in its last few turns. Its name floats over your hero as it begins and fades.',
+          'Effects on you show as tiles in the strip below your health: ailments in red (bright and glowing when dangerous), blessings such as a shield, haste or resistance in green, and what you keep going (a song, prayer) in blue. With a few they show their names; as more gather, long names shorten (*Doom* for Doom shield, *rFire* for fire resistance), then all go to two letters, so the creatures around you stay in view. The bar under each empties as it runs down, and a blessing breathes gently in its last few turns. Its name floats over your hero as it begins and fades.',
           'Tap a tile for what it does, how strong it is, the turns it has left and what ends it; the character summary lists them all by name. Most ailments wear off with time; potions cure them sooner.',
           'A turn here is a turn at normal speed: hasted, you act more than once in each.',
           {
