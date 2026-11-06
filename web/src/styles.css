@@ -3937,16 +3937,17 @@ html.keyboard-tight .prompt-card.text .card-title {
   gap: 0.25rem;
 }
 
-/* An effect in the strip: two letters in its kind's colour over a bar that empties as it runs down. */
+/* An effect in the strip: its label in its kind's colour over a bar that empties as it runs down; two letters when room is short. */
 .effect-tile {
   --tone: var(--boon);
   position: relative;
   display: grid;
   place-items: center;
   align-self: center;
-  width: 2.3rem;
+  min-width: 2.3rem;
   height: calc(var(--touch) * 0.8);
-  padding: 0 0 0.2rem;
+  padding: 0 0.5rem 0.2rem;
+  white-space: nowrap;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
   border-radius: 6px;
@@ -3957,6 +3958,11 @@ html.keyboard-tight .prompt-card.text .card-title {
   letter-spacing: 0.02em;
   cursor: pointer;
   touch-action: manipulation;
+}
+
+.effect-group[data-tier="abbr"] .effect-tile {
+  width: 2.3rem;
+  padding-inline: 0;
 }
 
 .effect-tile.bane {

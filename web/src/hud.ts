@@ -32,6 +32,14 @@ const TRAIL_HOLD_MS = 300;
 const CRITICAL = 0.25;
 
 const VISIBLE_MESSAGES = 3;
+/* Effect labels, longest first, and the room their tiles may take in the strip. */
+const EFFECT_TIERS = ['full', 'short', 'abbr'] as const;
+const EFFECT_SHARE = 0.45;
+const EFFECT_ROWS = 3;
+/* Creature chips the strip keeps room for beside the effects, when it is wide enough. */
+const ROOM_FOR_CREATURES = 3;
+/* A creature chip's usual width, in rem (`.entity`'s max-width is 16rem). */
+const CREATURE_CHIP_REM = 12;
 
 export function depthLabel(player: Whereabouts): string {
   if (player.depth > 0) return `${placeName(player)} · ${feetOf(player)} ft (L${player.depth})`;
@@ -137,6 +145,37 @@ export class Hud {
       else this.callbacks.onHistory();
     });
     onTap(root, 'button[data-hud]', (button) => this.tapped(button));
+    new ResizeObserver(() => this.fitEffects()).observe(root);
+  }
+
+  /**
+   * Labels every effect tile alike with the longest of its forms (full name,
+   * short form, two letters) that keeps the tiles within their share of the
+   * strip: in a row, what leaves room for `ROOM_FOR_CREATURES` creature chips
+   * and at least `EFFECT_SHARE` of its width; `EFFECT_ROWS` rows in the
+   * sidebar's column; so the creatures in view keep their place.
+   */
+  private fitEffects(): void {
+    const group = this.root.querySelector<HTMLElement>('.effect-group');
+    const strip = group?.parentElement;
+    if (!group || !strip) return;
+    const tiles = [...group.querySelectorAll<HTMLElement>('.effect-tile')];
+    const column = getComputedStyle(strip).flexDirection === 'column';
+    const gap = parseFloat(getComputedStyle(group).rowGap) || 0;
+    const chip = parseFloat(getComputedStyle(document.documentElement).fontSize) * CREATURE_CHIP_REM;
+    const room = Math.max(strip.clientWidth * EFFECT_SHARE, strip.clientWidth - ROOM_FOR_CREATURES * chip);
+    for (const tier of EFFECT_TIERS) {
+      group.dataset.tier = tier;
+      for (const tile of tiles) {
+        const label = tile.querySelector('.effect-label');
+        if (label) label.textContent = tile.dataset[tier] ?? '';
+      }
+      const box = group.getBoundingClientRect();
+      const fits = column
+        ? (box.height + gap) / ((tiles[0]?.offsetHeight ?? 0) + gap) <= EFFECT_ROWS + 0.5
+        : box.width <= room;
+      if (fits) return;
+    }
   }
 
   /** Forgets the last hero, for a new game in the same page. */
@@ -210,7 +249,7 @@ export class Hud {
     const key = JSON.stringify([
       [p.name, p.race, p.cls, p.lev, p.chp, p.mhp, p.csp, p.msp, p.csane, p.msane, depthLabel(p), p.au, p.speed, p.skillPoints ?? 0],
       [this.quest?.title ?? '', this.quest?.random?.slain ?? 0],
-      effects.map((e) => [e.key, e.abbr, e.name, e.left?.count, e.fading, e.severe]),
+      effects.map((e) => [e.key, e.name, e.short, e.abbr, e.left?.count, e.fading, e.severe]),
       monsters.map((m) => [m.id, m.name, m.ch, m.attr, m.hp, m.maxhp, m.asleep, m.afraid, m.unique, m.status, m.quest]),
       objects.map((o) => [o.id, o.name, o.ch, o.attr]),
     ]);
@@ -267,6 +306,7 @@ export class Hud {
     if (!strip.childElementCount) strip.append(el('li', 'quiet', 'All quiet'));
 
     this.root.replaceChildren(player, strip, ...(this.messagesEl.parentElement === this.root ? [this.messagesEl] : []));
+    this.fitEffects();
   }
 
   /** The health bar, with a pale band over health lost in the last moment. */
@@ -331,9 +371,10 @@ export class Hud {
   }
 
   /**
-   * An effect's tile: two letters in its kind's colour (ailments red,
-   * blessings green, what the hero keeps going blue) over a bar that empties
-   * as it runs down, measured against the most seen since it began. Its name,
+   * An effect's tile: its label in its kind's colour (ailments red, blessings
+   * green, what the hero keeps going blue) over a bar that empties as it runs
+   * down, measured against the most seen since it began. It holds its full
+   * name, short form and two letters, for `fitEffects` to choose from; its
    * strength and the count left are in its card.
    */
   private effectTile(effect: Effect): HTMLElement {
@@ -344,7 +385,10 @@ export class Hud {
     button.dataset.tap = `effect:${effect.key}`;
     button.classList.toggle('severe', effect.severe);
     button.classList.toggle('fading', effect.fading);
-    button.append(el('span', 'effect-abbr', effect.abbr));
+    button.dataset.full = effect.name;
+    button.dataset.short = effect.short;
+    button.dataset.abbr = effect.abbr;
+    button.append(el('span', 'effect-label', effect.name));
     if (effect.left) {
       const most = Math.max(this.effectMost.get(effect.key) ?? 0, effect.left.count);
       const fill = el('span', 'effect-bar');

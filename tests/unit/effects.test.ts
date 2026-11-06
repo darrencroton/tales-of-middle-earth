@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { blessingsGone, FADING, hasEffect, heroEffects, isHungry } from '../../web/src/play/effects.ts';
+import { blessingsGone, FADING, SHORT_MAX, hasEffect, heroEffects, isHungry } from '../../web/src/play/effects.ts';
 import type { EffectState } from '../../web/src/render/snapshot.ts';
 
 const hero = (effects: EffectState[], extra: { food?: number; pray?: number } = {}) => heroEffects({ effects, food: 5000, ...extra });
@@ -45,27 +45,56 @@ describe('effects on the hero', () => {
     assert.equal(effects.find((e) => e.id === 'song')?.strength, '3 mana a turn');
   });
 
-  it('gathers elemental resistances into one, lasting as long as the first to end', () => {
+  it('gathers elemental resistances into one, named by those in force and lasting as long as the last', () => {
     const effects = hero([
       { id: 'resistFire', turns: 20 },
       { id: 'resistCold', turns: 12 },
       { id: 'resistChaos', turns: 30 },
     ]);
     const resist = effects.find((e) => e.id === 'resistance')!;
-    assert.deepEqual(resist.left, { count: 12, unit: 'turn' });
+    assert.deepEqual(resist.left, { count: 20, unit: 'turn' });
+    assert.deepEqual([resist.name, resist.short], ['Resist fire and cold', 'rFire+Cold']);
     assert.match(resist.does, /resist fire and cold/);
     assert.equal(resist.ends, 'Each wears off in time: fire in 20 turns and cold in 12 turns.');
     assert.ok(effects.some((e) => e.id === 'resistChaos'));
+    const cold = hero([{ id: 'resistFire', turns: 20 }]).find((e) => e.id === 'resistance')!;
+    assert.deepEqual([cold.name, cold.short], ['Resist fire', 'rFire']);
+    const all = ['resistAcid', 'resistElec', 'resistFire', 'resistCold', 'resistPois'].map((id) => ({ id, turns: 9 }));
+    assert.deepEqual([hero(all)[0].name, hero(all)[0].short], ['Resistance', 'Resist']);
   });
 
-  it('keeps what a song renews each turn from fading while it is sung', () => {
-    const effects = hero([{ id: 'song', spell: 'Heroic Ballad', mana: 4, renews: ['hero'] }, { id: 'hero', turns: 4 }, { id: 'fast', turns: 4, speed: 10 }]);
-    const held = effects.find((e) => e.id === 'hero')!;
-    assert.equal(held.left, null);
-    assert.equal(held.fading, false);
-    assert.equal(held.lasts, 'While you sing');
-    assert.equal(effects.find((e) => e.id === 'fast')!.fading, true);
-    assert.equal(hero([{ id: 'hero', turns: 4 }])[0].fading, true);
+  it('gives every effect a short form of at most ten letters and a two-letter one', () => {
+    const states: EffectState[] = [
+      ...['paralyzed', 'blind', 'confused', 'afraid', 'poisoned', 'hallucinating', 'slow', 'blackBreath', 'parasite', 'invuln', 'disruption'].map((id) => ({ id, turns: 3 })),
+      ...['lightspeed', 'wraith', 'shero', 'hero', 'blessed', 'holy', 'strike', 'protevil', 'reflect', 'resistChaos', 'poisonHands', 'absorbSoul'].map((id) => ({ id, turns: 3 })),
+      ...['probability', 'flight', 'levitation', 'waterBreath', 'magicBreath', 'telepathy', 'seeInvisible', 'infravision', 'light', 'precognition'].map((id) => ({ id, turns: 3 })),
+      ...['noBreeds', 'recall', 'mimicLegs', 'mimicArms', 'mimicWall'].map((id) => ({ id, turns: 3 })),
+      ...[30, 80, 150].map((level) => ({ id: 'stun', turns: 3, level })),
+      ...[5, 20, 40, 70, 150, 300, 1500].map((level) => ({ id: 'cut', turns: 3, level })),
+      { id: 'drained', turns: 3, stat: 'CON' },
+      { id: 'undead', kills: 3 },
+      ...[{ armour: -290 }, { armour: 40 }, { armour: 10, aura: 'fear' as const }, { armour: 10, aura: 'fire' as const }].map((s) => ({ id: 'shield', turns: 3, ...s })),
+      { id: 'fast', turns: 3, speed: 10 },
+      { id: 'deadly', blows: 2 },
+      { id: 'roots', turns: 3, armour: 10, damage: 5 },
+      { id: 'project', turns: 3, element: 'electricity', damage: 9, radius: 1 },
+      { id: 'thunder', turns: 3, dice: '2d6' },
+      { id: 'regen', turns: 3, power: 100 },
+      { id: 'invisible', turns: 3, power: 30 },
+      { id: 'confusing' },
+      { id: 'tread', steps: 9 },
+      { id: 'song', spell: 'Hobbit Melodies(III)', mana: 3, renews: [] },
+      { id: 'inertia', spell: 'Manathrust', mana: 12, every: 5, next: 2 },
+      { id: 'spellbinder', at: 50, spells: ['Blink'] },
+      { id: 'mimic', turns: 30, form: 'Fire Elem.' },
+      { id: 'body', form: 'Grip, Farmer Maggot\'s Dog' },
+    ];
+    const effects = hero(states, { food: 400, pray: 2 });
+    assert.equal(effects.length, states.length + 2);
+    for (const e of effects) {
+      assert.ok(e.short.length <= SHORT_MAX, `${e.name}: ${e.short}`);
+      assert.ok(e.abbr.length <= 3, `${e.name}: ${e.abbr}`);
+    }
   });
 
   it('counts what is spent by blows, steps or kills in those', () => {

@@ -135,6 +135,7 @@ function vibrate(pattern: number | number[]): void {
 }
 
 /* Gold and experience floats start a little apart so both can be read. */
+const FLOAT_STACK_EM = 1.6;
 const FLOAT_OFFSETS: Readonly<Record<string, string>> = { gold: '42%', exp: '50%', blessing: '56%' };
 
 /**
@@ -388,6 +389,8 @@ export class GameFeel {
   private float(text: string, kind: string, modifier = ''): void {
     const node = el('div', `feel-float ${kind} ${modifier}`.trim(), text);
     node.style.top = FLOAT_OFFSETS[kind] ?? '42%';
+    /* A float of the same kind still rising pushes this one below it. */
+    node.style.marginTop = `${this.layer.querySelectorAll(`.feel-float.${kind}`).length * FLOAT_STACK_EM}em`;
     if (this.animation() === 'off') node.classList.add('still');
     this.layer.append(node);
     window.setTimeout(() => node.remove(), FLOAT_MS);
