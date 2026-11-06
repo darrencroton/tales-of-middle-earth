@@ -234,6 +234,8 @@ export interface EffectState {
   /** The spell sung, held by Inertia Control, and how much mana it takes. */
   spell?: string;
   mana?: number;
+  /** A song: the effects it renews each turn it is sung. */
+  renews?: string[];
   /** Inertia Control: turns between casts, and until the next. */
   every?: number;
   next?: number;

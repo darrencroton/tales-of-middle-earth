@@ -1671,8 +1671,14 @@ static void json_effects(JsonWriter &w)
 		auto const spell_idx = -static_cast<s32b>(p_ptr->music_extra);
 		json_effect(w, "song", 0, [&] {
 			w.field("spell", spell_type_name(spell_at(spell_idx)));
-			/* What each song's lasting effect takes a turn (spells3.cc): the Song of the Sun one, the others their mana. */
+			/* What each song's lasting effect takes a turn and renews (spells3.cc): the Song of the Sun one mana, the others their mana. */
 			w.field("mana", spell_idx == MUSIC_LITE ? 1 : get_mana(spell_idx));
+			w.key("renews").begin_array();
+			if (spell_idx == MUSIC_HERO) for (auto const *id : { "hero", "shero", "strike", "resistChaos" }) w.value(id);
+			if (spell_idx == MUSIC_TIME) for (auto const *id : { "shield", "fast" }) w.value(id);
+			if (spell_idx == MUSIC_MIND) w.value("telepathy");
+			if (spell_idx == MUSIC_LITE) w.value("light");
+			w.end_array();
 		});
 	}
 	if (p_ptr->inertia_controlled_spell != -1)

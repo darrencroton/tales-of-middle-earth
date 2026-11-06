@@ -644,18 +644,28 @@ test('a Demonologist sees Doom Shield take hold, what it does and the turns it h
   await expect(page.locator('.sheet-layer')).toBeHidden();
 
   /* Rested to its last turns its bar runs low and it breathes; once gone, its name floats away over the hero. */
-  const rest = async (turns: number) => {
-    await sendText(page, '\\R');
-    await waitForScreen(page, /^Rest/);
-    await sendText(page, `${turns}\r`);
-    await dismissMore(page);
-    await waitAtCommand(page);
+  /* Rests until the shield has `turns` left or fewer (a creature coming into view stops a rest; then a turn is waited out). */
+  const restUntil = async (turns: number) => {
+    for (let tries = 0; tries < 40; tries++) {
+      const now = (await shield())?.turns ?? 0;
+      if (now <= turns) return;
+      const before = await screenText(page);
+      if (tries % 2) {
+        await sendText(page, '\\,');
+        await waitForSettle(page, before, 2_000).catch(() => undefined);
+      } else {
+        await sendText(page, '\\R');
+        await waitForScreen(page, /^Rest/);
+        await sendText(page, `${now - turns}\r`);
+      }
+      await dismissMore(page);
+      await waitAtCommand(page);
+    }
   };
-  await rest(cast.turns! - 3);
-  await expect.poll(async () => (await shield())?.turns ?? 0).toBeLessThanOrEqual(5);
+  await restUntil(5);
   await expect(chip).toHaveClass(/fading/);
   expect(await left()).toBeLessThan(25);
-  await rest(10);
+  await restUntil(0);
   await expect.poll(shield).toBeNull();
   await expect(chip).toBeHidden();
   await expect(page.locator('.feel-float.blessing.faded', { hasText: 'Doom shield fades' })).toBeAttached();

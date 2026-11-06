@@ -59,10 +59,12 @@ describe('effects on the hero', () => {
   });
 
   it('keeps what a song renews each turn from fading while it is sung', () => {
-    const held = hero([{ id: 'song', spell: 'Heroic Ballad', mana: 4 }, { id: 'hero', turns: 4 }]).find((e) => e.id === 'hero')!;
+    const effects = hero([{ id: 'song', spell: 'Heroic Ballad', mana: 4, renews: ['hero'] }, { id: 'hero', turns: 4 }, { id: 'fast', turns: 4, speed: 10 }]);
+    const held = effects.find((e) => e.id === 'hero')!;
     assert.equal(held.left, null);
     assert.equal(held.fading, false);
     assert.equal(held.lasts, 'While you sing');
+    assert.equal(effects.find((e) => e.id === 'fast')!.fading, true);
     assert.equal(hero([{ id: 'hero', turns: 4 }])[0].fading, true);
   });
 

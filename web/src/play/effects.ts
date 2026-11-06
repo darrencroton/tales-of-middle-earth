@@ -42,8 +42,6 @@ const FOOD_STARVE = 100;
 const MORTAL_WOUND = 1000;
 const KNOCKED_OUT = 100;
 const STATS: Readonly<Record<string, string>> = { STR: 'Strength', INT: 'Intelligence', WIS: 'Wisdom', DEX: 'Dexterity', CON: 'Constitution', CHR: 'Charisma' };
-/** What a song renews each turn it is sung (its lasting effects in spells3.cc), so it never runs down while the song lasts. */
-const SONG_HELD = new Set(['hero', 'shero', 'strike', 'resistChaos', 'shield', 'fast', 'telepathy', 'light']);
 const HEAVY_STUN = 50;
 const CUTS: [number, string][] = [
   [MORTAL_WOUND, 'Mortal wound'],
@@ -444,9 +442,10 @@ export function heroEffects(player: Pick<PlayerState, 'effects' | 'pray'> & Part
   const resist = resistance(states);
   if (resist) all.push(resist);
   if (player.pray === 2) all.push(describe('praying', 'praying', { id: 'praying' })!);
-  if (states.some((e) => e.id === 'song')) {
+  const renewed = new Set(states.find((e) => e.id === 'song')?.renews ?? []);
+  if (renewed.size) {
     for (const effect of all) {
-      if (!SONG_HELD.has(effect.id) || (effect.left?.count ?? 0) > FADING) continue;
+      if (!renewed.has(effect.id) || (effect.left?.count ?? 0) > FADING) continue;
       Object.assign(effect, { left: null, fading: false, lasts: 'While you sing', ends: 'Your song renews it each turn.' });
     }
   }

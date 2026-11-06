@@ -248,7 +248,10 @@ const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
   onPlayer: () => openNative(hasFallen(game.lastState?.player) ? 'fallen' : 'character'),
   onSkills: () => openNative('skills'),
   onQuest: (quest) => openQuest(sheets, quest),
-  onEffect: (effect) => openEffect(api, effect),
+  onEffect: (effect) => {
+    journeys.interrupt('effect');
+    openEffect(api, effect);
+  },
   onMore: () => send([SPACE]),
   onHistory: () => {
     journeys.interrupt('history');
