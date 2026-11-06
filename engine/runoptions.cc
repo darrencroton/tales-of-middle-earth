@@ -1,7 +1,7 @@
 /*
  * Run options for the web frontend: tome2's birth options and the number of
  * random quests, read and changed from the frontend's last character
- * creation screen, before the game begins.
+ * creation screen, before the game begins; and the size of a small level.
  *
  * Copyright (c) 1997 Ben Harrison, and others
  *
@@ -11,8 +11,12 @@
  */
 
 #include "defines.hpp"
+#include "dungeon_flag.hpp"
+#include "dungeon_info_type.hpp"
 #include "files.hpp"
 #include "game.hpp"
+#include "hooks.hpp"
+#include "levels.hpp"
 #include "monster2.hpp"
 #include "monster_race.hpp"
 #include "monster_race_flag.hpp"
@@ -22,6 +26,7 @@
 #include "random_quest.hpp"
 #include "tables.hpp"
 #include "variable.hpp"
+#include "z-rand.hpp"
 
 #include "json.hpp"
 
@@ -29,6 +34,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iterator>
 #include <string>
 
 namespace {
@@ -81,6 +87,42 @@ void draw_random_quests(int n)
 
 std::string json;
 
+/* The sizes of a small level, in screens across and down: a third of tome2's, the smallest three. */
+int const SMALL_SIZES[][2] = { { 1, 1 }, { 1, 2 }, { 2, 1 } };
+
+/* The dungeon given a size by small_level_hook for the level being built; -1 when none. */
+int sized_dungeon = -1;
+
+bool small_levels_hooked = false;
+
+/*
+ * tome2 makes a small level 1 to 3 screens down and 1 or 2 across, up to two
+ * thirds of a full level. With small levels on, a dungeon level about to be
+ * built is given one of the three smallest of those sizes, as the dungeon's
+ * own size, which only level generation reads and which comes before tome2's
+ * choice. Not on the surface, nor in a dungeon with a size of its own or
+ * built vast (BIG: Erebor, Moria) or a screen at most (SMALLEST: the Maze),
+ * which that size would override. The last level's size is taken back first.
+ */
+bool small_level_hook(void *, void *, void *)
+{
+	auto &d_info = game->edit_data.d_info;
+	if (sized_dungeon >= 0)
+	{
+		d_info[sized_dungeon].size_x = -1;
+		d_info[sized_dungeon].size_y = -1;
+		sized_dungeon = -1;
+	}
+	if (!options->always_small_level || !dun_level) return false;
+	auto &d_ptr = d_info[dungeon_type];
+	if (d_ptr.size_x != -1 || ((d_ptr.flags | get_level_flags()) & (DF_BIG | DF_SMALLEST))) return false;
+	auto const &size = SMALL_SIZES[rand_int(std::size(SMALL_SIZES))];
+	d_ptr.size_x = size[0];
+	d_ptr.size_y = size[1];
+	sized_dungeon = dungeon_type;
+	return false;
+}
+
 } // namespace
 
 /* engine/adventure.cc */
@@ -89,6 +131,11 @@ bool adventure_mode();
 /* Called by web_snapshot (engine/snapshot.cc) on every refresh. */
 void web_run_options_tick()
 {
+	if (!small_levels_hooked)
+	{
+		add_hook_new(HOOK_GEN_LEVEL_BEGIN, small_level_hook, "web_small_level", nullptr);
+		small_levels_hooked = true;
+	}
 	/* tome2 notes the quests it drew itself for the next "same character" start once the game begins. */
 	if (character_generated && drawn_quests >= 0)
 	{
