@@ -13,7 +13,7 @@ import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapPoint } from './
 import { drawnEffects, terminalCell } from './render/effects.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, walkableFor, type FeatureInfo, type Material } from './render/materials.ts';
 import { altarAction } from './play/gods.ts';
-import { hasEffect, isHungry } from './play/effects.ts';
+import { hasEffect } from './play/effects.ts';
 import { contextActions, contextualAction, commandRefusal, CONTROLLING, exploreRefusal, creaturePowersMacro, releaseMacro, restMacro, waitCommand, type Action, type ActionContext, type CommandContext, type NativeView } from './play/actions.ts';
 import { MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
@@ -90,7 +90,7 @@ declare global {
       lastStopCause(): string;
       exploreStop(): { kind: string; x: number; y: number; heading: string } | null;
       macroRunning(): boolean;
-      /** The gear the toolbar would suggest (eat, weapon, light), whatever the toolbar shows first. */
+      /** The gear the toolbar would suggest (weapon, light), whatever the toolbar shows first. */
       gear(): string | null;
       takeGear(): void;
       director: Director;
@@ -979,11 +979,9 @@ function gearSuggestion(): GearSuggestion | null {
   const snap = game.lastSnap;
   if (!snap?.inDungeon || !snap.atCommand) return null;
   const inventory = engine.inventory();
-  const player = game.lastState?.player;
-  if (!inventory?.ready || !player) return null;
+  if (!inventory?.ready) return null;
   return suggestedGear(inventory, {
     inDungeon: snap.depth > 0,
-    hungry: isHungry(player),
     wieldsWeapons: abilities.style().weapons,
   });
 }

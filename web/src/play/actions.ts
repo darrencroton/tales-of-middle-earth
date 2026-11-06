@@ -351,8 +351,8 @@ export interface ActionContext {
   exploreNext?: ExploreNext;
   /** Why Explore cannot be used here, if it cannot. */
   exploreRefusal?: string | null;
-  /** Gear the hero needs to go on: a light below the town, a weapon for a fighter, food when hungry. */
-  gear?: 'weapon' | 'light' | 'eat' | null;
+  /** Gear the hero needs to go on: a light below the town, a weapon for a fighter. */
+  gear?: 'weapon' | 'light' | null;
   /** The hero stands at a building's door: the button that goes in ('Enter shop', 'Enter home'…). */
   entrance?: string | null;
   /** Direction digit of the weakest hostile creature next to the player. */
@@ -427,10 +427,9 @@ export function transitionUnderfoot(underfoot: string): Transition | null {
   return TRANSITIONS.find(([pattern]) => pattern.test(underfoot))?.[1] ?? null;
 }
 
-const GEAR_ACTIONS: Readonly<Record<'weapon' | 'light' | 'eat', [string, string]>> = {
+const GEAR_ACTIONS: Readonly<Record<'weapon' | 'light', [string, string]>> = {
   weapon: ['Wield', '†'],
   light: ['Light', '☀'],
-  eat: ['Eat', '◓'],
 };
 
 const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {

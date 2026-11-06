@@ -275,9 +275,7 @@ describe('explore stops when hurt', () => {
 describe('suggested gear', () => {
   const dagger = { i: 0, name: 'a Dagger', tval: 23 } as ItemState;
   const torch = { i: 1, name: '3 Wooden Torches', tval: 39 } as ItemState;
-  const ration = { i: 2, name: '5 Rations of Food', tval: 80 } as ItemState;
-  const potion = { i: 3, name: 'a Potion of Cure Light Wounds', tval: 71 } as ItemState;
-  const calm = { inDungeon: true, hungry: false };
+  const calm = { inDungeon: true };
   const armed = [{ i: 24, part: 24, name: 'a Sword', tval: 23 }] as EquipSlot[];
   const lit = [...armed, { i: 36, part: 36, name: 'a Lantern', tval: 39 }] as EquipSlot[];
 
@@ -319,12 +317,5 @@ describe('suggested gear', () => {
     assert.deepEqual(fightingStyle(paladin), { weapons: true, magic: true });
     assert.deepEqual(fightingStyle(monk), { weapons: false, magic: true });
     assert.deepEqual(fightingStyle([]), { weapons: true, magic: true });
-  });
-
-  it('suggests food when hungry, and never a potion', () => {
-    const pack = [ration, potion];
-    assert.equal(suggestedGear({ pack, equip: lit }, { ...calm, hungry: true })?.kind, 'eat');
-    assert.equal(suggestedGear({ pack: [potion], equip: lit }, { ...calm, hungry: true }), null);
-    assert.equal(suggestedGear({ pack, equip: lit }, calm), null);
   });
 });

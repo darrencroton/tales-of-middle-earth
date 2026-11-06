@@ -12,7 +12,7 @@ taps from the map. **Type** refers to the taxonomy in section 3.
 ```
 Map (toolbar, HUD, gestures)
 ├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Release, Descend/Ascend/Enter rift, Enter shop/home,
-│   Attack, Talk, Pick up, Drink, Wield/Light/Eat, Explore/Way down/Way up — then the hero's
+│   Attack, Talk, Pick up, Drink, Wield/Light, Explore/Way down/Way up — then the hero's
 │   own buttons in fixed places: quick spell or aimed item, Cast/Powers, Fire, Items, Rest, More,
 │   Menu; while exploring: Stop, Speed, Menu)
 │   ├── Items ─────────────── Inventory            panel, tabs Pack · Equipment · Floor     depth 1
@@ -327,7 +327,7 @@ with why, and journeys are refused.
 | `x` | engrave a rune | More, once a rune is learnt |
 | `l` `M` `L` `*` | look, level map, locate, target | long-press; More (*Look*, *Level map*, *Choose target*: the foes in reach as a card); a foe's card (*Target*); dragging the map |
 | `i` `e` `w` `t` `d` `k` `{` `}` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |
-| `q` `r` `E` `F` `v` `f` | use items, fire, throw | item cards, *Recently used*, Again, Fire, gear suggestions; More → Use an item / Fight and magic |
+| `q` `r` `E` `F` `v` `f` | use items, fire, throw | item cards, *Recently used*, Again, Fire, gear suggestions (`w` `F`); More → Use an item / Fight and magic |
 | `a` `u` `z` `A` | aim a wand, use a staff, zap a rod, activate | Powers → Gear and Devices (ready, charges, failure, effect; dimmed with why), its Recent, Again; item cards; More → *Activate or zap* (the Powers tab) |
 | `b` `I` | browse a book, examine an item | the item's card (a book's card lists its spells, each with its own card) |
 | `h` `K` | butcher a corpse, cure meat | the corpse's or meat's card |
