@@ -12,6 +12,8 @@ export interface Effect {
   id: string;
   kind: EffectKind;
   icon: string;
+  /** Two letters for the HUD's tile ("DS", "Ha"). */
+  abbr: string;
   name: string;
   /** How much is left, when it counts down. */
   left: { count: number; unit: EffectUnit } | null;
@@ -81,6 +83,15 @@ function stunName(level: number): string {
   return level > KNOCKED_OUT ? 'Knocked out' : level > HEAVY_STUN ? 'Heavy stun' : 'Stunned';
 }
 
+/** A name's initials: "Doom shield" → "DS". */
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join('')
+    .slice(0, 2);
+}
+
 /** What a shield is, by what it does: Doom Shield alone lowers armour, Armor of Fear alone frightens, Fiery Shield alone burns. */
 function shieldName(e: EffectState): string {
   if ((e.armour ?? 0) < 0) return 'Doom shield';
@@ -101,6 +112,8 @@ function shieldDoes(e: EffectState): string {
 
 interface Entry {
   kind: EffectKind;
+  /** Two letters for the HUD's tile. */
+  abbr: string | ((e: EffectState) => string);
   icon: string;
   name: string | ((e: EffectState) => string);
   strength?: (e: EffectState) => string | null;
@@ -113,8 +126,9 @@ const TIMED_OUT = 'It wears off in time.';
 
 /** Every effect tome2 can put on the hero, in the order they are listed: ailments first, the most pressing at the top. */
 const CATALOGUE: Readonly<Record<string, Entry>> = {
-  paralyzed: { kind: 'bane', icon: '■', name: 'Paralysed', does: 'You cannot move or act.', ends: TIMED_OUT, severe: () => true },
+  paralyzed: { abbr: 'Pa', kind: 'bane', icon: '■', name: 'Paralysed', does: 'You cannot move or act.', ends: TIMED_OUT, severe: () => true },
   stun: {
+    abbr: (e) => ((e.level ?? 0) > KNOCKED_OUT ? 'KO' : 'St'),
     kind: 'bane',
     icon: '✶',
     name: (e) => stunName(e.level ?? 0),
@@ -127,6 +141,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     severe: (e) => (e.level ?? 0) > KNOCKED_OUT,
   },
   cut: {
+    abbr: 'Cu',
     kind: 'bane',
     icon: '♥',
     name: (e) => cutName(e.level ?? 0),
@@ -138,6 +153,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     severe: (e) => (e.level ?? 0) > 200,
   },
   hunger: {
+    abbr: 'Hu',
     kind: 'bane',
     icon: '◔',
     name: (e) => ((e.level ?? 0) < FOOD_STARVE ? 'Starving' : (e.level ?? 0) < FOOD_FAINT ? 'Fainting' : (e.level ?? 0) < FOOD_WEAK ? 'Weak' : 'Hungry'),
@@ -151,19 +167,21 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     ends: 'Eat something.',
     severe: (e) => (e.level ?? 0) < FOOD_FAINT,
   },
-  blind: { kind: 'bane', icon: '◌', name: 'Blind', does: 'You cannot see, read scrolls or cast most spells.', ends: TIMED_OUT },
-  confused: { kind: 'bane', icon: '✺', name: 'Confused', does: 'You may stumble the wrong way, and cannot read scrolls or cast most spells.', ends: TIMED_OUT },
-  afraid: { kind: 'bane', icon: '!', name: 'Afraid', does: 'You are too frightened to fight in melee.', ends: TIMED_OUT },
+  blind: { abbr: 'Bl', kind: 'bane', icon: '◌', name: 'Blind', does: 'You cannot see, read scrolls or cast most spells.', ends: TIMED_OUT },
+  confused: { abbr: 'Cf', kind: 'bane', icon: '✺', name: 'Confused', does: 'You may stumble the wrong way, and cannot read scrolls or cast most spells.', ends: TIMED_OUT },
+  afraid: { abbr: 'Af', kind: 'bane', icon: '!', name: 'Afraid', does: 'You are too frightened to fight in melee.', ends: TIMED_OUT },
   poisoned: {
+    abbr: 'Po',
     kind: 'bane',
     icon: '☣',
     name: 'Poisoned',
     does: 'You lose a little health each turn.',
     ends: 'It wears off, faster with good Constitution; curing magic ends it.',
   },
-  hallucinating: { kind: 'bane', icon: '◎', name: 'Hallucinating', does: 'You see creatures and things as they are not.', ends: TIMED_OUT },
-  slow: { kind: 'bane', icon: '↓', name: 'Slowed', strength: () => 'Speed −10', does: 'You act more slowly than usual.', ends: TIMED_OUT },
+  hallucinating: { abbr: 'Hl', kind: 'bane', icon: '◎', name: 'Hallucinating', does: 'You see creatures and things as they are not.', ends: TIMED_OUT },
+  slow: { abbr: 'Sl', kind: 'bane', icon: '↓', name: 'Slowed', strength: () => 'Speed −10', does: 'You act more slowly than usual.', ends: TIMED_OUT },
   blackBreath: {
+    abbr: 'BB',
     kind: 'bane',
     icon: '☁',
     name: 'Black Breath',
@@ -172,6 +190,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     severe: () => true,
   },
   parasite: {
+    abbr: 'Ps',
     kind: 'bane',
     icon: '✱',
     name: 'Something grows within',
@@ -179,6 +198,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     ends: 'When its time comes it will most likely burst out as a hostile creature, unless something cures you first.',
   },
   drained: {
+    abbr: (e) => `${(e.stat ?? '?').charAt(0)}−`,
     kind: 'bane',
     icon: '▽',
     name: (e) => `Weakened ${e.stat ?? ''}`.trim(),
@@ -186,6 +206,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     ends: 'It returns by itself when this runs out.',
   },
   undead: {
+    abbr: 'Ud',
     kind: 'bane',
     icon: '☠',
     name: 'Undead form',
@@ -195,6 +216,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
   },
 
   invuln: {
+    abbr: 'In',
     kind: 'boon',
     icon: '◉',
     name: 'Invulnerable',
@@ -203,16 +225,18 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     ends: 'It breaks at once when you attack, shoot, throw, or use a skill or power.',
   },
   disruption: {
+    abbr: 'Dr',
     kind: 'boon',
     icon: '◇',
     name: 'Disruption shield',
     does: 'Harm is taken from your mana instead of your health, two mana for each point.',
     ends: 'It breaks at once when you attack, shoot, throw, or use a skill or power.',
   },
-  shield: { kind: 'boon', icon: '◈', name: shieldName, strength: (e) => `Armour ${signed(e.armour ?? 0)}`, does: shieldDoes, ends: TIMED_OUT },
-  lightspeed: { kind: 'boon', icon: '↯', name: 'Light speed', strength: () => 'Speed +50', does: 'Time all but stops around you.', ends: TIMED_OUT },
-  fast: { kind: 'boon', icon: '»', name: 'Hasted', strength: (e) => `Speed ${signed(e.speed ?? 10)}`, does: 'You act faster than usual.', ends: TIMED_OUT },
+  shield: { abbr: (e) => initials(shieldName(e)), kind: 'boon', icon: '◈', name: shieldName, strength: (e) => `Armour ${signed(e.armour ?? 0)}`, does: shieldDoes, ends: TIMED_OUT },
+  lightspeed: { abbr: 'LS', kind: 'boon', icon: '↯', name: 'Light speed', strength: () => 'Speed +50', does: 'Time all but stops around you.', ends: TIMED_OUT },
+  fast: { abbr: 'Ha', kind: 'boon', icon: '»', name: 'Hasted', strength: (e) => `Speed ${signed(e.speed ?? 10)}`, does: 'You act faster than usual.', ends: TIMED_OUT },
   wraith: {
+    abbr: 'Wr',
     kind: 'boon',
     icon: '◐',
     name: 'Wraith form',
@@ -220,6 +244,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     ends: TIMED_OUT,
   },
   shero: {
+    abbr: 'Bz',
     kind: 'boon',
     icon: '⚔',
     name: 'Berserk',
@@ -227,28 +252,31 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     does: 'A battle rage: your blows land better, you gain 30 health and know no fear, but are easier to hit.',
     ends: TIMED_OUT,
   },
-  hero: { kind: 'boon', icon: '✪', name: 'Heroism', strength: () => 'To hit +12', does: 'Your blows land better, you gain 10 health and know no fear.', ends: TIMED_OUT },
-  blessed: { kind: 'boon', icon: '✚', name: 'Blessed', strength: () => 'To hit +10, armour +5', does: 'Your blows land better and you are harder to hit.', ends: TIMED_OUT },
-  holy: { kind: 'boon', icon: '☀', name: 'Holy aura', strength: () => 'Luck +5', does: 'Your life cannot be drained, your light reaches further and luck is on your side.', ends: TIMED_OUT },
-  strike: { kind: 'boon', icon: '➹', name: 'True strike', strength: () => 'To hit +15, damage +15', does: 'Your attacks land better and harder.', ends: TIMED_OUT },
-  deadly: { kind: 'boon', icon: '✸', name: 'Deadly blows', does: 'Each blow that lands is a great hit, three times as hard.', ends: 'It is spent blow by blow.' },
+  hero: { abbr: 'He', kind: 'boon', icon: '✪', name: 'Heroism', strength: () => 'To hit +12', does: 'Your blows land better, you gain 10 health and know no fear.', ends: TIMED_OUT },
+  blessed: { abbr: 'Bs', kind: 'boon', icon: '✚', name: 'Blessed', strength: () => 'To hit +10, armour +5', does: 'Your blows land better and you are harder to hit.', ends: TIMED_OUT },
+  holy: { abbr: 'Ho', kind: 'boon', icon: '☀', name: 'Holy aura', strength: () => 'Luck +5', does: 'Your life cannot be drained, your light reaches further and luck is on your side.', ends: TIMED_OUT },
+  strike: { abbr: 'TS', kind: 'boon', icon: '➹', name: 'True strike', strength: () => 'To hit +15, damage +15', does: 'Your attacks land better and harder.', ends: TIMED_OUT },
+  deadly: { abbr: 'Dl', kind: 'boon', icon: '✸', name: 'Deadly blows', does: 'Each blow that lands is a great hit, three times as hard.', ends: 'It is spent blow by blow.' },
   protevil: {
+    abbr: 'PE',
     kind: 'boon',
     icon: '✠',
     name: 'Protection from evil',
     does: 'Evil creatures no stronger than you are often repelled when they strike you in melee.',
     ends: TIMED_OUT,
   },
-  reflect: { kind: 'boon', icon: '↩', name: 'Reflection', does: 'Bolts aimed at you are often turned back.', ends: TIMED_OUT },
+  reflect: { abbr: 'Rf', kind: 'boon', icon: '↩', name: 'Reflection', does: 'Bolts aimed at you are often turned back.', ends: TIMED_OUT },
   resistance: {
+    abbr: 'Rs',
     kind: 'boon',
     icon: '❂',
     name: 'Resistance',
     does: (e) => `You resist ${e.element}: the harm is cut to a third, or a ninth with a lasting resistance as well.`,
     ends: TIMED_OUT,
   },
-  resistChaos: { kind: 'boon', icon: '❂', name: 'Resist chaos', does: 'You resist chaos and cannot be confused.', ends: TIMED_OUT },
+  resistChaos: { abbr: 'RC', kind: 'boon', icon: '❂', name: 'Resist chaos', does: 'You resist chaos and cannot be confused.', ends: TIMED_OUT },
   roots: {
+    abbr: 'Rt',
     kind: 'boon',
     icon: '♣',
     name: 'Roots',
@@ -257,6 +285,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     ends: TIMED_OUT,
   },
   project: {
+    abbr: (e) => `${(e.element || 'M').charAt(0).toUpperCase()}b`,
     kind: 'boon',
     icon: '✧',
     name: (e) => `${capitalise(e.element || 'Magic')} blows`,
@@ -264,8 +293,9 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     does: (e) => `Each blow that lands also strikes with ${e.element || 'magic'} for ${e.damage} damage${(e.radius ?? 0) > 0 ? ` around it (radius ${e.radius})` : ''}.`,
     ends: TIMED_OUT,
   },
-  poisonHands: { kind: 'boon', icon: '☣', name: 'Poisoned blows', does: 'Your blows poison creatures that poison can hurt.', ends: TIMED_OUT },
+  poisonHands: { abbr: 'PB', kind: 'boon', icon: '☣', name: 'Poisoned blows', does: 'Your blows poison creatures that poison can hurt.', ends: TIMED_OUT },
   thunder: {
+    abbr: 'Th',
     kind: 'boon',
     icon: '↯',
     name: 'Thunderstorm',
@@ -273,9 +303,10 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     does: (e) => `Each turn lightning strikes a foe in sight for ${e.dice} damage, as lightning, light and sound.`,
     ends: TIMED_OUT,
   },
-  regen: { kind: 'boon', icon: '❦', name: 'Regeneration', strength: (e) => `Power ${e.power}`, does: 'You heal much faster, and grow hungry faster.', ends: TIMED_OUT },
-  absorbSoul: { kind: 'boon', icon: '❖', name: 'Absorb soul', does: 'Each living creature you slay heals you.', ends: TIMED_OUT },
+  regen: { abbr: 'Rg', kind: 'boon', icon: '❦', name: 'Regeneration', strength: (e) => `Power ${e.power}`, does: 'You heal much faster, and grow hungry faster.', ends: TIMED_OUT },
+  absorbSoul: { abbr: 'AS', kind: 'boon', icon: '❖', name: 'Absorb soul', does: 'Each living creature you slay heals you.', ends: TIMED_OUT },
   invisible: {
+    abbr: 'Iv',
     kind: 'boon',
     icon: '◌',
     name: 'Invisible',
@@ -284,37 +315,40 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     ends: TIMED_OUT,
   },
   probability: {
+    abbr: 'PT',
     kind: 'boon',
     icon: '⇵',
     name: 'Probability travel',
     does: 'Walking into a wall takes you through to the other side; stairs are not needed to go up or down.',
     ends: TIMED_OUT,
   },
-  flight: { kind: 'boon', icon: '⤒', name: 'Flying', does: 'You fly over some terrain, such as water and lava, and falls do you no harm.', ends: TIMED_OUT },
-  levitation: { kind: 'boon', icon: '⤒', name: 'Levitating', does: 'You float gently: falls do you no harm.', ends: TIMED_OUT },
-  waterBreath: { kind: 'boon', icon: '≈', name: 'Water breathing', does: 'You can breathe under water.', ends: TIMED_OUT },
-  magicBreath: { kind: 'boon', icon: '≈', name: 'Magical breathing', does: 'You can breathe anywhere, even without air or under water.', ends: TIMED_OUT },
-  telepathy: { kind: 'boon', icon: '◎', name: 'Telepathy', does: 'You sense the minds of creatures around you, even unseen.', ends: TIMED_OUT },
-  seeInvisible: { kind: 'boon', icon: '◑', name: 'See invisible', does: 'You can see invisible creatures.', ends: TIMED_OUT },
-  infravision: { kind: 'boon', icon: '◒', name: 'Infravision', strength: () => '+10 ft', does: 'You see warm creatures further in the dark.', ends: TIMED_OUT },
-  light: { kind: 'boon', icon: '☼', name: 'Brightness', strength: () => 'Light +2', does: 'Your light reaches further.', ends: TIMED_OUT },
-  precognition: { kind: 'boon', icon: '☾', name: 'Precognition', does: 'You foresee the remarkable things made on each new level.', ends: TIMED_OUT },
-  confusing: { kind: 'boon', icon: '✦', name: 'Confusing touch', does: 'Your hands glow red: your next blow that lands confuses its target.', ends: 'It is spent by that blow.' },
-  noBreeds: { kind: 'boon', icon: '⊘', name: 'Sterility', does: 'Creatures that breed cannot multiply.', ends: TIMED_OUT },
-  tread: { kind: 'boon', icon: '≈', name: 'Dripping tread', does: 'Each step you take leaves water behind you.', ends: 'It is spent step by step, or by casting it again.' },
+  flight: { abbr: 'Fl', kind: 'boon', icon: '⤒', name: 'Flying', does: 'You fly over some terrain, such as water and lava, and falls do you no harm.', ends: TIMED_OUT },
+  levitation: { abbr: 'Lv', kind: 'boon', icon: '⤒', name: 'Levitating', does: 'You float gently: falls do you no harm.', ends: TIMED_OUT },
+  waterBreath: { abbr: 'WB', kind: 'boon', icon: '≈', name: 'Water breathing', does: 'You can breathe under water.', ends: TIMED_OUT },
+  magicBreath: { abbr: 'MB', kind: 'boon', icon: '≈', name: 'Magical breathing', does: 'You can breathe anywhere, even without air or under water.', ends: TIMED_OUT },
+  telepathy: { abbr: 'Tp', kind: 'boon', icon: '◎', name: 'Telepathy', does: 'You sense the minds of creatures around you, even unseen.', ends: TIMED_OUT },
+  seeInvisible: { abbr: 'SI', kind: 'boon', icon: '◑', name: 'See invisible', does: 'You can see invisible creatures.', ends: TIMED_OUT },
+  infravision: { abbr: 'If', kind: 'boon', icon: '◒', name: 'Infravision', strength: () => '+10 ft', does: 'You see warm creatures further in the dark.', ends: TIMED_OUT },
+  light: { abbr: 'Br', kind: 'boon', icon: '☼', name: 'Brightness', strength: () => 'Light +2', does: 'Your light reaches further.', ends: TIMED_OUT },
+  precognition: { abbr: 'Pc', kind: 'boon', icon: '☾', name: 'Precognition', does: 'You foresee the remarkable things made on each new level.', ends: TIMED_OUT },
+  confusing: { abbr: 'CT', kind: 'boon', icon: '✦', name: 'Confusing touch', does: 'Your hands glow red: your next blow that lands confuses its target.', ends: 'It is spent by that blow.' },
+  noBreeds: { abbr: 'Sy', kind: 'boon', icon: '⊘', name: 'Sterility', does: 'Creatures that breed cannot multiply.', ends: TIMED_OUT },
+  tread: { abbr: 'DT', kind: 'boon', icon: '≈', name: 'Dripping tread', does: 'Each step you take leaves water behind you.', ends: 'It is spent step by step, or by casting it again.' },
   recall: {
+    abbr: 'Rc',
     kind: 'boon',
     icon: '⇅',
     name: 'Recall',
     does: (e) => (e.up ? 'Word of Recall will lift you out of the dungeon to the surface.' : 'Word of Recall will take you down into the dungeon.'),
     ends: 'You are taken away when it runs out; reading Word of Recall again cancels it.',
   },
-  mimicLegs: { kind: 'boon', icon: '♙', name: 'Extra legs', does: 'Mimicry gives you another pair of legs, to wear more on them.', ends: TIMED_OUT },
-  mimicArms: { kind: 'boon', icon: '♙', name: 'Extra arms', does: 'Mimicry gives you another pair of arms, to wear more on them.', ends: TIMED_OUT },
-  mimicWall: { kind: 'boon', icon: '▦', name: 'Wall affinity', does: 'Mimicry lets you pass into walls.', ends: TIMED_OUT },
+  mimicLegs: { abbr: 'XL', kind: 'boon', icon: '♙', name: 'Extra legs', does: 'Mimicry gives you another pair of legs, to wear more on them.', ends: TIMED_OUT },
+  mimicArms: { abbr: 'XA', kind: 'boon', icon: '♙', name: 'Extra arms', does: 'Mimicry gives you another pair of arms, to wear more on them.', ends: TIMED_OUT },
+  mimicWall: { abbr: 'WA', kind: 'boon', icon: '▦', name: 'Wall affinity', does: 'Mimicry lets you pass into walls.', ends: TIMED_OUT },
 
-  praying: { kind: 'sustained', icon: '☼', name: 'Praying', does: 'Your god’s gifts that need prayer are with you while you pray.', ends: 'It lasts until you stop praying.' },
+  praying: { abbr: 'Pr', kind: 'sustained', icon: '☼', name: 'Praying', does: 'Your god’s gifts that need prayer are with you while you pray.', ends: 'It lasts until you stop praying.' },
   song: {
+    abbr: 'So',
     kind: 'sustained',
     icon: '♪',
     name: (e) => e.spell ?? 'Song',
@@ -323,6 +357,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     ends: 'It lasts until you stop singing, or your mana runs out.',
   },
   inertia: {
+    abbr: 'IC',
     kind: 'sustained',
     icon: '↻',
     name: (e) => `Inertia control: ${e.spell ?? ''}`,
@@ -331,6 +366,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     ends: 'It lasts until you cast Inertia Control again to cancel it.',
   },
   spellbinder: {
+    abbr: 'Sb',
     kind: 'sustained',
     icon: '❡',
     name: 'Spellbinder',
@@ -338,8 +374,8 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     does: (e) => `${listed(e.spells ?? [])} will be cast at once when your health falls to ${e.at}% or below.`,
     ends: 'It is spent when it is released.',
   },
-  mimic: { kind: 'sustained', icon: '♞', name: (e) => `${e.form ?? 'Changed'} form`, does: (e) => `You have taken the shape of ${e.form ? `a ${e.form.toLowerCase()}` : 'another creature'}.`, ends: 'You change back when it runs out.' },
-  body: { kind: 'sustained', icon: '♞', name: (e) => e.form ?? 'Borrowed body', does: (e) => `You have taken over the body of ${e.form ?? 'a creature'}, with its powers and weaknesses.`, ends: 'It lasts until you leave the body.' },
+  mimic: { abbr: (e) => (e.form ?? 'Fo').slice(0, 2), kind: 'sustained', icon: '♞', name: (e) => `${e.form ?? 'Changed'} form`, does: (e) => `You have taken the shape of ${e.form ? `a ${e.form.toLowerCase()}` : 'another creature'}.`, ends: 'You change back when it runs out.' },
+  body: { abbr: (e) => (e.form ?? 'Bo').slice(0, 2), kind: 'sustained', icon: '♞', name: (e) => e.form ?? 'Borrowed body', does: (e) => `You have taken over the body of ${e.form ?? 'a creature'}, with its powers and weaknesses.`, ends: 'It lasts until you leave the body.' },
 };
 
 const BOONS_FIRST: Readonly<Record<EffectKind, number>> = { bane: 0, boon: 1, sustained: 2 };
@@ -356,6 +392,7 @@ function describe(key: string, id: string, e: EffectState): Effect | null {
     id,
     kind: entry.kind,
     icon: entry.icon,
+    abbr: text(entry.abbr),
     name: text(entry.name),
     left,
     strength: entry.strength?.(e) ?? null,

@@ -1090,6 +1090,10 @@ html.keyboard-open .sheet-layer {
     white-space: normal;
   }
 
+  #hud .hud-entities > li.effect-group {
+    flex-wrap: wrap;
+  }
+
   /* In the narrow sidebar, names wrap onto a second line rather than being cut. */
   #hud .entity {
     white-space: normal;
@@ -3929,76 +3933,65 @@ html.keyboard-tight .prompt-card.text .card-title {
   color: var(--sustained);
 }
 
-.entity.effect {
-  gap: 0.35rem;
-  padding-right: 0.5rem;
-  font-size: var(--fs-small);
-}
-
-.entity.effect .glyph {
-  font-family: var(--sans);
-}
-
-/* Blessings sit together as glyphs with what is left; in the sidebar they wrap as a row. */
 .hud-entities > li.effect-group {
-  gap: 0.3rem;
-}
-
-.entity.effect.compact {
-  justify-content: center;
   gap: 0.25rem;
-  min-width: calc(var(--touch) * 0.8);
-  padding: 0.2rem 0.4rem;
 }
 
-#hud .hud-entities > li.effect-group {
-  flex-wrap: wrap;
+/* An effect in the strip: two letters in its kind's colour over a bar that empties as it runs down. */
+.effect-tile {
+  --tone: var(--boon);
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  width: 2.3rem;
+  height: calc(var(--touch) * 0.8);
+  padding: 0 0 0.2rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+  color: var(--tone);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
-#hud .hud-entities .entity.effect.compact {
-  width: auto;
+.effect-tile.bane {
+  --tone: var(--bane);
+  background: rgb(160 60 45 / 0.28);
 }
 
-.entity.effect .progress {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
+.effect-tile.sustained {
+  --tone: var(--sustained);
 }
 
-.entity.effect.bane {
-  border-left: 3px solid var(--bane);
-  background: rgb(160 60 45 / 0.22);
-  color: var(--bane);
-}
-
-.entity.effect.bane.severe {
+.effect-tile.severe {
+  --tone: #ffd0c4;
   border-color: var(--danger);
-  background: rgb(190 50 35 / 0.38);
-  color: #ffd0c4;
-  box-shadow: 0 0 0.5rem rgb(224 96 79 / 0.45);
+  background: rgb(190 50 35 / 0.5);
+  box-shadow: 0 0 0.5rem rgb(224 96 79 / 0.5);
 }
 
-.entity.effect.boon {
-  border-left: 3px solid var(--boon);
-}
-
-.entity.effect.sustained {
-  border-color: rgb(159 199 255 / 0.55);
-  border-left: 3px solid var(--sustained);
-  color: var(--sustained);
+.effect-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: var(--left);
+  height: 3px;
+  background: var(--tone);
 }
 
 /* A blessing about to run out breathes slowly; still, it is only dimmed. */
-.entity.effect.fading {
+.effect-tile.fading {
   animation: effect-fading 1.6s ease-in-out infinite;
-}
-
-.entity.effect.fading .progress {
-  color: var(--accent-bright);
 }
 
 @keyframes effect-fading {
   50% {
-    opacity: 0.45;
+    opacity: 0.4;
   }
 }
 
@@ -4373,7 +4366,7 @@ html.keyboard-tight .prompt-card.text .card-title {
 }
 
 :root[data-animation="off"] .entity.foe.critical,
-:root[data-animation="off"] .entity.effect.fading,
+:root[data-animation="off"] .effect-tile.fading,
 :root[data-animation="off"] .bar-trail {
   animation: none;
 }
@@ -4382,7 +4375,7 @@ html.keyboard-tight .prompt-card.text .card-title {
   display: none;
 }
 
-:root[data-animation="off"] .entity.effect.fading {
+:root[data-animation="off"] .effect-tile.fading {
   opacity: 0.6;
 }
 

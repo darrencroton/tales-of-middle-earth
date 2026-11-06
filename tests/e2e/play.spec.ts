@@ -620,9 +620,12 @@ test('a Demonologist sees Doom Shield take hold, what it does and the turns it h
   const cast = (await shield())!;
   expect(cast.armour).toBeLessThan(0);
 
-  /* A blessing is a glyph with its turns in the strip; its card says what it does and how long it has. */
-  const chip = page.locator('#hud .entity.effect.boon[data-id="shield"]');
-  await expect(chip).toContainText(String(cast.turns));
+  /* A blessing is two letters over a full bar in the strip; its card says what it does and how long it has. */
+  const chip = page.locator('#hud .effect-tile.boon[data-id="shield"]');
+  await expect(chip).toHaveText('DS');
+  await expect(chip).toHaveAttribute('aria-label', `Doom shield, ${cast.turns} turns left`);
+  const left = () => chip.locator('.effect-bar').evaluate((bar) => parseFloat((bar as HTMLElement).style.getPropertyValue('--left')));
+  expect(await left()).toBe(100);
   await chip.click();
   const card = page.locator('.sheet-effect');
   await expect(card.locator('.sheet-title')).toHaveText('Doom shield');
@@ -640,7 +643,7 @@ test('a Demonologist sees Doom Shield take hold, what it does and the turns it h
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
 
-  /* Rested to its last turns it breathes; once gone, its name floats away over the hero. */
+  /* Rested to its last turns its bar runs low and it breathes; once gone, its name floats away over the hero. */
   const rest = async (turns: number) => {
     await sendText(page, '\\R');
     await waitForScreen(page, /^Rest/);
@@ -651,6 +654,7 @@ test('a Demonologist sees Doom Shield take hold, what it does and the turns it h
   await rest(cast.turns! - 3);
   await expect.poll(async () => (await shield())?.turns ?? 0).toBeLessThanOrEqual(5);
   await expect(chip).toHaveClass(/fading/);
+  expect(await left()).toBeLessThan(25);
   await rest(10);
   await expect.poll(shield).toBeNull();
   await expect(chip).toBeHidden();
@@ -739,10 +743,10 @@ test('dragging pans the map without moving, long press describes (an altar\'s go
   await waitAtCommand(page);
   await page.locator('#toolbar [data-action="commands"]').click();
   await page.locator('.sheet .command', { hasText: 'Pray' }).click();
-  await page.locator('#hud .entity.effect[data-id="praying"]').click();
+  await page.locator('#hud .effect-tile[data-id="praying"]').click();
   await expect(god.locator('.sheet-subtitle')).toContainText('praying');
   await god.locator('.sheet-action', { hasText: 'Stop praying' }).click();
-  await expect(page.locator('#hud .entity.effect[data-id="praying"]')).toBeHidden();
+  await expect(page.locator('#hud .effect-tile[data-id="praying"]')).toBeHidden();
   await waitAtCommand(page);
   await page.locator('#hud .hud-player').click();
   await page.locator('.sheet .row-button', { hasText: 'Eru Ilúvatar' }).click();

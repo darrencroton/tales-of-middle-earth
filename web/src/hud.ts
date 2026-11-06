@@ -124,6 +124,8 @@ export class Hud {
   private quest: LevelQuest | null = null;
   /** The effects in force as they are now, by key, for a tap on their chips. */
   private effects = new Map<string, Effect>();
+  /** The most left of each effect since it began, for its bar to empty against. */
+  private effectMost = new Map<string, number>();
 
   constructor(root: HTMLElement, messagesEl: HTMLElement, palette: () => readonly string[], callbacks: HudCallbacks) {
     this.root = root;
@@ -149,6 +151,7 @@ export class Hud {
     this.objects.clear();
     this.quest = null;
     this.effects.clear();
+    this.effectMost.clear();
     this.root.replaceChildren();
     this.messagesEl.replaceChildren();
   }
@@ -200,13 +203,14 @@ export class Hud {
     this.quest = p.quest?.state === 'active' ? p.quest : null;
     const effects = heroEffects(p);
     this.effects = new Map(effects.map((e) => [e.key, e]));
+    this.effectMost = new Map(effects.flatMap((e) => (e.left ? [[e.key, Math.max(this.effectMost.get(e.key) ?? 0, e.left.count)]] : [])));
     const hallucinating = this.effects.has('hallucinating');
     const monsters = sortByDistance(hallucinating ? (state.monsters ?? []).map(disguiseMonster) : (state.monsters ?? []), px, py);
     const objects = sortByDistance(hallucinating ? (state.objects ?? []).map(disguiseObject) : (state.objects ?? []), px, py);
     const key = JSON.stringify([
       [p.name, p.race, p.cls, p.lev, p.chp, p.mhp, p.csp, p.msp, p.csane, p.msane, depthLabel(p), p.au, p.speed, p.skillPoints ?? 0],
       [this.quest?.title ?? '', this.quest?.random?.slain ?? 0],
-      effects.map((e) => [e.key, e.name, e.left?.count, e.fading, e.severe]),
+      effects.map((e) => [e.key, e.abbr, e.name, e.left?.count, e.fading, e.severe]),
       monsters.map((m) => [m.id, m.name, m.ch, m.attr, m.hp, m.maxhp, m.asleep, m.afraid, m.unique, m.status, m.quest]),
       objects.map((o) => [o.id, o.name, o.ch, o.attr]),
     ]);
@@ -244,11 +248,9 @@ export class Hud {
       item.append(button);
       strip.append(item);
     }
-    for (const effect of effects.filter((e) => e.kind === 'bane')) strip.append(this.effectItem(effect, false));
-    const blessings = effects.filter((e) => e.kind !== 'bane');
-    if (blessings.length) {
+    if (effects.length) {
       const group = el('li', 'effect-group');
-      group.append(...blessings.map((e) => this.effectItem(e, true)));
+      group.append(...effects.map((e) => this.effectTile(e)));
       strip.append(group);
     }
     if ((p.skillPoints ?? 0) > 0) {
@@ -329,28 +331,29 @@ export class Hud {
   }
 
   /**
-   * An effect's chip: its glyph and what is left, with its name for an
-   * ailment (`compact` leaves it out for blessings, kept together so they
-   * never push the creatures in view aside); ailments in warning colours,
-   * blessings pulsing as they fade.
+   * An effect's tile: two letters in its kind's colour (ailments red,
+   * blessings green, what the hero keeps going blue) over a bar that empties
+   * as it runs down, measured against the most seen since it began. Its name,
+   * strength and the count left are in its card.
    */
-  private effectItem(effect: Effect, compact: boolean): HTMLElement {
-    const button = el('button', `entity effect ${effect.kind}`);
+  private effectTile(effect: Effect): HTMLElement {
+    const button = el('button', `effect-tile ${effect.kind}`);
     button.type = 'button';
     button.dataset.hud = 'effect';
     button.dataset.id = effect.key;
     button.dataset.tap = `effect:${effect.key}`;
     button.classList.toggle('severe', effect.severe);
     button.classList.toggle('fading', effect.fading);
-    button.classList.toggle('compact', compact);
-    button.append(el('span', `glyph effect-glyph ${effect.kind}`, iconText(effect.icon)));
-    if (!compact) button.append(el('span', 'label', effect.name));
-    if (effect.left) button.append(el('span', 'progress', String(effect.left.count)));
+    button.append(el('span', 'effect-abbr', effect.abbr));
+    if (effect.left) {
+      const most = Math.max(this.effectMost.get(effect.key) ?? 0, effect.left.count);
+      const fill = el('span', 'effect-bar');
+      fill.style.setProperty('--left', `${((effect.left.count / most) * 100).toFixed(1)}%`);
+      button.append(fill);
+    }
+    button.title = effect.name;
     button.setAttribute('aria-label', [effect.name, effect.left ? `${countText(effect.left.count, effect.left.unit)} left` : '', effect.fading ? 'fading' : ''].filter(Boolean).join(', '));
-    if (compact) return button;
-    const item = el('li');
-    item.append(button);
-    return item;
+    return button;
   }
 
   private objectItem(o: ObjectState, palette: readonly string[]): HTMLElement {

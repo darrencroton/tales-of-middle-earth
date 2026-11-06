@@ -9,6 +9,7 @@ describe('effects on the hero', () => {
   it('shows Doom Shield with its armour, its counter-blow and the turns it has left', () => {
     const [doom] = hero([{ id: 'shield', turns: 27, armour: -290, aura: 'counter', dice: '1d10' }]);
     assert.equal(doom.name, 'Doom shield');
+    assert.equal(doom.abbr, 'DS');
     assert.equal(doom.kind, 'boon');
     assert.equal(doom.strength, 'Armour −290');
     assert.match(doom.does, /Lowers your armour by 290\. .*bashed for 1d10 damage/);
@@ -38,6 +39,7 @@ describe('effects on the hero', () => {
       ['Mortal wound', 'Fainting', 'Confused', 'Hasted', 'Praying', 'Holding Pattern'],
     );
     assert.equal(effects[0].left, null);
+    assert.deepEqual(effects.map((e) => e.abbr), ['Cu', 'Hu', 'Cf', 'Ha', 'Pr', 'So']);
     assert.equal(effects[0].severe, true);
     assert.match(effects[0].ends, /never closes by itself/);
     assert.equal(effects.find((e) => e.id === 'song')?.strength, '3 mana a turn');
