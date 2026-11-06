@@ -1,3 +1,4 @@
+import { hasEffect } from '../play/effects.ts';
 import type { GameState, LevelSnapshot } from '../render/snapshot.ts';
 import { AmbiencePlayer } from './ambience.ts';
 import { AudioCore } from './core.ts';
@@ -366,7 +367,7 @@ export class GameAudio {
     this.turn = snap.turn;
     this.health = player.mhp > 0 ? Math.max(0, player.chp) / player.mhp : 1;
     const monsters = state.monsters ?? [];
-    this.intensityTarget = player.status.hallucinating ? 0.3 : danger(player, monsters, snap.py, snap.px);
+    this.intensityTarget = hasEffect(player, 'hallucinating') ? 0.3 : danger(player, monsters, snap.py, snap.px);
     this.threatened = monsters.some((m) => m.status < 0 && !m.asleep);
     this.play(cues);
   }

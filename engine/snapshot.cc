@@ -59,6 +59,7 @@
 #include "skills.hpp"
 #include "skills_defs.hpp"
 #include "spells1.hpp"
+#include "spells3.hpp"
 #include "spell_type.hpp"
 #include "spells4.hpp"
 #include "spells5.hpp"
@@ -71,6 +72,7 @@
 #include "store_info_type.hpp"
 #include "store_type.hpp"
 #include "tables.hpp"
+#include "timer_type.hpp"
 #include "town_type.hpp"
 #include "tval_desc.hpp"
 #include "util.hpp"
@@ -1510,6 +1512,191 @@ static void json_passes(JsonWriter &w)
 	w.end_array();
 }
 
+/* One effect in force: its id, the turns it has left (none when it does not count down by turns), then its own fields. */
+static void json_effect(JsonWriter &w, char const *id, long turns, std::function<void()> const &extra = {})
+{
+	w.begin_object();
+	w.field("id", id);
+	if (turns > 0) w.field("turns", turns);
+	if (extra) extra();
+	w.end_object();
+}
+
+/* tome2's timed effects that count down by one each turn and carry nothing else. */
+struct TimedField
+{
+	char const *id;
+	s16b player_type::*field;
+};
+
+static constexpr TimedField TIMED_FIELDS[] = {
+	{ "blind", &player_type::blind },
+	{ "confused", &player_type::confused },
+	{ "afraid", &player_type::afraid },
+	{ "paralyzed", &player_type::paralyzed },
+	{ "hallucinating", &player_type::image },
+	{ "slow", &player_type::slow },
+	{ "parasite", &player_type::parasite },
+	{ "lightspeed", &player_type::lightspeed },
+	{ "invuln", &player_type::invuln },
+	{ "disruption", &player_type::disrupt_shield },
+	{ "wraith", &player_type::tim_wraith },
+	{ "shero", &player_type::shero },
+	{ "hero", &player_type::hero },
+	{ "blessed", &player_type::blessed },
+	{ "holy", &player_type::holy },
+	{ "strike", &player_type::strike },
+	{ "protevil", &player_type::protevil },
+	{ "reflect", &player_type::tim_reflect },
+	{ "resistAcid", &player_type::oppose_acid },
+	{ "resistElec", &player_type::oppose_elec },
+	{ "resistFire", &player_type::oppose_fire },
+	{ "resistCold", &player_type::oppose_cold },
+	{ "resistPois", &player_type::oppose_pois },
+	{ "resistChaos", &player_type::oppose_cc },
+	{ "poisonHands", &player_type::tim_poison },
+	{ "absorbSoul", &player_type::absorb_soul },
+	{ "probability", &player_type::prob_travel },
+	{ "telepathy", &player_type::tim_esp },
+	{ "seeInvisible", &player_type::tim_invis },
+	{ "infravision", &player_type::tim_infra },
+	{ "light", &player_type::tim_lite },
+	{ "flight", &player_type::tim_fly },
+	{ "levitation", &player_type::tim_ffall },
+	{ "waterBreath", &player_type::tim_water_breath },
+	{ "magicBreath", &player_type::tim_magic_breath },
+	{ "precognition", &player_type::tim_precognition },
+};
+
+static char const *gf_name(int gf)
+{
+	for (int i = 0; gf_names[i].gf != -1; i++)
+	{
+		if (gf_names[i].gf == gf) return gf_names[i].name;
+	}
+	return "";
+}
+
+static std::string dice(int number, int sides)
+{
+	return fmt::format("{}d{}", number, sides);
+}
+
+/*
+ * The effects in force on the hero, as tome2 keeps them (`calc_bonuses`,
+ * `process_world`). A timed effect's `turns` are those tome2 counts: one each
+ * turn at normal speed (every 10 game turns). Poison, stuns and cuts heal by
+ * an amount that grows with Constitution each turn (`adj_con_fix`), so their
+ * turns are worked out from it; a mortal wound never heals by itself. Some
+ * count down by other things: great blows by the blow, Dripping Tread by the
+ * step, undead form by the kill. Sustained effects (a song, Inertia Control,
+ * a borrowed body) carry what keeps them going instead.
+ */
+static void json_effects(JsonWriter &w)
+{
+	auto const &r_info = game->edit_data.r_info;
+	int const heal = adj_con_fix[p_ptr->stat_ind[A_CON]] + 1;
+	auto healing = [heal](int amount) { return (amount + heal - 1) / heal; };
+
+	w.key("effects").begin_array();
+
+	for (auto const &t : TIMED_FIELDS)
+	{
+		if (p_ptr->*t.field > 0) json_effect(w, t.id, p_ptr->*t.field);
+	}
+
+	if (p_ptr->poisoned > 0) json_effect(w, "poisoned", healing(p_ptr->poisoned));
+	if (p_ptr->stun > 0) json_effect(w, "stun", healing(p_ptr->stun), [&] { w.field("level", p_ptr->stun); });
+	if (p_ptr->cut > 0) json_effect(w, "cut", p_ptr->cut > 1000 ? 0 : healing(p_ptr->cut), [&] { w.field("level", p_ptr->cut); });
+	if (p_ptr->black_breath) json_effect(w, "blackBreath", 0);
+	for (int i = 0; i < 6; i++)
+	{
+		if (p_ptr->stat_cnt[i] > 0) json_effect(w, "drained", p_ptr->stat_cnt[i], [&] { w.field("stat", stat_names[i]); });
+	}
+
+	if (p_ptr->fast > 0) json_effect(w, "fast", p_ptr->fast, [&] { w.field("speed", p_ptr->speed_factor); });
+	if (p_ptr->shield > 0)
+	{
+		json_effect(w, "shield", p_ptr->shield, [&] {
+			w.field("armour", p_ptr->shield_power);
+			auto const opt = p_ptr->shield_opt;
+			char const *aura = (opt & SHIELD_GREAT_FIRE) ? "greatFire" : (opt & SHIELD_FIRE) ? "fire" : (opt & SHIELD_COUNTER) ? "counter" : (opt & SHIELD_FEAR) ? "fear" : "";
+			if (*aura)
+			{
+				w.field("aura", aura);
+				w.field("dice", dice(p_ptr->shield_power_opt, p_ptr->shield_power_opt2));
+			}
+		});
+	}
+	if (p_ptr->tim_regen > 0) json_effect(w, "regen", p_ptr->tim_regen, [&] { w.field("power", p_ptr->tim_regen_pow); });
+	if (p_ptr->tim_invisible > 0) json_effect(w, "invisible", p_ptr->tim_invisible, [&] { w.field("power", p_ptr->tim_inv_pow); });
+	if (p_ptr->tim_roots > 0)
+	{
+		json_effect(w, "roots", p_ptr->tim_roots, [&] {
+			w.field("armour", p_ptr->tim_roots_ac);
+			w.field("damage", p_ptr->tim_roots_dam);
+		});
+	}
+	if (p_ptr->tim_thunder > 0) json_effect(w, "thunder", p_ptr->tim_thunder, [&] { w.field("dice", dice(p_ptr->tim_thunder_p1, p_ptr->tim_thunder_p2)); });
+	if (p_ptr->tim_project > 0)
+	{
+		json_effect(w, "project", p_ptr->tim_project, [&] {
+			w.field("element", gf_name(p_ptr->tim_project_gf));
+			w.field("damage", p_ptr->tim_project_dam);
+			w.field("radius", p_ptr->tim_project_rad);
+		});
+	}
+	if (p_ptr->tim_deadly > 0) json_effect(w, "deadly", 0, [&] { w.field("blows", p_ptr->tim_deadly); });
+	if (p_ptr->dripping_tread > 0) json_effect(w, "tread", 0, [&] { w.field("steps", p_ptr->dripping_tread); });
+	if (p_ptr->confusing) json_effect(w, "confusing", 0);
+	if (p_ptr->word_recall > 0) json_effect(w, "recall", p_ptr->word_recall, [&] { w.field("up", dun_level > 0 ? 1 : 0); });
+	if (no_breeds > 0) json_effect(w, "noBreeds", no_breeds);
+
+	if (p_ptr->tim_mimic > 0) json_effect(w, "mimic", p_ptr->tim_mimic, [&] { w.field("form", get_mimic_name(p_ptr->mimic_form)); });
+	if (p_ptr->body_monster && static_cast<std::size_t>(p_ptr->body_monster) < r_info.size())
+	{
+		json_effect(w, "body", 0, [&] { w.field("form", r_info[p_ptr->body_monster].name ? r_info[p_ptr->body_monster].name : ""); });
+	}
+	{
+		int const limbs = p_ptr->mimic_extra >> 16;
+		auto const att = p_ptr->mimic_extra & 0xFFFF;
+		if (limbs > 0 && (att & CLASS_LEGS)) json_effect(w, "mimicLegs", limbs);
+		if (limbs > 0 && (att & CLASS_ARMS)) json_effect(w, "mimicArms", limbs);
+		if (limbs > 0 && (att & CLASS_WALL)) json_effect(w, "mimicWall", limbs);
+	}
+	if (p_ptr->necro_extra & CLASS_UNDEAD) json_effect(w, "undead", 0, [&] { w.field("kills", p_ptr->necro_extra2); });
+	if (p_ptr->music_extra)
+	{
+		auto const spell_idx = -static_cast<s32b>(p_ptr->music_extra);
+		json_effect(w, "song", 0, [&] {
+			w.field("spell", spell_type_name(spell_at(spell_idx)));
+			w.field("mana", get_mana(spell_idx));
+		});
+	}
+	if (p_ptr->inertia_controlled_spell != -1)
+	{
+		auto const spell_idx = p_ptr->inertia_controlled_spell;
+		json_effect(w, "inertia", 0, [&] {
+			w.field("spell", spell_type_name(spell_at(spell_idx)));
+			w.field("mana", get_mana(spell_idx) * 4);
+			w.field("every", TIMER_INERTIA_CONTROL->m_delay);
+			w.field("next", TIMER_INERTIA_CONTROL->m_countdown);
+		});
+	}
+	auto const &binder = p_ptr->spellbinder;
+	if (binder.trigger && !binder.spell_idxs.empty())
+	{
+		json_effect(w, "spellbinder", 0, [&] {
+			w.field("at", binder.trigger == SPELLBINDER_HP75 ? 75 : binder.trigger == SPELLBINDER_HP50 ? 50 : 25);
+			w.key("spells").begin_array();
+			for (auto const idx : binder.spell_idxs) w.value(spell_type_name(spell_at(idx)));
+			w.end_array();
+		});
+	}
+
+	w.end_array();
+}
+
 /*
  * Returns player, visible monster/object and recent message state as JSON.
  */
@@ -1557,18 +1744,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	json_adventure(w);
 	json_level_quest(w);
 	json_quests(w, false);
-	w.key("status").begin_object();
-	w.field("blind", p_ptr->blind);
-	w.field("confused", p_ptr->confused);
-	w.field("afraid", p_ptr->afraid);
-	w.field("poisoned", p_ptr->poisoned);
-	w.field("paralyzed", p_ptr->paralyzed);
-	w.field("hallucinating", p_ptr->image);
-	w.field("cut", p_ptr->cut);
-	w.field("stun", p_ptr->stun);
-	w.field("fast", p_ptr->fast);
-	w.field("slow", p_ptr->slow);
-	w.end_object();
+	json_effects(w);
 	w.end_object();
 
 	/* Visible monsters */

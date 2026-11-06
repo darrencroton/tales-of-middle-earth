@@ -593,6 +593,70 @@ test('race powers are under their race in Powers, their lettered questions are b
   await expect(page.locator('#toolbar [data-action="recast"]')).toContainText('Wand of Manathrust');
 });
 
+test('a Demonologist sees Doom Shield take hold, what it does and the turns it has left, then feels it fade', async ({ page }) => {
+  await page.goto('./?wizard');
+  await waitForEngine(page);
+  await createCharacter(page, 'Demonist', { race: 'Human', cls: 'Warrior', spec: 'Demonologist' });
+  /* Doom Shield is cast from a wielded Demonshield (k_info 789). */
+  await wizardGive(page, '-', 789);
+  const letter = await page.evaluate(() => {
+    const item = window.__tome!.engine.inventory()!.pack.find((i) => /Demonshield/.test(i.name));
+    return item ? String.fromCharCode(97 + item.i) : '';
+  });
+  let text = await screenText(page);
+  await sendText(page, `\\w${letter}`);
+  await waitForSettle(page, text, 5_000);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  const shield = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.effects?.find((e) => e.id === 'shield') ?? null);
+  for (let attempt = 0; attempt < 8 && !(await shield()); attempt++) {
+    await page.locator('#toolbar [data-action="commands"]').click();
+    await page.locator('.sheet .command', { hasText: 'Magic' }).click();
+    await page.locator('.sheet .spell-row', { hasText: 'Doom Shield' }).click();
+    await expect(page.locator('.sheet-layer')).toBeHidden();
+    await dismissMore(page);
+    await waitAtCommand(page);
+  }
+  const cast = (await shield())!;
+  expect(cast.armour).toBeLessThan(0);
+
+  /* A blessing is a glyph with its turns in the strip; its card says what it does and how long it has. */
+  const chip = page.locator('#hud .entity.effect.boon[data-id="shield"]');
+  await expect(chip).toContainText(String(cast.turns));
+  await chip.click();
+  const card = page.locator('.sheet-effect');
+  await expect(card.locator('.sheet-title')).toHaveText('Doom shield');
+  await expect(card.locator('.sheet-subtitle')).toHaveText(`Blessing · ${cast.turns} turns left`);
+  await expect(card).toContainText(`Armour −${-cast.armour!}`);
+  await expect(card).toContainText(`bashed for ${cast.dice} damage`);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  await page.locator('#hud .hud-player').click();
+  const row = page.locator('.sheet-character .sheet-section', { hasText: 'Blessings' }).locator('.effect-row', { hasText: 'Doom shield' });
+  await expect(row).toContainText(`${cast.turns} turns left`);
+  await row.click();
+  await expect(card.locator('.sheet-title')).toHaveText('Doom shield');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  /* Rested to its last turns it breathes; once gone, its name floats away over the hero. */
+  const rest = async (turns: number) => {
+    await sendText(page, '\\R');
+    await waitForScreen(page, /^Rest/);
+    await sendText(page, `${turns}\r`);
+    await dismissMore(page);
+    await waitAtCommand(page);
+  };
+  await rest(cast.turns! - 3);
+  await expect.poll(async () => (await shield())?.turns ?? 0).toBeLessThanOrEqual(5);
+  await expect(chip).toHaveClass(/fading/);
+  await rest(10);
+  await expect.poll(shield).toBeNull();
+  await expect(chip).toBeHidden();
+  await expect(page.locator('.feel-float.blessing.faded', { hasText: 'Doom shield fades' })).toBeAttached();
+});
+
 test('dragging pans the map without moving, long press describes (an altar\'s god too, who can be worshipped), sheets open from the HUD, and a tap acts once on what was pressed', { tag: '@layout' }, async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
@@ -675,10 +739,10 @@ test('dragging pans the map without moving, long press describes (an altar\'s go
   await waitAtCommand(page);
   await page.locator('#toolbar [data-action="commands"]').click();
   await page.locator('.sheet .command', { hasText: 'Pray' }).click();
-  await page.locator('#hud .entity.praying').click();
+  await page.locator('#hud .entity.effect[data-id="praying"]').click();
   await expect(god.locator('.sheet-subtitle')).toContainText('praying');
   await god.locator('.sheet-action', { hasText: 'Stop praying' }).click();
-  await expect(page.locator('#hud .entity.praying')).toBeHidden();
+  await expect(page.locator('#hud .entity.effect[data-id="praying"]')).toBeHidden();
   await waitAtCommand(page);
   await page.locator('#hud .hud-player').click();
   await page.locator('.sheet .row-button', { hasText: 'Eru Ilúvatar' }).click();

@@ -47,6 +47,7 @@ import {
   transposeMelody,
 } from '../../web/src/audio/theory.ts';
 import { monster } from './fixtures.ts';
+import type { EffectState } from '../../web/src/render/snapshot.ts';
 
 const place = (patch: Partial<Place> = {}): Place => ({
   ready: 1,
@@ -459,7 +460,7 @@ describe('sound cues', () => {
   });
 
   it('hears changes in the player', () => {
-    const base = { name: 'Frodo', lev: 1, au: 100, chp: 20, mhp: 20, depth: 1, dungeon: 'Mirkwood', wild: 0, food: 5000, status: {} as Record<string, number> };
+    const base = { name: 'Frodo', lev: 1, au: 100, chp: 20, mhp: 20, depth: 1, dungeon: 'Mirkwood', wild: 0, food: 5000, effects: [] as EffectState[] };
     const ids = (next: Partial<typeof base>, heard: string[] = [], store = false) =>
       playerCues(base, { ...base, ...next }, new Set(heard as never[]), store).map((c) => c.id);
     assert.deepEqual(ids({ depth: 2 }), ['stairs-down']);
@@ -468,16 +469,17 @@ describe('sound cues', () => {
     assert.deepEqual(ids({ lev: 2 }), ['levelup']);
     assert.deepEqual(ids({ chp: 15 }), ['hurt']);
     assert.deepEqual(ids({ chp: 15 }, ['hurt']), []);
-    const ailing = (status: Record<string, number>, chp: number) => playerCues({ ...base, status }, { ...base, status, chp }, new Set(), false).map((c) => c.id);
-    assert.deepEqual(ailing({ poisoned: 5 }, 19), ['ail']);
-    assert.deepEqual(ailing({ cut: 150 }, 17), ['ail']);
-    assert.deepEqual(ailing({ poisoned: 5 }, 10), ['hurt']);
-    assert.deepEqual(playerCues({ ...base, status: { poisoned: 5 } }, { ...base, status: { poisoned: 5 }, chp: 13 }, new Set(), false, 2).map((c) => c.id), ['ail']);
-    assert.deepEqual(playerCues({ ...base, status: { poisoned: 5 } }, { ...base, status: { poisoned: 5 }, chp: 18 }, new Set(['spell-monster'] as never[]), false).map((c) => c.id), ['hurt']);
+    const poisoned = [{ id: 'poisoned', turns: 5 }];
+    const ailing = (effects: EffectState[], chp: number) => playerCues({ ...base, effects }, { ...base, effects, chp }, new Set(), false).map((c) => c.id);
+    assert.deepEqual(ailing(poisoned, 19), ['ail']);
+    assert.deepEqual(ailing([{ id: 'cut', turns: 50, level: 150 }], 17), ['ail']);
+    assert.deepEqual(ailing(poisoned, 10), ['hurt']);
+    assert.deepEqual(playerCues({ ...base, effects: poisoned }, { ...base, effects: poisoned, chp: 13 }, new Set(), false, 2).map((c) => c.id), ['ail']);
+    assert.deepEqual(playerCues({ ...base, effects: poisoned }, { ...base, effects: poisoned, chp: 18 }, new Set(['spell-monster'] as never[]), false).map((c) => c.id), ['hurt']);
     assert.deepEqual(ids({ au: 150 }), ['gold']);
     assert.deepEqual(ids({ au: 50 }, [], true), ['buy']);
-    assert.deepEqual(ids({ status: { poisoned: 5 } }), ['poisoned']);
-    assert.deepEqual(playerCues({ ...base, status: { poisoned: 3 } }, base, new Set(), false).map((c) => c.id), ['cured']);
+    assert.deepEqual(ids({ effects: poisoned }), ['poisoned']);
+    assert.deepEqual(playerCues({ ...base, effects: poisoned }, base, new Set(), false).map((c) => c.id), ['cured']);
     assert.deepEqual(playerCues(null, base, new Set(), false), []);
   });
 
