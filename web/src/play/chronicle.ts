@@ -159,7 +159,7 @@ export function newDeeds(c: Chronicle, career: Career, earned: ReadonlySet<strin
 export function nextTimeTip(c: Chronicle, cause: string, depth: number): string {
   const how = cause.toLowerCase();
   if (/poison/.test(how)) return 'Poison keeps hurting after a fight: carry healing potions and quaff one before it wears you down.';
-  if (/starvation|hunger/.test(how)) return 'Keep food in your pack, and eat when the toolbar offers Eat.';
+  if (/starvation|hunger/.test(how)) return 'Keep food in your pack, and eat as soon as you grow hungry.';
   if (c.peakLevel < 5 && depth >= 4) return 'Take the first levels slowly: gain a few hero levels near the surface before going deeper.';
   if (/^[A-Z]/.test(cause) && !/^(A|An|The) /.test(cause)) {
     return 'Creatures of legend are far stronger than their kin. Press and hold one to read about it before you fight.';

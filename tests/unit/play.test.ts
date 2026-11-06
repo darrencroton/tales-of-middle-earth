@@ -672,7 +672,7 @@ describe('actions', () => {
     assert.deepEqual(talk.effect, { kind: 'native', view: 'talk' });
     assert.equal(contextualAction({ ...base, talk: true, foe: '6' }).id, 'attack');
     assert.equal(contextualAction({ ...base, talk: true, floorObjects: 1 }).id, 'pickup');
-    assert.equal(contextualAction({ ...base, talk: true, gear: 'eat' }).id, 'equip');
+    assert.equal(contextualAction({ ...base, talk: true, gear: 'light' }).id, 'equip');
   });
 
   it('names the way to and from the world map on the surface', () => {

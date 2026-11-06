@@ -254,16 +254,15 @@ export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace
 }
 
 export interface GearSuggestion {
-  kind: 'weapon' | 'light' | 'eat';
+  kind: 'weapon' | 'light';
   item: ItemState;
-  /** Eat it, wield it, or refuel the light with it. */
-  command: 'E' | 'w' | 'F';
+  /** Wield it, or refuel the light with it. */
+  command: 'w' | 'F';
 }
 
 interface Situation {
   /** Below the town, where a light is needed. */
   inDungeon: boolean;
-  hungry: boolean;
   /** The hero fights with weapons, so an empty weapon hand is worth filling. */
   wieldsWeapons?: boolean;
 }
@@ -278,7 +277,7 @@ function burning(item: Pick<ItemState, 'fuel'>): boolean {
 }
 
 /**
- * Gear the hero needs to go on: food when hungry, a weapon when none is
+ * Gear the hero needs to go on: a weapon when none is
  * wielded (for heroes who fight with weapons), or (below the town) a light
  * when none is lit: fuel for the light that went out (a flask of oil for a
  * lamp, another torch for a torch), else another light to wield.
@@ -292,7 +291,6 @@ export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>,
   const light = worn(INVEN_LITE);
   const lightOut = !light || !burning(light);
   return (
-    (situation.hungry ? find('eat', 'E', (i) => i.tval === TV.FOOD) : null) ??
     (situation.wieldsWeapons !== false && !worn(INVEN_WIELD) ? find('weapon', 'w', (i) => WEAPON_TVALS.has(i.tval)) : null) ??
     (situation.inDungeon && lightOut
       ? ((light?.sval === SV_LANTERN ? find('light', 'F', (i) => i.tval === TV.FLASK) : null) ??
