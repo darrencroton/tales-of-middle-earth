@@ -6,7 +6,7 @@ import { monster } from './fixtures.ts';
 
 const player: PlayerState = {
   name: 'Hurin', race: 'Human', cls: 'Warrior', title: 'Swordsman', lev: 20, exp: 9000, au: 450, chp: -3, mhp: 180, csp: 0, msp: 0, csane: 50, msane: 50,
-  speed: 0, food: 5000, depth: 30, dungeon: 'Angband', wild: 0, alwaysPickup: 0, dead: 1, diedFrom: 'a Cave troll', status: {},
+  speed: 0, food: 5000, depth: 30, dungeon: 'Angband', wild: 0, alwaysPickup: 0, dead: 1, diedFrom: 'a Cave troll',
 };
 
 describe('memorial', () => {

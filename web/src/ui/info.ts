@@ -1,4 +1,5 @@
 import { bondName, FRIEND, orderRefusal, PET, type Companion } from '../play/companions.ts';
+import { hasEffect } from '../play/effects.ts';
 import { directionDigit } from '../play/prompts.ts';
 import { NO_TARGET } from '../play/recent.ts';
 import type { MapPoint } from '../render/map.ts';
@@ -39,7 +40,7 @@ function distance(a: MapPoint, b: MapPoint): number {
 /** Why the hero cannot give their creatures orders now, or null: tome2's `P` waits for the command prompt, is refused while confused, and ignored on the world map or while controlling a creature. */
 export function orderUnavailable(api: GameApi): string | null {
   if (!api.snapshot()?.atCommand) return NOT_NOW;
-  return api.refusal('P') ?? orderRefusal((api.state()?.player?.status.confused ?? 0) > 0);
+  return api.refusal('P') ?? orderRefusal(hasEffect(api.state()?.player, 'confused'));
 }
 
 /** A creature on the hero's side as the creature card takes it: where it stands, and whether the hero can see it. */
@@ -274,7 +275,7 @@ export function describeCell(api: GameApi, point: MapPoint): CellDescription | n
   const name = (grid?.name ?? '').replace(/\.$/, '').replace(/^(a|an) /i, '');
   const monsters = (state?.monsters ?? []).filter((m) => m.x === point.x && m.y === point.y);
   const objects = (grid?.objects ?? []).map((o) => ({ ...o, x: point.x, y: point.y }));
-  const blurred = (state?.player?.status.hallucinating ?? 0) > 0 && (monsters.length > 0 || objects.length > 0);
+  const blurred = hasEffect(state?.player, 'hallucinating') && (monsters.length > 0 || objects.length > 0);
   return {
     point,
     title: known && name ? capitalise(name) : 'Unexplored',

@@ -196,7 +196,52 @@ export interface PlayerState {
   area?: string;
   /** The surface area is a town (set by the frontend from the place). */
   inTown?: boolean;
-  status: Record<string, number>;
+  /** The effects in force on the hero, timed, conditional and sustained (hunger and prayer are their own fields). */
+  effects?: EffectState[];
+}
+
+/** One effect in force on the hero, as `web_state_json` gives it (`json_effects` in engine/snapshot.cc). */
+export interface EffectState {
+  id: string;
+  /** Turns left, for what counts down by the turn (one each turn at normal speed). */
+  turns?: number;
+  /** A cut's or stun's severity, as tome2 keeps it. */
+  level?: number;
+  /** Haste: the speed it gives. */
+  speed?: number;
+  /** A shield's or roots' change to armour. */
+  armour?: number;
+  /** What a shield does to a creature that strikes the hero. */
+  aura?: 'counter' | 'fire' | 'greatFire' | 'fear';
+  /** Dice rolled by a shield's aura or a thunderstorm's lightning. */
+  dice?: string;
+  power?: number;
+  damage?: number;
+  element?: string;
+  radius?: number;
+  /** Great blows left (Deadly blows). */
+  blows?: number;
+  /** Steps left (Dripping Tread). */
+  steps?: number;
+  /** Kills left before undead form ends. */
+  kills?: number;
+  /** Word of Recall: 1 when it will lift the hero out of the dungeon. */
+  up?: number;
+  /** The shape taken or body borrowed. */
+  form?: string;
+  /** A temporarily drained attribute. */
+  stat?: string;
+  /** The spell sung, held by Inertia Control, and how much mana it takes. */
+  spell?: string;
+  mana?: number;
+  /** A song: the effects it renews each turn it is sung. */
+  renews?: string[];
+  /** Inertia Control: turns between casts, and until the next. */
+  every?: number;
+  next?: number;
+  /** Spellbinder: the health (percent) at which its spells are released, and the spells. */
+  at?: number;
+  spells?: string[];
 }
 
 /** Feet below the surface of one dungeon level, as tome2 counts depth. */

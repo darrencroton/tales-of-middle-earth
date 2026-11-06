@@ -372,7 +372,8 @@ test('a hero in Adventure mode returns from death twice, and the third death is 
       }
       return open;
     });
-  for (let attempt = 0; attempt < 8 && (await openNeighbours()) < 5; attempt++) await wizardCommand(page, 'p');
+  /* A phase door, then a teleport across the level, until such ground is found. */
+  for (let attempt = 0; attempt < 12 && (await openNeighbours()) < 5; attempt++) await wizardCommand(page, attempt % 2 ? 't' : 'p');
   expect(await openNeighbours(), 'no open ground could be reached').toBeGreaterThanOrEqual(5);
   const hero = () =>
     page.evaluate(() => {

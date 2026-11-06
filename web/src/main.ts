@@ -3,7 +3,7 @@ import { GameAudio } from './audio/audio.ts';
 import type { Place } from './audio/places.ts';
 import { doorKinds } from './audio/cues.ts';
 import { Engine } from './engine.ts';
-import { areaName, Hud, rowSegments, statusLabels, type HudEntity } from './hud.ts';
+import { areaName, Hud, rowSegments, type HudEntity } from './hud.ts';
 import { attachMapGestures, attachPinch } from './input/gestures.ts';
 import { directionKeys, KEY_BACKSLASH as BACKSLASH, KEY_ENTER, KEY_ESCAPE, keyCodes, translateKey, translateText } from './input/keys.ts';
 import { attachSoftKeyboard } from './input/softkeyboard.ts';
@@ -13,6 +13,7 @@ import { HIT_FLASH_MS, MapRenderer, MAX_ZOOM, MIN_ZOOM, type MapPoint } from './
 import { drawnEffects, terminalCell } from './render/effects.ts';
 import { buildMaterials, FB_DOOR, FB_NO_WALK, walkableFor, type FeatureInfo, type Material } from './render/materials.ts';
 import { altarAction } from './play/gods.ts';
+import { hasEffect, isHungry } from './play/effects.ts';
 import { contextActions, contextualAction, commandRefusal, CONTROLLING, exploreRefusal, creaturePowersMacro, releaseMacro, restMacro, waitCommand, type Action, type ActionContext, type CommandContext, type NativeView } from './play/actions.ts';
 import { MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
@@ -46,7 +47,8 @@ import { companionsLater, openCompanions } from './ui/companions.ts';
 import { openKnowledge } from './ui/knowledge.ts';
 import { el, iconText } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
-import { openAltarGod, openHeroGod } from './ui/gods.ts';
+import { openAltarGod } from './ui/gods.ts';
+import { openEffect } from './ui/effects.ts';
 import { openFloorObject, openMonster, openQuest, openTargets } from './ui/info.ts';
 import { openInventory, openItemDetails } from './ui/inventory.ts';
 import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate, type AdventureRules } from './ui/menus.ts';
@@ -246,7 +248,10 @@ const hud = new Hud(hudEl, messagesEl, () => buffer.palette, {
   onPlayer: () => openNative(hasFallen(game.lastState?.player) ? 'fallen' : 'character'),
   onSkills: () => openNative('skills'),
   onQuest: (quest) => openQuest(sheets, quest),
-  onGod: () => openHeroGod(api),
+  onEffect: (effect) => {
+    journeys.interrupt('effect');
+    openEffect(api, effect);
+  },
   onMore: () => send([SPACE]),
   onHistory: () => {
     journeys.interrupt('history');
@@ -410,7 +415,7 @@ function flash(point: MapPoint): void {
 
 function openEntity(entity: HudEntity): void {
   journeys.interrupt('entity');
-  if ((game.lastState?.player?.status.hallucinating ?? 0) > 0) {
+  if (hasEffect(game.lastState?.player, 'hallucinating')) {
     flash(entity.kind === 'monster' ? entity.monster : entity.object);
     showToast('You cannot trust your eyes right now.');
     return;
@@ -843,7 +848,7 @@ function refresh(): void {
       }
       feel.setQuest(
         state.player.quest?.state === 'active' && !state.player.dead,
-        !state.player.status.hallucinating && (state.monsters ?? []).some((m) => m.quest && m.view && isHostile(m)),
+        !hasEffect(state.player, 'hallucinating') && (state.monsters ?? []).some((m) => m.quest && m.view && isHostile(m)),
       );
     }
     const sameHero = !!previous && previous.player?.name === state.player?.name;
@@ -919,7 +924,7 @@ function tellQuestMoment(): void {
  * farewell and a ring in its colour instead.
  */
 function showHits(previous: GameState, next: GameState, slain: readonly Slain[]): void {
-  if (mode !== 'map' || (next.player?.status.hallucinating ?? 0) > 0) return;
+  if (mode !== 'map' || hasEffect(next.player, 'hallucinating')) return;
   const before = new Map((previous.monsters ?? []).map((m) => [m.id, m]));
   let marked = false;
   const mark = (point: MapPoint, text: string, kind: string) => {
@@ -978,7 +983,7 @@ function gearSuggestion(): GearSuggestion | null {
   if (!inventory?.ready || !player) return null;
   return suggestedGear(inventory, {
     inDungeon: snap.depth > 0,
-    hungry: statusLabels(player).some((l) => l === 'Hungry' || l === 'Weak'),
+    hungry: isHungry(player),
     wieldsWeapons: abilities.style().weapons,
   });
 }

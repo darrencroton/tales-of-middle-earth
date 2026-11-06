@@ -15,6 +15,17 @@ describe('game feel events', () => {
     assert.deepEqual(playerEvents(base, { ...base, chp: 25, mhp: 25 }), []);
   });
 
+  it('says when blessings and sustained powers begin and fade, not ailments', () => {
+    const doom = { id: 'shield', turns: 1, armour: -290, aura: 'counter' as const, dice: '1d10' };
+    assert.deepEqual(playerEvents({ ...base, effects: [] }, { ...base, effects: [doom] }), [{ kind: 'blessing', ended: false, icon: '◈', names: ['Doom shield'] }]);
+    assert.deepEqual(playerEvents({ ...base, effects: [doom, { id: 'blessed', turns: 1 }] }, { ...base, effects: [] }), [
+      { kind: 'blessing', ended: true, icon: '◈', names: ['Doom shield', 'Blessed'] },
+    ]);
+    assert.deepEqual(playerEvents({ ...base, effects: [{ id: 'confused', turns: 1 }] }, { ...base, effects: [] }), []);
+    assert.deepEqual(playerEvents({ ...base, effects: [doom] }, { ...base, effects: [{ ...doom, turns: 40 }] }), []);
+    assert.deepEqual(playerEvents({ ...base, pray: 2 }, { ...base, pray: 1 }), []);
+  });
+
   it('reports level-ups, gold and depth changes', () => {
     assert.deepEqual(playerEvents(base, { ...base, lev: 2, exp: 10, skillPoints: 5 }), [{ kind: 'levelup', level: 2, skillPoints: 5 }]);
     assert.deepEqual(playerEvents(base, { ...base, exp: 4 }), [{ kind: 'exp', amount: 4 }]);

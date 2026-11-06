@@ -1,3 +1,4 @@
+import { hasEffect } from '../play/effects.ts';
 import { isHostile, newMessages, type GameState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
 
 export type Element = 'fire' | 'cold' | 'lightning' | 'poison' | 'magic' | 'dark' | 'earth';
@@ -270,7 +271,7 @@ export function outcomeCue(key: string, tookTime: boolean, messages: readonly st
   return { id: outcome.kind === 'failed' ? 'fizzle' : 'deny' };
 }
 
-type Tracked = Pick<PlayerState, 'name' | 'lev' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'status' | 'food'>;
+type Tracked = Pick<PlayerState, 'name' | 'lev' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'effects' | 'food'>;
 
 const STATUS_CUES: [string, CueId][] = [
   ['poisoned', 'poisoned'],
@@ -308,7 +309,7 @@ export function playerCues(prev: Tracked | null, next: Tracked, heard: ReadonlyS
     if (lost > 0 && !['hurt', 'bite', 'claw', 'trap', 'death'].some((id) => heard.has(id as CueId))) {
       const ailing =
         lost <= AILING_LOSS * ticks &&
-        ((prev.status.poisoned ?? 0) > 0 || (prev.status.cut ?? 0) > 0) &&
+        (hasEffect(prev, 'poisoned') || hasEffect(prev, 'cut')) &&
         !heard.has('spell-monster') &&
         !heard.has('breath');
       cues.push(ailing ? { id: 'ail' } : { id: 'hurt', strength: Math.min(1, lost / next.mhp + 0.2) });
@@ -318,10 +319,10 @@ export function playerCues(prev: Tracked | null, next: Tracked, heard: ReadonlyS
   if (next.au > prev.au && !moved) cues.push({ id: 'gold', strength: Math.min(1, Math.log10(next.au - prev.au + 1) / 3) });
   if (next.au < prev.au && inStore) cues.push({ id: 'buy' });
   for (const [key, id] of STATUS_CUES) {
-    if ((next.status[key] ?? 0) > 0 && !((prev.status[key] ?? 0) > 0)) cues.push({ id });
+    if (hasEffect(next, key) && !hasEffect(prev, key)) cues.push({ id });
   }
-  const wasIll = AILMENTS.some((k) => (prev.status[k] ?? 0) > 0);
-  const isIll = AILMENTS.some((k) => (next.status[k] ?? 0) > 0);
+  const wasIll = AILMENTS.some((k) => hasEffect(prev, k));
+  const isIll = AILMENTS.some((k) => hasEffect(next, k));
   if (wasIll && !isIll && next.chp > 0) cues.push({ id: 'cured' });
   return cues;
 }

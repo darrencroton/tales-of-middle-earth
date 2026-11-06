@@ -21,6 +21,10 @@
   --sp: #2d5aa8;
   --sn: #7b3fa0;
   --ally: #2f7a3a;
+  /* Effects on the hero: ailments, blessings, and what the hero keeps going (light blue, as tome2 draws piety while praying). */
+  --bane: #f0a898;
+  --boon: #a8dca0;
+  --sustained: #b8d4ff;
   --app-height: 100dvh;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
@@ -787,16 +791,6 @@ html.keyboard-open .sheet-layer {
   flex: 0 0 auto;
 }
 
-.hud-entities .chip {
-  align-self: center;
-  padding: 0.1em 0.6em;
-  border-radius: 1em;
-  background: #3a1f1a;
-  color: #f0b8a8;
-  font-size: var(--fs-small);
-  white-space: nowrap;
-}
-
 .hud-entities .quiet {
   align-self: center;
   padding-left: 0.2rem;
@@ -1087,7 +1081,6 @@ html.keyboard-open .sheet-layer {
     overflow-y: auto;
   }
 
-  #hud .hud-entities .chip,
   #hud .hud-entities .quiet {
     align-self: flex-start;
   }
@@ -1095,6 +1088,10 @@ html.keyboard-open .sheet-layer {
   #hud .hud-player .meta {
     flex-wrap: wrap;
     white-space: normal;
+  }
+
+  #hud .hud-entities > li.effect-group {
+    flex-wrap: wrap;
   }
 
   /* In the narrow sidebar, names wrap onto a second line rather than being cut. */
@@ -3923,10 +3920,108 @@ html.keyboard-tight .prompt-card.text .card-title {
   border-color: var(--accent);
 }
 
-/* Praying: light blue, as tome2 draws piety while the hero prays. */
-.entity.praying {
-  border-color: rgb(159 199 255 / 0.55);
-  color: #b8d4ff;
+/* An effect on the hero: its glyph and edge in its kind's colour, with what is left. */
+.glyph.effect-glyph.bane {
+  color: var(--bane);
+}
+
+.glyph.effect-glyph.boon {
+  color: var(--boon);
+}
+
+.glyph.effect-glyph.sustained {
+  color: var(--sustained);
+}
+
+.hud-entities > li.effect-group {
+  gap: 0.25rem;
+}
+
+/* An effect in the strip: two letters in its kind's colour over a bar that empties as it runs down. */
+.effect-tile {
+  --tone: var(--boon);
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  width: 2.3rem;
+  height: calc(var(--touch) * 0.8);
+  padding: 0 0 0.2rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+  color: var(--tone);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.effect-tile.bane {
+  --tone: var(--bane);
+  background: rgb(160 60 45 / 0.28);
+}
+
+.effect-tile.sustained {
+  --tone: var(--sustained);
+}
+
+.effect-tile.severe {
+  --tone: #ffd0c4;
+  border-color: var(--danger);
+  background: rgb(190 50 35 / 0.5);
+  box-shadow: 0 0 0.5rem rgb(224 96 79 / 0.5);
+}
+
+.effect-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: var(--left);
+  height: 3px;
+  background: var(--tone);
+}
+
+/* A blessing about to run out breathes slowly; still, it is only dimmed. */
+.effect-tile.fading {
+  animation: effect-fading 1.6s ease-in-out infinite;
+}
+
+@keyframes effect-fading {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.effect-row .glyph {
+  font-family: var(--sans);
+}
+
+.effect-row.severe .row-label {
+  color: var(--danger);
+}
+
+.effect-row.fading .row-hint {
+  color: var(--accent-bright);
+}
+
+.effect-card .effect-strength {
+  color: var(--accent-bright);
+  font-weight: 600;
+}
+
+.feel-float.blessing {
+  color: var(--boon);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.feel-float.blessing.faded {
+  color: var(--muted);
+  font-style: italic;
+  font-weight: 400;
 }
 
 .feel-float.still {
@@ -4271,12 +4366,17 @@ html.keyboard-tight .prompt-card.text .card-title {
 }
 
 :root[data-animation="off"] .entity.foe.critical,
+:root[data-animation="off"] .effect-tile.fading,
 :root[data-animation="off"] .bar-trail {
   animation: none;
 }
 
 :root[data-animation="off"] .bar-trail {
   display: none;
+}
+
+:root[data-animation="off"] .effect-tile.fading {
+  opacity: 0.6;
 }
 
 /* First-game tips */

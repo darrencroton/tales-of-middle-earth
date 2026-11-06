@@ -1,4 +1,5 @@
 import type { Place } from './audio/places.ts';
+import { countText, heroEffects, type Effect } from './play/effects.ts';
 import { readableColour } from './render/colour.ts';
 import { bar, el, fraction, iconText } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
@@ -18,8 +19,8 @@ interface HudCallbacks {
   onSkills(): void;
   /** The chip of the level's quest was tapped. */
   onQuest(quest: LevelQuest): void;
-  /** The praying chip was tapped. */
-  onGod(): void;
+  /** An effect's chip was tapped (an ailment, a blessing, prayer). */
+  onEffect(effect: Effect): void;
   onMore(): void;
   onHistory(): void;
 }
@@ -30,22 +31,7 @@ const TRAIL_HOLD_MS = 300;
 /* A hostile creature below this fraction of its health is near death. */
 const CRITICAL = 0.25;
 
-const FOOD_WEAK = 1000;
-const FOOD_HUNGRY = 2000;
 const VISIBLE_MESSAGES = 3;
-
-const STATUS_LABELS: [string, string][] = [
-  ['blind', 'Blind'],
-  ['confused', 'Confused'],
-  ['afraid', 'Afraid'],
-  ['poisoned', 'Poisoned'],
-  ['paralyzed', 'Paralysed'],
-  ['hallucinating', 'Hallucinating'],
-  ['cut', 'Bleeding'],
-  ['stun', 'Stunned'],
-  ['fast', 'Hasted'],
-  ['slow', 'Slowed'],
-];
 
 export function depthLabel(player: Whereabouts): string {
   if (player.depth > 0) return `${placeName(player)} · ${feetOf(player)} ft (L${player.depth})`;
@@ -85,13 +71,6 @@ export function areaName(place: Pick<Place, 'wild' | 'depth' | 'quest' | 'levelN
   if (place.town > 0) return terrain || 'Town';
   if (!terrain) return 'The wilds';
   return TERRAINS[terrain.toLowerCase()]?.[0] ?? terrain.charAt(0).toUpperCase() + terrain.slice(1);
-}
-
-export function statusLabels(player: Pick<PlayerState, 'status' | 'food'>): string[] {
-  const labels = STATUS_LABELS.filter(([key]) => (player.status[key] ?? 0) > 0).map(([, label]) => label);
-  if (player.food < FOOD_WEAK) labels.push('Weak');
-  else if (player.food < FOOD_HUNGRY) labels.push('Hungry');
-  return labels;
 }
 
 const STRANGE_GLYPHS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -143,6 +122,10 @@ export class Hud {
   private objects = new Map<number, ObjectState>();
   /** The quest of the level as it is now, for a tap on its chip. */
   private quest: LevelQuest | null = null;
+  /** The effects in force as they are now, by key, for a tap on their chips. */
+  private effects = new Map<string, Effect>();
+  /** The most left of each effect since it began, for its bar to empty against. */
+  private effectMost = new Map<string, number>();
 
   constructor(root: HTMLElement, messagesEl: HTMLElement, palette: () => readonly string[], callbacks: HudCallbacks) {
     this.root = root;
@@ -167,6 +150,8 @@ export class Hud {
     this.monsters.clear();
     this.objects.clear();
     this.quest = null;
+    this.effects.clear();
+    this.effectMost.clear();
     this.root.replaceChildren();
     this.messagesEl.replaceChildren();
   }
@@ -176,7 +161,7 @@ export class Hud {
     this.turn++;
   }
 
-  /** A HUD button was tapped: the hero, the skill points, the quest, prayer, or a creature or item (as it is now). */
+  /** A HUD button was tapped: the hero, the skill points, the quest, an effect, or a creature or item (as it is now). */
   private tapped(button: HTMLElement): void {
     const id = Number(button.dataset.id);
     switch (button.dataset.hud) {
@@ -184,8 +169,11 @@ export class Hud {
         return this.callbacks.onPlayer();
       case 'skills':
         return this.callbacks.onSkills();
-      case 'god':
-        return this.callbacks.onGod();
+      case 'effect': {
+        const effect = this.effects.get(button.dataset.id ?? '');
+        if (effect) this.callbacks.onEffect(effect);
+        return;
+      }
       case 'quest':
         if (this.quest) this.callbacks.onQuest(this.quest);
         return;
@@ -213,15 +201,16 @@ export class Hud {
     this.monsters = new Map((state.monsters ?? []).map((m) => [m.id, m]));
     this.objects = new Map((state.objects ?? []).map((o) => [o.id, o]));
     this.quest = p.quest?.state === 'active' ? p.quest : null;
-    const hallucinating = (p.status.hallucinating ?? 0) > 0;
+    const effects = heroEffects(p);
+    this.effects = new Map(effects.map((e) => [e.key, e]));
+    this.effectMost = new Map(effects.flatMap((e) => (e.left ? [[e.key, Math.max(this.effectMost.get(e.key) ?? 0, e.left.count)]] : [])));
+    const hallucinating = this.effects.has('hallucinating');
     const monsters = sortByDistance(hallucinating ? (state.monsters ?? []).map(disguiseMonster) : (state.monsters ?? []), px, py);
     const objects = sortByDistance(hallucinating ? (state.objects ?? []).map(disguiseObject) : (state.objects ?? []), px, py);
-    const statuses = statusLabels(p);
     const key = JSON.stringify([
       [p.name, p.race, p.cls, p.lev, p.chp, p.mhp, p.csp, p.msp, p.csane, p.msane, depthLabel(p), p.au, p.speed, p.skillPoints ?? 0],
       [this.quest?.title ?? '', this.quest?.random?.slain ?? 0],
-      statuses,
-      p.pray ?? 0,
+      effects.map((e) => [e.key, e.abbr, e.name, e.left?.count, e.fading, e.severe]),
       monsters.map((m) => [m.id, m.name, m.ch, m.attr, m.hp, m.maxhp, m.asleep, m.afraid, m.unique, m.status, m.quest]),
       objects.map((o) => [o.id, o.name, o.ch, o.attr]),
     ]);
@@ -259,18 +248,11 @@ export class Hud {
       item.append(button);
       strip.append(item);
     }
-    if (p.pray === 2) {
-      const item = el('li');
-      const button = el('button', 'entity praying');
-      button.type = 'button';
-      button.dataset.hud = 'god';
-      button.dataset.tap = 'god';
-      button.setAttribute('aria-label', 'Praying: your god');
-      button.append(el('span', 'glyph', iconText('☼')), el('span', 'label', 'Praying'));
-      item.append(button);
-      strip.append(item);
+    if (effects.length) {
+      const group = el('li', 'effect-group');
+      group.append(...effects.map((e) => this.effectTile(e)));
+      strip.append(group);
     }
-    for (const label of statuses) strip.append(el('li', 'chip', label));
     if ((p.skillPoints ?? 0) > 0) {
       const item = el('li');
       const button = el('button', 'entity skills', `${p.skillPoints} skill point${p.skillPoints === 1 ? '' : 's'} to spend`);
@@ -346,6 +328,32 @@ export class Hud {
     button.setAttribute('aria-label', [m.name, friendly ? 'ally' : neutral ? 'neutral' : 'hostile', ...(m.quest ? ['quest'] : []), ...tags].join(', '));
     item.append(button);
     return item;
+  }
+
+  /**
+   * An effect's tile: two letters in its kind's colour (ailments red,
+   * blessings green, what the hero keeps going blue) over a bar that empties
+   * as it runs down, measured against the most seen since it began. Its name,
+   * strength and the count left are in its card.
+   */
+  private effectTile(effect: Effect): HTMLElement {
+    const button = el('button', `effect-tile ${effect.kind}`);
+    button.type = 'button';
+    button.dataset.hud = 'effect';
+    button.dataset.id = effect.key;
+    button.dataset.tap = `effect:${effect.key}`;
+    button.classList.toggle('severe', effect.severe);
+    button.classList.toggle('fading', effect.fading);
+    button.append(el('span', 'effect-abbr', effect.abbr));
+    if (effect.left) {
+      const most = Math.max(this.effectMost.get(effect.key) ?? 0, effect.left.count);
+      const fill = el('span', 'effect-bar');
+      fill.style.setProperty('--left', `${((effect.left.count / most) * 100).toFixed(1)}%`);
+      button.append(fill);
+    }
+    button.title = effect.name;
+    button.setAttribute('aria-label', [effect.name, effect.left ? `${countText(effect.left.count, effect.left.unit)} left` : '', effect.fading ? 'fading' : ''].filter(Boolean).join(', '));
+    return button;
   }
 
   private objectItem(o: ObjectState, palette: readonly string[]): HTMLElement {

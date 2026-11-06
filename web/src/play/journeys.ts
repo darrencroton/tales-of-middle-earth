@@ -5,6 +5,7 @@ import type { FeatureInfo, Material } from '../render/materials.ts';
 import type { GameState, LevelSnapshot } from '../render/snapshot.ts';
 import type { TerminalBuffer } from '../terminal.ts';
 import { transitionUnderfoot, type ExploreNext, type ExplorePace } from './actions.ts';
+import { hasEffect } from './effects.ts';
 import { Explore, exploreOutcome, nextStop, WAY_ON, type ExplorePlan } from './explore.ts';
 import type { LevelState } from './heromemory.ts';
 import { INVEN_WIELD } from './items.ts';
@@ -145,9 +146,9 @@ export class Journeys {
     if (!player || !monsters.some((m) => m.status > 0)) return cells;
     const weapon = this.deps.engine.inventory()?.equip.find((slot) => slot.i === INVEN_WIELD)?.name ?? '';
     const companions = pushPast(snap, materials, monsters, {
-      confused: (player.status.confused ?? 0) > 0,
-      stunned: (player.status.stun ?? 0) > 0,
-      hallucinating: (player.status.hallucinating ?? 0) > 0,
+      confused: hasEffect(player, 'confused'),
+      stunned: hasEffect(player, 'stun'),
+      hallucinating: hasEffect(player, 'hallucinating'),
       stormbringer: /Stormbringer/.test(weapon),
     });
     for (const cell of companions) cells.add(cell);

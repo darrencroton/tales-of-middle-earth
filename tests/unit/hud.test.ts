@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { areaName, depthLabel, inPlace, rowSegments, shortStandaloneView, sortByDistance, statusLabels } from '../../web/src/hud.ts';
+import { areaName, depthLabel, inPlace, rowSegments, shortStandaloneView, sortByDistance } from '../../web/src/hud.ts';
 import { placeName } from '../../web/src/render/snapshot.ts';
 import { MAX_ZOOM } from '../../web/src/render/map.ts';
 import { defaultSettings, sanitiseSettings } from '../../web/src/settings.ts';
@@ -47,12 +47,6 @@ describe('HUD helpers', () => {
     assert.equal(areaName({ ...place, depth: 3 }), null);
     assert.equal(areaName({ ...place, terrain: 'Mirkwood' }), 'Mirkwood');
     assert.equal(areaName({ ...place, terrain: '' }), 'The wilds');
-  });
-
-  it('lists active status effects and hunger', () => {
-    assert.deepEqual(statusLabels({ status: { blind: 3, confused: 0, poisoned: 1 }, food: 5000 }), ['Blind', 'Poisoned']);
-    assert.deepEqual(statusLabels({ status: {}, food: 1500 }), ['Hungry']);
-    assert.deepEqual(statusLabels({ status: {}, food: 500 }), ['Weak']);
   });
 
   it('sorts entities by distance from the player', () => {

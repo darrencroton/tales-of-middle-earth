@@ -1,5 +1,6 @@
 import type { AnimationLevel } from './settings.ts';
 import { feetOf, placeName, type PlayerState } from './render/snapshot.ts';
+import { blessingsGone, heroEffects } from './play/effects.ts';
 import { livesText } from './play/lives.ts';
 import { el, iconText } from './ui/dom.ts';
 
@@ -24,10 +25,12 @@ export type FeelEvent =
   | { kind: 'questProgress'; slain: number; count: number }
   | { kind: 'gold'; amount: number }
   | { kind: 'exp'; amount: number }
+  /** Blessings or sustained powers that began or ended, by name ("Doom shield"), the first one's glyph first. */
+  | { kind: 'blessing'; ended: boolean; icon: string; names: string[] }
   /** Back from death in Adventure mode, with `lives` left (this one included); played by main.ts (`followReturn`). */
   | { kind: 'returned'; lives: number };
 
-type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown' | 'quest' | 'quests'>;
+type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown' | 'quest' | 'quests' | 'effects' | 'pray' | 'dead'>;
 
 /** What changed for the player between two states, as feedback events. */
 export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
@@ -53,6 +56,13 @@ export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
   else if (next.exp > prev.exp) events.push({ kind: 'exp', amount: next.exp - prev.exp });
   if (next.chp < prev.chp && next.mhp > 0) events.push({ kind: 'hurt', fraction: Math.min(1, (prev.chp - next.chp) / next.mhp) });
   if (next.au > prev.au) events.push({ kind: 'gold', amount: next.au - prev.au });
+  if (!next.dead) {
+    const before = heroEffects(prev);
+    const after = heroEffects(next);
+    for (const [ended, changed] of [[false, blessingsGone(after, before)], [true, blessingsGone(before, after)]] as const) {
+      if (changed.length) events.push({ kind: 'blessing', ended, icon: changed[0].icon, names: changed.map((e) => e.name) });
+    }
+  }
   if (quest) events.push(quest);
   return events;
 }
@@ -125,7 +135,7 @@ function vibrate(pattern: number | number[]): void {
 }
 
 /* Gold and experience floats start a little apart so both can be read. */
-const FLOAT_OFFSETS: Readonly<Record<string, string>> = { gold: '42%', exp: '50%' };
+const FLOAT_OFFSETS: Readonly<Record<string, string>> = { gold: '42%', exp: '50%', blessing: '56%' };
 
 /**
  * Feedback layer over the map: a red flash when hurt, a pulse at low
@@ -308,6 +318,9 @@ export class GameFeel {
       case 'gold':
         this.float(`+${event.amount} gold`, 'gold');
         break;
+      case 'blessing':
+        this.float(`${iconText(event.icon)} ${event.names.join(', ')}${event.ended ? (event.names.length === 1 ? ' fades' : ' fade') : ''}`, 'blessing', event.ended ? 'faded' : '');
+        break;
       case 'returned':
         this.flash('returned', 1);
         this.showBanner('Returned from death', livesText(event.lives), 'returned');
@@ -372,8 +385,8 @@ export class GameFeel {
     }, BANNER_MS[banner.rank]);
   }
 
-  private float(text: string, kind: string): void {
-    const node = el('div', `feel-float ${kind}`, text);
+  private float(text: string, kind: string, modifier = ''): void {
+    const node = el('div', `feel-float ${kind} ${modifier}`.trim(), text);
     node.style.top = FLOAT_OFFSETS[kind] ?? '42%';
     if (this.animation() === 'off') node.classList.add('still');
     this.layer.append(node);

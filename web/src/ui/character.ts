@@ -6,6 +6,7 @@ import { NOT_NOW, type GameApi } from './api.ts';
 import { KEY_BACKSLASH, KEY_ENTER, KEY_ESCAPE, keyCodes } from '../input/keys.ts';
 import { fullSheetElements, sheetPageKeys, SHEET_PAGES, type FullSheet } from './charsheet.ts';
 import { bar, el, navButton, section, signed, stat } from './dom.ts';
+import { effectSections } from './effects.ts';
 import { faithLine, openHeroGod } from './gods.ts';
 import type { MessageBox } from './msgbox.ts';
 import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
@@ -515,7 +516,7 @@ function summaryBody(api: GameApi): HTMLElement | null {
   bars.append(bar('hp', 'Health', player.chp, player.mhp));
   if (player.msp > 0) bars.append(bar('sp', 'Mana', player.csp, player.msp));
   if (player.msane > 0) bars.append(bar('sn', 'Sanity', player.csane, player.msane));
-  body.append(bars);
+  body.append(bars, ...effectSections(api));
 
   const stats = el('div', 'stat-grid six');
   for (const s of sheet.stats) {

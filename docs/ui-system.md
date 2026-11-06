@@ -40,6 +40,7 @@ Map (toolbar, HUD, gestures)
 │   │   └── Game options ──── tome2 screen; Commands reopens after
 │   └── Menu ──────────────── Menu                 menu                                     depth 1
 │       ├── Character ─────── Character            panel, tabs Summary · Skills · Abilities · Full sheet
+│       │                     ├── Ailments · Blessings · Sustained (Summary) ─ Effect card over Character (Praying: God card)
 │       │                     ├── Faith (Summary) ─ God card over Character (gifts lit; prayers carried, a tap prays; Pray · Stop praying)
 │       │                     └── Save skill points? card over Character (Discard · Save)
 │       ├── Messages ──────── Messages             panel (log, newest at the foot)
@@ -64,7 +65,9 @@ Map (toolbar, HUD, gestures)
 │   ├── hero name ─────────── Character (or Fallen hero after death)
 │   ├── quest chip ────────── Quest                card (what the level's quest asks, how many are slain);
 │   │                         while it lasts the map's edges glow violet and its foes' chips are marked ⚑
-│   ├── Praying chip ──────── God                  card (gifts lit as the hero has them; prayers carried, a tap prays; Stop praying)
+│   ├── effect tile ───────── Effect               card (what it does, its strength, what is left, what ends it);
+│   │                         two letters in the kind's colour over a bar that empties;
+│   │                         Praying ☼ opens God (gifts lit as the hero has them; prayers carried, a tap prays; Stop praying)
 │   ├── creature / item chip ─ Creature / Item     card (a creature beside you, not hostile: Talk · Give; a foe: Target,
 │   │                                              Send companions; one of yours: Call off, Dismiss)
 │   └── message log ───────── Messages             panel

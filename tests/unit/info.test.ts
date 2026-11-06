@@ -7,7 +7,7 @@ import { snapshot } from './fixtures.ts';
 
 function api(hallucinating: number): GameApi {
   const state = {
-    player: { status: { hallucinating } },
+    player: { effects: hallucinating ? [{ id: 'hallucinating', turns: hallucinating }] : [] },
     monsters: [{ id: 1, name: 'Cave spider', x: 2, y: 0, hp: 5, maxhp: 5, asleep: 0, unique: 0, status: -2 }],
   };
   const grids: Record<number, GridState> = {
