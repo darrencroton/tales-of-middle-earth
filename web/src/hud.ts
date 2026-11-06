@@ -150,10 +150,10 @@ export class Hud {
 
   /**
    * Labels every effect tile alike with the longest of its forms (full name,
-   * short form, two letters) that keeps the tiles within their share of the
-   * strip: in a row, what leaves room for `ROOM_FOR_CREATURES` creature chips
-   * and at least `EFFECT_SHARE` of its width; `EFFECT_ROWS` rows in the
-   * sidebar's column; so the creatures in view keep their place.
+   * short form, two letters) that shows each whole and keeps the tiles
+   * within their share of the strip: in a row, the larger of `EFFECT_SHARE`
+   * of its width and what leaves room for `ROOM_FOR_CREATURES` creature
+   * chips; `EFFECT_ROWS` rows in the sidebar's column.
    */
   private fitEffects(): void {
     const group = this.root.querySelector<HTMLElement>('.effect-group');
@@ -171,9 +171,8 @@ export class Hud {
         if (label) label.textContent = tile.dataset[tier] ?? '';
       }
       const box = group.getBoundingClientRect();
-      const fits = column
-        ? (box.height + gap) / ((tiles[0]?.offsetHeight ?? 0) + gap) <= EFFECT_ROWS + 0.5
-        : box.width <= room;
+      const whole = tiles.every((tile) => tile.scrollWidth <= tile.clientWidth);
+      const fits = whole && (column ? (box.height + gap) / ((tiles[0]?.offsetHeight ?? 0) + gap) <= EFFECT_ROWS + 0.5 : box.width <= room);
       if (fits) return;
     }
   }

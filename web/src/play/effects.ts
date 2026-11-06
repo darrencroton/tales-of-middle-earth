@@ -13,7 +13,7 @@ export interface Effect {
   kind: EffectKind;
   icon: string;
   name: string;
-  /** A word or two for the HUD when the full name takes too much room ("Doom", "Haste"), at most `SHORT_MAX` letters. */
+  /** The name, or when it is longer than `SHORT_MAX` letters a word or two for the HUD ("Doom", "rFire"). */
   short: string;
   /** Two letters for the HUD when even short words take too much room ("DS", "Ha"). */
   abbr: string;
@@ -143,7 +143,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
   paralyzed: { abbr: 'Pa', kind: 'bane', icon: '■', name: 'Paralysed', does: 'You cannot move or act.', ends: TIMED_OUT, severe: () => true },
   stun: {
     abbr: (e) => ((e.level ?? 0) >= KNOCKED_OUT ? 'KO' : 'St'),
-    short: (e) => ((e.level ?? 0) >= KNOCKED_OUT ? 'Out cold' : 'Stunned'),
+    short: 'Out cold',
     kind: 'bane',
     icon: '✶',
     name: (e) => stunName(e.level ?? 0),
@@ -157,7 +157,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
   },
   cut: {
     abbr: 'Cu',
-    short: (e) => ((e.level ?? 0) > MORTAL_WOUND ? 'Mortal' : (e.level ?? 0) > 100 && (e.level ?? 0) <= 200 ? 'Severe' : cutName(e.level ?? 0)),
+    short: 'Mortal',
     kind: 'bane',
     icon: '♥',
     name: (e) => cutName(e.level ?? 0),
@@ -218,7 +218,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
   },
   drained: {
     abbr: (e) => `−${(e.stat ?? '').slice(0, 2)}`,
-    short: (e) => `Weak ${(STATS[e.stat ?? ''] ?? 'stat').slice(0, 3)}`,
+    short: (e) => (STATS[e.stat ?? ''] ? `Weak ${STATS[e.stat ?? ''].slice(0, 3)}` : 'Weakened'),
     kind: 'bane',
     icon: '▽',
     name: (e) => `Weakened ${STATS[e.stat ?? ''] ?? 'attribute'}`,
@@ -293,7 +293,6 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
   reflect: { abbr: 'Rf', kind: 'boon', icon: '↩', name: 'Reflection', does: 'Bolts aimed at you are often turned back.', ends: TIMED_OUT },
   resistance: {
     abbr: 'Rs',
-    short: 'Resist',
     kind: 'boon',
     icon: '❂',
     name: 'Resistance',
@@ -344,7 +343,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
   },
   probability: {
     abbr: 'PT',
-    short: 'Phasing',
+    short: 'Prob trav',
     kind: 'boon',
     icon: '⇵',
     name: 'Probability travel',
@@ -360,7 +359,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
   infravision: { abbr: 'If', short: 'Infra', kind: 'boon', icon: '⊙', name: 'Infravision', strength: () => '+10 ft', does: 'You see warm creatures further in the dark.', ends: TIMED_OUT },
   light: { abbr: 'Br', kind: 'boon', icon: '☼', name: 'Brightness', strength: () => 'Light +2', does: 'Your light reaches further.', ends: TIMED_OUT },
   precognition: { abbr: 'Pc', short: 'Foresight', kind: 'boon', icon: '☾', name: 'Precognition', does: 'You foresee the remarkable things made on each new level.', ends: TIMED_OUT },
-  confusing: { abbr: 'CT', short: 'Dazing', kind: 'boon', icon: '✦', name: 'Confusing touch', does: 'Your hands glow red: your next blow that lands confuses its target.', ends: 'It is spent by that blow.' },
+  confusing: { abbr: 'CT', short: 'Confusing', kind: 'boon', icon: '✦', name: 'Confusing touch', does: 'Your hands glow red: your next blow that lands confuses its target.', ends: 'It is spent by that blow.' },
   noBreeds: { abbr: 'Sy', kind: 'boon', icon: '⊘', name: 'Sterility', does: 'Creatures that breed cannot multiply.', ends: TIMED_OUT },
   tread: { abbr: 'DT', short: 'Dripping', kind: 'boon', icon: '≈', name: 'Dripping tread', does: 'Each step you take leaves water behind you.', ends: 'It is spent step by step, or by casting it again.' },
   recall: {
@@ -444,7 +443,7 @@ function describe(key: string, id: string, e: EffectState): Effect | null {
     icon: entry.icon,
     abbr: text(entry.abbr),
     name: text(entry.name),
-    short: text(entry.short ?? entry.name),
+    short: text(entry.name).length <= SHORT_MAX ? text(entry.name) : text(entry.short ?? entry.name),
     left,
     strength: entry.strength?.(e) ?? null,
     lasts: entry.lasts ?? LASTS[entry.kind],

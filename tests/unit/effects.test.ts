@@ -60,7 +60,7 @@ describe('effects on the hero', () => {
     const cold = hero([{ id: 'resistFire', turns: 20 }]).find((e) => e.id === 'resistance')!;
     assert.deepEqual([cold.name, cold.short], ['Resist fire', 'rFire']);
     const all = ['resistAcid', 'resistElec', 'resistFire', 'resistCold', 'resistPois'].map((id) => ({ id, turns: 9 }));
-    assert.deepEqual([hero(all)[0].name, hero(all)[0].short], ['Resistance', 'Resist']);
+    assert.deepEqual([hero(all)[0].name, hero(all)[0].short], ['Resistance', 'Resistance']);
   });
 
   it('gives every effect a short form of at most ten letters and a two-letter one', () => {
@@ -93,8 +93,19 @@ describe('effects on the hero', () => {
     assert.equal(effects.length, states.length + 2);
     for (const e of effects) {
       assert.ok(e.short.length <= SHORT_MAX, `${e.name}: ${e.short}`);
+      if (e.name.length <= SHORT_MAX) assert.equal(e.short, e.name);
       assert.ok(e.abbr.length <= 3, `${e.name}: ${e.abbr}`);
     }
+  });
+
+  it('keeps what a song renews each turn from fading while it is sung', () => {
+    const effects = hero([{ id: 'song', spell: 'Heroic Ballad', mana: 4, renews: ['hero'] }, { id: 'hero', turns: 4 }, { id: 'fast', turns: 4, speed: 10 }]);
+    const held = effects.find((e) => e.id === 'hero')!;
+    assert.equal(held.left, null);
+    assert.equal(held.fading, false);
+    assert.equal(held.lasts, 'While you sing');
+    assert.equal(effects.find((e) => e.id === 'fast')!.fading, true);
+    assert.equal(hero([{ id: 'hero', turns: 4 }])[0].fading, true);
   });
 
   it('counts what is spent by blows, steps or kills in those', () => {
