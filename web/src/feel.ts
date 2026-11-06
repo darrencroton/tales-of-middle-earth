@@ -319,7 +319,7 @@ export class GameFeel {
         this.float(`+${event.amount} gold`, 'gold');
         break;
       case 'blessing':
-        this.float(`${iconText(event.icon)} ${event.names.join(', ')}${event.ended ? (event.names.length === 1 ? ' fades' : ' fade') : ''}`, event.ended ? 'blessing faded' : 'blessing');
+        this.float(`${iconText(event.icon)} ${event.names.join(', ')}${event.ended ? (event.names.length === 1 ? ' fades' : ' fade') : ''}`, 'blessing', event.ended ? 'faded' : '');
         break;
       case 'returned':
         this.flash('returned', 1);
@@ -385,9 +385,9 @@ export class GameFeel {
     }, BANNER_MS[banner.rank]);
   }
 
-  private float(text: string, kind: string): void {
-    const node = el('div', `feel-float ${kind}`, text);
-    node.style.top = FLOAT_OFFSETS[kind.split(' ')[0]] ?? '42%';
+  private float(text: string, kind: string, modifier = ''): void {
+    const node = el('div', `feel-float ${kind} ${modifier}`.trim(), text);
+    node.style.top = FLOAT_OFFSETS[kind] ?? '42%';
     if (this.animation() === 'off') node.classList.add('still');
     this.layer.append(node);
     window.setTimeout(() => node.remove(), FLOAT_MS);

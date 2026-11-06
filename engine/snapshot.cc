@@ -1665,12 +1665,14 @@ static void json_effects(JsonWriter &w)
 		if (limbs > 0 && (att & CLASS_WALL)) json_effect(w, "mimicWall", limbs);
 	}
 	if (p_ptr->necro_extra & CLASS_UNDEAD) json_effect(w, "undead", 0, [&] { w.field("kills", p_ptr->necro_extra2); });
+	stick_mode_kept const kept;
 	if (p_ptr->music_extra)
 	{
 		auto const spell_idx = -static_cast<s32b>(p_ptr->music_extra);
 		json_effect(w, "song", 0, [&] {
 			w.field("spell", spell_type_name(spell_at(spell_idx)));
-			w.field("mana", get_mana(spell_idx));
+			/* What each song's lasting effect takes a turn (spells3.cc): the Song of the Sun one, the others their mana. */
+			w.field("mana", spell_idx == MUSIC_LITE ? 1 : get_mana(spell_idx));
 		});
 	}
 	if (p_ptr->inertia_controlled_spell != -1)

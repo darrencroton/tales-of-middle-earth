@@ -19,6 +19,8 @@ export interface Effect {
   left: { count: number; unit: EffectUnit } | null;
   /** How strong it is, in a few words ("Armour −290", "Speed +10"). */
   strength: string | null;
+  /** How long it lasts, when it does not count down ("Until cured", "While you sing"). */
+  lasts: string;
   /** What it does. */
   does: string;
   /** What ends it. */
@@ -39,6 +41,9 @@ const FOOD_FAINT = 500;
 const FOOD_STARVE = 100;
 const MORTAL_WOUND = 1000;
 const KNOCKED_OUT = 100;
+const STATS: Readonly<Record<string, string>> = { STR: 'Strength', INT: 'Intelligence', WIS: 'Wisdom', DEX: 'Dexterity', CON: 'Constitution', CHR: 'Charisma' };
+/** What a song renews each turn it is sung (its lasting effects in spells3.cc), so it never runs down while the song lasts. */
+const SONG_HELD = new Set(['hero', 'shero', 'strike', 'resistChaos', 'shield', 'fast', 'telepathy', 'light']);
 const HEAVY_STUN = 50;
 const CUTS: [number, string][] = [
   [MORTAL_WOUND, 'Mortal wound'],
@@ -80,7 +85,7 @@ function cutName(level: number): string {
 }
 
 function stunName(level: number): string {
-  return level > KNOCKED_OUT ? 'Knocked out' : level > HEAVY_STUN ? 'Heavy stun' : 'Stunned';
+  return level >= KNOCKED_OUT ? 'Knocked out' : level > HEAVY_STUN ? 'Heavy stun' : 'Stunned';
 }
 
 /** A name's initials: "Doom shield" → "DS". */
@@ -102,7 +107,7 @@ function shieldName(e: EffectState): string {
 
 function shieldDoes(e: EffectState): string {
   const armour = e.armour ?? 0;
-  const parts = [armour < 0 ? `Lowers your armour by ${-armour}.` : `Raises your armour by ${armour}.`];
+  const parts = armour < 0 ? [`Lowers your armour by ${-armour}.`] : armour > 0 ? [`Raises your armour by ${armour}.`] : [];
   if (e.aura === 'counter') parts.push(`Creatures that strike you in melee are bashed for ${e.dice} damage.`);
   if (e.aura === 'fire') parts.push(`Creatures that strike you in melee are burned for ${e.dice} damage, unless fire cannot hurt them.`);
   if (e.aura === 'greatFire') parts.push(`Creatures that strike you in melee are burned for ${e.dice} damage, even those fire cannot hurt.`);
@@ -120,6 +125,8 @@ interface Entry {
   does: string | ((e: EffectState) => string);
   ends: string | ((e: EffectState) => string);
   severe?: (e: EffectState) => boolean;
+  /** How long it lasts when it does not count down (by kind otherwise). */
+  lasts?: string;
 }
 
 const TIMED_OUT = 'It wears off in time.';
@@ -128,17 +135,17 @@ const TIMED_OUT = 'It wears off in time.';
 const CATALOGUE: Readonly<Record<string, Entry>> = {
   paralyzed: { abbr: 'Pa', kind: 'bane', icon: '■', name: 'Paralysed', does: 'You cannot move or act.', ends: TIMED_OUT, severe: () => true },
   stun: {
-    abbr: (e) => ((e.level ?? 0) > KNOCKED_OUT ? 'KO' : 'St'),
+    abbr: (e) => ((e.level ?? 0) >= KNOCKED_OUT ? 'KO' : 'St'),
     kind: 'bane',
     icon: '✶',
     name: (e) => stunName(e.level ?? 0),
     strength: (e) => ((e.level ?? 0) > HEAVY_STUN ? 'To hit −20, damage −20' : 'To hit −5, damage −5'),
     does: (e) =>
-      (e.level ?? 0) > KNOCKED_OUT
+      (e.level ?? 0) >= KNOCKED_OUT
         ? 'You are knocked out and cannot act. Your blows land worse and do less harm.'
         : 'Your blows land worse and do less harm. A heavier stun can knock you out.',
     ends: 'It wears off, faster with good Constitution; healing magic ends it.',
-    severe: (e) => (e.level ?? 0) > KNOCKED_OUT,
+    severe: (e) => (e.level ?? 0) >= KNOCKED_OUT,
   },
   cut: {
     abbr: 'Cu',
@@ -154,6 +161,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
   },
   hunger: {
     abbr: 'Hu',
+    lasts: 'Until you eat',
     kind: 'bane',
     icon: '◔',
     name: (e) => ((e.level ?? 0) < FOOD_STARVE ? 'Starving' : (e.level ?? 0) < FOOD_FAINT ? 'Fainting' : (e.level ?? 0) < FOOD_WEAK ? 'Weak' : 'Hungry'),
@@ -198,11 +206,11 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     ends: 'When its time comes it will most likely burst out as a hostile creature, unless something cures you first.',
   },
   drained: {
-    abbr: (e) => `${(e.stat ?? '?').charAt(0)}−`,
+    abbr: (e) => `−${(e.stat ?? '').slice(0, 2)}`,
     kind: 'bane',
     icon: '▽',
-    name: (e) => `Weakened ${e.stat ?? ''}`.trim(),
-    does: (e) => `Your ${e.stat ?? 'attribute'} is lowered for a time.`,
+    name: (e) => `Weakened ${STATS[e.stat ?? ''] ?? 'attribute'}`,
+    does: (e) => `Your ${STATS[e.stat ?? '']?.toLowerCase() ?? 'attribute'} is lowered for a time.`,
     ends: 'It returns by itself when this runs out.',
   },
   undead: {
@@ -232,7 +240,7 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     does: 'Harm is taken from your mana instead of your health, two mana for each point.',
     ends: 'It breaks at once when you attack, shoot, throw, or use a skill or power.',
   },
-  shield: { abbr: (e) => initials(shieldName(e)), kind: 'boon', icon: '◈', name: shieldName, strength: (e) => `Armour ${signed(e.armour ?? 0)}`, does: shieldDoes, ends: TIMED_OUT },
+  shield: { abbr: (e) => initials(shieldName(e)), kind: 'boon', icon: '◈', name: shieldName, strength: (e) => (e.armour ? `Armour ${signed(e.armour)}` : null), does: shieldDoes, ends: TIMED_OUT },
   lightspeed: { abbr: 'LS', kind: 'boon', icon: '↯', name: 'Light speed', strength: () => 'Speed +50', does: 'Time all but stops around you.', ends: TIMED_OUT },
   fast: { abbr: 'Ha', kind: 'boon', icon: '»', name: 'Hasted', strength: (e) => `Speed ${signed(e.speed ?? 10)}`, does: 'You act faster than usual.', ends: TIMED_OUT },
   wraith: {
@@ -374,9 +382,18 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     does: (e) => `${listed(e.spells ?? [])} will be cast at once when your health falls to ${e.at}% or below.`,
     ends: 'It is spent when it is released.',
   },
-  mimic: { abbr: (e) => (e.form ?? 'Fo').slice(0, 2), kind: 'sustained', icon: '♞', name: (e) => `${e.form ?? 'Changed'} form`, does: (e) => `You have taken the shape of ${e.form ? `a ${e.form.toLowerCase()}` : 'another creature'}.`, ends: 'You change back when it runs out.' },
+  mimic: {
+    abbr: (e) => (e.form ?? 'Fo').slice(0, 2),
+    kind: 'boon',
+    icon: '♞',
+    name: (e) => (e.form ? `Form: ${e.form}` : 'Changed form'),
+    does: (e) => (e.form ? `You have taken another shape: ${e.form}, with its powers and weaknesses.` : 'You have taken another shape.'),
+    ends: 'You change back when it runs out.',
+  },
   body: { abbr: (e) => (e.form ?? 'Bo').slice(0, 2), kind: 'sustained', icon: '♞', name: (e) => e.form ?? 'Borrowed body', does: (e) => `You have taken over the body of ${e.form ?? 'a creature'}, with its powers and weaknesses.`, ends: 'It lasts until you leave the body.' },
 };
+
+const LASTS: Readonly<Record<EffectKind, string>> = { bane: 'Until cured', boon: 'Until used', sustained: 'Until ended' };
 
 const BOONS_FIRST: Readonly<Record<EffectKind, number>> = { bane: 0, boon: 1, sustained: 2 };
 
@@ -396,6 +413,7 @@ function describe(key: string, id: string, e: EffectState): Effect | null {
     name: text(entry.name),
     left,
     strength: entry.strength?.(e) ?? null,
+    lasts: entry.lasts ?? LASTS[entry.kind],
     does: text(entry.does),
     ends: text(entry.ends),
     fading: entry.kind !== 'bane' && left !== null && left.unit !== 'kill' && left.count <= FADING,
@@ -426,6 +444,12 @@ export function heroEffects(player: Pick<PlayerState, 'effects' | 'pray'> & Part
   const resist = resistance(states);
   if (resist) all.push(resist);
   if (player.pray === 2) all.push(describe('praying', 'praying', { id: 'praying' })!);
+  if (states.some((e) => e.id === 'song')) {
+    for (const effect of all) {
+      if (!SONG_HELD.has(effect.id) || (effect.left?.count ?? 0) > FADING) continue;
+      Object.assign(effect, { left: null, fading: false, lasts: 'While you sing', ends: 'Your song renews it each turn.' });
+    }
+  }
   const order = Object.keys(CATALOGUE);
   return all.sort((a, b) => BOONS_FIRST[a.kind] - BOONS_FIRST[b.kind] || Number(b.severe) - Number(a.severe) || order.indexOf(a.id) - order.indexOf(b.id));
 }

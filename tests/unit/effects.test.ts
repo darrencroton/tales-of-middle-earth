@@ -58,6 +58,14 @@ describe('effects on the hero', () => {
     assert.ok(effects.some((e) => e.id === 'resistChaos'));
   });
 
+  it('keeps what a song renews each turn from fading while it is sung', () => {
+    const held = hero([{ id: 'song', spell: 'Heroic Ballad', mana: 4 }, { id: 'hero', turns: 4 }]).find((e) => e.id === 'hero')!;
+    assert.equal(held.left, null);
+    assert.equal(held.fading, false);
+    assert.equal(held.lasts, 'While you sing');
+    assert.equal(hero([{ id: 'hero', turns: 4 }])[0].fading, true);
+  });
+
   it('counts what is spent by blows, steps or kills in those', () => {
     assert.deepEqual(hero([{ id: 'deadly', blows: 3 }])[0].left, { count: 3, unit: 'blow' });
     assert.deepEqual(hero([{ id: 'tread', steps: 12 }])[0].left, { count: 12, unit: 'step' });
@@ -68,11 +76,14 @@ describe('effects on the hero', () => {
 
   it('keeps temporary drains apart by attribute, and leaves out what it does not know', () => {
     const keys = hero([
-      { id: 'drained', turns: 300, stat: 'Strength' },
-      { id: 'drained', turns: 80, stat: 'Constitution' },
+      { id: 'drained', turns: 300, stat: 'STR' },
+      { id: 'drained', turns: 80, stat: 'CON' },
       { id: 'unheard', turns: 3 },
-    ]).map((e) => e.key);
-    assert.deepEqual(keys, ['drained:Strength', 'drained:Constitution']);
+    ]);
+    assert.deepEqual(keys.map((e) => [e.key, e.abbr, e.name]), [
+      ['drained:STR', '−ST', 'Weakened Strength'],
+      ['drained:CON', '−CO', 'Weakened Constitution'],
+    ]);
   });
 
   it('tells which blessings faded, and whether the hero is under an effect or hungry', () => {

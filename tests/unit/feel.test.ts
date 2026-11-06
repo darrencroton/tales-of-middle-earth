@@ -23,7 +23,6 @@ describe('game feel events', () => {
     ]);
     assert.deepEqual(playerEvents({ ...base, effects: [{ id: 'confused', turns: 1 }] }, { ...base, effects: [] }), []);
     assert.deepEqual(playerEvents({ ...base, effects: [doom] }, { ...base, effects: [{ ...doom, turns: 40 }] }), []);
-    assert.deepEqual(playerEvents({ ...base, effects: [{ id: 'confused', turns: 1 }] }, { ...base, effects: [] }), []);
     assert.deepEqual(playerEvents({ ...base, pray: 2 }, { ...base, pray: 1 }), []);
   });
 

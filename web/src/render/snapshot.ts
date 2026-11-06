@@ -242,7 +242,6 @@ export interface EffectState {
   spells?: string[];
 }
 
-
 /** Feet below the surface of one dungeon level, as tome2 counts depth. */
 export const FEET_PER_LEVEL = 50;
 

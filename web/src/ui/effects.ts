@@ -11,14 +11,13 @@ const GROUPS: [EffectKind, string][] = [
   ['sustained', 'Sustained'],
 ];
 
-/** How long an effect has left, in words: "23 turns left", or what keeps it going. */
-export function leftText(effect: Effect): string {
-  if (effect.left) return `${countText(effect.left.count, effect.left.unit)} left`;
-  return effect.kind === 'sustained' ? 'Until ended' : effect.kind === 'bane' ? 'Until cured' : 'Until used';
+/** How long an effect has left, in words: "23 turns left", or how long it lasts. */
+function leftText(effect: Effect): string {
+  return effect.left ? `${countText(effect.left.count, effect.left.unit)} left` : effect.lasts;
 }
 
 /** An effect's glyph, in its kind's colour. */
-export function effectGlyph(effect: Effect): HTMLElement {
+function effectGlyph(effect: Effect): HTMLElement {
   return el('span', `glyph effect-glyph ${effect.kind}`, iconText(effect.icon));
 }
 

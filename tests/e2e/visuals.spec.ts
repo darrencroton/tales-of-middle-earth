@@ -143,14 +143,19 @@ test('the map keeps its size whatever the HUD strip and toolbar show', { tag: '@
   await summonBeside(page, 60);
   await expect(page.locator('#hud .hud-entities .entity.foe').first()).toBeVisible();
 
-  /* The same strip empty, with only an ailment, and full again, then the toolbar changed, measured in one go so nothing redraws between. */
+  /* The same strip empty, with only effects, and full again, then the toolbar changed, measured in one go so nothing redraws between. */
   const sizes = await page.evaluate(() => {
     const strip = document.querySelector<HTMLElement>('#hud .hud-entities')!;
     const stage = document.querySelector<HTMLElement>('#stage')!;
     const full = [...strip.children];
     const measure = () => [stage.getBoundingClientRect().height, stage.getBoundingClientRect().width].join('x');
     const quiet = Object.assign(document.createElement('li'), { className: 'quiet', textContent: 'All quiet' });
-    const chip = Object.assign(document.createElement('li'), { className: 'chip', textContent: 'Hungry' });
+    const chip = Object.assign(document.createElement('li'), { className: 'effect-group' });
+    for (let i = 0; i < 12; i++) {
+      const tile = Object.assign(document.createElement('button'), { className: 'effect-tile boon', textContent: 'Ha' });
+      tile.append(Object.assign(document.createElement('span'), { className: 'effect-bar' }));
+      chip.append(tile);
+    }
     const result = [measure()];
     strip.replaceChildren(quiet);
     result.push(measure());
