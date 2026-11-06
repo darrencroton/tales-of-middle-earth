@@ -19,7 +19,7 @@ export const MODE_TEXT: Readonly<Record<'adventure' | 'roguelike', { label: stri
 
 /** How each option is shown: a short name and what it does. */
 export const RUN_OPTION_TEXT: Readonly<Record<RunOptionName, { label: string; detail: string }>> = {
-  smallLevels: { label: 'Small levels', detail: 'Every dungeon level is small: quicker to explore, closer quarters.' },
+  smallLevels: { label: 'Small levels', detail: 'Dungeon levels are a quarter of full size or less: quicker to explore, closer quarters. Erebor and Moria stay vast.' },
   fates: { label: 'Fates', detail: 'As you grow, fate may mark you for a great reward or a dark end.' },
   preserve: { label: 'Artifacts come back', detail: 'An artifact left behind before you knew what it was can turn up again later.' },
   noSelling: { label: 'No selling', detail: 'Shops pay nothing for your finds, but gold lying about is worth five times as much.' },
