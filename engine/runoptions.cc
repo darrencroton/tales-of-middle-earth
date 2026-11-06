@@ -87,7 +87,7 @@ void draw_random_quests(int n)
 
 std::string json;
 
-/* The sizes of a small level, in screens across and down: a third of tome2's, the smallest three. */
+/* The sizes of a small level, in screens across and down: the three smallest of tome2's six. */
 int const SMALL_SIZES[][2] = { { 1, 1 }, { 1, 2 }, { 2, 1 } };
 
 /* The dungeon given a size by small_level_hook for the level being built; -1 when none. */
@@ -96,13 +96,10 @@ int sized_dungeon = -1;
 bool small_levels_hooked = false;
 
 /*
- * tome2 makes a small level 1 to 3 screens down and 1 or 2 across, up to two
- * thirds of a full level. With small levels on, a dungeon level about to be
- * built is given one of the three smallest of those sizes, as the dungeon's
- * own size, which only level generation reads and which comes before tome2's
- * choice. Not on the surface, nor in a dungeon with a size of its own or
- * built vast (BIG: Erebor, Moria) or a screen at most (SMALLEST: the Maze),
- * which that size would override. The last level's size is taken back first.
+ * Takes back the last level's size, then, with small levels on, gives the
+ * dungeon level about to be built one of SMALL_SIZES as its dungeon's own
+ * size. Not on the surface, nor in a dungeon with a size of its own, built
+ * vast (BIG: Erebor, Moria) or of one screen (SMALLEST: the Maze).
  */
 bool small_level_hook(void *, void *, void *)
 {
@@ -115,7 +112,7 @@ bool small_level_hook(void *, void *, void *)
 	}
 	if (!options->always_small_level || !dun_level) return false;
 	auto &d_ptr = d_info[dungeon_type];
-	if (d_ptr.size_x != -1 || ((d_ptr.flags | get_level_flags()) & (DF_BIG | DF_SMALLEST))) return false;
+	if (d_ptr.size_x != -1 || ((game->dungeon_flags | get_level_flags()) & (DF_BIG | DF_SMALLEST))) return false;
 	auto const &size = SMALL_SIZES[rand_int(std::size(SMALL_SIZES))];
 	d_ptr.size_x = size[0];
 	d_ptr.size_y = size[1];

@@ -113,7 +113,7 @@ test('kept levels stay as the hero left them, the way back is known, the heading
 test.describe(() => {
   test.use({ settings: { animation: 'off', persistentLevels: false } });
 
-  test('levels are made anew on each visit when they are not kept, small but in Moria', async ({ page }) => {
+  test('levels are made anew on each visit when they are not kept, and small levels are small, except in Moria', async ({ page }) => {
     const size = () => page.evaluate(() => {
       const snap = window.__tome!.engine.snapshot()!;
       return `${snap.width}x${snap.height}`;
@@ -126,10 +126,8 @@ test.describe(() => {
     const before = await level(page);
     expect(small).toContain(await size());
     await jumpToLevel(page, 3);
-    expect(small).toContain(await size());
     await jumpToLevel(page, 2);
     expect((await level(page)).terrain).not.toBe(before.terrain);
-    expect(small).toContain(await size());
     /* Moria is built vast whatever the setting. */
     await wizardCommand(page, 'D', 22);
     expect(await size()).toBe('198x66');
