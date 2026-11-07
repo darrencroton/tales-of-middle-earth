@@ -127,7 +127,7 @@ export const HELP: readonly HelpGroup[] = [
           {
             terms: [
               ['Walk here', 'On the world map: walk into the land beneath you.'],
-              ['Descend, Ascend, Enter, Leave', 'You stand on stairs, a path or a gate: take it. On stairs, this button is always those stairs.'],
+              ['Descend, Ascend, Enter, Leave', 'You stand on stairs, a path or a gate: take it. On stairs, this button is always those stairs. *Shaft down* and *Shaft up* take a shaft, which can skip levels.'],
               ['Attack', 'A creature stands next to you: strike the weakest. Red brackets on the map show which.'],
               ['Talk', 'Someone neutral stands next to you: hear what they have to say.'],
               ['Pick up, Drink, Sacrifice', 'Something lies at your feet, or you stand at a fountain or an altar.'],
@@ -194,10 +194,11 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Stairs and levels',
         icon: '⇵',
         summary: 'Going down, coming back, and levels that stay.',
-        keywords: 'staircase descend ascend depth level recall kept persistent way down way up',
+        keywords: 'staircase descend ascend depth level recall kept persistent way down way up shaft',
         body: [
           'Stand on stairs and the toolbar shows what they do: *Descend* on a way down, *Ascend* on a way up. Each level down is more dangerous, and holds better treasure.',
-          'Levels stay as you left them (Settings → Dungeon levels), so the way back is the way you came. Once a level is explored, step off the stairs and *Way down* or *Way up* takes you straight across it.',
+          'Stairs lead one level on, and you arrive on stairs leading back. Levels stay as you left them (Settings → Dungeon levels), so the way back is the way you came: going back up, you arrive on the stairs you took down. Once a level is explored, step off the stairs and *Way down* or *Way up* takes you straight across it.',
+          'A *shaft* can skip levels: one down drops one to three, one up climbs two to four. Its button reads *Shaft down* or *Shaft up*, and *Way down* and *Way up* never take one.',
           'Some levels are always made anew: quest levels and a few special places.',
           { heading: 'Word of Recall' },
           'A scroll of *Word of Recall* takes you from a dungeon back to town, and from town back down to the deepest level you reached there. It takes a while to work, so read it before you need it.',

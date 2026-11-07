@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Explore, exploreOutcome, nextStop, type ExplorePlan } from '../../web/src/play/explore.ts';
+import { Explore, exploreOutcome, nextStop, WAY_ON, type ExplorePlan } from '../../web/src/play/explore.ts';
 import { decodeRuns, encodeRuns, levelKey, mergeKnown, missingCells } from '../../web/src/play/mapmemory.ts';
 import { approachTarget, inferredFloor } from '../../web/src/play/travel.ts';
 import { fightingStyle, suggestedGear } from '../../web/src/play/items.ts';
@@ -50,6 +50,14 @@ const frontier = (snap: LevelSnapshot, extra: Partial<ExplorePlan> = {}) => {
   const stop = nextStop(snap, materials, { skip: new Set(), isExit: () => false, ...extra });
   return stop ? { x: stop.x, y: stop.y, kind: stop.kind } : null;
 };
+
+describe('ways on', () => {
+  it('leads one level on by stairs and paths, never by a shaft', () => {
+    assert.ok(WAY_ON.down.test('down staircase') && WAY_ON.down.test('path to the next area'));
+    assert.ok(WAY_ON.up.test('up staircase') && WAY_ON.up.test('path to the previous area'));
+    assert.ok(!WAY_ON.down.test('shaft down') && !WAY_ON.up.test('shaft up'));
+  });
+});
 
 describe('explore target', () => {
   it('walks to the nearest edge of unexplored space', () => {

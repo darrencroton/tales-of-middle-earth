@@ -317,7 +317,7 @@ with why, and journeys are refused.
 | `;` `-` `.` | walk, run | tap, travel, Explore |
 | `,` `g` | stay, pick up | tap yourself (wait); changing button *Pick up*; Items → Floor |
 | `R` | rest | toolbar *Rest*; More (both answer *how long?* only when tome2 asks) |
-| `<` `>` | stairs, world map | changing button (Descend, Ascend, Walk here…); More (*Go down*, *Go up* / *World map*) |
+| `<` `>` | stairs, world map | changing button (Descend, Ascend, Shaft down, Shaft up, Walk here…); More (*Go down*, *Go up* / *World map*) |
 | `_` | enter a building | walk in; changing button *Enter shop* |
 | `o` `c` `B` `j` `T` | open, close, bash, jam (spikes), tunnel | tap a door (opens it); More → Doors and walls |
 | `+` | alter (attack, open or tunnel by terrain) | covered by the above and Attack |

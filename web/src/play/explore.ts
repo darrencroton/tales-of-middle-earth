@@ -306,8 +306,8 @@ export class LevelExploration {
   }
 }
 
-/* Terrain that leads on, by direction (stairs, shafts, the paths of flat lands). */
+/* Terrain that leads on one level, by direction (stairs, the paths of flat lands; not shafts, which may skip levels). */
 export const WAY_ON: Readonly<Record<'down' | 'up', RegExp>> = {
-  down: /down staircase|shaft down|quest down|path to the next/,
-  up: /up staircase|shaft up|quest up|path to the previous/,
+  down: /down staircase|quest down|path to the next/,
+  up: /up staircase|quest up|path to the previous/,
 };
