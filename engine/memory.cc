@@ -19,6 +19,7 @@
 #include "game.hpp"
 #include "hooks.hpp"
 #include "level_data.hpp"
+#include "level_marker.hpp"
 #include "levels.hpp"
 #include "loadsave.hpp"
 #include "monster_race.hpp"
@@ -273,19 +274,28 @@ void save_left_level()
 	here_known = false;
 }
 
+/* Whether the level was laid out from its special map as it was built now (tome2 marks it so until its end-of-level hooks have run). */
+bool laid_out_from_map()
+{
+	int const level = dun_level - game->edit_data.d_info[dungeon_type].mindepth;
+	return level >= 0 && get_dungeon_map_name() && game->level_markers[level][dungeon_type] == level_marker::REGENERATE;
+}
+
 /*
  * The staircase back the way the hero came onto this level, or 0: up after
  * going deeper, down after climbing, under the rules tome2's
  * new_player_spot gives connected stairs (not on a level without stairs, a
  * branch's level or from below onto a quest's depth), and only when the
  * depth has changed, so not on a return from death or a game loaded, nor
- * from another dungeon's level by a branch's stairs.
+ * from another dungeon's level by a branch's stairs; nor on a quest's own
+ * level or one just laid out from its map, where the hero is placed by the map.
  */
 int way_back()
 {
 	auto const flags = game->dungeon_flags;
 	if (!character_generated || !options->dungeon_stair || (flags & DF_NO_STAIR) || !dun_level || old_dun_level == dun_level || get_branch()) return 0;
 	if (old_dun_level && dungeon_type != left_dungeon) return 0;
+	if (p_ptr->inside_quest || laid_out_from_map()) return 0;
 	bool const deeper = old_dun_level < dun_level;
 	if (!deeper && is_quest(dun_level)) return 0;
 	bool const flat(flags & DF_FLAT);
@@ -369,7 +379,7 @@ void way_back_underfoot()
 	int const x = p_ptr->px;
 	int const here = cave[y][x].feat;
 	bool const shaft = (feat == FEAT_LESS && here == FEAT_SHAFT_UP) || (feat == FEAT_MORE && here == FEAT_SHAFT_DOWN);
-	if (shaft || (here != feat && cave_clean_bold(y, x))) cave_set_feat(y, x, feat);
+	if (shaft || cave_clean_bold(y, x)) cave_set_feat(y, x, feat);
 }
 
 bool level_made_hook(void *, void *, void *)
