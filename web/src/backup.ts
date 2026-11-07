@@ -1,7 +1,7 @@
 import type { Engine } from './engine.ts';
 import { collectFiles, decodeBundle, downloadText, encodeBundle, exportFilename, restoreFiles } from './saves.ts';
 import { el } from './ui/dom.ts';
-import { confirmSheet, openMenu, openMessage, type MenuItem } from './ui/menus.ts';
+import { confirmSheet, openMenu, openMessage } from './ui/menus.ts';
 import type { Sheets } from './ui/sheet.ts';
 
 interface BackupDeps {
@@ -9,15 +9,21 @@ interface BackupDeps {
   sheets: Sheets;
   /** The file input a backup is chosen with. */
   input: HTMLInputElement;
-  /** Cloud sync, when the app has it: told before a backup replaces what is here, whether it is on or off. */
-  cloud(): { enabled: boolean; restoring(): Promise<void> } | null;
+  /** Asks for a hero sent from another device. */
+  receive(): void;
+  /** Everything here was replaced by a backup. */
+  restored(): void;
 }
 
 function errorText(err: unknown): string {
   return String(err instanceof Error ? err.message : err);
 }
 
-/** Backup of everything the game keeps in this browser, on the title screen only: every adventure, the Hall of Fame and the deeds earned. */
+/**
+ * The title screen's Share & backup: receiving a hero sent from another device
+ * (`ui/transfer.ts`), and the backup of everything the game keeps in this
+ * browser: every adventure, the Hall of Fame and the deeds earned.
+ */
 export class Backup {
   private readonly deps: BackupDeps;
 
@@ -30,17 +36,18 @@ export class Backup {
     });
   }
 
-  /** Export and import, as menu rows. */
-  items(): MenuItem[] {
-    return [
-      { label: 'Export game data', icon: '⤒', hint: 'Download a backup file', run: () => this.startExport() },
-      { label: 'Import game data', icon: '⤓', hint: 'Replace what is here with a backup', run: () => this.startImport() },
-    ];
-  }
-
-  /** The Backup menu: export or import. */
+  /** The Share & backup menu: receive a hero, export or import everything. */
   open(): void {
-    openMenu(this.deps.sheets, 'Backup', this.items(), 'Your adventures, the Hall of Fame and your deeds live in this browser. A backup keeps them safe or moves them to another device.');
+    openMenu(
+      this.deps.sheets,
+      'Share & backup',
+      [
+        { label: 'Receive a hero', icon: '↘', hint: 'Sent from another device', run: () => this.deps.receive() },
+        { label: 'Export game data', icon: '⤒', hint: 'Download a backup file', run: () => this.startExport() },
+        { label: 'Import game data', icon: '⤓', hint: 'Replace what is here with a backup', run: () => this.startImport() },
+      ],
+      'Your adventures live in this browser. Send a hero to another device from their card in the Game Roster, and receive them there. A backup keeps everything safe.',
+    );
   }
 
   private startExport(): void {
@@ -88,40 +95,36 @@ export class Backup {
       openMessage(sheets, 'Import game data', 'This backup holds no game data.');
       return;
     }
-    const cloud = this.deps.cloud();
     confirmSheet(
       sheets,
       'Replace your game data?',
-      `Every hero, the Hall of Fame and your deeds on this device are replaced by those in the backup. Export first to keep what is here. The game then restarts.${
-        cloud?.enabled ? ' With cloud sync on, heroes the cloud has too are then compared: where they differ you choose which journey continues, and heroes only in the cloud come back.' : ''
-      }`,
+      'Every hero, the Hall of Fame and your deeds on this device are replaced by those in the backup. Export first to keep what is here. The game then restarts.',
       'Replace',
       () => {
         sheets.closeAll();
-        (cloud ? cloud.restoring() : Promise.resolve())
-          .then(() => {
-            /* The engine's storage as it is once cloud sync has settled. */
-            const target = engine.fs;
-            const at = engine.savePath;
-            if (!target || !at) throw new Error('The game was not ready; nothing was changed.');
-            restoreFiles(target, at, files);
-            return engine.syncNow();
-          })
-          .then(
-            () => location.reload(),
-            (err) => this.importFailed(err),
-          );
+        try {
+          restoreFiles(fs, root, files);
+        } catch (err) {
+          storageFailed(engine, sheets, 'Import failed', err);
+          return;
+        }
+        engine.syncNow().then(
+          () => {
+            this.deps.restored();
+            location.reload();
+          },
+          (err) => storageFailed(engine, sheets, 'Import failed', err),
+        );
       },
       true,
     );
   }
+}
 
-  /** Says why an import failed, then reloads, which reads storage again as it was before the import (nothing is synced meanwhile). */
-  private importFailed(err: unknown): void {
-    const { engine, sheets } = this.deps;
-    engine.holdStorage();
-    const body = el('div', 'prose');
-    body.append(el('p', undefined, `Nothing was changed: ${errorText(err)}`));
-    sheets.open({ title: 'Import failed', body, kind: 'card', actions: [{ label: 'OK', primary: true, run: () => sheets.back() }], onClose: () => location.reload() });
-  }
+/** Says why a change to storage failed part-way, then reloads, which reads storage again as it was before (nothing is synced meanwhile). */
+export function storageFailed(engine: Engine, sheets: Sheets, title: string, err: unknown): void {
+  engine.holdStorage();
+  const body = el('div', 'prose');
+  body.append(el('p', undefined, `Nothing was changed: ${errorText(err)}`));
+  sheets.open({ title, body, kind: 'card', actions: [{ label: 'OK', primary: true, run: () => sheets.back() }], onClose: () => location.reload() });
 }

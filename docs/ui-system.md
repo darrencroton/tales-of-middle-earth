@@ -94,16 +94,12 @@ Death ──────────────────────── d
                                 └── a hero ──────── card: how it ended, when, deepest, score; Begin anew · Look back
                                     └── Fallen hero panel, tabs Hero · Gear · Skills · Last moments
                                         └── Item / foe  card
-Title ──────────────────────── Continue as (last hero, straight into the game; with cloud sync, a card first when
-                                  another device is playing them: Cancel · Continue here) · Game Roster · New character
+Title ──────────────────────── Continue as (last hero, straight into the game) · Game Roster · New character
                                 ├── Game Roster ─── panel, every saved hero
-                                │   └── a hero ──── card: where, last played, tale, cloud; Play · Delete (→ confirmation)
-                                Cloud sync, as it finds a hero played on two devices: Which journey continues? (card:
-                                  both copies; Keep one or the other); in a game, a hero taken up on another device:
-                                  card, Back to title
-                                Help (panel) · Settings (panel) · Backup (menu: Export · Import game data), or with
-                                  cloud sync Cloud & backup (menu: Turn on cloud sync → card: Sign in · Turn on; or Sync now ·
-                                  Turn off on this device · Delete cloud data (→ confirmation); then Export · Import)
+                                │   └── a hero ──── card: where, last played, tale; Play · Send (share sheet) · Delete (→ confirmation)
+                                Help (panel) · Settings (panel) · Share & backup (menu: Receive a hero (→ file
+                                  picker; a hero here already: Which journey continues? card, Keep this one ·
+                                  Take the one received) · Export · Import game data)
                                 · Soundtrack (panel) · Hall of Fame (panel → a hero: card as after death,
                                   with Remove (→ confirmation))
 Character creation ─────────── director screens (full screen, Back/Random/Choose), name card;
@@ -134,8 +130,8 @@ where the code comes from.
 | Type | Purpose | Examples | Size | Where |
 |---|---|---|---|---|
 | **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, Help and its topics, the Knowledge lists, Companions, Quests; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
-| **Menu** | A short list of places to go | Menu, Knowledge, Backup, Cloud & backup | its rows, capped at `--popup-height` | bottom sheet |
-| **Card** | Details of one thing, or a question | Item, spell, creature (also a kind of creature from Knowledge), Choose target, shop item, memorial item/foe, a saved hero (Game Roster), a hero of the Hall of Fame, cloud sync's questions, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
+| **Menu** | A short list of places to go | Menu, Knowledge, Share & backup | its rows, capped at `--popup-height` | bottom sheet |
+| **Card** | Details of one thing, or a question | Item, spell, creature (also a kind of creature from Knowledge), Choose target, shop item, memorial item/foe, a saved hero (Game Roster), a hero of the Hall of Fame, Which journey continues?, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
 | **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card (what is at a cell, each creature and item a row opening its card), the Halls of Waiting, death card | its content | bottom of the map, no backdrop |
 | **Full screen** | A screen that replaces the game | title, character creation, end of game, Hall of Fame after death | whole screen | — |
 
@@ -285,7 +281,7 @@ Four things look different and never stand for each other:
 | Cast → spell ⓘ → Cast | Spell description filled the pop-up | Spell card over Magic; Cast casts, ✕ returns to Magic |
 | Map → creature chip → close | Tall pop-up | Card the size of the recall |
 | Items → book → spell → back | Browse opened tome2's spell list; item cards showed only tome2's flag sentences, without damage, a wand's spell or a book's spells | The book's card lists its spells; a spell's card floats over it with the hero's figures and Cast; weapons show damage, artefacts their properties grouped |
-| Menu → Saved games → Export | Two rows in Menu | On the title only, as Backup → Export game data: a backup of everything, not a way to save |
+| Menu → Saved games → Export | Two rows in Menu | On the title only, as Share & backup → Export game data: a backup of everything, not a way to save |
 | Shop → item | Paged tome2 list; a tap on an item could buy it, and a tap on a row of tome2's item prompt opened the wrong card (*Take 1* while storing) | Whole stock in one list; a tap opens the item's card; Buy (or Sell, Store, Take) with how many is the only way to trade |
 | Character → Skills → Raise → keep the points | Points were kept only by closing the sheet or changing tab, which then asked tome2's question; Raise looked available with no points | Raise and Lower are dimmed when tome2 would refuse, saying why; unsaved points show on their rows; Save asks (Discard · Save) and stays on Skills |
 | Shop → sell several things in turn | Each sale took the list back to the top | The list stays where it was, the highlight on the item (or the next, when it is gone) |

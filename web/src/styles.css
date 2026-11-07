@@ -2010,7 +2010,7 @@ html.keyboard-open .tv-layer.panel {
   overflow-wrap: anywhere;
 }
 
-/* Which journey continues? (cloud sync) */
+/* Which journey continues? (a hero received) */
 
 .journey p {
   margin: 0 0 0.8rem;
@@ -2030,10 +2030,6 @@ html.keyboard-open .tv-layer.panel {
 
 .journey-side.fallen h3 {
   color: var(--muted);
-}
-
-.cloud-offer p {
-  margin: 0 0 0.7rem;
 }
 
 /* Segmented controls */

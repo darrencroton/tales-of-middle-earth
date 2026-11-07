@@ -513,8 +513,8 @@ test('the name prompt sits at the top of the screen, clear of the keyboard', { t
   expect(box!.y + box!.height).toBeLessThan(height * 0.4);
 });
 
-test('saved heroes: Continue plays the last, the Game Roster lists them all, an abandoned hero stays in the Hall of Fame until removed, Delete removes only that hero', async ({ page }) => {
-  test.setTimeout(300_000);
+test('saved heroes: Continue plays the last, the Game Roster lists them all, a hero sent to another device arrives there and, played on both, comes back as a journey to choose, an abandoned hero stays in the Hall of Fame until removed, Delete removes only that hero', async ({ page, browser, settings }) => {
+  test.setTimeout(420_000);
   const quit = async () => {
     await saveAndQuit(page);
     await waitForEngine(page);
@@ -550,7 +550,7 @@ test('saved heroes: Continue plays the last, the Game Roster lists them all, an 
   await expect(page.locator('.adventurer-row')).toHaveText([/Young Sib/, /Elder/]);
   await page.locator('.adventurer-row', { hasText: 'Elder' }).click();
   await expect(page.locator('.sheet-adventurer .sheet-title')).toHaveText('Elder');
-  await expect(page.locator('.sheet-adventurer .sheet-action')).toHaveText(['Play', 'Delete']);
+  await expect(page.locator('.sheet-adventurer .sheet-action')).toHaveText(['Play', 'Send', 'Delete']);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
 
@@ -567,6 +567,52 @@ test('saved heroes: Continue plays the last, the Game Roster lists them all, an 
   await expect(choices.filter({ hasText: 'Game Roster' })).toContainText('1 saved hero');
   let files = await savedFiles();
   expect(files).toEqual(expect.arrayContaining(['Elder', 'Young_Sib']));
+
+  /* Elder is sent to another device (a download here; the share sheet on a phone) and arrives there. */
+  const send = async (on: Page) => {
+    const sent = on.waitForEvent('download');
+    await on.locator('#title-screen .title-choice', { hasText: 'Game Roster' }).click();
+    await on.locator('.adventurer-row', { hasText: 'Elder' }).click();
+    await on.locator('.sheet-adventurer [data-action="send"]').click();
+    const path = test.info().outputPath(`Elder-${Date.now()}.tome2hero`);
+    await (await sent).saveAs(path);
+    await on.keyboard.press('Escape');
+    await on.keyboard.press('Escape');
+    return path;
+  };
+  const receive = async (on: Page, path: string) => {
+    const chooser = on.waitForEvent('filechooser');
+    await on.locator('#title-screen [data-link="backup"]').click();
+    await on.locator('.sheet .row-button', { hasText: 'Receive a hero' }).click();
+    await (await chooser).setFiles(path);
+  };
+  const elder = await send(page);
+  const other = await browser.newContext({ ...test.info().project.use });
+  await other.addInitScript((stored) => localStorage.setItem('tome2mobile.settings', JSON.stringify(stored)), settings);
+  const second = await other.newPage();
+  await second.goto('./');
+  await waitForEngine(second);
+  await receive(second, elder);
+  await expect(second.locator('#toast')).toHaveText(/^Elder has arrived from your /, { timeout: 60_000 });
+  await expect(second.locator('#title-screen .title-choice').first()).toContainText('Continue as Elder');
+
+  /* Played there and here too, then sent back: the player chooses which journey goes on. */
+  await continueAs(second, 'Elder');
+  await saveAndQuit(second);
+  await waitForEngine(second);
+  const played = await send(second);
+  await other.close();
+  await continueAs(page, 'Elder');
+  await quit();
+  await receive(page, played);
+  await expect(page.locator('.sheet-journey .sheet-title')).toHaveText('Which journey continues?');
+  await expect(page.locator('.sheet-journey .journey-side h3')).toHaveText([/^This /, /^Your /]);
+  await page.locator('.sheet-journey [data-action="keep-remote"]').click();
+  await expect(page.locator('#toast')).toHaveText(/^Elder has arrived from your /, { timeout: 60_000 });
+  await expect(choices.first()).toContainText('Continue as Elder');
+  await receive(page, played);
+  await expect(page.locator('#toast')).toHaveText('Elder is already here, as sent');
+  await page.keyboard.press('Escape');
 
   await page.locator('#title-screen [data-link="fame"]').click();
   await expect(page.locator('.sheet .fame-row')).toHaveCount(1);

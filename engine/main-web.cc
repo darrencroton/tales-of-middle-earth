@@ -25,8 +25,7 @@
 #include <memory>
 
 /*
- * Home directory; "~/.tome" beneath it is persisted to IndexedDB. Once read,
- * the frontend may bring it up to date (cloud sync) before tome2 reads it.
+ * Home directory; "~/.tome" beneath it is persisted to IndexedDB.
  */
 #define WEB_HOME_DIR "/home/web_user"
 
@@ -45,12 +44,6 @@ EM_ASYNC_JS(void, web_mount_storage, (const char *path_ptr), {
 	if (error) {
 		console.error('IDBFS load failed', error);
 		Module.tome.storageError = String(error);
-	} else {
-		try {
-			await Module.tome.storageReady(FS, path);
-		} catch (err) {
-			console.error('Preparing storage failed', err);
-		}
 	}
 	Module.tome.storagePath = path;
 });

@@ -64,9 +64,6 @@ jobs:
 
       - name: Build web app
         run: npm run build
-        env:
-          # Only the deployed build talks to the cloud sync service (server/); pull requests' builds have none.
-          VITE_CLOUD_URL: ${{ github.event_name == 'push' && vars.CLOUD_URL || '' }}
 
       - name: Upload app
         if: github.event_name != 'push'
