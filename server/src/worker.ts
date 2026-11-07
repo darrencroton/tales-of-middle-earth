@@ -24,7 +24,7 @@ import {
 /** The parts of R2's bucket binding the service uses. */
 export interface Bucket {
   get(key: string): Promise<{ etag: string; arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string> } | null>;
-  head(key: string): Promise<{ etag: string; size: number } | null>;
+  head(key: string): Promise<{ etag: string; size: number; uploaded: Date } | null>;
   put(key: string, value: ArrayBuffer | Uint8Array | string, options?: { onlyIf?: { etagMatches?: string } }): Promise<{ etag: string } | null>;
   delete(keys: string | string[]): Promise<void>;
   list(options: { prefix: string; cursor?: string }): Promise<{ objects: { key: string; size: number; uploaded: Date }[]; truncated: boolean; cursor?: string }>;
@@ -363,9 +363,25 @@ async function commit(env: Env, user: string, etag: string | null, raw: unknown,
   const manifest: Manifest = { rev: current.manifest.rev + 1, files: sent.files, heroes };
   const written = await env.SAVES.put(manifestKey(user), JSON.stringify(manifest), { onlyIf: { etagMatches: etag } });
   if (!written) throw new Failure(412, 'Changed since read');
-  const stale = [...blobs].filter(([hash, blob]) => !named.has(hash) && now - blob.uploaded > BLOB_GRACE_MS).map(([hash]) => blobKey(user, hash));
-  if (stale.length) await env.SAVES.delete(stale);
+  const candidates = [...blobs].filter(([hash, blob]) => !named.has(hash) && now - blob.uploaded > BLOB_GRACE_MS).map(([hash]) => hash);
+  if (candidates.length) await collect(env, user, candidates, now);
   return { manifest, etag: written.etag, now };
+}
+
+/**
+ * Deletes blobs no manifest names, checked again just before: a commit since
+ * may name one again, and the upload that must come before it (`putBlob`
+ * stamps a blob it already holds afresh) makes it new.
+ */
+async function collect(env: Env, user: string, hashes: readonly string[], now: number): Promise<void> {
+  const latest = referenced((await readStoredManifest(env, user)).manifest);
+  const stale: string[] = [];
+  for (const hash of hashes) {
+    if (latest.has(hash)) continue;
+    const blob = await env.SAVES.head(blobKey(user, hash));
+    if (blob && now - blob.uploaded.getTime() > BLOB_GRACE_MS) stale.push(blobKey(user, hash));
+  }
+  if (stale.length) await env.SAVES.delete(stale);
 }
 
 /** Inflates gzip, refusing more than `cap` bytes before holding them all. */
@@ -388,7 +404,7 @@ async function inflate(compressed: Uint8Array, cap: number): Promise<Uint8Array>
   return concat(...chunks);
 }
 
-/** Stores a file the account sends, gzip-compressed as sent, within the account's allowance (counted as stored). */
+/** Stores a file the account sends, gzip-compressed as sent, within the account's allowance (counted as stored); one already held is stored again, so it counts as new. */
 async function putBlob(env: Env, user: string, hash: string, request: Request): Promise<void> {
   if (!(await env.SAVES.head(manifestKey(user)))) throw new Failure(404, 'No such account');
   const compressed = new Uint8Array(await request.arrayBuffer());
@@ -396,8 +412,7 @@ async function putBlob(env: Env, user: string, hash: string, request: Request): 
   const data = await inflate(compressed, MAX_FILE_BYTES);
   if ((await sha256Hex(data)) !== hash) throw new Failure(400, 'Hash does not match');
   const blobs = await storedBlobs(env, user);
-  if (blobs.has(hash)) return;
-  const stored = [...blobs.values()].reduce((n, b) => n + b.size, 0);
+  const stored = [...blobs.values()].reduce((n, b) => n + b.size, 0) - (blobs.get(hash)?.size ?? 0);
   if (stored + compressed.length > MAX_ACCOUNT_BYTES) throw new Failure(413, 'Over the storage allowance');
   await env.SAVES.put(blobKey(user, hash), compressed);
 }

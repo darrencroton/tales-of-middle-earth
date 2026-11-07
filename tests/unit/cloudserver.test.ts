@@ -159,6 +159,26 @@ describe('cloud service', () => {
     assert.equal((await call(e, 'GET', `/v1/blob/${pending}`, undefined, { Authorization: `Bearer ${session}` })).status, 200, 'one just uploaded stays for its commit');
   });
 
+  it('stores an old blob again, as new, when a commit names it after another dropped it', async () => {
+    const e = env();
+    const bucket = e.SAVES as MemoryBucket;
+    const session = await new SoftPasskey().register(e);
+    const data = new TextEncoder().encode('an old save');
+    bucket.clock = () => NOW - 2 * 60 * 60 * 1000;
+    const hash = await upload(e, session, data);
+    const first = await state(e, session);
+    const named = await commit(e, session, first.etag, { rev: 0, files: { 's/save/A': { hash, size: data.length } }, heroes: {} });
+    const dropping = (await named.json()) as SyncState;
+    /* Another device names it again after this commit drops it: its upload comes first and stamps it afresh. */
+    bucket.clock = () => NOW;
+    const dropped = await commit(e, session, dropping.etag, { rev: 1, files: {}, heroes: {} });
+    const after = (await dropped.json()) as SyncState;
+    await upload(e, session, data);
+    const again = await commit(e, session, after.etag, { rev: 2, files: { 's/save/A': { hash, size: data.length } }, heroes: {} });
+    assert.equal(again.status, 200);
+    assert.equal((await call(e, 'GET', `/v1/blob/${hash}`, undefined, { Authorization: `Bearer ${session}` })).status, 200);
+  });
+
   it('refuses a blob whose bytes do not match its hash, or that inflates beyond a file', async () => {
     const e = env();
     const session = await new SoftPasskey().register(e);

@@ -347,7 +347,9 @@ export class CloudSync {
   /**
    * Before a saved hero is played: a full sync, then, when another device is
    * playing them now, the player is asked; the lease is then this device's.
-   * 'restarted' when the sync brought new files (the title is starting again).
+   * When another device writes first, the sync runs again, so the hero is
+   * never played from an older copy. 'restarted' when the sync brought new
+   * files (the title is starting again).
    */
   claim(save: string): Promise<'go' | 'cancel' | 'restarted'> {
     if (!this.enabled) {
@@ -357,32 +359,32 @@ export class CloudSync {
     return this.run(async () => {
       const storage = this.deps.storage();
       if (!storage) return 'go' as const;
-      const outcome = await this.full(storage.fs, storage.root, 'title', () => this.deps.atTitle());
-      if (outcome.changed) {
-        this.deps.restartTitle();
-        return 'restarted' as const;
-      }
-      if (outcome.cancelled) return 'cancel' as const;
-      let state = outcome.state;
+      /* The device whose game the player chose to take over, so a retry does not ask again. */
+      let confirmed: string | undefined;
       for (let attempt = 0; attempt < COMMIT_TRIES; attempt++) {
+        const outcome = await this.full(storage.fs, storage.root, 'title', () => this.deps.atTitle());
+        if (outcome.changed) {
+          this.deps.restartTitle();
+          return 'restarted' as const;
+        }
+        if (outcome.cancelled) return 'cancel' as const;
+        const state = outcome.state;
         const lease = state.manifest.heroes[save];
         let over: string | undefined;
         if (playingElsewhere(lease, this.account.device, state.now)) {
-          if (!(await this.deps.confirmTakeover(save, lease!, state.now - lease!.at))) return 'cancel' as const;
-          over = lease!.device;
+          if (lease!.device !== confirmed && !(await this.deps.confirmTakeover(save, lease!, state.now - lease!.at))) return 'cancel' as const;
+          confirmed = over = lease!.device;
         }
         const heroes = keptLeases({ ...state.manifest.heroes, [save]: this.lease(true, over) }, state.manifest.files);
         const result = await this.client!.commit(state.etag, { ...state.manifest, heroes });
-        if (result === 'changed' || 'missing' in result) {
-          state = await this.client!.state();
-          continue;
-        }
+        if (result === 'changed' || 'missing' in result) continue;
         this.held = { base: save, since: result.manifest.heroes[save]?.at ?? state.now, over, lost: false };
         this.succeeded(result);
         this.startHeartbeat();
         return 'go' as const;
       }
-      return 'go' as const;
+      this.deps.notify('The cloud kept changing. Try again in a moment.');
+      return 'cancel' as const;
     }).catch((err) => {
       this.failed(err);
       if (!this.wrote) return this.offlineClaim(save);

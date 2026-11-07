@@ -20,7 +20,7 @@ export class MemoryBucket implements Bucket {
 
   async head(key: string) {
     const object = this.objects.get(key);
-    return object ? { etag: object.etag, size: object.data.length } : null;
+    return object ? { etag: object.etag, size: object.data.length, uploaded: object.uploaded } : null;
   }
 
   async put(key: string, value: ArrayBuffer | Uint8Array | string, options?: { onlyIf?: { etagMatches?: string } }) {

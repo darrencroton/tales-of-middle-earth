@@ -79,6 +79,9 @@ describe('cloud plan', () => {
     assert.equal(files['s/save/B'].hash, f('8').hash);
     assert.equal(files['chronicle.json'].hash, f('9').hash);
     assert.deepEqual(pushFiles(local, remote, base, 'A').pushed, ['s/save/N']);
+    const quiet: FileList = { 's/save/A': f('1'), 'chronicle.json': f('3') };
+    assert.deepEqual(pushFiles({ 's/save/A': f('4'), 'chronicle.json': f('6') }, quiet, quiet, null).pushed, ['chronicle.json', 's/save/A']);
+    assert.deepEqual(pushFiles({ 's/save/A': f('4'), 'chronicle.json': f('6') }, quiet, quiet, 'A').pushed, [], 'a hero taken elsewhere holds back the shared files that hold its entries');
   });
 
   it('keeps leases only for heroes with files, and reads them', () => {

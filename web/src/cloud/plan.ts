@@ -139,7 +139,9 @@ export function fullPlan(local: FileList, remote: FileList, base: FileList, hero
 /**
  * The files a push from a game in progress commits: each file changed here
  * only, unless its hero has changed in the cloud too or is `skip` (taken up on
- * another device); those wait for the title screen, as do files changed on both sides.
+ * another device); those wait for the title screen, as do files changed on
+ * both sides, and the shared files while any hero waits (they hold its
+ * entries, which must follow the copy kept).
  */
 export function pushFiles(local: FileList, remote: FileList, base: FileList, skip: string | null): { files: FileList; pushed: string[] } {
   const files: FileList = { ...remote };
@@ -149,7 +151,7 @@ export function pushFiles(local: FileList, remote: FileList, base: FileList, ski
   for (const path of allPaths(local, remote, base)) {
     if (change(path, local, remote, base) !== 'local') continue;
     const hero = heroOf(path);
-    if (hero && held.has(hero)) continue;
+    if (hero ? held.has(hero) : held.size > 0 && sharedFile(path)) continue;
     if (local[path]) files[path] = local[path];
     else delete files[path];
     pushed.push(path);
