@@ -181,7 +181,7 @@ test.describe(() => {
       const snap = window.__tome!.engine.snapshot()!;
       return `${snap.width}x${snap.height}`;
     });
-    const small = ['66x22', '66x44', '132x22'];
+    const small = ['66x22', '66x44', '132x22', '66x66'];
     await page.goto('./?wizard');
     await waitForEngine(page);
     await createCharacter(page, 'Wanderer');

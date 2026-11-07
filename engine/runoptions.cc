@@ -87,8 +87,8 @@ void draw_random_quests(int n)
 
 std::string json;
 
-/* The sizes of a small level, in screens across and down: the three smallest of tome2's six. */
-int const SMALL_SIZES[][2] = { { 1, 1 }, { 1, 2 }, { 2, 1 } };
+/* The sizes of a small level, in screens across and down: those of tome2's six that are a third of a full level or less. */
+int const SMALL_SIZES[][2] = { { 1, 1 }, { 1, 2 }, { 2, 1 }, { 1, 3 } };
 
 /* The dungeon given a size by small_level_hook for the level being built; -1 when none. */
 int sized_dungeon = -1;
