@@ -26,14 +26,12 @@ import { gridDistance } from './play/pathfinding.ts';
 import { questKey } from './play/mapmemory.ts';
 import { isHostile, isNeutral, LEAD_LINES, leadInMessages, newMessages, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState } from './render/snapshot.ts';
 import { acquireSessionLock } from './saves.ts';
-import { CloudSync } from './cloud/sync.ts';
-import { saveBase } from './play/adventurers.ts';
-import { chooseJourney, clockTime, CloudMenu, cloudLine, confirmTakeover, openLost, openTurnOn, otherDevice } from './ui/cloud.ts';
 import { Backup } from './backup.ts';
+import { Transfer } from './ui/transfer.ts';
 import { Updates } from './updates.ts';
 import { ANIMATION_FPS, applyTextSize, EFFECT_DELAY, loadSettings, saveSettings, type Settings } from './settings.ts';
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
-import { TitleScreen, type TitleChoice } from './title.ts';
+import { TitleScreen } from './title.ts';
 import { openSoundtrack } from './ui/soundtrack.ts';
 import { openHelp } from './ui/help.ts';
 import { openMagic, RecentStore } from './ui/magic.ts';
@@ -97,7 +95,6 @@ declare global {
       gear(): string | null;
       takeGear(): void;
       director: Director;
-      cloud: CloudSync;
       audio: GameAudio;
     };
   }
@@ -127,6 +124,7 @@ const hudEl = byId<HTMLElement>('hud');
 const toolbar = byId<HTMLElement>('toolbar');
 const keyboardInput = byId<HTMLInputElement>('keyboard-input');
 const importFile = byId<HTMLInputElement>('import-file');
+const receiveFile = byId<HTMLInputElement>('receive-file');
 const toast = byId<HTMLDivElement>('toast');
 const recentre = byId<HTMLButtonElement>('recentre');
 const lookBanner = byId<HTMLDivElement>('look-banner');
@@ -862,7 +860,6 @@ function refresh(): void {
       app.classList.toggle('fallen', hasFallen(state.player) && !game.abandoning);
       app.classList.toggle('between', !!state.player.dead && state.player.fate === 'choice');
       heroes.update(state.player, slain, snap.turn, sameHero && (previous.player?.chp ?? 0) > state.player.chp);
-      if (state.player.name) cloud.playing(saveBase(state.player.name));
     }
     if (hasFallen(state.player)) heroes.remember(state.player!, state, snap);
     if (shop.shown && !game.inStore) audio.cue('shop');
@@ -1522,16 +1519,6 @@ const engine = new Engine(buffer, {
   onStatus(text, fraction) {
     title.setStatus(/^Downloading/.test(text) ? 'Kindling the fires…' : text.replace(/\s*\(\d.*\)$/, '…'), fraction);
   },
-  onStorage(fs, path) {
-    return cloud.boot(fs, path);
-  },
-  onSynced() {
-    try {
-      cloud.saved(inGame());
-    } catch (err) {
-      console.error('Cloud sync could not look at storage', err);
-    }
-  },
   onRunning() {
     layout();
     applyEngineSettings();
@@ -1546,9 +1533,8 @@ const engine = new Engine(buffer, {
     }
   },
   onExit(message) {
-    if (cloudRestart) {
-      cloudRestart = false;
-      returnToTitle(false);
+    if (titleRestart !== null) {
+      returnToTitle();
       return;
     }
     if (game.quitting) {
@@ -1699,23 +1685,18 @@ const director = new Director({
 const feel = new GameFeel(byId<HTMLElement>('stage'), () => settings.animation);
 const coach = new Coach(byId<HTMLElement>('stage'));
 const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
-  onChoose: (choice) => choose(choice),
+  onChoose: (choice) => director.choose(choice),
   onAdventurers: (saves) => heroes.openRoster(saves),
-  describe: (save) => {
-    const hero = heroes.describe(save);
-    const lease = cloud.enabled ? cloud.elsewhere(save.name) : null;
-    return lease ? { ...hero, line: `${hero.line} · on your ${otherDevice(lease)}` } : hero;
-  },
+  describe: (save) => heroes.describe(save),
   onReady: () => {
+    if (titleRestart) showToast(titleRestart, { log: false, read: true });
+    titleRestart = null;
     const name = heroes.takeAnew();
     if (name && director.beginAnew(name)) return;
     updates.adopt();
-    void cloud.syncAtTitle();
-    if (backFromGame) suggestCloud();
-    backFromGame = false;
   },
   onSettings: () => openSettingsSheet(),
-  onBackup: () => (cloud.available ? cloudMenu.open() : backup.open()),
+  onBackup: () => backup.open(),
   onMusic: () => openSoundtrack(sheets, audio),
   onFame: () => heroes.openHallOfFame(),
   onHelp: () => openHelpSheet(),
@@ -1774,14 +1755,7 @@ const heroes = new Heroes({
   interrupt: () => journeys.interrupt('fallen'),
   finishGame,
   showToast,
-  play: (save) => choose({ kind: 'continue', save }),
-  cloudNote: (save) => {
-    if (!cloud.enabled) return null;
-    const lease = cloud.elsewhere(save);
-    const at = cloud.syncedAt(save);
-    const state = cloud.synced(save) ? (at ? `Synced ${clockTime(at)}` : 'Synced') : at ? `Waiting to sync (last synced ${clockTime(at)})` : 'Waiting to sync';
-    return lease ? `${state} · last played on your ${otherDevice(lease)}` : state;
-  },
+  send: (save, name) => transfer.send(save, name),
 });
 const memory = new HeroMemoryKeeper({
   engine,
@@ -1833,87 +1807,24 @@ const conversation = new Conversation({
   openMessage: (title, text) => openMessage(sheets, title, text),
   told: noteLeadShown,
 });
-const backup = new Backup({
+const transfer = new Transfer({
   engine,
   sheets,
-  input: importFile,
-  cloud: () => (cloud.available ? cloud : null),
+  input: receiveFile,
+  restartTitle,
+  showToast: (text) => showToast(text, { log: false, read: true }),
 });
-/** The title is starting again for cloud sync (its engine was told to quit). */
-let cloudRestart = false;
-/** The title is back after a game. */
-let backFromGame = false;
-const cloud = new CloudSync({
-  url: (() => {
-    try {
-      return localStorage.getItem('tome2mobile.cloudUrl') || import.meta.env.VITE_CLOUD_URL || null;
-    } catch {
-      return import.meta.env.VITE_CLOUD_URL || null;
-    }
-  })(),
-  storage: () => {
-    const fs = engine.fs;
-    const root = engine.savePath;
-    return fs && root && !engine.storageError ? { fs, root } : null;
-  },
-  persist: () => engine.syncNow(),
-  atTitle: () => director.atTitle,
-  idle: () => director.atTitle && title.offering && !sheets.isOpen,
-  writing: () => title.setBusy('Bringing in your heroes…'),
-  restartTitle: restartForCloud,
-  chooseJourney: (choice) => chooseJourney(sheets, choice),
-  confirmTakeover: (hero, lease, age) => confirmTakeover(sheets, heroLabel(hero), lease, age),
-  lost: (hero, lease) => openLost(sheets, heroLabel(hero), lease, saveAndQuit),
-  notify: (text) => showToast(text, { log: false, read: true }),
-  changed: () => {
-    cloudMenu.refresh();
-    title.setLink('backup', cloud.available ? 'Cloud & backup' : 'Backup');
-  },
-});
-title.setLink('backup', cloud.available ? 'Cloud & backup' : 'Backup');
-const cloudMenu = new CloudMenu({
-  sheets,
-  cloud,
-  backup: backup.items(),
-  synced: () => void cloud.syncAtTitle(true),
-  toast: (text) => showToast(text, { log: false }),
-});
+const backup = new Backup({ engine, sheets, input: importFile, receive: () => transfer.choose() });
+/** What to say once the title has started again for heroes that arrived (null while it is not starting again). */
+let titleRestart: string | null = null;
 
-/** A choice on the title (Continue, or Play in the Game Roster): a saved hero is first taken up with cloud sync (`CloudSync.claim`). */
-function choose(choice: TitleChoice): void {
-  if (choice.kind !== 'continue' || !cloud.enabled) {
-    if (choice.kind === 'continue') cloud.playing(choice.save.name);
-    director.choose(choice);
-    return;
-  }
-  title.setBusy(`Checking where ${choice.save.description.split(', the ')[0] || choice.save.name} was played…`);
-  cloud.claim(choice.save.name).then((outcome) => {
-    if (outcome === 'go') director.choose(choice);
-    else if (outcome === 'cancel') title.restoreChoices();
-  });
-}
-
-/** A hero's name from their savefile's: the hero in play's, else the savefile's with spaces. */
-function heroLabel(save: string): string {
-  const name = game.lastState?.player?.name;
-  return name && saveBase(name) === save ? name : save.replace(/_/g, ' ');
-}
-
-/** Starts the title again so tome2 lists the heroes the cloud brought (tome2 quits at its savefile screen on Escape). */
-function restartForCloud(): void {
+/** Starts the title again, so tome2 lists the heroes as storage now holds them (tome2 quits at its savefile screen on Escape), then says `told`. */
+function restartTitle(told: string): void {
   if (!director.atTitle || engine.state !== 'running') return;
-  cloudRestart = true;
+  titleRestart = told;
   sheets.closeAll();
-  title.setBusy('Bringing in your heroes…');
+  title.setBusy('Bringing in your hero…');
   engine.sendKeys([KEY_ESCAPE]);
-}
-
-/** Once, at the title with a hero saved: offers cloud sync. */
-function suggestCloud(): void {
-  if (!cloud.available || cloud.enabled || cloud.suggested || cloud.status.state === 'signedOut' || sheets.isOpen) return;
-  if (!heroes.adventurers.loaded) return;
-  cloud.markSuggested();
-  openTurnOn(sheets, (existing) => cloudMenu.turnOn(existing), () => undefined);
 }
 const updates = new Updates(() => director.atTitle);
 updates.register();
@@ -1940,7 +1851,6 @@ watchAppHeight();
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') autosave();
   else requestFrame();
-  cloud.setVisible(document.visibilityState === 'visible', inGame());
 });
 window.addEventListener('pagehide', () => autosave());
 
@@ -2161,9 +2071,7 @@ function saveAndQuit(): void {
  * in the same page: the music carries on, as a reload would need another tap
  * before the browser lets it play.
  */
-function returnToTitle(fromGame = true): void {
-  void cloud.leave();
-  backFromGame = fromGame;
+function returnToTitle(): void {
   sheets.closeAll();
   journeys.reset();
   if (macros.running) macros.cancel();
@@ -2242,7 +2150,7 @@ function openGameMenu(): void {
     { label: fallen ? 'Your hero' : 'Character', icon: '@', hidden: !playing, run: () => (fallen ? heroes.openFallen() : character.open('summary')) },
     { label: 'Messages', icon: '≣', hidden: !playing, run: () => showHistory() },
     { label: 'Knowledge', icon: '¶', hint: 'Artifacts, creatures, quests', hidden: !playing || fallen, run: () => openKnowledge(api) },
-    { label: 'Save game', icon: '⇩', hint: cloud.enabled ? cloudLine(cloud) : undefined, hidden: !playing || !game.lastSnap?.atCommand, run: () => {
+    { label: 'Save game', icon: '⇩', hidden: !playing || !game.lastSnap?.atCommand, run: () => {
       sheets.closeAll();
       if (!saveGame('toast')) showToast(NOT_NOW);
     } },
@@ -2303,7 +2211,6 @@ window.__tome = {
   takeGear: () => useSuggested(),
   director,
   audio,
-  cloud,
 };
 
 /* Start */

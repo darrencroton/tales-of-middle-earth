@@ -71,9 +71,6 @@ export function termRow(text = '', opts: { width?: number; attr?: number; colour
 export class MemoryFS implements EmscriptenFS {
   readonly files = new Map<string, Uint8Array>();
   readonly dirs = new Set<string>(['/']);
-  /** When each file was written, by a counter. */
-  private readonly written = new Map<string, number>();
-  private clock = 0;
 
   readdir(path: string): string[] {
     const prefix = path.endsWith('/') ? path : `${path}/`;
@@ -84,10 +81,9 @@ export class MemoryFS implements EmscriptenFS {
     return [...names];
   }
 
-  stat(path: string): { mode: number; size: number; mtime: number } {
-    if (this.dirs.has(path)) return { mode: 0o040000, size: 0, mtime: 0 };
-    const file = this.files.get(path);
-    if (file) return { mode: 0o100000, size: file.length, mtime: this.written.get(path) ?? 0 };
+  stat(path: string): { mode: number } {
+    if (this.dirs.has(path)) return { mode: 0o040000 };
+    if (this.files.has(path)) return { mode: 0o100000 };
     throw new Error(`ENOENT ${path}`);
   }
 
@@ -103,7 +99,6 @@ export class MemoryFS implements EmscriptenFS {
 
   writeFile(path: string, data: Uint8Array): void {
     this.files.set(path, data);
-    this.written.set(path, ++this.clock);
   }
 
   unlink(path: string): void {

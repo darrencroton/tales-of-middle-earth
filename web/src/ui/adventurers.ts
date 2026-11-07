@@ -14,13 +14,13 @@ export interface AdventurerDetails {
   saved?: string;
   kills?: number;
   deepestFeet?: number;
-  /** How the hero stands with cloud sync. */
-  cloud?: string;
 }
 
 export interface AdventurerHandlers {
   details(save: SaveInfo): AdventurerDetails;
   play(save: SaveInfo): void;
+  /** Sends the hero to another device, as a file. */
+  send(save: SaveInfo, name: string): void;
   /** Deletes the hero's saved game and records. */
   remove(save: SaveInfo): void;
 }
@@ -55,7 +55,7 @@ export function openAdventurers(sheets: Sheets, saves: readonly SaveInfo[], hand
   sheets.open({ title: 'Game Roster', subtitle: 'Your saved heroes', body: list, className: 'sheet-adventurers' });
 }
 
-/** A saved hero: who and where they are, with Play, and Delete after a warning. */
+/** A saved hero: who and where they are, with Play, Send (to another device), and Delete after a warning. */
 function openAdventurer(sheets: Sheets, save: SaveInfo, handlers: AdventurerHandlers): void {
   const details = handlers.details(save);
   const facts = el('dl', 'hero-facts');
@@ -66,7 +66,6 @@ function openAdventurer(sheets: Sheets, save: SaveInfo, handlers: AdventurerHand
   fact('Last played', when(details.saved));
   fact('Foes slain', details.kills ? String(details.kills) : null);
   fact('Deepest', details.deepestFeet ? `${details.deepestFeet} ft` : null);
-  fact('Cloud', details.cloud);
   const body = el('div', 'adventurer-detail');
   if (facts.childElementCount) body.append(facts);
   else body.append(el('p', 'muted', 'Play to see where this adventure stands.'));
@@ -87,6 +86,7 @@ function openAdventurer(sheets: Sheets, save: SaveInfo, handlers: AdventurerHand
           handlers.play(save);
         },
       },
+      { id: 'send', label: 'Send', run: () => handlers.send(save, name) },
       {
         id: 'delete',
         label: 'Delete',

@@ -30,8 +30,6 @@ interface TomeBridge {
   storagePath?: string;
   /** Set when loading saves from IndexedDB failed. */
   storageError?: string;
-  /** Storage has been read from the browser; tome2 reads it once this resolves. */
-  storageReady(fs: EmscriptenFS, path: string): Promise<void>;
   waitKey(): Promise<number>;
   pollKey(): number;
   drawText(x: number, y: number, attr: number, text: Uint8Array): void;
@@ -121,10 +119,6 @@ interface EngineEvents {
   onEffectFrame?(): void;
   /** Engine took a key from the queue. */
   onKey?(code: number): void;
-  /** Storage has been read from the browser, before tome2 reads it: it may be brought up to date here. */
-  onStorage?(fs: EmscriptenFS, path: string): Promise<void>;
-  /** The save tree was written to the browser's storage. */
-  onSynced?(): void;
 }
 
 const SAVE_SYNC_DELAY_MS = 1500;
@@ -479,7 +473,7 @@ export class Engine {
     if (!fs || !this.savePath || this.storageError || this.storageHeld) return Promise.resolve();
     const run = this.syncChain.catch(() => undefined).then(() => syncToStorage(fs));
     this.syncChain = run;
-    return run.then(() => this.events.onSynced?.());
+    return run;
   }
 
   /** Stops every later sync, so storage keeps what it has until the page reloads. */
@@ -498,7 +492,6 @@ export class Engine {
   }
 
   private readonly bridge: TomeBridge = {
-    storageReady: (fs, path) => this.events.onStorage?.(fs, path) ?? Promise.resolve(),
     waitKey: () => {
       this.scheduleSync();
       this.events.onIdle?.();

@@ -1,12 +1,10 @@
-import { isSafeRelativePath } from './cloud/protocol.ts';
-
 export const SAVE_FORMAT = 'tome2mobile-saves';
 const SAVE_FORMAT_VERSION = 1;
 const SAVE_FILE_EXTENSION = '.tome2save';
 
 export interface EmscriptenFS {
   readdir(path: string): string[];
-  stat(path: string): { mode: number; size: number; mtime: Date | number };
+  stat(path: string): { mode: number };
   isDir(mode: number): boolean;
   readFile(path: string): Uint8Array;
   writeFile(path: string, data: Uint8Array): void;
@@ -83,6 +81,15 @@ export function base64ToBytes(text: string): Uint8Array {
   return bytes;
 }
 
+/**
+ * Accepts only relative paths made of ordinary segments, so an imported bundle
+ * cannot write outside the storage directory.
+ */
+export function isSafeRelativePath(path: string): boolean {
+  if (!path || path.startsWith('/') || path.includes('\\') || path.includes('\0')) return false;
+  return path.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..');
+}
+
 export function encodeBundle(files: SaveFile[], now: Date = new Date()): string {
   const bundle: SaveBundle = {
     format: SAVE_FORMAT,
@@ -125,25 +132,6 @@ export function decodeBundle(text: string): SaveFile[] {
       throw new Error(`Save file entry is corrupt: ${entry.path}`);
     }
   });
-}
-
-/**
- * Each file under a root with its size and when it was last written, in one
- * string: it changes when any file does, without reading them.
- */
-export function storagePrint(fs: Pick<EmscriptenFS, 'readdir' | 'stat' | 'isDir'>, root: string): string {
-  const parts: string[] = [];
-  const walk = (dir: string) => {
-    for (const name of fs.readdir(dir)) {
-      if (name === '.' || name === '..') continue;
-      const path = `${dir}/${name}`;
-      const stat = fs.stat(path);
-      if (fs.isDir(stat.mode)) walk(path);
-      else parts.push(`${path}:${stat.size}:${+stat.mtime}`);
-    }
-  };
-  walk(root);
-  return parts.sort().join('|');
 }
 
 export function collectFiles(fs: EmscriptenFS, root: string): SaveFile[] {
