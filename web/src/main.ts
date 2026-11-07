@@ -1811,6 +1811,7 @@ const transfer = new Transfer({
   engine,
   sheets,
   input: receiveFile,
+  atTitle: () => director.atTitle,
   restartTitle,
   showToast: (text) => showToast(text, { log: false, read: true }),
 });
@@ -1818,9 +1819,12 @@ const backup = new Backup({ engine, sheets, input: importFile, receive: () => tr
 /** What to say once the title has started again for heroes that arrived (null while it is not starting again). */
 let titleRestart: string | null = null;
 
-/** Starts the title again, so tome2 lists the heroes as storage now holds them (tome2 quits at its savefile screen on Escape), then says `told`. */
+/** Starts the title again, so tome2 lists the heroes as storage now holds them (tome2 quits at its savefile screen on Escape), then says `told`; reloads the page when the title is not showing. */
 function restartTitle(told: string): void {
-  if (!director.atTitle || engine.state !== 'running') return;
+  if (!director.atTitle || engine.state !== 'running') {
+    location.reload();
+    return;
+  }
   titleRestart = told;
   sheets.closeAll();
   title.setBusy('Bringing in your hero…');

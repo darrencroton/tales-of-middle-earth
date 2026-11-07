@@ -1,44 +1,14 @@
 /**
- * Merging the files every hero shares (the savefile index, the Hall of Fame,
- * the title details, the chronicle and map memory) from this device's copy and
- * another device's (`remote`), as a hero arrives: what belongs to a hero
- * follows the copy chosen for them (`Winner`); the rest is combined.
+ * Bringing one hero's entries from another device's copy of the files every
+ * hero shares (the savefile index, the title details, the chronicle and map
+ * memory) into this device's, and combining what belongs to no hero alone
+ * (the Hall of Fame, deeds, the career and the fallen remembered).
  */
 import { saveBase } from './adventurers.ts';
 import type { Career } from './chronicle.ts';
 
-/** Whose copy of a hero is kept: this device's, the other's, or null to combine it as anything else. */
-export type Winner = (base: string) => 'local' | 'remote' | null;
-
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
-
-function same(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
-/**
- * Merges records by key: a key `pick` names a side for takes that side's
- * value (or its absence); otherwise a key on one side is kept, and one that
- * differs on both is settled by `resolve`. Keys keep the local order, then the
- * other side's new ones.
- */
-function mergeRecords<T>(
-  local: Record<string, T>,
-  remote: Record<string, T>,
-  resolve: (local: T, remote: T) => T,
-  pick: (key: string) => 'local' | 'remote' | null = () => null,
-): Record<string, T> {
-  const out: Record<string, T> = Object.create(null);
-  for (const key of new Set([...Object.keys(local), ...Object.keys(remote)])) {
-    const l = Object.hasOwn(local, key) ? local[key] : undefined;
-    const r = Object.hasOwn(remote, key) ? remote[key] : undefined;
-    const side = pick(key);
-    const value = side ? (side === 'remote' ? r : l) : l === undefined ? r : r === undefined || same(l, r) ? l : resolve(l, r);
-    if (value !== undefined) out[key] = value;
-  }
-  return out;
-}
 
 function parseJson(bytes: Uint8Array): Record<string, unknown> | null {
   try {
@@ -63,24 +33,33 @@ function heroBase(key: string): string {
   return saveBase(hash > 0 ? key.slice(0, hash) : key);
 }
 
-/** Merges a JSON store whose `heroes` are by hero (title details, map memory); its other fields come from this device's copy. */
-function mergeHeroStore(local: Uint8Array, remote: Uint8Array, winner: Winner, resolve: (l: unknown, r: unknown) => unknown): Uint8Array {
+/** Only the entries of `hero` (a savefile name), by key. */
+function heroOnly<T>(records: Record<string, T>, hero: string): Record<string, T> {
+  return Object.fromEntries(Object.entries(records).filter(([key]) => heroBase(key) === hero));
+}
+
+/** This device's entries with `hero`'s replaced by the other's, which go last (stores trim the earliest first). */
+function withHero<T>(local: Record<string, T>, remote: Record<string, T>, hero: string): Record<string, T> {
+  const out: Record<string, T> = Object.create(null);
+  for (const [key, value] of Object.entries(local)) if (heroBase(key) !== hero) out[key] = value;
+  for (const [key, value] of Object.entries(remote)) if (heroBase(key) === hero) out[key] = value;
+  return out;
+}
+
+/** Every key of both, this device's value kept where both have one. */
+function union<T>(local: Record<string, T>, remote: Record<string, T>, both: (local: T, remote: T) => T = (l) => l): Record<string, T> {
+  const out: Record<string, T> = Object.create(null);
+  for (const [key, value] of Object.entries(remote)) out[key] = value;
+  for (const [key, value] of Object.entries(local)) out[key] = Object.hasOwn(remote, key) ? both(value, remote[key]) : value;
+  return out;
+}
+
+/** A JSON store whose `heroes` are by hero (title details, map memory): `hero`'s entries from the other copy; its other fields from this device's. */
+export function mergeHeroStore(local: Uint8Array, remote: Uint8Array, hero: string): Uint8Array {
   const l = parseJson(local);
   const r = parseJson(remote);
   if (!l || !r) return l ? local : remote;
-  const heroes = mergeRecords(dict(l.heroes), dict(r.heroes), resolve, (key) => winner(heroBase(key)));
-  return toBytes({ ...r, ...l, heroes });
-}
-
-/** Title details (`adventurers.json`): a hero's entry follows the copy chosen, else the one saved last. */
-export function mergeAdventurers(local: Uint8Array, remote: Uint8Array, winner: Winner): Uint8Array {
-  const saved = (v: unknown) => String((v as { saved?: unknown }).saved ?? '');
-  return mergeHeroStore(local, remote, winner, (l, r) => (saved(r) > saved(l) ? r : l));
-}
-
-/** Map memory (`mapmemory.json`): a hero's memory follows the copy chosen, else this device's. */
-export function mergeMapMemory(local: Uint8Array, remote: Uint8Array, winner: Winner): Uint8Array {
-  return mergeHeroStore(local, remote, winner, (l) => l);
+  return toBytes({ ...r, ...l, heroes: withHero(dict(l.heroes), dict(r.heroes), hero) });
 }
 
 /** How each field of the career is combined: counts and bests take the higher (both may hold the same history), flags either. */
@@ -103,15 +82,25 @@ function mergeCareer(local: Record<string, unknown>, remote: Record<string, unkn
   return out;
 }
 
-/** The chronicle (`chronicle.json`): the career combined, deeds kept from when first earned, a hero's tale following the copy chosen, the fallen from both. */
-export function mergeChronicle(local: Uint8Array, remote: Uint8Array, winner: Winner): Uint8Array {
+/** The chronicle (`chronicle.json`): `hero`'s tale from the other copy; the career combined, deeds kept from when first earned, the fallen remembered from both. */
+export function mergeChronicle(local: Uint8Array, remote: Uint8Array, hero: string): Uint8Array {
   const l = parseJson(local);
   const r = parseJson(remote);
   if (!l || !r) return l ? local : remote;
-  const deeds = mergeRecords(dict<string>(l.deeds), dict<string>(r.deeds), (lv, rv) => (lv < rv ? lv : rv));
-  const heroes = mergeRecords(dict(l.heroes), dict(r.heroes), (lv) => lv, (key) => winner(saveBase(key)));
-  const memorials = mergeRecords(dict(l.memorials), dict(r.memorials), (lv) => lv);
-  return toBytes({ ...r, ...l, career: mergeCareer(dict(l.career), dict(r.career)), deeds, heroes, memorials });
+  return toBytes({
+    ...r,
+    ...l,
+    career: mergeCareer(dict(l.career), dict(r.career)),
+    deeds: union(dict<string>(l.deeds), dict<string>(r.deeds), (lv, rv) => (rv < lv ? rv : lv)),
+    heroes: withHero(dict(l.heroes), dict(r.heroes), hero),
+    memorials: union(dict(l.memorials), dict(r.memorials)),
+  });
+}
+
+/** A store whose `heroes` are by hero (title details, map memory, the chronicle) holding only `hero`'s. */
+export function storeOf(bytes: Uint8Array, hero: string): Uint8Array {
+  const value = parseJson(bytes);
+  return value ? toBytes({ ...value, heroes: heroOnly(dict(value.heroes), hero) }) : bytes;
 }
 
 /** The savefile a line of tome2's index (`global.svg`: "module@1base@description") is for, or null. */
@@ -128,18 +117,27 @@ function indexLines(bytes: Uint8Array): Record<string, string> {
   return out;
 }
 
+function indexText(lines: string[]): Uint8Array {
+  return encoder.encode(lines.length ? `${lines.join('\n')}\n` : '');
+}
+
+/** tome2's savefile index holding only `hero`'s line. */
+export function indexOf(bytes: Uint8Array, hero: string): Uint8Array {
+  const line = indexLines(bytes)[hero];
+  return indexText(line ? [line] : []);
+}
+
 /**
- * tome2's savefile index: a hero's line follows the copy chosen, else this
- * device's. The title offers to continue the hero of the first line, so the
- * lines are ordered by when each hero was last saved (`recency`, newest
- * first); heroes without a time keep their place after them.
+ * tome2's savefile index with `hero`'s line from the other copy. The title
+ * offers to continue the hero of the first line, so the lines are ordered by
+ * when each hero was last saved (`recency`, newest first); heroes without a
+ * time keep their place after them.
  */
-export function mergeSaveIndex(local: Uint8Array, remote: Uint8Array, winner: Winner, recency: (base: string) => number): Uint8Array {
-  const lines = mergeRecords(indexLines(local), indexLines(remote), (lv) => lv, winner);
+export function mergeSaveIndex(local: Uint8Array, remote: Uint8Array, hero: string, recency: (base: string) => number): Uint8Array {
+  const lines = withHero(indexLines(local), indexLines(remote), hero);
   const order = Object.keys(lines).map((key, at) => ({ key, at, time: recency(key) }));
   order.sort((a, b) => b.time - a.time || a.at - b.at);
-  const text = order.map((o) => lines[o.key]).join('\n');
-  return encoder.encode(text ? `${text}\n` : '');
+  return indexText(order.map((o) => lines[o.key]));
 }
 
 /** Bytes of one entry of tome2's `scores.raw` (struct high_score). */
@@ -163,7 +161,7 @@ function points(record: Uint8Array): number {
 
 /** tome2's Hall of Fame (`scores.raw`): every entry from both, each once, best first as tome2 keeps them. */
 export function mergeScores(local: Uint8Array, remote: Uint8Array): Uint8Array {
-  const records = Object.values(mergeRecords(scoreRecords(local), scoreRecords(remote), (lv) => lv));
+  const records = Object.values(union(scoreRecords(local), scoreRecords(remote)));
   records.sort((a, b) => points(b) - points(a));
   const kept = records.slice(0, MAX_SCORES);
   const out = new Uint8Array(kept.length * SCORE_RECORD);

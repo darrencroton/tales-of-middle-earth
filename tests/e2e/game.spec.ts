@@ -513,7 +513,7 @@ test('the name prompt sits at the top of the screen, clear of the keyboard', { t
   expect(box!.y + box!.height).toBeLessThan(height * 0.4);
 });
 
-test('saved heroes: Continue plays the last, the Game Roster lists them all, a hero sent to another device arrives there and comes back as a journey to choose, an abandoned hero stays in the Hall of Fame until removed, Delete removes only that hero', async ({ page, browser, settings }) => {
+test('saved heroes: Continue plays the last, the Game Roster lists them all, a hero sent to another device arrives there and, played on both, comes back as a journey to choose, an abandoned hero stays in the Hall of Fame until removed, Delete removes only that hero', async ({ page, browser, settings }) => {
   test.setTimeout(420_000);
   const quit = async () => {
     await saveAndQuit(page);
@@ -596,12 +596,14 @@ test('saved heroes: Continue plays the last, the Game Roster lists them all, a h
   await expect(second.locator('#toast')).toHaveText(/^Elder has arrived from your /, { timeout: 60_000 });
   await expect(second.locator('#title-screen .title-choice').first()).toContainText('Continue as Elder');
 
-  /* Played there and sent back, Elder is another journey here: the player chooses which goes on. */
+  /* Played there and here too, then sent back: the player chooses which journey goes on. */
   await continueAs(second, 'Elder');
   await saveAndQuit(second);
   await waitForEngine(second);
   const played = await send(second);
   await other.close();
+  await continueAs(page, 'Elder');
+  await quit();
   await receive(page, played);
   await expect(page.locator('.sheet-journey .sheet-title')).toHaveText('Which journey continues?');
   await expect(page.locator('.sheet-journey .journey-side h3')).toHaveText([/^This /, /^Your /]);

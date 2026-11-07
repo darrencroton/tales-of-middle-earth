@@ -14,19 +14,19 @@ Hero transfer, by the player, with no account or server:
 
 - **Send** on a hero's card in the Game Roster makes a `.tome2hero` file and opens the share sheet (AirDrop, Messages, Save to Files), or downloads it where the browser has no share sheet.
 - **Share & backup → Receive a hero** on the title screen adds that hero. The Hall of Fame, deeds and fallen heroes are combined; other heroes on the device are left alone.
-- If the device already has the hero as a different copy, *Which journey continues?* shows both (level, place, when saved, when sent) and the player chooses.
+- A hero sent back after playing on replaces the copy they were taken from without a question (each device notes a mark of each hero's files as it last sent or received them, and a file carries its sender's). If the hero was played on both devices meanwhile, *Which journey continues?* shows both (level, place, when saved, when sent) and the player chooses.
 - Export and Import of everything stay for backups.
 
 The building blocks below are reusable by any automatic sync:
 
 - `play/transfer.ts` `heroOf`: which files belong to a hero (`save/Base`, `save/Base.*`, `Base.nte`).
-- `play/merge.ts`: merging the five files every hero shares (`global.svg`, `scores.raw`, `adventurers.json`, `chronicle.json`, `mapmemory.json`). A hero's entries follow the copy kept; the rest is combined. It is two-way: an automatic sync would want three-way merges against the copy both sides last had, so counts can be added rather than maxed.
+- `play/merge.ts`: bringing one hero's entries from another copy of the files every hero shares (`global.svg`, `adventurers.json`, `chronicle.json`, `mapmemory.json`) and combining what belongs to no hero alone (the Hall of Fame in `scores.raw`, deeds, the career, the fallen). An automatic sync would want three-way merges against the copy both sides last had, so career counts can be added rather than taking the higher.
 - `ui/transfer.ts`: the *Which journey continues?* card and `clockTime`.
 - `restartTitle` in `main.ts`: tome2 reads its savefile list once, at its start screen, so new files on the title need the title started again (Escape at tome2's savefile screen, a fresh engine in the same page).
 
 ## What was tried and removed
 
-PR #57 built automatic sync on a Cloudflare Worker over R2, with passkey sign-in. It worked in tests, but the project would host every player's saves and could be billed for their use (R2 bills beyond its free allowance once a card is on the account, with no hard spending cap). It was removed before it went live. The code is in the history (merge commit `c640ec5`) and holds ideas worth keeping:
+PR #57 built automatic sync on a Cloudflare Worker over R2, with passkey sign-in. It worked in tests, but the project would host every player's saves and could be billed for their use (R2 bills beyond its free allowance once a card is on the account, with no hard spending cap). It was merged, but its service was never deployed, and the next PR removed it. The code is in the history (merge commit `c640ec5`) and holds ideas worth keeping:
 
 - **Three-way sync of files by hash** against the last synced list: a file changed on one side takes that side; a hero changed on both asks the journey question; the shared files are merged.
 - **Leases**, saying which device is playing a hero, so continuing them elsewhere asks first (*Elder is in play on your iPhone*) and the first device gives way (*Elder continued on your iPad*).

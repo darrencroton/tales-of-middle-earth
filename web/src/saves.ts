@@ -134,7 +134,8 @@ export function decodeBundle(text: string): SaveFile[] {
   });
 }
 
-export function collectFiles(fs: EmscriptenFS, root: string): SaveFile[] {
+/** Every file beneath a root (those `keep` takes, by path relative to it), read. */
+export function collectFiles(fs: EmscriptenFS, root: string, keep: (path: string) => boolean = () => true): SaveFile[] {
   const files: SaveFile[] = [];
   const walk = (relative: string) => {
     const absolute = relative ? `${root}/${relative}` : root;
@@ -144,7 +145,7 @@ export function collectFiles(fs: EmscriptenFS, root: string): SaveFile[] {
       const childAbsolute = `${root}/${childRelative}`;
       if (fs.isDir(fs.stat(childAbsolute).mode)) {
         walk(childRelative);
-      } else {
+      } else if (keep(childRelative)) {
         files.push({ path: childRelative, data: fs.readFile(childAbsolute) });
       }
     }

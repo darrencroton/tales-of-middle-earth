@@ -103,24 +103,23 @@ export class Backup {
         try {
           restoreFiles(fs, root, files);
         } catch (err) {
-          this.importFailed(err);
+          storageFailed(engine, sheets, 'Import failed', err);
           return;
         }
         engine.syncNow().then(
           () => location.reload(),
-          (err) => this.importFailed(err),
+          (err) => storageFailed(engine, sheets, 'Import failed', err),
         );
       },
       true,
     );
   }
+}
 
-  /** Says why an import failed, then reloads, which reads storage again as it was before the import (nothing is synced meanwhile). */
-  private importFailed(err: unknown): void {
-    const { engine, sheets } = this.deps;
-    engine.holdStorage();
-    const body = el('div', 'prose');
-    body.append(el('p', undefined, `Nothing was changed: ${errorText(err)}`));
-    sheets.open({ title: 'Import failed', body, kind: 'card', actions: [{ label: 'OK', primary: true, run: () => sheets.back() }], onClose: () => location.reload() });
-  }
+/** Says why a change to storage failed part-way, then reloads, which reads storage again as it was before (nothing is synced meanwhile). */
+export function storageFailed(engine: Engine, sheets: Sheets, title: string, err: unknown): void {
+  engine.holdStorage();
+  const body = el('div', 'prose');
+  body.append(el('p', undefined, `Nothing was changed: ${errorText(err)}`));
+  sheets.open({ title, body, kind: 'card', actions: [{ label: 'OK', primary: true, run: () => sheets.back() }], onClose: () => location.reload() });
 }
