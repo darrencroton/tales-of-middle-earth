@@ -10,6 +10,7 @@
  * are included in all such copies.
  */
 
+#include "cave.hpp"
 #include "cave_type.hpp"
 #include "defines.hpp"
 #include "dungeon_flag.hpp"
@@ -18,9 +19,11 @@
 #include "game.hpp"
 #include "hooks.hpp"
 #include "level_data.hpp"
+#include "levels.hpp"
 #include "loadsave.hpp"
 #include "monster_race.hpp"
 #include "monster_race_flag.hpp"
+#include "options.hpp"
 #include "player_type.hpp"
 #include "quest_type.hpp"
 #include "random_quest.hpp"
@@ -32,6 +35,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 /* q_god.cc: the Lost Temple, whose quest fails when a level is generated twice. */
@@ -105,6 +109,9 @@ bool hooks_added = false;
 byte here_dungeon = 0;
 int here_depth = 0;
 bool here_known = false;
+
+/* The dungeon of the level left, noted as the next is begun. */
+byte left_dungeon = 0;
 
 /* A level key whose save extension is taken away while tome2 saves the level being left under it. */
 struct Suspended
@@ -266,6 +273,69 @@ void save_left_level()
 	here_known = false;
 }
 
+/*
+ * The staircase back the way the hero came onto this level, or 0: up after
+ * going deeper, down after climbing, under the rules tome2's
+ * new_player_spot gives connected stairs (not on a level without stairs, a
+ * branch's level or from below onto a quest's depth), and only when the
+ * depth has changed, so not on a return from death or a game loaded, nor
+ * from another dungeon's level by a branch's stairs.
+ */
+int way_back()
+{
+	auto const flags = game->dungeon_flags;
+	if (!character_generated || !options->dungeon_stair || (flags & DF_NO_STAIR) || !dun_level || old_dun_level == dun_level || get_branch()) return 0;
+	if (old_dun_level && dungeon_type != left_dungeon) return 0;
+	bool const deeper = old_dun_level < dun_level;
+	if (!deeper && is_quest(dun_level)) return 0;
+	bool const flat(flags & DF_FLAT);
+	if (deeper) return flat ? FEAT_WAY_LESS : FEAT_LESS;
+	return flat ? FEAT_WAY_MORE : FEAT_MORE;
+}
+
+/*
+ * Puts the hero arriving on a level loaded from its file on the staircase
+ * back nearest where they left it (that one when it leads back), with no
+ * creature on it; with none, makes one on the nearest bare floor, as tome2
+ * makes one under a hero arriving on a level it builds.
+ */
+void arrive_on_way_back()
+{
+	int const feat = way_back();
+	if (!feat) return;
+	int const py = p_ptr->py;
+	int const px = p_ptr->px;
+	auto const nearest = [py, px](auto ok) -> boost::optional<std::pair<int, int>> {
+		boost::optional<std::pair<int, int>> spot;
+		int best = 0;
+		for (int y = 0; y < cur_hgt; y++)
+		{
+			for (int x = 0; x < cur_wid; x++)
+			{
+				if (!ok(y, x)) continue;
+				int const d = distance(py, px, y, x);
+				if (spot && d >= best) continue;
+				best = d;
+				spot = std::make_pair(y, x);
+			}
+		}
+		return spot;
+	};
+	auto spot = nearest([feat](int y, int x) {
+		auto const &c = cave[y][x];
+		return c.feat == feat && !c.special && !c.m_idx;
+	});
+	if (!spot)
+	{
+		spot = nearest([](int y, int x) { return cave_naked_bold(y, x) && !(cave[y][x].info & CAVE_ICKY); });
+		if (!spot) return;
+		cave_set_feat(spot->first, spot->second, feat);
+		cave[spot->first][spot->second].special = 0;
+	}
+	p_ptr->py = spot->first;
+	p_ptr->px = spot->second;
+}
+
 bool level_begin_hook(void *, void *, void *)
 {
 	if (suspended)
@@ -273,6 +343,7 @@ bool level_begin_hook(void *, void *, void *)
 		game->edit_data.d_info[suspended->dungeon].level_data_by_depth[suspended->depth].save_extension = suspended->ext;
 		suspended = boost::none;
 	}
+	left_dungeon = here_dungeon;
 	here_dungeon = dungeon_type;
 	here_depth = dun_level;
 	here_known = true;
@@ -285,9 +356,18 @@ bool level_begin_hook(void *, void *, void *)
 	return false;
 }
 
+/* Makes a shaft under the hero arriving on a level a staircase back the way they came. */
+void stairs_not_shaft()
+{
+	int const feat = way_back();
+	auto &c = cave[p_ptr->py][p_ptr->px];
+	if ((feat == FEAT_LESS && c.feat == FEAT_SHAFT_UP) || (feat == FEAT_MORE && c.feat == FEAT_SHAFT_DOWN)) cave_set_feat(p_ptr->py, p_ptr->px, feat);
+}
+
 bool level_made_hook(void *, void *, void *)
 {
 	forget_saved_view();
+	stairs_not_shaft();
 	return false;
 }
 
@@ -299,6 +379,25 @@ bool end_turn_hook(void *, void *, void *)
 }
 
 } // namespace
+
+extern "C" {
+
+bool __real__Z12load_dungeonRKNSt3__212basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE(std::string const &ext);
+
+/*
+ * tome2's load_dungeon (wrapped at link time, CMakeLists.txt), which puts the
+ * hero where they left the level: a hero arriving by a change of depth is
+ * put on a staircase back the way they came instead, before tome2 brings
+ * their companions to them.
+ */
+bool __wrap__Z12load_dungeonRKNSt3__212basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE(std::string const &ext)
+{
+	if (!__real__Z12load_dungeonRKNSt3__212basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE(ext)) return false;
+	arrive_on_way_back();
+	return true;
+}
+
+}
 
 /* Called by web_snapshot (engine/snapshot.cc) on every refresh. */
 void web_memory_tick()

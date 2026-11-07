@@ -438,6 +438,9 @@ describe('actions', () => {
 
   it('names the transition underfoot and the command that takes it', () => {
     assert.deepEqual(transitionUnderfoot('down staircase'), { id: 'descend', label: 'Descend', icon: '>', command: '>' });
+    assert.deepEqual(transitionUnderfoot('shaft down'), { id: 'descend', label: 'Shaft down', icon: '⇊', command: '>' });
+    assert.equal(transitionUnderfoot('shaft up')?.label, 'Shaft up');
+    assert.equal(transitionUnderfoot('up staircase')?.label, 'Ascend');
     assert.equal(transitionUnderfoot('path to the previous area')?.id, 'ascend');
     assert.equal(transitionUnderfoot('path to the next area')?.command, '>');
     assert.equal(transitionUnderfoot('void jumpgate')?.label, 'Enter rift');

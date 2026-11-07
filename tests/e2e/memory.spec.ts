@@ -15,6 +15,39 @@ function level(page: Page): Promise<{ terrain: number; known: number; depth: num
   });
 }
 
+/* The ways one level down and up: stairs, or paths where the dungeon is open land. */
+const WAY_DOWN = /^(down staircase|path to the next area)$/;
+const WAY_UP = /^(up staircase|path to the previous area)$/;
+
+/** What the hero stands on, and whether no grid of it without a creature lies nearer to `from` (by tome2's distance). */
+function arrival(page: Page, from: { x: number; y: number }): Promise<{ underfoot: string; nearest: boolean }> {
+  return page.evaluate(({ x, y }) => {
+    const tome = window.__tome!;
+    const snap = tome.engine.snapshot()!;
+    const names = tome.engine.features().map((f) => f.name);
+    const distance = (i: number) => {
+      const dx = Math.abs((i % snap.width) - x);
+      const dy = Math.abs(Math.floor(i / snap.width) - y);
+      return dy > dx ? dy + (dx >> 1) : dx + (dy >> 1);
+    };
+    const here = snap.py * snap.width + snap.px;
+    const underfoot = names[snap.feat[here]];
+    const creature = (i: number) => (snap.layer[i] & 0x7f) === 3;
+    const nearest = snap.feat.every((f, i) => names[f] !== underfoot || creature(i) || distance(i) >= distance(here));
+    return { underfoot, nearest };
+  }, from);
+}
+
+/** Takes the way on underfoot from the toolbar, which names it, to `depth`. */
+async function takeStairs(page: Page, id: 'descend' | 'ascend', depth: number): Promise<void> {
+  const button = page.locator(`#toolbar [data-action="${id}"]`);
+  await expect(button).toContainText(id === 'descend' ? 'Descend' : 'Ascend');
+  await button.click();
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.snapshot()!.depth), { timeout: 30_000 }).toBe(depth);
+  await dismissMore(page);
+  await waitAtCommand(page);
+}
+
 /** Explores a few times, sending the creatures around away first (wizard mode), so a fight cannot end the test. */
 async function explore(page: Page, times: number): Promise<void> {
   for (let i = 0; i < times; i++) {
@@ -27,7 +60,7 @@ async function explore(page: Page, times: number): Promise<void> {
   await waitAtCommand(page);
 }
 
-test('kept levels stay as the hero left them, the way back is known, the heading follows the depth, and the first level stays as it was left after a trip up to the land', async ({ page }) => {
+test('kept levels stay as the hero left them, their stairs lead one level on and back, the way back is known, the heading follows the depth, and the first level stays as it was left after a trip up to the land', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Keeper');
@@ -64,12 +97,15 @@ test('kept levels stay as the hero left them, the way back is known, the heading
   expect(await heading()).toBe('down');
   await jumpToLevel(page, 3);
   expect((await level(page)).depth).toBe(3);
+  /* Level 3 holds a random quest, whose card tells it. */
+  await page.locator('.sheet [data-action="onward"]').click();
   expect(await heading()).toBe('down');
   await jumpToLevel(page, 2);
   const again = await level(page);
   expect(again.terrain).toBe(leaving.terrain);
   expect(again.known).toBeGreaterThanOrEqual(leaving.known);
-  expect(await playerPos(page)).toEqual(back);
+  /* Come up from below, the hero arrives as on a level tome2 builds: on a staircase back down, the one nearest where they left. */
+  expect(await arrival(page, back)).toEqual({ underfoot: expect.stringMatching(WAY_DOWN), nearest: true });
   expect(await heading()).toBe('up');
 
   /* tome2's view from the last visit is not brought back with the level: away from there, no grid is still in view, and the light reaches every grid beside the hero. */
@@ -91,6 +127,33 @@ test('kept levels stay as the hero left them, the way back is known, the heading
   await wizardCommand(page, 'w');
   expect((await page.evaluate(() => window.__tome!.exploreStop()))?.kind).not.toBe('frontier');
 
+  /* By the stairs, each kept level leads one on and one back, onto the way taken (away from the quest levels at 3 and 8). */
+  const wayDown = async (depth: number) => {
+    await wizardCommand(page, 'w');
+    const way = await findFeature(page, WAY_DOWN, { known: true });
+    expect(way, `no way down known on level ${depth}`).not.toBeNull();
+    await travelTo(page, way!);
+    return way!;
+  };
+  await jumpToLevel(page, 5);
+  const down5 = await wayDown(5);
+  await takeStairs(page, 'descend', 6);
+  const up6 = await playerPos(page);
+  expect((await arrival(page, up6)).underfoot).toMatch(WAY_UP);
+  await takeStairs(page, 'ascend', 5);
+  expect(await playerPos(page)).toEqual(down5);
+  await takeStairs(page, 'descend', 6);
+  expect(await playerPos(page)).toEqual(up6);
+  /* A level last left by its way down, entered from above, puts the hero on the way up nearest it, which leads back one level. */
+  const down6 = await wayDown(6);
+  await takeStairs(page, 'descend', 7);
+  await jumpToLevel(page, 5);
+  expect(await playerPos(page)).toEqual(down5);
+  await takeStairs(page, 'descend', 6);
+  expect(await arrival(page, down6)).toEqual({ underfoot: expect.stringMatching(WAY_UP), nearest: true });
+  await takeStairs(page, 'ascend', 5);
+  expect(await playerPos(page)).toEqual(down5);
+
   /* The first level stays as it was left after a trip up to the land. */
   await jumpToLevel(page, 1);
   const first = await level(page);
@@ -107,7 +170,7 @@ test('kept levels stay as the hero left them, the way back is known, the heading
   await dismissMore(page);
   await waitAtCommand(page);
   expect((await level(page)).terrain).toBe(first.terrain);
-  expect(await playerPos(page)).toEqual(firstAt);
+  expect(await arrival(page, firstAt)).toEqual({ underfoot: expect.stringMatching(WAY_UP), nearest: true });
 });
 
 test.describe(() => {

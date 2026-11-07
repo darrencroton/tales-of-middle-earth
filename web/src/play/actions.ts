@@ -418,8 +418,10 @@ const TRANSITIONS: readonly [RegExp, Transition][] = [
   [/void jumpgate/, { id: 'rift', label: 'Enter rift', icon: '◌', command: '>' }],
   [/quest entrance/, { id: 'enter', label: 'Enter', icon: '>', command: '>' }],
   [/quest exit/, { id: 'leave', label: 'Leave', icon: '<', command: '<' }],
-  [/down staircase|shaft down|quest down|town exit|path to the next/, { id: 'descend', label: 'Descend', icon: '>', command: '>' }],
-  [/up staircase|shaft up|quest up|path to the previous/, { id: 'ascend', label: 'Ascend', icon: '<', command: '<' }],
+  [/shaft down/, { id: 'descend', label: 'Shaft down', icon: '⇊', command: '>' }],
+  [/shaft up/, { id: 'ascend', label: 'Shaft up', icon: '⇈', command: '<' }],
+  [/down staircase|quest down|town exit|path to the next/, { id: 'descend', label: 'Descend', icon: '>', command: '>' }],
+  [/up staircase|quest up|path to the previous/, { id: 'ascend', label: 'Ascend', icon: '<', command: '<' }],
 ];
 
 /** The way on (or back) under the hero, if the terrain is one. */
