@@ -46,7 +46,7 @@ export class Backup {
         { label: 'Export game data', icon: '⤒', hint: 'Download a backup file', run: () => this.startExport() },
         { label: 'Import game data', icon: '⤓', hint: 'Replace what is here with a backup', run: () => this.startImport() },
       ],
-      'Your adventures live in this browser. Send a hero to another device from their card in the Game Roster, and receive them there. A backup keeps everything safe.',
+      'Your adventures live in this browser. Share a hero with another device from their card in the Game Roster, and receive them there. A backup keeps everything safe.',
     );
   }
 

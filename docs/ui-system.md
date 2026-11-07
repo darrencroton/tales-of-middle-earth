@@ -96,7 +96,7 @@ Death ──────────────────────── d
                                         └── Item / foe  card
 Title ──────────────────────── Continue as (last hero, straight into the game) · Game Roster · New character
                                 ├── Game Roster ─── panel, every saved hero
-                                │   └── a hero ──── card: where, last played, tale; Play · Send (share sheet) · Delete (→ confirmation)
+                                │   └── a hero ──── card: where, last played, tale; Play · Share (share sheet) · Delete (→ confirmation)
                                 Help (panel) · Settings (panel) · Share & backup (menu: Receive a hero (→ file
                                   picker; a hero here already: Which journey continues? card, Keep this one ·
                                   Take the one received) · Export · Import game data)

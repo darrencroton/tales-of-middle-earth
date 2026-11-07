@@ -550,7 +550,7 @@ test('saved heroes: Continue plays the last, the Game Roster lists them all, a h
   await expect(page.locator('.adventurer-row')).toHaveText([/Young Sib/, /Elder/]);
   await page.locator('.adventurer-row', { hasText: 'Elder' }).click();
   await expect(page.locator('.sheet-adventurer .sheet-title')).toHaveText('Elder');
-  await expect(page.locator('.sheet-adventurer .sheet-action')).toHaveText(['Play', 'Send', 'Delete']);
+  await expect(page.locator('.sheet-adventurer .sheet-action')).toHaveText(['Play', 'Share', 'Delete']);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
 
@@ -573,9 +573,12 @@ test('saved heroes: Continue plays the last, the Game Roster lists them all, a h
     const sent = on.waitForEvent('download');
     await on.locator('#title-screen .title-choice', { hasText: 'Game Roster' }).click();
     await on.locator('.adventurer-row', { hasText: 'Elder' }).click();
-    await on.locator('.sheet-adventurer [data-action="send"]').click();
-    const path = test.info().outputPath(`Elder-${Date.now()}.tome2hero`);
-    await (await sent).saveAs(path);
+    await on.locator('.sheet-adventurer [data-action="share"]').click();
+    const download = await sent;
+    /* A JSON name: iOS's file picker greys out a file of a type it does not know. */
+    expect(download.suggestedFilename()).toBe('Elder.tome2hero.json');
+    const path = test.info().outputPath(`Elder-${Date.now()}.tome2hero.json`);
+    await download.saveAs(path);
     await on.keyboard.press('Escape');
     await on.keyboard.press('Escape');
     return path;

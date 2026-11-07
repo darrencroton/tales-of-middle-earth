@@ -90,7 +90,7 @@ This is the full ToME 2 game, with an interface designed from scratch for phones
 - The game **saves automatically** when you leave the app, and **☰ → Save and quit** returns you to the title screen.
 - The title screen offers **Continue** for your last hero, with their level, class and where they stand: one tap and you are back in the game. **Game Roster** lists every saved hero; tap any of them to play on, or to delete them.
 - **☰ → Abandon adventure** ends the current adventure for good. It is remembered in the Hall of Fame, where you can begin anew with the same hero.
-- Everything lives in your browser on this device. To carry on a hero on your iPad (or any other device), tap **Send** on their card in the Game Roster and AirDrop it or save it to Files; on the other device, **Share & backup → Receive a hero** brings them in.
+- Everything lives in your browser on this device. To carry on a hero on your iPad (or any other device), tap **Share** on their card in the Game Roster and AirDrop it or save it to Files; on the other device, **Share & backup → Receive a hero** brings them in.
 - **Share & backup → Export game data** saves everything as one file, to keep it safe, and *Import game data* brings it back.
 - Clearing your browser's site data deletes your adventures, so export a backup first.
 
