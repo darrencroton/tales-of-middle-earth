@@ -181,7 +181,7 @@ test.describe(() => {
       const snap = window.__tome!.engine.snapshot()!;
       return `${snap.width}x${snap.height}`;
     });
-    const small = ['66x22', '66x44', '132x22'];
+    const small = ['66x22', '66x44', '132x22', '66x66'];
     await page.goto('./?wizard');
     await waitForEngine(page);
     await createCharacter(page, 'Wanderer');
@@ -284,6 +284,8 @@ test("a quest level is never kept as the dungeon level of its depth, Thráin's l
   await expect(card.locator('.lead-in')).toContainText('You wake up in a prison cell.');
   await expect(card.locator('.lead-in')).not.toContainText('You have no more');
   await expect(card).toContainText('kill these ruffians');
+  /* The hero wakes on the cell's floor, as its map places them: no way out is made under them. */
+  expect((await arrival(page, await playerPos(page))).underfoot).not.toMatch(/stair|path|shaft/);
   await card.locator('[data-action="onward"]').click();
   await expect(card).toBeHidden();
   await expect(page.locator('#hud .entity.quest')).toBeVisible();

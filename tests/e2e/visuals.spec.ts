@@ -98,6 +98,13 @@ test('renders the lit map, HUD and tome2 panels in the dungeon', { tag: ['@layou
   /* In landscape the message log moves into the HUD's sidebar, so the map has the whole height. */
   const landscape = await page.evaluate(() => matchMedia('(orientation: landscape) and (min-width: 560px)').matches);
   await expect(page.locator(landscape ? '#hud #messages' : '#stage > #messages')).toHaveCount(1);
+  /* Under a top inset (an iPad in landscape) the sidebar and toolbar start below the band iOS softens under the status bar. */
+  if (landscape) {
+    const inset = await page.addStyleTag({ content: ':root { --safe-top: 24px; }' });
+    const tops = await page.evaluate(() => ['#hud .hud-player', '#toolbar .action'].map((selector) => document.querySelector(selector)!.getBoundingClientRect().top));
+    for (const top of tops) expect(top).toBeGreaterThanOrEqual(48);
+    await inset.evaluate((tag) => (tag as Element).remove());
+  }
   await testInfo.attach('town', { body: await page.screenshot(), contentType: 'image/png' });
 
   await page.keyboard.press('i');

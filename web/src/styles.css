@@ -1020,6 +1020,7 @@ html.keyboard-open .sheet-layer {
     border-top: 0;
     border-right: 1px solid var(--panel-border);
     overflow: hidden;
+    padding-top: calc(0.45rem + var(--top-clear));
     padding-left: calc(0.6rem + var(--safe-left));
     padding-bottom: calc(0.45rem + var(--safe-bottom));
   }
@@ -1041,7 +1042,7 @@ html.keyboard-open .sheet-layer {
   #toolbar {
     flex-direction: column;
     width: calc(clamp(4.4rem, 7.5vw, 5.2rem) + var(--safe-right));
-    padding: 0.4rem calc(0.4rem + var(--safe-right)) calc(0.4rem + var(--safe-bottom)) 0.4rem;
+    padding: calc(0.4rem + var(--top-clear)) calc(0.4rem + var(--safe-right)) calc(0.4rem + var(--safe-bottom)) 0.4rem;
     border-top: 0;
     border-left: 1px solid var(--panel-border);
     overflow-x: hidden;

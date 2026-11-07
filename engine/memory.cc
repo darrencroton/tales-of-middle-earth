@@ -19,6 +19,7 @@
 #include "game.hpp"
 #include "hooks.hpp"
 #include "level_data.hpp"
+#include "level_marker.hpp"
 #include "levels.hpp"
 #include "loadsave.hpp"
 #include "monster_race.hpp"
@@ -112,6 +113,9 @@ bool here_known = false;
 
 /* The dungeon of the level left, noted as the next is begun. */
 byte left_dungeon = 0;
+
+/* Whether the level being built is laid out from its special map, as tome2's build_special_level decides, noted as it is begun. */
+bool from_map = false;
 
 /* A level key whose save extension is taken away while tome2 saves the level being left under it. */
 struct Suspended
@@ -279,13 +283,15 @@ void save_left_level()
  * new_player_spot gives connected stairs (not on a level without stairs, a
  * branch's level or from below onto a quest's depth), and only when the
  * depth has changed, so not on a return from death or a game loaded, nor
- * from another dungeon's level by a branch's stairs.
+ * from another dungeon's level by a branch's stairs; nor on a quest's own
+ * level or one laid out from its special map, where the map places the hero.
  */
 int way_back()
 {
 	auto const flags = game->dungeon_flags;
 	if (!character_generated || !options->dungeon_stair || (flags & DF_NO_STAIR) || !dun_level || old_dun_level == dun_level || get_branch()) return 0;
 	if (old_dun_level && dungeon_type != left_dungeon) return 0;
+	if (p_ptr->inside_quest || from_map) return 0;
 	bool const deeper = old_dun_level < dun_level;
 	if (!deeper && is_quest(dun_level)) return 0;
 	bool const flat(flags & DF_FLAT);
@@ -344,6 +350,8 @@ bool level_begin_hook(void *, void *, void *)
 		suspended = boost::none;
 	}
 	left_dungeon = here_dungeon;
+	int const level = dun_level - game->edit_data.d_info[dungeon_type].mindepth;
+	from_map = dun_level && level >= 0 && get_dungeon_map_name() && (get_dungeon_save_extension() || is_normal_level(game->level_markers[level][dungeon_type]));
 	here_dungeon = dungeon_type;
 	here_depth = dun_level;
 	here_known = true;
@@ -356,18 +364,26 @@ bool level_begin_hook(void *, void *, void *)
 	return false;
 }
 
-/* Makes a shaft under the hero arriving on a level a staircase back the way they came. */
-void stairs_not_shaft()
+/*
+ * Makes the grid under the hero arriving on a level the staircase back the way
+ * they came, where tome2 left a shaft there or a corridor it dug from a later
+ * staircase ran through it (on a level of paths, from its edges).
+ */
+void way_back_underfoot()
 {
 	int const feat = way_back();
-	auto &c = cave[p_ptr->py][p_ptr->px];
-	if ((feat == FEAT_LESS && c.feat == FEAT_SHAFT_UP) || (feat == FEAT_MORE && c.feat == FEAT_SHAFT_DOWN)) cave_set_feat(p_ptr->py, p_ptr->px, feat);
+	if (!feat) return;
+	int const y = p_ptr->py;
+	int const x = p_ptr->px;
+	int const here = cave[y][x].feat;
+	bool const shaft = (feat == FEAT_LESS && here == FEAT_SHAFT_UP) || (feat == FEAT_MORE && here == FEAT_SHAFT_DOWN);
+	if (shaft || cave_clean_bold(y, x)) cave_set_feat(y, x, feat);
 }
 
 bool level_made_hook(void *, void *, void *)
 {
 	forget_saved_view();
-	stairs_not_shaft();
+	way_back_underfoot();
 	return false;
 }
 
