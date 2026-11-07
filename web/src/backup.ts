@@ -1,7 +1,7 @@
 import type { Engine } from './engine.ts';
 import { collectFiles, decodeBundle, downloadText, encodeBundle, exportFilename, restoreFiles } from './saves.ts';
 import { el } from './ui/dom.ts';
-import { confirmSheet, openMenu, openMessage } from './ui/menus.ts';
+import { confirmSheet, openMenu, openMessage, type MenuItem } from './ui/menus.ts';
 import type { Sheets } from './ui/sheet.ts';
 
 interface BackupDeps {
@@ -9,6 +9,8 @@ interface BackupDeps {
   sheets: Sheets;
   /** The file input a backup is chosen with. */
   input: HTMLInputElement;
+  /** Cloud sync, when the app has it: told before a backup replaces what is here, whether it is on or off. */
+  cloud(): { enabled: boolean; restoring(): Promise<void> } | null;
 }
 
 function errorText(err: unknown): string {
@@ -28,17 +30,17 @@ export class Backup {
     });
   }
 
+  /** Export and import, as menu rows. */
+  items(): MenuItem[] {
+    return [
+      { label: 'Export game data', icon: '⤒', hint: 'Download a backup file', run: () => this.startExport() },
+      { label: 'Import game data', icon: '⤓', hint: 'Replace what is here with a backup', run: () => this.startImport() },
+    ];
+  }
+
   /** The Backup menu: export or import. */
   open(): void {
-    openMenu(
-      this.deps.sheets,
-      'Backup',
-      [
-        { label: 'Export game data', icon: '⤒', hint: 'Download a backup file', run: () => this.startExport() },
-        { label: 'Import game data', icon: '⤓', hint: 'Replace what is here with a backup', run: () => this.startImport() },
-      ],
-      'Your adventures, the Hall of Fame and your deeds live in this browser. A backup keeps them safe or moves them to another device.',
-    );
+    openMenu(this.deps.sheets, 'Backup', this.items(), 'Your adventures, the Hall of Fame and your deeds live in this browser. A backup keeps them safe or moves them to another device.');
   }
 
   private startExport(): void {
@@ -86,23 +88,29 @@ export class Backup {
       openMessage(sheets, 'Import game data', 'This backup holds no game data.');
       return;
     }
+    const cloud = this.deps.cloud();
     confirmSheet(
       sheets,
       'Replace your game data?',
-      'Every hero, the Hall of Fame and your deeds on this device are replaced by those in the backup. Export first to keep what is here. The game then restarts.',
+      `Every hero, the Hall of Fame and your deeds on this device are replaced by those in the backup. Export first to keep what is here. The game then restarts.${
+        cloud?.enabled ? ' With cloud sync on, heroes the cloud has too are then compared: where they differ you choose which journey continues, and heroes only in the cloud come back.' : ''
+      }`,
       'Replace',
       () => {
         sheets.closeAll();
-        try {
-          restoreFiles(fs, root, files);
-        } catch (err) {
-          this.importFailed(err);
-          return;
-        }
-        engine.syncNow().then(
-          () => location.reload(),
-          (err) => this.importFailed(err),
-        );
+        (cloud ? cloud.restoring() : Promise.resolve())
+          .then(() => {
+            /* The engine's storage as it is once cloud sync has settled. */
+            const target = engine.fs;
+            const at = engine.savePath;
+            if (!target || !at) throw new Error('The game was not ready; nothing was changed.');
+            restoreFiles(target, at, files);
+            return engine.syncNow();
+          })
+          .then(
+            () => location.reload(),
+            (err) => this.importFailed(err),
+          );
       },
       true,
     );

@@ -34,6 +34,10 @@ interface HeroesDeps {
   /** Moves on from the end of the game to the title (to begin a fallen hero anew there). */
   finishGame(): void;
   showToast(text: string, options: { log?: boolean; read?: boolean }): void;
+  /** Plays a saved hero (as Continue does). */
+  play(save: SaveInfo): void;
+  /** How a saved hero stands with cloud sync (by savefile name), or null when it is off. */
+  cloudNote(save: string): string | null;
 }
 
 /** A saved hero's own name: tome2's list gives the savefile's ("Old_Tom"), its index the hero's ("Old Tom, the Hobbit Rogue"). */
@@ -282,6 +286,7 @@ export class Heroes {
       saved: noted?.saved,
       kills: alive?.kills,
       deepestFeet: alive?.deepestFeet,
+      cloud: this.deps.cloudNote(save.name) ?? undefined,
     };
   }
 
@@ -296,7 +301,7 @@ export class Heroes {
     const { director } = this.deps;
     openAdventurers(this.deps.sheets, saves, {
       details: (save) => this.details(save),
-      play: (save) => director.choose({ kind: 'continue', save }),
+      play: (save) => this.deps.play(save),
       remove: (save) => {
         const name = heroName(save);
         this.deleteSavefile(name);

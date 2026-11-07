@@ -257,6 +257,17 @@ export class TitleScreen {
     this.callbacks.onReady();
   }
 
+  /** Names one of the links under the choices (`data-link`). */
+  setLink(link: string, label: string): void {
+    const button = this.links.querySelector<HTMLButtonElement>(`[data-link="${link}"]`);
+    if (button && button.textContent !== label) button.textContent = label;
+  }
+
+  /** The choices are showing (not hidden while one is acted on). */
+  get offering(): boolean {
+    return this.ready && !this.choices.hidden;
+  }
+
   /** Hides the choices while a choice is being acted on. */
   setBusy(text: string): void {
     this.choices.hidden = true;

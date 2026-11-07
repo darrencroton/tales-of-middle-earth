@@ -2,13 +2,16 @@ import { test as base, expect, type Locator, type Page } from '@playwright/test'
 
 /**
  * The test runner with the app's settings stored before the first load:
- * animation off unless a test asks otherwise (`test.use({ settings })`).
+ * animation off unless a test asks otherwise (`test.use({ settings })`), and
+ * cloud sync's one-off suggestion already shown, so a build with a sync
+ * service never offers it in the middle of a test.
  */
 export const test = base.extend<{ settings: Record<string, unknown> }>({
   settings: [{ animation: 'off' }, { option: true }],
   page: async ({ page, settings }, use) => {
     await page.addInitScript((stored) => {
       if (!localStorage.getItem('tome2mobile.settings')) localStorage.setItem('tome2mobile.settings', JSON.stringify(stored));
+      if (!localStorage.getItem('tome2mobile.cloud')) localStorage.setItem('tome2mobile.cloud', JSON.stringify({ device: `e2e-${Math.random().toString(36).slice(2)}`, suggested: true }));
     }, settings);
     await use(page);
   },

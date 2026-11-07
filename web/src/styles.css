@@ -2010,6 +2010,32 @@ html.keyboard-open .tv-layer.panel {
   overflow-wrap: anywhere;
 }
 
+/* Which journey continues? (cloud sync) */
+
+.journey p {
+  margin: 0 0 0.8rem;
+}
+
+.journey-sides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: 0.8rem;
+}
+
+.journey-side h3 {
+  margin: 0 0 0.4rem;
+  font-size: var(--fs-large);
+  color: var(--accent);
+}
+
+.journey-side.fallen h3 {
+  color: var(--muted);
+}
+
+.cloud-offer p {
+  margin: 0 0 0.7rem;
+}
+
 /* Segmented controls */
 
 .segmented {

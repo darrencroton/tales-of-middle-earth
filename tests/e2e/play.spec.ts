@@ -605,11 +605,18 @@ test('a Demonologist sees Doom Shield take hold, what it does and the turns it h
   });
   let text = await screenText(page);
   await sendText(page, `\\w${letter}`);
-  await waitForSettle(page, text, 5_000);
+  text = await waitForSettle(page, text, 5_000);
+  /* A Demonshield is sometimes made cursed, and tome2 asks before it is worn. */
+  if (/Really use/.test(text)) {
+    await sendText(page, 'y');
+    await waitForSettle(page, text, 5_000);
+  }
   await dismissMore(page);
   await waitAtCommand(page);
   const shield = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.effects?.find((e) => e.id === 'shield') ?? null);
-  for (let attempt = 0; attempt < 8 && !(await shield()); attempt++) {
+  /* Casting it fails most of the time at this level: mana is restored before each attempt, so attempts never stop for want of it. */
+  for (let attempt = 0; attempt < 12 && !(await shield()); attempt++) {
+    await wizardCommand(page, 'a');
     await page.locator('#toolbar [data-action="commands"]').click();
     await page.locator('.sheet .command', { hasText: 'Magic' }).click();
     await page.locator('.sheet .spell-row', { hasText: 'Doom Shield' }).click();
