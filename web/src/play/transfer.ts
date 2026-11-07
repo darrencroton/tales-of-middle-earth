@@ -1,5 +1,5 @@
 /**
- * A hero carried from one device to another as a file (`.tome2hero`): their
+ * A hero carried from one device to another as a file (`Name.tome2hero.json`): their
  * savefile, lives, kept levels and notes, their entries in the files every
  * hero shares, and the Hall of Fame, deeds, career and fallen heroes to
  * combine. Pure: `ui/transfer.ts` sends and receives it.
@@ -10,7 +10,8 @@ import { indexOf, mergeChronicle, mergeHeroStore, mergeSaveIndex, mergeScores, s
 
 const HERO_FORMAT = 'tome2mobile-hero';
 const HERO_FORMAT_VERSION = 1;
-export const HERO_EXTENSION = '.tome2hero';
+/** The end of a hero's file name. */
+export const HERO_EXTENSION = '.tome2hero.json';
 
 /** Files every hero shares, merged rather than taken whole. */
 const SHARED_FILES = ['adventurers.json', 'chronicle.json', 'mapmemory.json', 'scores.raw', 'global.svg'] as const;

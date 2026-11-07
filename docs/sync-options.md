@@ -12,7 +12,7 @@ A brief for picking this up again. Read it with `AGENTS.md` (*Hero transfer*).
 
 Hero transfer, by the player, with no account or server:
 
-- **Send** on a hero's card in the Game Roster makes a `.tome2hero` file and opens the share sheet (AirDrop, Messages, Save to Files), or downloads it where the browser has no share sheet.
+- **Share** on a hero's card in the Game Roster makes a `Name.tome2hero.json` file and opens the share sheet (AirDrop, Messages, Save to Files), or downloads it where the browser has no share sheet.
 - **Share & backup → Receive a hero** on the title screen adds that hero. The Hall of Fame, deeds and fallen heroes are combined; other heroes on the device are left alone.
 - A hero sent back after playing on replaces the copy they were taken from without a question (each device notes a mark of each hero's files as it last sent or received them, and a file carries its sender's). If the hero was played on both devices meanwhile, *Which journey continues?* shows both (level, place, when saved, when sent) and the player chooses.
 - Export and Import of everything stay for backups.

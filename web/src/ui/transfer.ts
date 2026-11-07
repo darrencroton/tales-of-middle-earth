@@ -76,16 +76,16 @@ export class Transfer {
   }
 
   /**
-   * Sends a saved hero (savefile name `save`) as a file: the share sheet
+   * Shares a saved hero (savefile name `save`) as a file: the share sheet
    * (AirDrop, Messages, Files) where the browser can share it, else a
    * download. Built at once, within the tap, as the share sheet needs.
    */
-  send(save: string, name: string): void {
+  share(save: string, name: string): void {
     const { engine, sheets } = this.deps;
     const fs = engine.fs;
     const root = engine.savePath;
     if (!fs || !root) {
-      openMessage(sheets, 'Send hero', 'The game is still loading. Try again in a moment.');
+      openMessage(sheets, 'Share hero', 'The game is still loading. Try again in a moment.');
       return;
     }
     const files = collectFiles(fs, root, (path) => bundled(path, save));

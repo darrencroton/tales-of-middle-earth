@@ -1759,7 +1759,7 @@ const heroes = new Heroes({
   interrupt: () => journeys.interrupt('fallen'),
   finishGame,
   showToast,
-  send: (save, name) => transfer.send(save, name),
+  share: (save, name) => transfer.share(save, name),
 });
 const memory = new HeroMemoryKeeper({
   engine,

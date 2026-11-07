@@ -1,6 +1,6 @@
 export const SAVE_FORMAT = 'tome2mobile-saves';
 const SAVE_FORMAT_VERSION = 1;
-const SAVE_FILE_EXTENSION = '.tome2save';
+const SAVE_FILE_EXTENSION = '.tome2save.json';
 
 export interface EmscriptenFS {
   readdir(path: string): string[];
