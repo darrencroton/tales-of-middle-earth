@@ -356,18 +356,26 @@ bool level_begin_hook(void *, void *, void *)
 	return false;
 }
 
-/* Makes a shaft under the hero arriving on a level a staircase back the way they came. */
-void stairs_not_shaft()
+/*
+ * Makes the grid under the hero arriving on a level the staircase back the way
+ * they came, where tome2 left a shaft there or a corridor it dug from a later
+ * staircase ran through it (on a level of paths, from its edges).
+ */
+void way_back_underfoot()
 {
 	int const feat = way_back();
-	auto &c = cave[p_ptr->py][p_ptr->px];
-	if ((feat == FEAT_LESS && c.feat == FEAT_SHAFT_UP) || (feat == FEAT_MORE && c.feat == FEAT_SHAFT_DOWN)) cave_set_feat(p_ptr->py, p_ptr->px, feat);
+	if (!feat) return;
+	int const y = p_ptr->py;
+	int const x = p_ptr->px;
+	int const here = cave[y][x].feat;
+	bool const shaft = (feat == FEAT_LESS && here == FEAT_SHAFT_UP) || (feat == FEAT_MORE && here == FEAT_SHAFT_DOWN);
+	if (shaft || (here != feat && cave_clean_bold(y, x))) cave_set_feat(y, x, feat);
 }
 
 bool level_made_hook(void *, void *, void *)
 {
 	forget_saved_view();
-	stairs_not_shaft();
+	way_back_underfoot();
 	return false;
 }
 
