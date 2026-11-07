@@ -1,7 +1,7 @@
 import type { Engine } from './engine.ts';
 import { collectFiles, decodeBundle, downloadText, encodeBundle, exportFilename, restoreFiles } from './saves.ts';
 import { el } from './ui/dom.ts';
-import { confirmSheet, openMenu, openMessage } from './ui/menus.ts';
+import { confirmSheet, openMenu, openMessage, type MenuItem } from './ui/menus.ts';
 import type { Sheets } from './ui/sheet.ts';
 
 interface BackupDeps {
@@ -28,17 +28,17 @@ export class Backup {
     });
   }
 
+  /** Export and import, as menu rows. */
+  items(): MenuItem[] {
+    return [
+      { label: 'Export game data', icon: '⤒', hint: 'Download a backup file', run: () => this.startExport() },
+      { label: 'Import game data', icon: '⤓', hint: 'Replace what is here with a backup', run: () => this.startImport() },
+    ];
+  }
+
   /** The Backup menu: export or import. */
   open(): void {
-    openMenu(
-      this.deps.sheets,
-      'Backup',
-      [
-        { label: 'Export game data', icon: '⤒', hint: 'Download a backup file', run: () => this.startExport() },
-        { label: 'Import game data', icon: '⤓', hint: 'Replace what is here with a backup', run: () => this.startImport() },
-      ],
-      'Your adventures, the Hall of Fame and your deeds live in this browser. A backup keeps them safe or moves them to another device.',
-    );
+    openMenu(this.deps.sheets, 'Backup', this.items(), 'Your adventures, the Hall of Fame and your deeds live in this browser. A backup keeps them safe or moves them to another device.');
   }
 
   private startExport(): void {

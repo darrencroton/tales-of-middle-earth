@@ -9,10 +9,11 @@ import {
   encodeBundle,
   exportFilename,
   findSaveIndex,
-  isSafeRelativePath,
   JsonFile,
   restoreFiles,
+  storagePrint,
 } from '../../web/src/saves.ts';
+import { isSafeRelativePath } from '../../web/src/cloud/protocol.ts';
 import { MemoryFS } from './fixtures.ts';
 import { deleteHeroSave, heroLine, nextRunName, placeLine, saveBase } from '../../web/src/play/adventurers.ts';
 
@@ -187,5 +188,17 @@ describe('deleting a saved hero', () => {
     assert.equal(placeLine({ depth: 0, dungeon: '', wild: 1, area: undefined }), 'World map');
     const thieves = { id: 4, own: 1, state: 'active' as const, title: 'Thieves!', lines: [] };
     assert.equal(placeLine({ depth: 5, dungeon: 'Barrow-Downs', wild: 0, quest: thieves }), 'Thieves!, level 5');
+  });
+});
+
+describe('storagePrint', () => {
+  it('changes when a file is written, without reading any', () => {
+    const fs = new MemoryFS();
+    fs.mkdirTree('/root/save');
+    fs.writeFile('/root/save/A', new Uint8Array([1]));
+    const before = storagePrint(fs, '/root');
+    assert.equal(storagePrint(fs, '/root'), before);
+    fs.writeFile('/root/save/A', new Uint8Array([2]));
+    assert.notEqual(storagePrint(fs, '/root'), before);
   });
 });

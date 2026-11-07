@@ -14,6 +14,8 @@ export interface AdventurerDetails {
   saved?: string;
   kills?: number;
   deepestFeet?: number;
+  /** How the hero stands with cloud sync. */
+  cloud?: string;
 }
 
 export interface AdventurerHandlers {
@@ -64,6 +66,7 @@ function openAdventurer(sheets: Sheets, save: SaveInfo, handlers: AdventurerHand
   fact('Last played', when(details.saved));
   fact('Foes slain', details.kills ? String(details.kills) : null);
   fact('Deepest', details.deepestFeet ? `${details.deepestFeet} ft` : null);
+  fact('Cloud', details.cloud);
   const body = el('div', 'adventurer-detail');
   if (facts.childElementCount) body.append(facts);
   else body.append(el('p', 'muted', 'Play to see where this adventure stands.'));

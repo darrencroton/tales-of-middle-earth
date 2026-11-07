@@ -1,0 +1,11 @@
+name = "tome-cloud"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+# Origins the app is served from; a passkey belongs to its origin's host name.
+ALLOWED_ORIGINS = "https://darrencroton.github.io,http://localhost:5173,http://localhost:4173"
+
+[[r2_buckets]]
+binding = "SAVES"
+bucket_name = "tome-cloud-saves"
