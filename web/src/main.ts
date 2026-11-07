@@ -28,6 +28,7 @@ import { isHostile, isNeutral, LEAD_LINES, leadInMessages, newMessages, type Gam
 import { acquireSessionLock } from './saves.ts';
 import { Backup } from './backup.ts';
 import { Transfer } from './ui/transfer.ts';
+import { saveBase } from './play/adventurers.ts';
 import { Updates } from './updates.ts';
 import { ANIMATION_FPS, applyTextSize, EFFECT_DELAY, loadSettings, saveSettings, type Settings } from './settings.ts';
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
@@ -1751,7 +1752,10 @@ const heroes = new Heroes({
   recents,
   palette: () => buffer.palette,
   cueDeed: () => audio.cue('levelup'),
-  forgetMemory: (name) => memory.forget(name),
+  forgetHero: (name) => {
+    memory.forget(name);
+    transfer.forget(saveBase(name));
+  },
   interrupt: () => journeys.interrupt('fallen'),
   finishGame,
   showToast,
@@ -1815,7 +1819,7 @@ const transfer = new Transfer({
   restartTitle,
   showToast: (text) => showToast(text, { log: false, read: true }),
 });
-const backup = new Backup({ engine, sheets, input: importFile, receive: () => transfer.choose() });
+const backup = new Backup({ engine, sheets, input: importFile, receive: () => transfer.choose(), restored: () => transfer.forgetAll() });
 /** What to say once the title has started again for heroes that arrived (null while it is not starting again). */
 let titleRestart: string | null = null;
 

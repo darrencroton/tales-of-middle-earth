@@ -11,6 +11,8 @@ interface BackupDeps {
   input: HTMLInputElement;
   /** Asks for a hero sent from another device. */
   receive(): void;
+  /** Everything here was replaced by a backup. */
+  restored(): void;
 }
 
 function errorText(err: unknown): string {
@@ -107,7 +109,10 @@ export class Backup {
           return;
         }
         engine.syncNow().then(
-          () => location.reload(),
+          () => {
+            this.deps.restored();
+            location.reload();
+          },
           (err) => storageFailed(engine, sheets, 'Import failed', err),
         );
       },

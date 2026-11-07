@@ -40,13 +40,16 @@ function loadMarks(): Record<string, string> {
   }
 }
 
-function saveMark(hero: string, mark: string | null): void {
-  if (!mark) return;
+function saveMarks(marks: Record<string, string>): void {
   try {
-    localStorage.setItem(MARKS_KEY, JSON.stringify({ ...loadMarks(), [hero]: mark }));
+    localStorage.setItem(MARKS_KEY, JSON.stringify(marks));
   } catch {
     /* Without the mark, the next arrival of this hero asks which journey continues. */
   }
+}
+
+function saveMark(hero: string, mark: string | null): void {
+  if (mark) saveMarks({ ...loadMarks(), [hero]: mark });
 }
 
 /** A moment by the clock: "today, 14:02", "yesterday, 09:15", "Sat 7 Nov, 14:02". */
@@ -102,6 +105,19 @@ export class Transfer {
     navigator.share({ files: [file], title: name }).then(sent, (err) => {
       if (!(err instanceof DOMException && err.name === 'AbortError')) download();
     });
+  }
+
+  /** Forgets the mark of a hero (savefile name) whose adventure was deleted or is over, so a new hero of that name starts afresh. */
+  forget(save: string): void {
+    const marks = loadMarks();
+    if (!(save in marks)) return;
+    delete marks[save];
+    saveMarks(marks);
+  }
+
+  /** Forgets every mark: a backup replaced everything here. */
+  forgetAll(): void {
+    saveMarks({});
   }
 
   /** Asks for a hero's file to receive. */
@@ -172,7 +188,7 @@ function side(facts: JourneySide): HTMLElement {
   return column;
 }
 
-/** "Which journey continues?": a hero received was played here too; null when the card is closed. */
+/** "Which journey continues?": a hero received is here already as another copy; null when the card is closed. */
 function chooseJourney(sheets: Sheets, choice: JourneyChoice): Promise<'local' | 'remote' | null> {
   return new Promise((resolve) => {
     let settled = false;
@@ -182,7 +198,7 @@ function chooseJourney(sheets: Sheets, choice: JourneyChoice): Promise<'local' |
       resolve(value);
     };
     const body = el('div', 'journey');
-    body.append(el('p', undefined, `${choice.hero} has been played here too. Which copy goes on? The other is replaced.`));
+    body.append(el('p', undefined, `${choice.hero} is here already, as another journey. Which copy goes on? The other is replaced.`));
     const sides = el('div', 'journey-sides');
     sides.append(side(choice.local), side(choice.remote));
     body.append(sides);

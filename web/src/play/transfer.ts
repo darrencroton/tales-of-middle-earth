@@ -16,7 +16,7 @@ export const HERO_EXTENSION = '.tome2hero';
 const SHARED_FILES = ['adventurers.json', 'chronicle.json', 'mapmemory.json', 'scores.raw', 'global.svg'] as const;
 type SharedFile = (typeof SHARED_FILES)[number];
 
-export interface HeroBundle {
+interface HeroBundle {
   /** The hero's savefile name ("Old_Tom"). */
   hero: string;
   /** The hero's own name ("Old Tom"). */
@@ -144,7 +144,7 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /** What receiving a hero does to the files here. */
-export interface Arrival {
+interface Arrival {
   /** The hero is here as a copy played since the one sent was taken from it: the player chooses which goes on. */
   conflict: boolean;
   /** The hero is already here, exactly as sent. */
@@ -163,18 +163,19 @@ export interface Arrival {
 export function arrival(local: readonly SaveFile[], bundle: HeroBundle): Arrival {
   const mine = local.filter((f) => heroOf(f.path) === bundle.hero);
   const theirs = bundle.files.filter((f) => heroOf(f.path) === bundle.hero);
-  if (heroMark(local, bundle.hero) === heroMark(bundle.files, bundle.hero)) return { conflict: false, same: true, write: [], remove: [] };
+  const here = heroMark(local, bundle.hero);
+  if (here === heroMark(bundle.files, bundle.hero)) return { conflict: false, same: true, write: [], remove: [] };
   const recency = savedTimes(local, bundle);
   const write: SaveFile[] = [...theirs];
   for (const file of bundle.files) {
     const kind = sharedFile(file.path);
     if (!kind) continue;
-    const here = local.find((f) => f.path === file.path)?.data ?? emptyShared(kind);
-    const merged = mergeShared(kind, here, file.data, bundle.hero, recency);
-    if (!sameBytes(merged, here)) write.push({ path: file.path, data: merged });
+    const current = local.find((f) => f.path === file.path)?.data ?? emptyShared(kind);
+    const merged = mergeShared(kind, current, file.data, bundle.hero, recency);
+    if (!sameBytes(merged, current)) write.push({ path: file.path, data: merged });
   }
   return {
-    conflict: mine.length > 0 && heroMark(local, bundle.hero) !== bundle.since,
+    conflict: mine.length > 0 && here !== bundle.since,
     same: false,
     write,
     remove: mine.filter((m) => !theirs.some((t) => t.path === m.path)).map((m) => m.path),

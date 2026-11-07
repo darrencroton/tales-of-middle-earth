@@ -27,8 +27,8 @@ interface HeroesDeps {
   palette(): readonly string[];
   /** The deed sound. */
   cueDeed(): void;
-  /** Forgets the map memory of every hero of a name. */
-  forgetMemory(name: string): void;
+  /** Forgets what is kept of every hero of a name outside these stores: their map memory and the mark of their last transfer. */
+  forgetHero(name: string): void;
   /** Stops a journey under way, to show a sheet. */
   interrupt(): void;
   /** Moves on from the end of the game to the title (to begin a fallen hero anew there). */
@@ -325,7 +325,8 @@ export class Heroes {
 
   /**
    * Forgets what the frontend keeps of a hero whose adventure is over: map
-   * memory (the hero's in play too, when it is theirs), title details and,
+   * memory (the hero's in play too, when it is theirs), the mark of their last
+   * transfer, title details and,
    * unless they `fell` (their tale is closed and kept, with their recents),
    * their tale and recents.
    */
@@ -339,6 +340,6 @@ export class Heroes {
       this.deps.recents.forget(name);
     }
     if (adventurers.forget(name)) adventurers.save();
-    this.deps.forgetMemory(name);
+    this.deps.forgetHero(name);
   }
 }
