@@ -27,18 +27,28 @@ describe('cloud plan', () => {
     const local: FileList = { '2.4/save/A': f('4'), '2.4/save/B': f('2'), '2.4/save/C': f('5') };
     const remote: FileList = { '2.4/save/A': f('1'), '2.4/save/B': f('6'), '2.4/save/C': f('7') };
     const changes = heroChanges(local, remote, base);
+    const kept = { localGone: false, remoteGone: false };
     assert.deepEqual(changes, [
-      { base: 'A', local: true, remote: false },
-      { base: 'B', local: false, remote: true },
-      { base: 'C', local: true, remote: true },
+      { base: 'A', local: true, remote: false, ...kept },
+      { base: 'B', local: false, remote: true, ...kept },
+      { base: 'C', local: true, remote: true, ...kept },
     ]);
     const none = new Map<string, 'local' | 'remote'>();
     assert.equal(heroWinner(changes[0], undefined, 'me', none), 'local');
     assert.equal(heroWinner(changes[1], undefined, 'me', none), 'remote');
     assert.equal(heroWinner(changes[2], undefined, 'me', none), null, 'both changed: the player chooses');
     assert.equal(heroWinner(changes[2], { device: 'ipad', name: 'iPad', playing: true, at: 5, over: 'me' }, 'me', none), 'remote', 'taken from this device by the player there');
+    assert.equal(heroWinner(changes[2], { device: 'ipad', name: 'iPad', playing: true, at: 5, over: 'me' }, 'me', none, 5), null, 'a taking this device already knew of asks again');
     assert.equal(heroWinner(changes[2], { device: 'ipad', name: 'iPad', playing: true, at: 5 }, 'me', none), null);
     assert.equal(heroWinner(changes[2], undefined, 'me', new Map([['C', 'local']])), 'local');
+  });
+
+  it('keeps a hero played on one side over its deletion on the other', () => {
+    const base: FileList = { 's/save/A': f('1'), 's/save/A.adventure': f('2') };
+    const [deletedHere] = heroChanges({}, { 's/save/A': f('3'), 's/save/A.adventure': f('2') }, base);
+    assert.equal(heroWinner(deletedHere, undefined, 'me', new Map()), 'remote');
+    const [deletedThere] = heroChanges({ 's/save/A': f('3'), 's/save/A.adventure': f('2') }, {}, base);
+    assert.equal(heroWinner(deletedThere, undefined, 'me', new Map()), 'local');
   });
 
   it('takes a hero whole from the copy kept, and merges shared files the other copy changed', () => {
@@ -52,6 +62,9 @@ describe('cloud plan', () => {
     assert.deepEqual(plan.merge.sort(), ['adventurers.json', 'x/save/global.svg'], 'changed only here, but by the copy not kept');
     const kept = fullPlan(local, remote, base, changes, () => 'local');
     assert.deepEqual(kept, { fetch: [], remove: [], merge: [] }, 'other files changed on both sides keep this device’s');
+    const yielded = heroChanges({ 's/save/A': f('6'), 'chronicle.json': f('7') }, { 's/save/A': f('1'), 'chronicle.json': f('8') }, { 's/save/A': f('1'), 'chronicle.json': f('8') });
+    const back = fullPlan({ 's/save/A': f('6'), 'chronicle.json': f('7') }, { 's/save/A': f('1'), 'chronicle.json': f('8') }, { 's/save/A': f('1'), 'chronicle.json': f('8') }, yielded, () => 'remote');
+    assert.deepEqual(back, { fetch: ['s/save/A'], remove: [], merge: ['chronicle.json'] }, 'a hero yielded takes back its shared entries too');
   });
 
   it('pushes from a game only what changed here, leaving heroes changed in the cloud and the one taken elsewhere', () => {
@@ -116,6 +129,8 @@ describe('cloud merges', () => {
       memorials: Record<string, unknown>;
     };
     assert.equal(out.career.kills, 35);
+    const fresh = json(mergeChronicle(null, local, remote, () => null)) as { career: Record<string, unknown> };
+    assert.equal(fresh.career.kills, 30, 'with no copy in common, counts are not added twice');
     assert.equal(out.career.heroes, 2);
     assert.equal(out.career.deepestFeet, 500);
     assert.equal(out.career.worldMap, true);

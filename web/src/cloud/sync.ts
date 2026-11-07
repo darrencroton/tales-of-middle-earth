@@ -75,6 +75,8 @@ export interface CloudDeps {
   atTitle(): boolean;
   /** True while the title screen offers its choices with nothing open over them: its sync may start the title again. */
   idle(): boolean;
+  /** Files here are about to change on the title screen: nothing may be chosen there until it starts again. */
+  writing(): void;
   /** Starts the engine again, so tome2 lists the heroes as they now are. */
   restartTitle(): void;
   chooseJourney(choice: JourneyChoice): Promise<'local' | 'remote' | null>;
@@ -131,8 +133,11 @@ function writeFile(fs: EmscriptenFS, root: string, path: string, data: Uint8Arra
   fs.writeFile(absolute, data);
 }
 
-function sameJson(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+/** JSON with every object's keys in order, so two devices' lists compare alike. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v,
+  );
 }
 
 function sharedContents(files: LocalFiles): Record<string, Uint8Array> {
@@ -185,6 +190,10 @@ export class CloudSync {
   private leases: Manifest['heroes'] = {};
   /** Heroes whose files the cloud holds as they are here. */
   private inStep = new Set<string>();
+  /** Files here were changed by the sync under way (the title must start again, even if it then fails). */
+  private wrote = false;
+  /** A backup is being restored: nothing syncs until the page reloads. */
+  private paused = false;
 
   constructor(deps: CloudDeps) {
     this.deps = deps;
@@ -209,7 +218,7 @@ export class CloudSync {
 
   /** Sync is on for this device. */
   get enabled(): boolean {
-    return this.available && !!this.account.session;
+    return this.available && !!this.account.session && !this.paused;
   }
 
   get device(): string {
@@ -329,7 +338,10 @@ export class CloudSync {
       }
       const outcome = await this.full(storage.fs, storage.root, 'title', () => this.deps.idle());
       if (outcome.changed) this.deps.restartTitle();
-    }).catch((err) => this.failed(err));
+    }).catch((err) => {
+      this.failed(err);
+      if (this.wrote) this.deps.restartTitle();
+    });
   }
 
   /**
@@ -373,7 +385,9 @@ export class CloudSync {
       return 'go' as const;
     }).catch((err) => {
       this.failed(err);
-      return this.offlineClaim(save);
+      if (!this.wrote) return this.offlineClaim(save);
+      this.deps.restartTitle();
+      return 'restarted' as const;
     });
   }
 
@@ -512,10 +526,10 @@ export class CloudSync {
   }
 
   /** The heroes changed on both sides, with the choice made or to make for each. */
-  private async winners(changes: readonly HeroChange[], state: SyncState, local: LocalFiles, chosen: Map<string, 'local' | 'remote'>, ask: boolean): Promise<boolean> {
+  private async winners(changes: readonly HeroChange[], state: SyncState, base: Base, local: LocalFiles, chosen: Map<string, 'local' | 'remote'>, ask: boolean): Promise<boolean> {
     let facts: { adventurers: Uint8Array | null; index: Uint8Array | null } | null = null;
     for (const hero of changes) {
-      if (heroWinner(hero, state.manifest.heroes[hero.base], this.account.device, chosen)) continue;
+      if (heroWinner(hero, state.manifest.heroes[hero.base], this.account.device, chosen, base.heroes[hero.base]?.at)) continue;
       if (!ask) return false;
       if (!facts) {
         const find = (name: string) => Object.keys(state.manifest.files).find((p) => p.endsWith(`/${name}`) || p === name);
@@ -556,6 +570,7 @@ export class CloudSync {
    */
   private async full(fs: EmscriptenFS, root: string, mode: 'boot' | 'title', current: () => boolean): Promise<{ changed: boolean; cancelled: boolean; state: SyncState }> {
     this.setState('syncing');
+    this.wrote = false;
     const yielded = this.account.yielded ?? [];
     const chosen = new Map<string, 'local' | 'remote'>(yielded.map((hero) => [hero, 'remote']));
     let changedHere = false;
@@ -566,13 +581,13 @@ export class CloudSync {
       let local = await readLocal(fs, root);
       const remote = state.manifest.files;
       const changes = heroChanges(local.list, remote, base.files);
-      if (!(await this.winners(changes, state, local, chosen, mode === 'title'))) {
+      if (!(await this.winners(changes, state, base, local, chosen, mode === 'title'))) {
         this.setState('synced');
         return { changed: false, cancelled: true, state };
       }
       const winnerOf = (hero: string) => {
         const change = changes.find((c) => c.base === hero);
-        return change ? heroWinner(change, state.manifest.heroes[hero], this.account.device, chosen) : null;
+        return change ? heroWinner(change, state.manifest.heroes[hero], this.account.device, chosen, base.heroes[hero]?.at) : null;
       };
       const plan = fullPlan(local.list, remote, base.files, changes, winnerOf);
       const fetched = new Map<string, Uint8Array>();
@@ -585,6 +600,8 @@ export class CloudSync {
         return { changed: false, cancelled: true, state };
       }
       if (written.size || plan.remove.length) {
+        if (mode === 'title') this.deps.writing();
+        this.wrote = true;
         for (const [path, data] of written) writeFile(fs, root, path, data);
         for (const path of plan.remove) fs.unlink(`${root}/${path}`);
         await this.persist(fs, mode);
@@ -599,7 +616,7 @@ export class CloudSync {
       const leases = { ...state.manifest.heroes };
       for (const hero of changes) if (hero.local && winnerOf(hero.base) === 'local') leases[hero.base] = this.lease(false);
       const heroes = keptLeases(leases, files);
-      if (sameJson(files, remote) && sameJson(heroes, state.manifest.heroes)) {
+      if (canonical(files) === canonical(remote) && canonical(heroes) === canonical(state.manifest.heroes)) {
         await saveBase({ files, heroes, contents: sharedContents(local) });
         this.settled(yielded);
         this.succeeded(state, local);
@@ -662,7 +679,8 @@ export class CloudSync {
           data = mergeScores(old, mine, theirs);
           break;
         default: {
-          const details = adventurers ?? local.bytes.get([...local.bytes.keys()].find((p) => sharedFile(p) === 'adventurers.json') ?? '') ?? null;
+          const path = [...new Set([...fetched.keys(), ...local.bytes.keys()])].find((p) => sharedFile(p) === 'adventurers.json') ?? '';
+          const details = adventurers ?? fetched.get(path) ?? local.bytes.get(path) ?? null;
           data = mergeSaveIndex(old, mine, theirs, winner, recency(details));
         }
       }
@@ -684,26 +702,26 @@ export class CloudSync {
   /** Turns sync on with a new passkey (`existing` false) or one made on another device. */
   async turnOn(existing: boolean): Promise<void> {
     if (!this.client) throw new CloudError('unsupported', 'Cloud sync is not available in this version');
-    const session = existing ? await this.client.login() : await this.client.register();
+    const { session, user } = existing ? await this.client.login() : await this.client.register();
+    if (this.account.user !== user) {
+      await clearBase().catch(() => undefined);
+      this.account.inStep = undefined;
+    }
     this.account.session = session;
+    this.account.user = user;
     this.account.failing = undefined;
     saveAccount(this.account);
-    await clearBase().catch(() => undefined);
     this.lastFull = 0;
     this.setState('synced');
   }
 
-  /** Stops syncing on this device; its heroes stay. */
-  async turnOff(): Promise<void> {
+  /** Stops syncing on this device; its heroes stay, and what was last synced is kept for signing in again. */
+  turnOff(): void {
     this.stopHeartbeat();
     this.account.session = undefined;
-    this.account.synced = undefined;
     this.account.failing = undefined;
-    this.account.inStep = undefined;
     saveAccount(this.account);
-    this.leases = {};
     this.inStep.clear();
-    await clearBase().catch(() => undefined);
     this.setState('off');
   }
 
@@ -711,7 +729,35 @@ export class CloudSync {
   async deleteCloud(): Promise<void> {
     if (!this.client || !this.account.session) return;
     await this.run(() => this.client!.deleteAccount());
-    await this.turnOff();
+    await this.forgetAccount();
+    this.turnOff();
+  }
+
+  /** Forgets what was last synced with the account, as for a device new to it. */
+  private async forgetAccount(): Promise<void> {
+    await clearBase().catch(() => undefined);
+    this.account.user = undefined;
+    this.account.synced = undefined;
+    this.account.inStep = undefined;
+    this.leases = {};
+    saveAccount(this.account);
+  }
+
+  /**
+   * A backup is about to replace everything here: nothing syncs until the
+   * page reloads, and the next sync treats this device as new to the account,
+   * so heroes that differ ask which journey continues, those only in the
+   * cloud come back, and nothing here counts as deleted.
+   */
+  async restoring(): Promise<void> {
+    if (!this.account.session) return;
+    this.paused = true;
+    this.stopHeartbeat();
+    await this.run(async () => {
+      await clearBase();
+      this.account.inStep = undefined;
+      saveAccount(this.account);
+    });
   }
 }
 

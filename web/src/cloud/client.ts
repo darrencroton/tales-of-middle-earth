@@ -63,6 +63,7 @@ export class CloudClient {
   }
 
   private async json<T>(response: Response): Promise<T> {
+    if (response.status === 429) throw new CloudError('server', 'The cloud is busy; try again in a minute', 429);
     if (!response.ok) throw new CloudError('server', `The cloud answered ${response.status}`, response.status);
     return (await response.json()) as T;
   }
@@ -106,7 +107,7 @@ export class CloudClient {
   }
 
   /** Makes a passkey for a new account; returns its session. */
-  async register(): Promise<string> {
+  async register(): Promise<Session> {
     if (!passkeysSupported()) throw new CloudError('unsupported', 'This browser cannot use passkeys');
     const options = await this.json<Challenge>(await this.call('POST', '/v1/register/options', { auth: false }));
     if (!options.user) throw new CloudError('server', 'The cloud sent no account');
@@ -137,11 +138,11 @@ export class CloudClient {
       clientData: base64url(new Uint8Array(response.clientDataJSON)),
       authenticatorData: base64url(new Uint8Array(response.getAuthenticatorData())),
     };
-    return (await this.json<Session>(await this.call('POST', '/v1/register', { auth: false, body: JSON.stringify(answer), headers: { 'Content-Type': 'application/json' } }))).session;
+    return this.json<Session>(await this.call('POST', '/v1/register', { auth: false, body: JSON.stringify(answer), headers: { 'Content-Type': 'application/json' } }));
   }
 
   /** Signs in with a passkey this device (or a phone nearby) holds; returns its session. */
-  async login(): Promise<string> {
+  async login(): Promise<Session> {
     if (!passkeysSupported()) throw new CloudError('unsupported', 'This browser cannot use passkeys');
     const options = await this.json<Challenge>(await this.call('POST', '/v1/login/options', { auth: false }));
     const credential = await passkey(() =>
@@ -160,7 +161,7 @@ export class CloudClient {
     };
     const result = await this.call('POST', '/v1/login', { auth: false, body: JSON.stringify(answer), headers: { 'Content-Type': 'application/json' } });
     if (result.status === 404) throw new CloudError('auth', 'This passkey has no cloud account. Its data may have been deleted.', 404);
-    return (await this.json<Session>(result)).session;
+    return this.json<Session>(result);
   }
 }
 

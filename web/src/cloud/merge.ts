@@ -5,6 +5,7 @@
  * the copy of that hero that was kept (`Winner`); the rest is combined.
  */
 import { saveBase } from '../play/adventurers.ts';
+import type { Career } from '../play/chronicle.ts';
 
 /** Whose copy of a hero is kept: this device's, the cloud's, or null when neither changed it. */
 export type Winner = (base: string) => 'local' | 'remote' | null;
@@ -93,22 +94,42 @@ export function mergeMapMemory(base: Uint8Array | null, local: Uint8Array, remot
   return mergeHeroStore(base, local, remote, winner);
 }
 
-const COUNTERS = ['heroes', 'fallen', 'kills', 'uniques', 'closeCalls'];
-const BESTS = ['deepestFeet', 'bestLevel', 'bestStreak'];
+/** How each field of the career is combined: counts add, bests take the higher, flags either. */
+const CAREER: Record<keyof Career, 'count' | 'best' | 'either'> = {
+  heroes: 'count',
+  fallen: 'count',
+  kills: 'count',
+  uniques: 'count',
+  closeCalls: 'count',
+  deepestFeet: 'best',
+  bestLevel: 'best',
+  bestStreak: 'best',
+  worldMap: 'either',
+};
 
-/** The career across devices: counts add what each side added since they last agreed, bests take the higher, flags either. */
-function mergeCareer(base: Record<string, unknown>, local: Record<string, unknown>, remote: Record<string, unknown>): Record<string, unknown> {
+/**
+ * The career across devices: a count adds what each side added since they
+ * last agreed (`base`), or, with no such copy (a first sync, a backup
+ * restored), takes the higher, so nothing is counted twice; bests take the
+ * higher, flags either.
+ */
+function mergeCareer(base: Record<string, unknown> | null, local: Record<string, unknown>, remote: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...remote, ...local };
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
-  for (const key of COUNTERS) out[key] = Math.max(0, num(local[key]) + num(remote[key]) - num(base[key]));
-  for (const key of BESTS) out[key] = Math.max(num(local[key]), num(remote[key]));
-  out.worldMap = !!local.worldMap || !!remote.worldMap;
+  for (const [key, rule] of Object.entries(CAREER)) {
+    const l = num(local[key]);
+    const r = num(remote[key]);
+    if (rule === 'either') out[key] = !!local[key] || !!remote[key];
+    else if (rule === 'count' && base) out[key] = Math.max(0, l + r - num(base[key]));
+    else out[key] = Math.max(l, r);
+  }
   return out;
 }
 
 /** The chronicle (`chronicle.json`): the career combined, deeds kept from when first earned, heroes' tales following the kept copy, the fallen from both. */
 export function mergeChronicle(base: Uint8Array | null, local: Uint8Array, remote: Uint8Array, winner: Winner): Uint8Array {
-  const b = parseJson(base) ?? {};
+  const old = parseJson(base);
+  const b = old ?? {};
   const l = parseJson(local);
   const r = parseJson(remote);
   if (!l || !r) return l ? local : remote;
@@ -117,7 +138,7 @@ export function mergeChronicle(base: Uint8Array | null, local: Uint8Array, remot
   );
   const heroes = mergeRecords(dict(b.heroes), dict(l.heroes), dict(r.heroes), (_, lv) => lv, (key) => winner(saveBase(key)));
   const memorials = mergeRecords(dict(b.memorials), dict(l.memorials), dict(r.memorials), (_, lv, rv) => lv ?? rv);
-  return toBytes({ ...l, career: mergeCareer(dict(b.career), dict(l.career), dict(r.career)), deeds, heroes, memorials });
+  return toBytes({ ...l, career: mergeCareer(old ? dict(old.career) : null, dict(l.career), dict(r.career)), deeds, heroes, memorials });
 }
 
 /** The savefile a line of tome2's index (`global.svg`: "module@1base@description") is for, or null. */

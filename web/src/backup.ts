@@ -9,6 +9,8 @@ interface BackupDeps {
   sheets: Sheets;
   /** The file input a backup is chosen with. */
   input: HTMLInputElement;
+  /** Cloud sync, while it is on: told before a backup replaces what is here. */
+  cloud(): { restoring(): Promise<void> } | null;
 }
 
 function errorText(err: unknown): string {
@@ -86,23 +88,28 @@ export class Backup {
       openMessage(sheets, 'Import game data', 'This backup holds no game data.');
       return;
     }
+    const cloud = this.deps.cloud();
     confirmSheet(
       sheets,
       'Replace your game data?',
-      'Every hero, the Hall of Fame and your deeds on this device are replaced by those in the backup. Export first to keep what is here. The game then restarts.',
+      `Every hero, the Hall of Fame and your deeds on this device are replaced by those in the backup. Export first to keep what is here. The game then restarts.${
+        cloud ? ' With cloud sync on, heroes the cloud has too are then compared: where they differ you choose which journey continues, and heroes only in the cloud come back.' : ''
+      }`,
       'Replace',
       () => {
         sheets.closeAll();
-        try {
-          restoreFiles(fs, root, files);
-        } catch (err) {
-          this.importFailed(err);
-          return;
-        }
-        engine.syncNow().then(
-          () => location.reload(),
-          (err) => this.importFailed(err),
-        );
+        void (cloud ? cloud.restoring() : Promise.resolve()).then(() => {
+          try {
+            restoreFiles(fs, root, files);
+          } catch (err) {
+            this.importFailed(err);
+            return;
+          }
+          engine.syncNow().then(
+            () => location.reload(),
+            (err) => this.importFailed(err),
+          );
+        });
       },
       true,
     );

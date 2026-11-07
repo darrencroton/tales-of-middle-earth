@@ -35,6 +35,7 @@ function rawToDer(raw: Uint8Array): Uint8Array {
 /** A passkey made and used in software, as an authenticator would. */
 class SoftPasskey {
   readonly id = crypto.getRandomValues(new Uint8Array(16));
+  user = '';
   private keys!: CryptoKeyPair;
   readonly origin: string;
 
@@ -66,7 +67,9 @@ class SoftPasskey {
       authenticatorData: base64url(await this.authData(0x45, new Uint8Array([0xa0]))),
     });
     assert.equal(res.status, 200, await res.clone().text());
-    return ((await res.json()) as { session: string }).session;
+    const answer = (await res.json()) as { session: string; user: string };
+    this.user = answer.user;
+    return answer.session;
   }
 
   async login(e: Env, tamper = false): Promise<Response> {
@@ -111,6 +114,7 @@ describe('cloud service', () => {
     assert.equal((await state(e, session)).manifest.rev, 0);
     const login = await key.login(e);
     assert.equal(login.status, 200);
+    assert.equal(((await login.json()) as { user: string }).user, key.user);
     assert.equal((await key.login(e, true)).status, 401);
   });
 
@@ -146,16 +150,22 @@ describe('cloud service', () => {
     const blob = await call(e, 'GET', `/v1/blob/${hash}`, undefined, { Authorization: `Bearer ${session}` });
     assert.equal(blob.status, 200);
 
+    const bucket = e.SAVES as MemoryBucket;
+    bucket.clock = () => NOW;
+    const pending = await upload(e, session, new TextEncoder().encode('a level on its way'));
     const emptied = await commit(e, session, after.etag, { rev: 1, files: {}, heroes: {} });
     assert.equal(emptied.status, 200);
-    assert.equal((await call(e, 'GET', `/v1/blob/${hash}`, undefined, { Authorization: `Bearer ${session}` })).status, 404);
+    assert.equal((await call(e, 'GET', `/v1/blob/${hash}`, undefined, { Authorization: `Bearer ${session}` })).status, 404, 'an old blob no longer named goes');
+    assert.equal((await call(e, 'GET', `/v1/blob/${pending}`, undefined, { Authorization: `Bearer ${session}` })).status, 200, 'one just uploaded stays for its commit');
   });
 
-  it('refuses a blob whose bytes do not match its hash', async () => {
+  it('refuses a blob whose bytes do not match its hash, or that inflates beyond a file', async () => {
     const e = env();
     const session = await new SoftPasskey().register(e);
     const res = await call(e, 'PUT', `/v1/blob/${'0'.repeat(64)}`, await gzip(new Uint8Array([1, 2, 3])), { Authorization: `Bearer ${session}` });
     assert.equal(res.status, 400);
+    const bomb = await call(e, 'PUT', `/v1/blob/${'0'.repeat(64)}`, await gzip(new Uint8Array(17 * 1024 * 1024)), { Authorization: `Bearer ${session}` });
+    assert.equal(bomb.status, 413);
   });
 
   it('renews an old session and deletes an account with its passkeys', async () => {
@@ -167,6 +177,9 @@ describe('cloud service', () => {
     assert.equal((await call(e, 'DELETE', '/v1/account', undefined, { Authorization: `Bearer ${session}` })).status, 204);
     assert.equal((e.SAVES as MemoryBucket).objects.size, 0);
     assert.equal((await key.login(e)).status, 404);
+    const data = new TextEncoder().encode('after');
+    const late = await call(e, 'PUT', `/v1/blob/${await sha256Hex(data)}`, await gzip(data), { Authorization: `Bearer ${session}` });
+    assert.equal(late.status, 404, 'a deleted account stores nothing more');
   });
 
   it('reads DER signatures with and without leading zeros', () => {

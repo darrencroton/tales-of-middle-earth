@@ -18,7 +18,7 @@ A Cloudflare Worker over an R2 bucket that keeps players' heroes in step across 
 | PUT / GET | `/v1/blob/<sha256>` | A file, gzip-compressed (the hash is of its bytes; checked on upload) |
 | DELETE | `/v1/account` | Everything the account keeps, and its passkeys |
 
-Sessions and challenges are HMAC-signed tokens (`SESSION_SECRET`): sessions last 400 days and are renewed with a sync after 30. A file is at most 16 MB and an account 200 MB. Blobs a commit no longer names are deleted.
+Sessions and challenges are HMAC-signed tokens (`SESSION_SECRET`): sessions last 400 days and are renewed with a sync after 30. A file is at most 16 MB (refused while it is inflated, not after) and an account 200 MB as stored, uncommitted uploads included. Each commit deletes the blobs no manifest names once they are an hour old, so an upload for a commit still on its way stays. New accounts are limited to 10 a minute per address (`REGISTER_LIMIT`, Workers rate limiting, Wrangler 4.36 or later; loose, as it counts per Cloudflare location).
 
 ## Setting it up
 

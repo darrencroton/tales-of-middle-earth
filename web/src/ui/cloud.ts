@@ -103,7 +103,8 @@ export class CloudMenu {
           run: () =>
             confirmSheet(sheets, 'Turn off cloud sync?', 'Your heroes stay on this device and in the cloud, but stop syncing here. You can turn it on again by signing in.', 'Turn off', () => {
               sheets.back();
-              void cloud.turnOff().then(() => this.deps.toast('Cloud sync is off on this device'));
+              cloud.turnOff();
+              this.deps.toast('Cloud sync is off on this device');
             }),
         },
         {
@@ -213,7 +214,7 @@ export function chooseJourney(sheets: Sheets, choice: JourneyChoice): Promise<'l
     const sides = el('div', 'journey-sides');
     sides.append(side(choice.local.where, choice.local, choice.inStep), side(choice.remote.where, choice.remote, choice.remote.sent));
     body.append(sides);
-    const keep = (where: string) => `Keep ${where.replace(/^(This|Other) /, (w) => w.toLowerCase())}'s`;
+    const keep = (where: string) => `Keep ${where.replace(/^(This|Other|The) /, (w) => w.toLowerCase())}'s`;
     sheets.open({
       title: 'Which journey continues?',
       body,

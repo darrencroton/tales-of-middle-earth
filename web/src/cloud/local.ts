@@ -15,6 +15,8 @@ export interface Account {
   /** This device's id in leases; kept when signed out. */
   device: string;
   session?: string;
+  /** The account the session is for: what was last synced belongs to it. */
+  user?: string;
   /** When the last sync finished (ms, this device's clock). */
   synced?: number;
   /** When syncs began to fail, while they fail. */
@@ -38,6 +40,7 @@ export function loadAccount(): Account {
       return {
         device: raw.device,
         session: typeof raw.session === 'string' ? raw.session : undefined,
+        user: typeof raw.user === 'string' ? raw.user : undefined,
         synced: typeof raw.synced === 'number' ? raw.synced : undefined,
         failing: typeof raw.failing === 'number' ? raw.failing : undefined,
         suggested: raw.suggested === true,

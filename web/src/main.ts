@@ -33,7 +33,7 @@ import { Backup } from './backup.ts';
 import { Updates } from './updates.ts';
 import { ANIMATION_FPS, applyTextSize, EFFECT_DELAY, loadSettings, saveSettings, type Settings } from './settings.ts';
 import { TerminalBuffer, type ScreenCopy } from './terminal.ts';
-import { TitleScreen } from './title.ts';
+import { TitleScreen, type TitleChoice } from './title.ts';
 import { openSoundtrack } from './ui/soundtrack.ts';
 import { openHelp } from './ui/help.ts';
 import { openMagic, RecentStore } from './ui/magic.ts';
@@ -1699,18 +1699,7 @@ const director = new Director({
 const feel = new GameFeel(byId<HTMLElement>('stage'), () => settings.animation);
 const coach = new Coach(byId<HTMLElement>('stage'));
 const title = new TitleScreen(byId<HTMLElement>('title-screen'), () => settings.animation, {
-  onChoose: (choice) => {
-    if (choice.kind !== 'continue' || !cloud.enabled) {
-      if (choice.kind === 'continue') cloud.playing(choice.save.name);
-      director.choose(choice);
-      return;
-    }
-    title.setBusy(`Checking where ${choice.save.description.split(', the ')[0] || choice.save.name} was played…`);
-    cloud.claim(choice.save.name).then((outcome) => {
-      if (outcome === 'go') director.choose(choice);
-      else if (outcome === 'cancel') title.restoreChoices();
-    });
-  },
+  onChoose: (choice) => choose(choice),
   onAdventurers: (saves) => heroes.openRoster(saves),
   describe: (save) => {
     const hero = heroes.describe(save);
@@ -1785,6 +1774,7 @@ const heroes = new Heroes({
   interrupt: () => journeys.interrupt('fallen'),
   finishGame,
   showToast,
+  play: (save) => choose({ kind: 'continue', save }),
   cloudNote: (save) => {
     if (!cloud.enabled) return null;
     const lease = cloud.elsewhere(save);
@@ -1843,7 +1833,12 @@ const conversation = new Conversation({
   openMessage: (title, text) => openMessage(sheets, title, text),
   told: noteLeadShown,
 });
-const backup = new Backup({ engine, sheets, input: importFile });
+const backup = new Backup({
+  engine,
+  sheets,
+  input: importFile,
+  cloud: () => (cloud.enabled ? cloud : null),
+});
 /** The title is starting again for cloud sync (its engine was told to quit). */
 let cloudRestart = false;
 /** The title is back after a game. */
@@ -1864,6 +1859,7 @@ const cloud = new CloudSync({
   persist: () => engine.syncNow(),
   atTitle: () => director.atTitle,
   idle: () => director.atTitle && title.offering && !sheets.isOpen,
+  writing: () => title.setBusy('Bringing in your heroes…'),
   restartTitle: restartForCloud,
   chooseJourney: (choice) => chooseJourney(sheets, choice),
   confirmTakeover: (hero, lease, age) => confirmTakeover(sheets, heroLabel(hero), lease, age),
@@ -1882,6 +1878,20 @@ const cloudMenu = new CloudMenu({
   synced: () => void cloud.syncAtTitle(true),
   toast: (text) => showToast(text, { log: false }),
 });
+
+/** A choice on the title (Continue, or Play in the Game Roster): a saved hero is first taken up with cloud sync (`CloudSync.claim`). */
+function choose(choice: TitleChoice): void {
+  if (choice.kind !== 'continue' || !cloud.enabled) {
+    if (choice.kind === 'continue') cloud.playing(choice.save.name);
+    director.choose(choice);
+    return;
+  }
+  title.setBusy(`Checking where ${choice.save.description.split(', the ')[0] || choice.save.name} was played…`);
+  cloud.claim(choice.save.name).then((outcome) => {
+    if (outcome === 'go') director.choose(choice);
+    else if (outcome === 'cancel') title.restoreChoices();
+  });
+}
 
 /** A hero's name from their savefile's: the hero in play's, else the savefile's with spaces. */
 function heroLabel(save: string): string {

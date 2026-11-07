@@ -10,7 +10,6 @@ import {
   MAX_FILE_BYTES,
   base64url,
   fromBase64url,
-  gunzip,
   isHash,
   readManifest,
   sha256Hex,
@@ -18,6 +17,7 @@ import {
   type Challenge,
   type Manifest,
   type Registration,
+  type Session,
   type SyncState,
 } from '../../web/src/cloud/protocol.ts';
 
@@ -27,7 +27,7 @@ export interface Bucket {
   head(key: string): Promise<{ etag: string; size: number } | null>;
   put(key: string, value: ArrayBuffer | Uint8Array | string, options?: { onlyIf?: { etagMatches?: string } }): Promise<{ etag: string } | null>;
   delete(keys: string | string[]): Promise<void>;
-  list(options: { prefix: string; cursor?: string }): Promise<{ objects: { key: string }[]; truncated: boolean; cursor?: string }>;
+  list(options: { prefix: string; cursor?: string }): Promise<{ objects: { key: string; size: number; uploaded: Date }[]; truncated: boolean; cursor?: string }>;
 }
 
 export interface Env {
@@ -36,6 +36,8 @@ export interface Env {
   SESSION_SECRET: string;
   /** Origins the app is served from, comma-separated; a passkey belongs to its origin's host name. */
   ALLOWED_ORIGINS: string;
+  /** Workers' rate limiting, for account creation by address (wrangler.toml); none in tests. */
+  REGISTER_LIMIT?: { limit(options: { key: string }): Promise<{ success: boolean }> };
 }
 
 const CHALLENGE_MS = 5 * 60 * 1000;
@@ -45,6 +47,8 @@ const SESSION_RENEW_MS = 30 * 24 * 60 * 60 * 1000;
 const ES256 = -7;
 const RS256 = -257;
 const MAX_JSON_BYTES = 256 * 1024;
+/** Blobs no manifest names are deleted once this old: one uploaded for a commit still on its way is left alone. */
+const BLOB_GRACE_MS = 60 * 60 * 1000;
 
 class Failure extends Error {
   readonly status: number;
@@ -246,7 +250,7 @@ async function newSession(env: Env, user: string, now: number): Promise<string> 
   return sign(env.SESSION_SECRET, { kind: 'session', user, iat: now, exp: now + SESSION_MS });
 }
 
-async function register(env: Env, body: Registration, now: number): Promise<{ session: string }> {
+async function register(env: Env, body: Registration, now: number): Promise<Session> {
   const claims = await verify(env.SESSION_SECRET, body.token, 'challenge', now);
   if (!claims.user) throw new Failure(400, 'Not a registration');
   const { data } = readClientData(body.clientData);
@@ -274,10 +278,10 @@ async function register(env: Env, body: Registration, now: number): Promise<{ se
   const list = existing ? (JSON.parse(await existing.text()) as string[]) : [];
   await env.SAVES.put(credentialsKey(claims.user), JSON.stringify([...list, body.credential]));
   if (!(await env.SAVES.head(manifestKey(claims.user)))) await env.SAVES.put(manifestKey(claims.user), JSON.stringify(EMPTY_MANIFEST));
-  return { session: await newSession(env, claims.user, now) };
+  return { session: await newSession(env, claims.user, now), user: claims.user };
 }
 
-async function login(env: Env, body: Assertion, now: number): Promise<{ session: string }> {
+async function login(env: Env, body: Assertion, now: number): Promise<Session> {
   const claims = await verify(env.SESSION_SECRET, body.token, 'challenge', now);
   if (typeof body.credential !== 'string') throw new Failure(400, 'Malformed assertion');
   const stored = await env.SAVES.get(credentialKey(body.credential));
@@ -296,7 +300,7 @@ async function login(env: Env, body: Assertion, now: number): Promise<{ session:
   if (body.userHandle && body.userHandle !== credential.user) throw new Failure(401, 'Wrong user');
   const signed = concat(authData, new Uint8Array(await crypto.subtle.digest('SHA-256', buffer(bytes))));
   if (!(await verifySignature(credential.algorithm, fromBase64url(credential.publicKey), signature, signed))) throw new Failure(401, 'Bad signature');
-  return { session: await newSession(env, credential.user, now) };
+  return { session: await newSession(env, credential.user, now), user: credential.user };
 }
 
 async function sessionOf(env: Env, request: Request, now: number): Promise<SessionClaims> {
@@ -324,19 +328,32 @@ function referenced(manifest: Manifest): Set<string> {
   return new Set(Object.values(manifest.files).map((f) => f.hash));
 }
 
-/** Writes a manifest over the one with `etag`: the blobs it names must be stored; leases sent with `at: 0` are stamped; blobs no longer named are deleted. */
+/** The account's stored blobs, by hash, with their stored size and when they were uploaded (ms). */
+async function storedBlobs(env: Env, user: string): Promise<Map<string, { size: number; uploaded: number }>> {
+  const prefix = blobKey(user, '');
+  const blobs = new Map<string, { size: number; uploaded: number }>();
+  let cursor: string | undefined;
+  do {
+    const page = await env.SAVES.list({ prefix, cursor });
+    for (const object of page.objects) blobs.set(object.key.slice(prefix.length), { size: object.size, uploaded: object.uploaded.getTime() });
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return blobs;
+}
+
+/**
+ * Writes a manifest over the one with `etag`: the blobs it names must be
+ * stored; leases sent with `at: 0` are stamped; blobs no manifest names are
+ * deleted once `BLOB_GRACE_MS` old.
+ */
 async function commit(env: Env, user: string, etag: string | null, raw: unknown, now: number): Promise<SyncState> {
   if (!etag) throw new Failure(428, 'If-Match required');
   const sent = readManifest(raw);
   if (!sent) throw new Failure(400, 'Malformed manifest');
-  const total = Object.values(sent.files).reduce((n, f) => n + f.size, 0);
-  if (total > MAX_ACCOUNT_BYTES) throw new Failure(413, 'Over the storage allowance');
   const current = await readStoredManifest(env, user);
   if (current.etag !== etag) throw new Failure(412, 'Changed since read');
-  const old = referenced(current.manifest);
-  const fresh = [...referenced(sent)].filter((hash) => !old.has(hash));
-  const missing: string[] = [];
-  for (const hash of fresh) if (!(await env.SAVES.head(blobKey(user, hash)))) missing.push(hash);
+  const blobs = await storedBlobs(env, user);
+  const missing = [...referenced(sent)].filter((hash) => !blobs.has(hash));
   if (missing.length) throw new Failure(409, 'Missing blobs', { missing });
   const heroes: Manifest['heroes'] = Object.create(null);
   for (const [base, lease] of Object.entries(sent.heroes)) heroes[base] = lease.at === 0 ? { ...lease, at: now } : lease;
@@ -344,22 +361,42 @@ async function commit(env: Env, user: string, etag: string | null, raw: unknown,
   const written = await env.SAVES.put(manifestKey(user), JSON.stringify(manifest), { onlyIf: { etagMatches: etag } });
   if (!written) throw new Failure(412, 'Changed since read');
   const kept = referenced(manifest);
-  const stale = [...old].filter((hash) => !kept.has(hash)).map((hash) => blobKey(user, hash));
+  const stale = [...blobs].filter(([hash, blob]) => !kept.has(hash) && now - blob.uploaded > BLOB_GRACE_MS).map(([hash]) => blobKey(user, hash));
   if (stale.length) await env.SAVES.delete(stale);
   return { manifest, etag: written.etag, now };
 }
 
+/** Inflates gzip, refusing more than `cap` bytes before holding them all. */
+async function inflate(compressed: Uint8Array, cap: number): Promise<Uint8Array> {
+  const reader = new Blob([buffer(compressed)]).stream().pipeThrough(new DecompressionStream('gzip')).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > cap) throw new Failure(413, 'Too large');
+      chunks.push(value);
+    }
+  } catch (err) {
+    await reader.cancel().catch(() => undefined);
+    throw err instanceof Failure ? err : new Failure(400, 'Not gzip');
+  }
+  return concat(...chunks);
+}
+
+/** Stores a file the account sends, gzip-compressed as sent, within the account's allowance (counted as stored). */
 async function putBlob(env: Env, user: string, hash: string, request: Request): Promise<void> {
+  if (!(await env.SAVES.head(manifestKey(user)))) throw new Failure(404, 'No such account');
   const compressed = new Uint8Array(await request.arrayBuffer());
   if (compressed.length > MAX_FILE_BYTES) throw new Failure(413, 'Too large');
-  let data: Uint8Array;
-  try {
-    data = await gunzip(compressed);
-  } catch {
-    throw new Failure(400, 'Not gzip');
-  }
-  if (data.length > MAX_FILE_BYTES) throw new Failure(413, 'Too large');
+  const data = await inflate(compressed, MAX_FILE_BYTES);
   if ((await sha256Hex(data)) !== hash) throw new Failure(400, 'Hash does not match');
+  const blobs = await storedBlobs(env, user);
+  if (blobs.has(hash)) return;
+  const stored = [...blobs.values()].reduce((n, b) => n + b.size, 0);
+  if (stored + compressed.length > MAX_ACCOUNT_BYTES) throw new Failure(413, 'Over the storage allowance');
   await env.SAVES.put(blobKey(user, hash), compressed);
 }
 
@@ -396,7 +433,11 @@ async function route(request: Request, env: Env, now: number, cors: Record<strin
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '');
   const method = request.method;
-  if (method === 'POST' && path === '/v1/register/options') return json(await challenge(env, now, randomId(16)), 200, cors);
+  if (method === 'POST' && path === '/v1/register/options') {
+    const address = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+    if (env.REGISTER_LIMIT && !(await env.REGISTER_LIMIT.limit({ key: address })).success) throw new Failure(429, 'Too many new accounts; try again in a minute');
+    return json(await challenge(env, now, randomId(16)), 200, cors);
+  }
   if (method === 'POST' && path === '/v1/register') return json(await register(env, await readJson<Registration>(request), now), 200, cors);
   if (method === 'POST' && path === '/v1/login/options') return json(await challenge(env, now), 200, cors);
   if (method === 'POST' && path === '/v1/login') return json(await login(env, await readJson<Assertion>(request), now), 200, cors);

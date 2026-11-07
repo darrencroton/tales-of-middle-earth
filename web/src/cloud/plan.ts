@@ -45,6 +45,10 @@ export interface HeroChange {
   local: boolean;
   /** Changed in the cloud since the last sync. */
   remote: boolean;
+  /** No file of the hero is left here (deleted). */
+  localGone: boolean;
+  /** No file of the hero is left in the cloud (deleted on another device). */
+  remoteGone: boolean;
 }
 
 /** Every path in any of the lists. */
@@ -60,10 +64,18 @@ export function heroChanges(local: FileList, remote: FileList, base: FileList): 
     if (!hero) continue;
     const c = change(path, local, remote, base);
     if (c === 'same') continue;
-    const entry = heroes.get(hero) ?? { base: hero, local: false, remote: false };
+    const entry = heroes.get(hero) ?? { base: hero, local: false, remote: false, localGone: true, remoteGone: true };
     if (c === 'local' || c === 'both') entry.local = true;
     if (c === 'remote' || c === 'both') entry.remote = true;
     heroes.set(hero, entry);
+  }
+  for (const [path] of Object.entries(local)) {
+    const entry = heroes.get(heroOf(path) ?? '');
+    if (entry) entry.localGone = false;
+  }
+  for (const [path] of Object.entries(remote)) {
+    const entry = heroes.get(heroOf(path) ?? '');
+    if (entry) entry.remoteGone = false;
   }
   return [...heroes.values()];
 }
@@ -71,16 +83,19 @@ export function heroChanges(local: FileList, remote: FileList, base: FileList): 
 /**
  * Whose copy of a changed hero is kept: the one `chosen` (by the player, or
  * the cloud's for a hero taken up on another device during a game here), else
- * the side that changed them, else the cloud's when another device took the
- * hero from this one while it was playing them (the player said so there);
- * null when the player must choose.
+ * the side that changed them; changed on both, the one still there when the
+ * other side deleted the hero, else the cloud's when another device took the
+ * hero from this one while it was playing them (the player said so there) in
+ * a lease newer than `known` (the one this device last saw); null when the
+ * player must choose.
  */
-export function heroWinner(hero: HeroChange, lease: Lease | undefined, device: string, chosen: ReadonlyMap<string, 'local' | 'remote'>): 'local' | 'remote' | null {
+export function heroWinner(hero: HeroChange, lease: Lease | undefined, device: string, chosen: ReadonlyMap<string, 'local' | 'remote'>, known = 0): 'local' | 'remote' | null {
   const choice = chosen.get(hero.base);
   if (choice) return choice;
   if (!hero.remote) return 'local';
   if (!hero.local) return 'remote';
-  if (lease && lease.device !== device && lease.over === device) return 'remote';
+  if (hero.localGone !== hero.remoteGone) return hero.localGone ? 'remote' : 'local';
+  if (lease && lease.device !== device && lease.over === device && lease.at > known) return 'remote';
   return null;
 }
 
@@ -95,11 +110,17 @@ export interface FullPlan {
 /**
  * A full sync (on the title screen, nothing in play), once every changed hero
  * has a winner: a hero's files come from the copy kept, other files from the
- * side that changed them (this device's when both did).
+ * side that changed them (this device's when both did); shared files are
+ * merged when both changed them or a side's changes to a hero were overruled.
  */
 export function fullPlan(local: FileList, remote: FileList, base: FileList, heroes: readonly HeroChange[], winner: (hero: string) => 'local' | 'remote' | null): FullPlan {
   const plan: FullPlan = { fetch: [], remove: [], merge: [] };
-  const overruled = new Set(heroes.filter((h) => h.local && h.remote).map((h) => (winner(h.base) === 'remote' ? 'local' : 'remote')));
+  const overruled = new Set<Change>();
+  for (const hero of heroes) {
+    const side = winner(hero.base);
+    if (side === 'remote' && hero.local) overruled.add('local');
+    if (side === 'local' && hero.remote) overruled.add('remote');
+  }
   for (const path of allPaths(local, remote, base)) {
     const c = change(path, local, remote, base);
     if (c === 'same') continue;

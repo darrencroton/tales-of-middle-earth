@@ -78,13 +78,15 @@ export interface Assertion {
 
 export interface Session {
   session: string;
+  /** The account's id. */
+  user: string;
 }
 
 export const EMPTY_MANIFEST: Manifest = { rev: 0, files: {}, heroes: {} };
 
 /** Most bytes one file may have. */
 export const MAX_FILE_BYTES = 16 * 1024 * 1024;
-/** Most bytes an account's files may add up to. */
+/** Most bytes an account's files may add up to, as stored (compressed). */
 export const MAX_ACCOUNT_BYTES = 200 * 1024 * 1024;
 
 const HASH = /^[0-9a-f]{64}$/;

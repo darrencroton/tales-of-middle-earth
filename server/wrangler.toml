@@ -9,3 +9,12 @@ ALLOWED_ORIGINS = "https://darrencroton.github.io,http://localhost:5173,http://l
 [[r2_buckets]]
 binding = "SAVES"
 bucket_name = "tome-cloud-saves"
+
+# Account creation per address: a loose limit (counted per Cloudflare location).
+[[ratelimits]]
+name = "REGISTER_LIMIT"
+namespace_id = "1001"
+
+[ratelimits.simple]
+limit = 10
+period = 60
