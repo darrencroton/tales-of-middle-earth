@@ -10,7 +10,7 @@ import { indexOf, mergeChronicle, mergeHeroStore, mergeSaveIndex, mergeScores, s
 
 const HERO_FORMAT = 'tome2mobile-hero';
 const HERO_FORMAT_VERSION = 1;
-/** The end of a hero's file name: a JSON type, which iOS's file picker offers. */
+/** The end of a hero's file name. */
 export const HERO_EXTENSION = '.tome2hero.json';
 
 /** Files every hero shares, merged rather than taken whole. */

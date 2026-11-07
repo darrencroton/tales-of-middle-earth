@@ -175,7 +175,7 @@ test('game data exported from the title screen imports back in place of what is 
   const downloadPromise = page.waitForEvent('download');
   await page.locator('.sheet .row-button', { hasText: 'Export game data' }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^tome2-saves-.*\.tome2save$/);
+  expect(download.suggestedFilename()).toMatch(/^tome2-saves-.*\.tome2save\.json$/);
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   expect(bundle.format).toBe('tome2mobile-saves');
   await page.keyboard.press('Escape');
@@ -188,7 +188,7 @@ test('game data exported from the title screen imports back in place of what is 
     const engine = window.__tome!.engine;
     engine.fs!.writeFile(`${engine.savePath}/2.4/save/Later`, new Uint8Array([4]));
   });
-  await page.locator('#import-file').setInputFiles({ name: 'backup.tome2save', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bundle)) });
+  await page.locator('#import-file').setInputFiles({ name: 'backup.tome2save.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bundle)) });
   const reloaded = page.waitForEvent('load');
   await page.locator('.sheet-action', { hasText: 'Replace' }).click();
   await reloaded;
@@ -575,7 +575,6 @@ test('saved heroes: Continue plays the last, the Game Roster lists them all, a h
     await on.locator('.adventurer-row', { hasText: 'Elder' }).click();
     await on.locator('.sheet-adventurer [data-action="share"]').click();
     const download = await sent;
-    /* A JSON name: iOS's file picker greys out a file of a type it does not know. */
     expect(download.suggestedFilename()).toBe('Elder.tome2hero.json');
     const path = test.info().outputPath(`Elder-${Date.now()}.tome2hero.json`);
     await download.saveAs(path);

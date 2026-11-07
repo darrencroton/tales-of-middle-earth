@@ -127,7 +127,7 @@ describe('JSON files', () => {
 
 describe('exportFilename', () => {
   it('is timestamped and uses the save extension', () => {
-    assert.equal(exportFilename(new Date('2026-10-25T09:08:07Z')), 'tome2-saves-2026-10-25-09-08-07.tome2save');
+    assert.equal(exportFilename(new Date('2026-10-25T09:08:07Z')), 'tome2-saves-2026-10-25-09-08-07.tome2save.json');
   });
 });
 
