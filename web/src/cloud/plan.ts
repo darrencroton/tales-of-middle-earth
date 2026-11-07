@@ -85,17 +85,16 @@ export function heroChanges(local: FileList, remote: FileList, base: FileList): 
  * the cloud's for a hero taken up on another device during a game here), else
  * the side that changed them; changed on both, the one still there when the
  * other side deleted the hero, else the cloud's when another device took the
- * hero from this one while it was playing them (the player said so there) in
- * a lease newer than `known` (the one this device last saw); null when the
- * player must choose.
+ * hero from this one (the player said so there) while this one held them at
+ * the last sync (`known`, the lease then); null when the player must choose.
  */
-export function heroWinner(hero: HeroChange, lease: Lease | undefined, device: string, chosen: ReadonlyMap<string, 'local' | 'remote'>, known = 0): 'local' | 'remote' | null {
+export function heroWinner(hero: HeroChange, lease: Lease | undefined, device: string, chosen: ReadonlyMap<string, 'local' | 'remote'>, known?: Lease): 'local' | 'remote' | null {
   const choice = chosen.get(hero.base);
   if (choice) return choice;
   if (!hero.remote) return 'local';
   if (!hero.local) return 'remote';
   if (hero.localGone !== hero.remoteGone) return hero.localGone ? 'remote' : 'local';
-  if (lease && lease.device !== device && lease.over === device && lease.at > known) return 'remote';
+  if (lease && known && lease.device !== device && lease.over === device && known.device === device && lease.at > known.at) return 'remote';
   return null;
 }
 

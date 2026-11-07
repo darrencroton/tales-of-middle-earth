@@ -37,8 +37,11 @@ describe('cloud plan', () => {
     assert.equal(heroWinner(changes[0], undefined, 'me', none), 'local');
     assert.equal(heroWinner(changes[1], undefined, 'me', none), 'remote');
     assert.equal(heroWinner(changes[2], undefined, 'me', none), null, 'both changed: the player chooses');
-    assert.equal(heroWinner(changes[2], { device: 'ipad', name: 'iPad', playing: true, at: 5, over: 'me' }, 'me', none), 'remote', 'taken from this device by the player there');
-    assert.equal(heroWinner(changes[2], { device: 'ipad', name: 'iPad', playing: true, at: 5, over: 'me' }, 'me', none, 5), null, 'a taking this device already knew of asks again');
+    const mine = { device: 'me', name: 'iPhone', playing: true, at: 2 };
+    const taken = { device: 'ipad', name: 'iPad', playing: true, at: 5, over: 'me' };
+    assert.equal(heroWinner(changes[2], taken, 'me', none, mine), 'remote', 'taken from this device by the player there');
+    assert.equal(heroWinner(changes[2], taken, 'me', none, { ...taken, at: 4 }), null, 'a taking this device had already seen asks again');
+    assert.equal(heroWinner(changes[2], taken, 'me', none), null, 'with no lease known (a new device, a restore) the player chooses');
     assert.equal(heroWinner(changes[2], { device: 'ipad', name: 'iPad', playing: true, at: 5 }, 'me', none), null);
     assert.equal(heroWinner(changes[2], undefined, 'me', new Map([['C', 'local']])), 'local');
   });

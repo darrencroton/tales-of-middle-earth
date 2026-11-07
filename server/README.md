@@ -39,4 +39,4 @@ To try a deployed service from a local build, or a build without `CLOUD_URL`, se
 
 ## Costs
 
-On Cloudflare's free plan: Workers allow 100,000 requests a day, and R2 10 GB of storage, a million writes and ten million reads a month, with no charge for downloads. A sync while playing is a read of the manifest, a write of it and one upload per changed file, a few times a level.
+On Cloudflare's free plan: Workers allow 100,000 requests a day, and R2 10 GB of storage, a million Class A operations (writes and listings) and ten million Class B (reads) a month, with no charge for downloads. A sync while playing reads the manifest and, when something changed, writes it: each changed file is an upload (a listing, to count the allowance, and a write), and a commit that changes files lists the account's blobs once more. A lease alone, every four minutes of play, is one read and one write. A few times a level for a keen player is some thousands of Class A operations a month.

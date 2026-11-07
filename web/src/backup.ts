@@ -9,8 +9,8 @@ interface BackupDeps {
   sheets: Sheets;
   /** The file input a backup is chosen with. */
   input: HTMLInputElement;
-  /** Cloud sync, while it is on: told before a backup replaces what is here. */
-  cloud(): { restoring(): Promise<void> } | null;
+  /** Cloud sync, when the app has it: told before a backup replaces what is here, whether it is on or off. */
+  cloud(): { enabled: boolean; restoring(): Promise<void> } | null;
 }
 
 function errorText(err: unknown): string {
@@ -93,23 +93,24 @@ export class Backup {
       sheets,
       'Replace your game data?',
       `Every hero, the Hall of Fame and your deeds on this device are replaced by those in the backup. Export first to keep what is here. The game then restarts.${
-        cloud ? ' With cloud sync on, heroes the cloud has too are then compared: where they differ you choose which journey continues, and heroes only in the cloud come back.' : ''
+        cloud?.enabled ? ' With cloud sync on, heroes the cloud has too are then compared: where they differ you choose which journey continues, and heroes only in the cloud come back.' : ''
       }`,
       'Replace',
       () => {
         sheets.closeAll();
-        void (cloud ? cloud.restoring() : Promise.resolve()).then(() => {
-          try {
-            restoreFiles(fs, root, files);
-          } catch (err) {
-            this.importFailed(err);
-            return;
-          }
-          engine.syncNow().then(
+        (cloud ? cloud.restoring() : Promise.resolve())
+          .then(() => {
+            /* The engine's storage as it is once cloud sync has settled. */
+            const target = engine.fs;
+            const at = engine.savePath;
+            if (!target || !at) throw new Error('The game was not ready; nothing was changed.');
+            restoreFiles(target, at, files);
+            return engine.syncNow();
+          })
+          .then(
             () => location.reload(),
             (err) => this.importFailed(err),
           );
-        });
       },
       true,
     );

@@ -343,8 +343,8 @@ async function storedBlobs(env: Env, user: string): Promise<Map<string, { size: 
 
 /**
  * Writes a manifest over the one with `etag`: the blobs it names must be
- * stored; leases sent with `at: 0` are stamped; blobs no manifest names are
- * deleted once `BLOB_GRACE_MS` old.
+ * stored; leases sent with `at: 0` are stamped; when its files changed, blobs
+ * no manifest names are deleted once `BLOB_GRACE_MS` old.
  */
 async function commit(env: Env, user: string, etag: string | null, raw: unknown, now: number): Promise<SyncState> {
   if (!etag) throw new Failure(428, 'If-Match required');
@@ -352,16 +352,18 @@ async function commit(env: Env, user: string, etag: string | null, raw: unknown,
   if (!sent) throw new Failure(400, 'Malformed manifest');
   const current = await readStoredManifest(env, user);
   if (current.etag !== etag) throw new Failure(412, 'Changed since read');
-  const blobs = await storedBlobs(env, user);
-  const missing = [...referenced(sent)].filter((hash) => !blobs.has(hash));
+  const old = referenced(current.manifest);
+  const named = referenced(sent);
+  const changed = [...named].some((hash) => !old.has(hash)) || [...old].some((hash) => !named.has(hash));
+  const blobs = changed ? await storedBlobs(env, user) : new Map<string, { size: number; uploaded: number }>();
+  const missing = changed ? [...named].filter((hash) => !blobs.has(hash)) : [];
   if (missing.length) throw new Failure(409, 'Missing blobs', { missing });
   const heroes: Manifest['heroes'] = Object.create(null);
   for (const [base, lease] of Object.entries(sent.heroes)) heroes[base] = lease.at === 0 ? { ...lease, at: now } : lease;
   const manifest: Manifest = { rev: current.manifest.rev + 1, files: sent.files, heroes };
   const written = await env.SAVES.put(manifestKey(user), JSON.stringify(manifest), { onlyIf: { etagMatches: etag } });
   if (!written) throw new Failure(412, 'Changed since read');
-  const kept = referenced(manifest);
-  const stale = [...blobs].filter(([hash, blob]) => !kept.has(hash) && now - blob.uploaded > BLOB_GRACE_MS).map(([hash]) => blobKey(user, hash));
+  const stale = [...blobs].filter(([hash, blob]) => !named.has(hash) && now - blob.uploaded > BLOB_GRACE_MS).map(([hash]) => blobKey(user, hash));
   if (stale.length) await env.SAVES.delete(stale);
   return { manifest, etag: written.etag, now };
 }

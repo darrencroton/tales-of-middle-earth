@@ -43,7 +43,7 @@ export type CloudState = 'unavailable' | 'off' | 'syncing' | 'synced' | 'offline
 export interface JourneySide {
   /** Where this copy is: "This iPhone", "iPad". */
   where: string;
-  /** When the other device sent this copy to the cloud (ms, this device's clock). */
+  /** When the other device last synced (ms, this device's clock). */
   sent?: number;
   /** "Level 12 Human Warrior". */
   line?: string;
@@ -358,11 +358,11 @@ export class CloudSync {
       const storage = this.deps.storage();
       if (!storage) return 'go' as const;
       const outcome = await this.full(storage.fs, storage.root, 'title', () => this.deps.atTitle());
-      if (outcome.cancelled) return 'cancel' as const;
       if (outcome.changed) {
         this.deps.restartTitle();
         return 'restarted' as const;
       }
+      if (outcome.cancelled) return 'cancel' as const;
       let state = outcome.state;
       for (let attempt = 0; attempt < COMMIT_TRIES; attempt++) {
         const lease = state.manifest.heroes[save];
@@ -529,7 +529,7 @@ export class CloudSync {
   private async winners(changes: readonly HeroChange[], state: SyncState, base: Base, local: LocalFiles, chosen: Map<string, 'local' | 'remote'>, ask: boolean): Promise<boolean> {
     let facts: { adventurers: Uint8Array | null; index: Uint8Array | null } | null = null;
     for (const hero of changes) {
-      if (heroWinner(hero, state.manifest.heroes[hero.base], this.account.device, chosen, base.heroes[hero.base]?.at)) continue;
+      if (heroWinner(hero, state.manifest.heroes[hero.base], this.account.device, chosen, base.heroes[hero.base])) continue;
       if (!ask) return false;
       if (!facts) {
         const find = (name: string) => Object.keys(state.manifest.files).find((p) => p.endsWith(`/${name}`) || p === name);
@@ -583,11 +583,11 @@ export class CloudSync {
       const changes = heroChanges(local.list, remote, base.files);
       if (!(await this.winners(changes, state, base, local, chosen, mode === 'title'))) {
         this.setState('synced');
-        return { changed: false, cancelled: true, state };
+        return { changed: changedHere, cancelled: true, state };
       }
       const winnerOf = (hero: string) => {
         const change = changes.find((c) => c.base === hero);
-        return change ? heroWinner(change, state.manifest.heroes[hero], this.account.device, chosen, base.heroes[hero]?.at) : null;
+        return change ? heroWinner(change, state.manifest.heroes[hero], this.account.device, chosen, base.heroes[hero]) : null;
       };
       const plan = fullPlan(local.list, remote, base.files, changes, winnerOf);
       const fetched = new Map<string, Uint8Array>();
@@ -595,7 +595,7 @@ export class CloudSync {
       const written = this.merged(plan.merge, base, local, fetched, winnerOf);
       for (const path of plan.fetch) written.set(path, fetched.get(path)!);
       for (const [path, data] of written) if (local.list[path]?.hash === (await sha256Hex(data))) written.delete(path);
-      if (!current()) {
+      if (!changedHere && (this.paused || !current())) {
         this.setState('synced');
         return { changed: false, cancelled: true, state };
       }
@@ -703,10 +703,7 @@ export class CloudSync {
   async turnOn(existing: boolean): Promise<void> {
     if (!this.client) throw new CloudError('unsupported', 'Cloud sync is not available in this version');
     const { session, user } = existing ? await this.client.login() : await this.client.register();
-    if (this.account.user !== user) {
-      await clearBase().catch(() => undefined);
-      this.account.inStep = undefined;
-    }
+    if (this.account.user !== user) await this.forgetSync();
     this.account.session = session;
     this.account.user = user;
     this.account.failing = undefined;
@@ -733,31 +730,33 @@ export class CloudSync {
     this.turnOff();
   }
 
-  /** Forgets what was last synced with the account, as for a device new to it. */
+  /** Forgets the account and what was last synced with it, as for a device new to it. */
   private async forgetAccount(): Promise<void> {
-    await clearBase().catch(() => undefined);
+    await this.forgetSync();
     this.account.user = undefined;
     this.account.synced = undefined;
+    saveAccount(this.account);
+  }
+
+  /** Forgets what was last synced: the next sync compares every hero afresh. */
+  private async forgetSync(): Promise<void> {
+    await clearBase();
     this.account.inStep = undefined;
+    this.account.yielded = undefined;
     this.leases = {};
     saveAccount(this.account);
   }
 
   /**
-   * A backup is about to replace everything here: nothing syncs until the
-   * page reloads, and the next sync treats this device as new to the account,
-   * so heroes that differ ask which journey continues, those only in the
-   * cloud come back, and nothing here counts as deleted.
+   * A backup is about to replace everything here, sync on or off: nothing
+   * syncs until the page reloads, and the next sync treats this device as new
+   * to the account, so heroes that differ ask which journey continues, those
+   * only in the cloud come back, and nothing here counts as deleted.
    */
   async restoring(): Promise<void> {
-    if (!this.account.session) return;
     this.paused = true;
     this.stopHeartbeat();
-    await this.run(async () => {
-      await clearBase();
-      this.account.inStep = undefined;
-      saveAccount(this.account);
-    });
+    await this.run(() => this.forgetSync());
   }
 }
 

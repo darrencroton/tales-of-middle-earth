@@ -1837,7 +1837,7 @@ const backup = new Backup({
   engine,
   sheets,
   input: importFile,
-  cloud: () => (cloud.enabled ? cloud : null),
+  cloud: () => (cloud.available ? cloud : null),
 });
 /** The title is starting again for cloud sync (its engine was told to quit). */
 let cloudRestart = false;
