@@ -4,6 +4,7 @@ import { fullPlan, heroChanges, heroOf, heroWinner, keptLeases, playingElsewhere
 import { mergeAdventurers, mergeChronicle, mergeMapMemory, mergeRecords, mergeSaveIndex, mergeScores, SCORE_RECORD } from '../../web/src/cloud/merge.ts';
 import { readManifest } from '../../web/src/cloud/protocol.ts';
 import { deviceName } from '../../web/src/cloud/sync.ts';
+import { clockTime } from '../../web/src/ui/cloud.ts';
 
 const f = (hash: string): { hash: string; size: number } => ({ hash: hash.repeat(64).slice(0, 64), size: 1 });
 const enc = (value: unknown) => new TextEncoder().encode(typeof value === 'string' ? value : JSON.stringify(value));
@@ -78,6 +79,13 @@ describe('cloud plan', () => {
     assert.ok(readManifest({ rev: 1, files: { 'a/b': f('1') }, heroes: {} }));
     assert.equal(readManifest({ rev: 1, files: { '../x': f('1') }, heroes: {} }), null);
     assert.equal(readManifest({ rev: 1, files: { a: { hash: 'zz', size: 1 } }, heroes: {} }), null);
+  });
+
+  it('tells a moment by the clock, by day', () => {
+    const now = new Date(2026, 10, 7, 15, 0).getTime();
+    assert.match(clockTime(new Date(2026, 10, 7, 14, 2).getTime(), now), /^today, /);
+    assert.match(clockTime(new Date(2026, 10, 6, 23, 50).getTime(), now), /^yesterday, /);
+    assert.doesNotMatch(clockTime(new Date(2026, 10, 1, 9, 0).getTime(), now), /today|yesterday/);
   });
 
   it('names devices', () => {

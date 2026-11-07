@@ -23,6 +23,8 @@ export interface Account {
   suggested?: boolean;
   /** Heroes taken up on another device during a game here: the next full sync takes the cloud's copy. */
   yielded?: string[];
+  /** When each hero was last the same here and in the cloud (ms, this device's clock), by savefile name. */
+  inStep?: Record<string, number>;
 }
 
 function randomDevice(): string {
@@ -40,6 +42,7 @@ export function loadAccount(): Account {
         failing: typeof raw.failing === 'number' ? raw.failing : undefined,
         suggested: raw.suggested === true,
         yielded: Array.isArray(raw.yielded) ? raw.yielded.filter((h): h is string => typeof h === 'string') : undefined,
+        inStep: raw.inStep && typeof raw.inStep === 'object' ? Object.fromEntries(Object.entries(raw.inStep).filter(([, t]) => typeof t === 'number')) : undefined,
       };
     }
   } catch {

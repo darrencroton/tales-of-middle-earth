@@ -43,6 +43,8 @@ export type CloudState = 'unavailable' | 'off' | 'syncing' | 'synced' | 'offline
 export interface JourneySide {
   /** Where this copy is: "This iPhone", "iPad". */
   where: string;
+  /** When the other device sent this copy to the cloud (ms, this device's clock). */
+  sent?: number;
   /** "Level 12 Human Warrior". */
   line?: string;
   level?: number;
@@ -54,6 +56,8 @@ export interface JourneySide {
 
 export interface JourneyChoice {
   hero: string;
+  /** When the two copies were last the same (ms, this device's clock), when known. */
+  inStep?: number;
   local: JourneySide;
   remote: JourneySide;
   /** The copy played furthest: a fallen one, else the higher level, else the one saved last. */
@@ -236,6 +240,11 @@ export class CloudSync {
     return this.enabled && this.inStep.has(save);
   }
 
+  /** When the hero was last the same here and in the cloud (ms, this device's clock). */
+  syncedAt(save: string): number | undefined {
+    return this.account.inStep?.[save];
+  }
+
   private setState(state: CloudState, message = ''): void {
     this.state = state;
     this.message = message;
@@ -267,10 +276,10 @@ export class CloudSync {
     const files = local?.list;
     if (local) this.print = local.print;
     if (state.session) this.account.session = state.session;
-    this.account.synced = Date.now();
+    const now = Date.now();
+    this.account.synced = now;
     this.account.failing = undefined;
     this.failingTold = false;
-    saveAccount(this.account);
     this.leases = state.manifest.heroes;
     if (files) {
       const out = new Set<string>();
@@ -282,7 +291,14 @@ export class CloudSync {
         else behind.add(hero);
       }
       this.inStep = new Set([...out].filter((h) => !behind.has(h)));
+      const times: Record<string, number> = {};
+      for (const hero of [...out, ...behind]) {
+        const time = this.inStep.has(hero) ? now : this.account.inStep?.[hero];
+        if (time) times[hero] = time;
+      }
+      this.account.inStep = times;
     }
+    saveAccount(this.account);
     this.setState('synced');
   }
 
@@ -513,9 +529,20 @@ export class CloudSync {
       const mine = heroFacts(hero.base, local.bytes.get(localPath('adventurers.json') ?? '') ?? null, local.bytes.get(localPath('global.svg') ?? '') ?? null);
       const theirs = heroFacts(hero.base, facts.adventurers, facts.index);
       const lease = state.manifest.heroes[hero.base];
+      const elsewhere = lease && lease.device !== this.account.device ? lease : null;
       const localSide: JourneySide = { ...mine, where: `This ${deviceName()}` };
-      const remoteSide: JourneySide = { ...theirs, where: lease && lease.device !== this.account.device ? (lease.name === deviceName() ? `Other ${lease.name}` : lease.name) : 'The cloud' };
-      const choice = await this.deps.chooseJourney({ hero: mine.name ?? theirs.name ?? hero.base.replace(/_/g, ' '), local: localSide, remote: remoteSide, suggested: suggestion(localSide, remoteSide) });
+      const remoteSide: JourneySide = {
+        ...theirs,
+        where: elsewhere ? (elsewhere.name === deviceName() ? `Other ${elsewhere.name}` : elsewhere.name) : 'The cloud',
+        sent: elsewhere ? Date.now() - (state.now - elsewhere.at) : undefined,
+      };
+      const choice = await this.deps.chooseJourney({
+        hero: mine.name ?? theirs.name ?? hero.base.replace(/_/g, ' '),
+        inStep: this.account.inStep?.[hero.base],
+        local: localSide,
+        remote: remoteSide,
+        suggested: suggestion(localSide, remoteSide),
+      });
       if (!choice) return false;
       chosen.set(hero.base, choice);
     }
@@ -672,6 +699,7 @@ export class CloudSync {
     this.account.session = undefined;
     this.account.synced = undefined;
     this.account.failing = undefined;
+    this.account.inStep = undefined;
     saveAccount(this.account);
     this.leases = {};
     this.inStep.clear();

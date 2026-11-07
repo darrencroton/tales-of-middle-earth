@@ -28,7 +28,7 @@ import { isHostile, isNeutral, LEAD_LINES, leadInMessages, newMessages, type Gam
 import { acquireSessionLock } from './saves.ts';
 import { CloudSync } from './cloud/sync.ts';
 import { saveBase } from './play/adventurers.ts';
-import { chooseJourney, CloudMenu, cloudLine, confirmTakeover, openLost, openTurnOn, otherDevice } from './ui/cloud.ts';
+import { chooseJourney, clockTime, CloudMenu, cloudLine, confirmTakeover, openLost, openTurnOn, otherDevice } from './ui/cloud.ts';
 import { Backup } from './backup.ts';
 import { Updates } from './updates.ts';
 import { ANIMATION_FPS, applyTextSize, EFFECT_DELAY, loadSettings, saveSettings, type Settings } from './settings.ts';
@@ -1788,7 +1788,8 @@ const heroes = new Heroes({
   cloudNote: (save) => {
     if (!cloud.enabled) return null;
     const lease = cloud.elsewhere(save);
-    const state = cloud.synced(save) ? 'Synced' : 'Waiting to sync';
+    const at = cloud.syncedAt(save);
+    const state = cloud.synced(save) ? (at ? `Synced ${clockTime(at)}` : 'Synced') : at ? `Waiting to sync (last synced ${clockTime(at)})` : 'Waiting to sync';
     return lease ? `${state} · last played on your ${otherDevice(lease)}` : state;
   },
 });

@@ -22,6 +22,17 @@ export function ago(ms: number): string {
   return days === 1 ? 'yesterday' : `${days} days ago`;
 }
 
+/** A moment by the clock: "today, 14:02", "yesterday, 09:15", "Sat 7 Nov, 14:02". */
+export function clockTime(ms: number, now = Date.now()): string {
+  const date = new Date(ms);
+  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((day(new Date(now)) - day(date)) / 86_400_000);
+  if (days === 0) return `today, ${time}`;
+  if (days === 1) return `yesterday, ${time}`;
+  return `${date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}, ${time}`;
+}
+
 /** What the cloud is doing, in a few words. */
 export function cloudLine(cloud: CloudSync, now = Date.now()): string {
   const { state, synced, message } = cloud.status;
@@ -169,16 +180,18 @@ export function openTurnOn(sheets: Sheets, turnOn: (existing: boolean) => void, 
   });
 }
 
-function side(where: string, facts: JourneySide): HTMLElement {
+function side(where: string, facts: JourneySide, synced: number | undefined): HTMLElement {
   const column = el('div', `journey-side${facts.fallen ? ' fallen' : ''}`);
   column.append(el('h3', undefined, where));
   const list = el('dl', 'hero-facts');
   const fact = (label: string, value: string | undefined) => {
     if (value) list.append(el('dt', undefined, label), el('dd', undefined, value));
   };
+  const saved = facts.saved ? Date.parse(facts.saved) : NaN;
   fact('Hero', facts.line);
   fact('Where', facts.place);
-  fact('Played', facts.saved ? ago(Date.now() - Date.parse(facts.saved)) : undefined);
+  fact('Saved', Number.isFinite(saved) ? clockTime(saved) : undefined);
+  fact('Synced', synced ? clockTime(synced) : undefined);
   fact('State', facts.fallen ? 'Fallen' : 'Alive');
   column.append(list);
   return column;
@@ -194,11 +207,11 @@ export function chooseJourney(sheets: Sheets, choice: JourneyChoice): Promise<'l
       resolve(value);
     };
     const body = el('div', 'journey');
-    body.append(
-      el('p', undefined, `${choice.hero} was played here and on ${choice.remote.where === 'The cloud' ? 'another device' : `your ${choice.remote.where.replace(/^Other /, 'other ')}`} since they last met. One journey goes on; the other is lost.`),
-    );
+    const there = choice.remote.where === 'The cloud' ? 'another device' : `your ${choice.remote.where.replace(/^Other /, 'other ')}`;
+    const since = choice.inStep ? `they were last in sync, ${clockTime(choice.inStep)}` : 'they were last in sync';
+    body.append(el('p', undefined, `${choice.hero} was played here and on ${there} since ${since}. One journey goes on; the other is lost.`));
     const sides = el('div', 'journey-sides');
-    sides.append(side(choice.local.where, choice.local), side(choice.remote.where, choice.remote));
+    sides.append(side(choice.local.where, choice.local, choice.inStep), side(choice.remote.where, choice.remote, choice.remote.sent));
     body.append(sides);
     const keep = (where: string) => `Keep ${where.replace(/^(This|Other) /, (w) => w.toLowerCase())}'s`;
     sheets.open({
@@ -227,7 +240,7 @@ export function confirmTakeover(sheets: Sheets, hero: string, lease: Lease, ageM
     const body = el('div', 'prose');
     const there = otherDevice(lease);
     body.append(
-      el('p', undefined, `${hero} was being played on your ${there} ${ago(ageMs)}.`),
+      el('p', undefined, `${hero} was being played on your ${there}, which last synced ${clockTime(Date.now() - ageMs)} (${ago(ageMs)}).`),
       el('p', undefined, `Continue here instead? Anything since their last save on the ${there} will be lost.`),
     );
     sheets.open({
