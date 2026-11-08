@@ -237,7 +237,7 @@ export class Engine {
     return mod._web_set_random_quests(count) !== 0;
   }
 
-  /** Chooses Adventure mode (three lives) or Roguelike (one) for the hero being created; false once the game has begun. */
+  /** Chooses Adventure mode (a return from every death) or Roguelike (one life) for the hero being created; false once the game has begun. */
   setAdventure(on: boolean): boolean {
     const mod = this.running();
     if (!mod) return false;

@@ -1,7 +1,6 @@
 import { inPlace } from '../hud.ts';
 import { DEEDS, type Chronicle, type Deed } from '../play/chronicle.ts';
 import { godTitle, NO_GOD } from '../play/gods.ts';
-import { returnsText } from '../play/lives.ts';
 import { ABANDONED, dayOf, skillValue, type Memorial, type MemorialFoe, type MemorialItem, type MemorialLine } from '../play/memorial.ts';
 import { readableColour } from '../render/colour.ts';
 import { FEET_PER_LEVEL, type ScoreEntry } from '../render/snapshot.ts';
@@ -94,7 +93,7 @@ function taleGrid(tale: Chronicle): HTMLElement {
   if (tale.mightiest) grid.append(stat('Mightiest foe', titleName(tale.mightiest.name)));
   if (tale.uniques.length) grid.append(stat('Legends slain', String(tale.uniques.length)));
   if (tale.peakGold) grid.append(stat('Most gold', count(tale.peakGold)));
-  if (tale.returns) grid.append(stat('Returned from death', returnsText(tale.returns)));
+  if (tale.deaths) grid.append(stat('Deaths', count(tale.deaths)));
   return grid;
 }
 

@@ -1,4 +1,4 @@
-import { LIVES } from '../play/lives.ts';
+import { timesText } from '../play/death.ts';
 import { MODE_TEXT, questChoices, questsText, RUN_OPTION_TEXT, type RunOptions } from '../flow/runoptions.ts';
 import { el } from './dom.ts';
 import { segmented } from './menus.ts';
@@ -11,20 +11,24 @@ interface RunChanges {
 }
 
 /**
- * The rules of a run: its lives, its random quests and tome2's birth
+ * The rules of a run: its mode, its random quests and tome2's birth
  * options, as the last creation screen sets them (`change`). Read-only once
- * the adventure has begun (with the `lives` left): the choice made stands
+ * the adventure has begun (with the `deaths` so far): the choice made stands
  * out and the others are faded.
  */
-export function runElements(run: RunOptions, quests: number, { change, lives }: { change?: RunChanges; lives?: number } = {}): HTMLElement[] {
+export function runElements(
+  run: RunOptions,
+  quests: number,
+  { change, deaths }: { change?: RunChanges; deaths?: number } = {},
+): HTMLElement[] {
   const mode = run.adventure ? 'adventure' : 'roguelike';
   const modeBox = el('section', 'run-mode');
-  const modes = segmented('Lives', [['adventure', MODE_TEXT.adventure.label], ['roguelike', MODE_TEXT.roguelike.label]], mode, (value) =>
+  const modes = segmented('When you fall', [['adventure', MODE_TEXT.adventure.label], ['roguelike', MODE_TEXT.roguelike.label]], mode, (value) =>
     change?.adventure(value === 'adventure'),
   );
   if (!change) for (const button of modes.querySelectorAll('button')) button.disabled = true;
-  modeBox.append(el('h4', undefined, 'Lives'), modes, el('p', 'muted', MODE_TEXT[mode].detail));
-  if (run.adventure && lives !== undefined) modeBox.append(el('p', 'run-lives', `${lives} of ${LIVES} lives left.`));
+  modeBox.append(el('h4', undefined, 'When you fall'), modes, el('p', 'muted', MODE_TEXT[mode].detail));
+  if (run.adventure && deaths !== undefined) modeBox.append(el('p', 'run-deaths', deaths ? `Returned from death ${timesText(deaths)}.` : 'Not yet fallen.'));
   const unusual = run.options.some((o) => o.name === 'unusualRooms' && o.on);
   const questBox = el('section', 'run-quests');
   questBox.append(el('h4', undefined, 'Random quests'));

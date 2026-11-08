@@ -88,10 +88,10 @@ Shop, home, museum (walk in, or Enter shop on the door)
 Other buildings ─────────────── native panel: their services as rows · Exit
                                 └── A service ───── its answer as a card (a quest, a rumour, the race legends);
                                                     a service that opens a file opens the reader
-Death with a life to spare ──── Halls of Waiting (map card over a grey veil: Return to the battlefield · Return
-  (Adventure mode)              to safety · Accept death → confirmation) → the map, with a banner; or, accepted, as below
+Death (Adventure mode) ──────── Halls of Waiting (map card over a grey veil: Return to the battlefield · Return
+  (every time)                  to safety · Accept death → confirmation) → the map, with a banner; or, accepted, as below
 Death ──────────────────────── death card → end-of-game summary (full screen) → Hall of Fame (full screen)
-                                └── a hero ──────── card: how it ended, when, deepest, score; Begin anew · Look back
+                                └── a hero ──────── card: how it ended, when, deepest, mode, deaths, score; Begin anew · Look back
                                     └── Fallen hero panel, tabs Hero · Gear · Skills · Last moments
                                         └── Item / foe  card
 Title ──────────────────────── Continue as (last hero, straight into the game) · Game Roster · New character
@@ -103,7 +103,7 @@ Title ──────────────────────── C
                                 · Soundtrack (panel) · Hall of Fame (panel → a hero: card as after death,
                                   with Remove (→ confirmation))
 Character creation ─────────── director screens (full screen, Back/Random/Choose), name card;
-                               Ready to begin: the hero, then Your adventure (lives, random quests, birth options)
+                               Ready to begin: the hero, then Your adventure (mode, random quests, birth options)
 ```
 
 ## 2. Audit findings (before this redesign)

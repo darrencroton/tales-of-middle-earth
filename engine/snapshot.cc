@@ -108,7 +108,7 @@ void web_scratch_term_end();
 void display_weapon_damage(object_type *o_ptr);
 void display_ammo_damage(object_type *o_ptr);
 
-/* Map memory (engine/memory.cc), run options (engine/runoptions.cc) and lives (engine/adventure.cc). */
+/* Map memory (engine/memory.cc), run options (engine/runoptions.cc) and Adventure mode (engine/adventure.cc). */
 void web_memory_tick();
 int level_quest();
 bool level_quest_open();
@@ -1395,6 +1395,12 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	if (delay_override >= 0 && options) options->delay_factor = delay_override;
 	/* The hero is drawn as their race's symbol, as in the snapshot, never as a digit for their health. */
 	if (options) options->player_char_health = false;
+	/* The frontend saves on arriving on another level; tome2's own autosaves stay off. */
+	if (options)
+	{
+		options->autosave_l = false;
+		options->autosave_t = false;
+	}
 	web_memory_tick();
 	web_run_options_tick();
 	web_adventure_tick();
@@ -2340,7 +2346,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_character_json()
 }
 
 /*
- * Returns the Hall of Fame (the scores file) as JSON, best first.
+ * Returns the Hall of Fame (the scores file) as JSON, best first, with each
+ * entry's deaths returned from and its mode.
  */
 EMSCRIPTEN_KEEPALIVE char const *web_scores_json()
 {
@@ -2395,6 +2402,9 @@ EMSCRIPTEN_KEEPALIVE char const *web_scores_json()
 		w.field("race", race);
 		w.field("cls", cls);
 		w.field("points", atol(score.pts));
+		/* engine/adventure.cc keeps the deaths and the mode in fields tome2 leaves unused. */
+		w.field("deaths", atoi(field(score.unused_2, sizeof(score.unused_2)).c_str()));
+		w.field("adventure", atoi(field(score.unused_3, sizeof(score.unused_3)).c_str()));
 		w.field("gold", atol(score.gold));
 		w.field("turns", atol(score.turns));
 		w.field("day", field(score.day, sizeof(score.day)));

@@ -123,6 +123,7 @@ set(TOME_LINK_FLAGS
 	-Wl,--wrap=getpwuid
 	-Wl,--wrap=_Z11save_playerv
 	-Wl,--wrap=_Z11load_playerRK12program_args
+	-Wl,--wrap=_Z13highscore_addiP10high_score
 	-Wl,--wrap=_Z12load_dungeonRKNSt3__212basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE
 	-Wl,--wrap=_ZN8Messages3addERKNSt3__212basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEEh
 	"SHELL:--preload-file ${TOME_LIB_DIR}@/lib"

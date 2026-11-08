@@ -495,7 +495,7 @@ describe('file viewer headings', () => {
 
 describe('hall of fame', () => {
   const entry = (name: string, level: number, turns: number, how = 'a Cave spider', depth = 3) => ({
-    name, race: 'Hobbit', cls: 'Rogue', points: 100, gold: 10, turns, day: '10/27/26', level, maxLevel: level, depth, maxDepth: depth, quest: 0, how,
+    name, race: 'Hobbit', cls: 'Rogue', points: 100, deaths: 0, adventure: 1, gold: 10, turns, day: '10/27/26', level, maxLevel: level, depth, maxDepth: depth, quest: 0, how,
   });
 
   it('describes how each hero fell', () => {

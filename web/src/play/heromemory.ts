@@ -19,6 +19,15 @@ export interface LevelState {
   memoryPos: number;
 }
 
+/**
+ * Whether going from the level `from` to `to` (`LevelState.key`) is a move to another level: down or up, into or out
+ * of a dungeon, a quest's own level or the world map. Not the first level seen after a game is loaded (`from` null),
+ * nor walking on into the next area of the land.
+ */
+export function movedLevel(from: string | null, to: string): boolean {
+  return from !== null && from !== to && !(from.startsWith('land:') && to.startsWith('land:'));
+}
+
 function newLevelState(): LevelState {
   return { key: null, depth: -1, keepsVisits: false, explore: new LevelExploration(), memoryTurn: -1, memoryPos: -1 };
 }
@@ -29,8 +38,11 @@ interface HeroMemoryDeps {
   /** Where the player is (`engine.place()`, as last read). */
   place(): Place | null;
   state(): GameState | null;
-  /** The hero has entered another level (an exploration ends with the level it explored). */
-  onLevel(): void;
+  /**
+   * The hero has entered another level (an exploration ends with the level it explored); `moved` when they went
+   * there from one seen in this game, other than the next area of the land (`movedLevel`).
+   */
+  onLevel(moved: boolean): void;
   /** Grids tome2 had forgotten were marked again: the map is to be drawn again. */
   changed(): void;
 }
@@ -117,7 +129,7 @@ export class HeroMemoryKeeper {
     this.persist();
     const heading = this.headingInto(next);
     if (this.memory && heading) this.store.setHeading(this.memory, heading);
-    this.deps.onLevel();
+    this.deps.onLevel(movedLevel(this.current.key, key));
     this.current = { ...newLevelState(), key, depth: next.depth, keepsVisits: key.startsWith('land:') || !!next.kept };
     this.landMemory = null;
     if (this.memory && this.current.keepsVisits) for (const cell of this.memory.visited[key] ?? []) this.current.explore.skip.add(cell);

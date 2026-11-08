@@ -72,7 +72,7 @@ test('the run is set up under the hero on the last creation screen, and the game
       await expect(card).toBeVisible();
       await expect(card.locator('.run-quests .segment.selected')).toHaveText('20');
       expect((await page.evaluate(() => window.__tome!.engine.runOptions()))?.drawn).toBeGreaterThan(10);
-      /* A new hero has three lives and small levels unless the player chooses otherwise. */
+      /* A new hero plays Adventure mode with small levels unless the player chooses otherwise. */
       const modes = card.locator('.run-mode');
       await expect(modes.locator('.segment.selected')).toHaveText('Adventure');
       await modes.locator('.segment', { hasText: 'Roguelike' }).click();
@@ -115,7 +115,7 @@ test('the run is set up under the hero on the last creation screen, and the game
   const rules = page.locator('.adventure-rules');
   await expect(rules).toContainText('Chosen when Planner was created');
   expect(run?.adventure).toBe(0);
-  expect((await page.evaluate(() => window.__tome!.engine.gameState()?.player))?.lives).toBe(0);
+  expect((await page.evaluate(() => window.__tome!.engine.gameState()?.player))?.deaths).toBe(0);
   await expect(rules.locator('.run-mode .segment.selected')).toHaveText('Roguelike');
   await expect(rules.locator('.run-quests .segment.selected')).toHaveText(String(run?.drawn));
   await expect(rules.locator('.segment:not([disabled])')).toHaveCount(0);
@@ -307,7 +307,7 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('.sheet .fame-row')).toHaveCount(3);
   await expect(page.locator('.sheet .fame-row').nth(1)).toContainText("Killed by Grip, Farmer Maggot's Dog on the surface");
   await expect(page.locator('.sheet')).toContainText('Career');
-  await expect(page.locator('.sheet .deed')).toHaveCount(16);
+  await expect(page.locator('.sheet .deed')).toHaveCount(17);
   await expect(page.locator('.sheet .stat', { hasText: 'Fallen' })).toContainText('0');
   await page.locator('.sheet .fame-row').first().click();
   await expect(page.locator('.sheet-fame-hero .sheet-title')).toHaveText('Bilbo');
@@ -350,12 +350,16 @@ async function fallToWyrm(page: Page, until: string): Promise<void> {
   });
 }
 
-test('a hero in Adventure mode returns from death twice, and the third death is told and can be looked back on', async ({ page }) => {
+test('a hero in Adventure mode returns from every death until they accept it, and the end is told and can be looked back on', async ({ page }) => {
   test.setTimeout(300_000);
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Doomed');
+  /* Arriving on another level saves the game. */
+  const saved = () => page.evaluate(() => (window.__tome!.engine.fs!.stat('/home/web_user/.tome/2.4/save/Doomed') as unknown as { mtime: Date }).mtime.getTime());
+  const before = await saved().catch(() => 0);
   await jumpToLevel(page, 1);
+  await expect.poll(() => saved().catch(() => 0)).toBeGreaterThan(before);
   /* The hero falls in open ground, so there is somewhere off the wyrm's reach to return to (a staircase can sit in a dead end). */
   const openNeighbours = () =>
     page.evaluate(() => {
@@ -379,13 +383,13 @@ test('a hero in Adventure mode returns from death twice, and the third death is 
     page.evaluate(() => {
       const tome = window.__tome!;
       const player = tome.engine.gameState()!.player!;
-      return { lives: player.lives, dead: player.dead, chp: player.chp, mhp: player.mhp, depth: player.depth, town: tome.engine.place()?.town ?? 0 };
+      return { deaths: player.deaths, dead: player.dead, chp: player.chp, mhp: player.mhp, depth: player.depth, town: tome.engine.place()?.town ?? 0 };
     });
 
   /* The first fall: the Halls of Waiting, with the Mandos theme behind them. */
   const between = page.locator('.prompt-card.between');
   await fallToWyrm(page, '.prompt-card.between');
-  await expect(between).toContainText('Two lives remain');
+  await expect(between).toContainText('Your first time in these halls.');
   await expect(between.locator('.between-choice.primary')).toContainText('Return to the battlefield');
   await expect(between.locator('.between-choice', { hasText: 'Return to safety' })).toContainText('Wake in Bree,');
   await expect(page.locator('#app')).toHaveClass(/between/);
@@ -399,10 +403,11 @@ test('a hero in Adventure mode returns from death twice, and the third death is 
   /* Back where they fell, whole again, and set down off the cell beside the wyrm (which may close in again before the first command): the kept level is as it was. */
   await between.locator('.between-choice.primary').click();
   await waitAtCommand(page);
-  expect(await hero()).toMatchObject({ lives: 2, dead: 0, depth: 1 });
+  expect(await hero()).toMatchObject({ deaths: 1, dead: 0, depth: 1 });
   const back = await hero();
   expect(back.chp).toBe(back.mhp);
   await expect(page.locator('.feel-banner')).toContainText('Returned from death');
+  await expect(page.locator('.feel-banner')).toContainText('Sent back once');
   expect(await where()).not.toEqual(fell);
   const wyrmReach = await page.evaluate(() => {
     const tome = window.__tome!;
@@ -414,33 +419,45 @@ test('a hero in Adventure mode returns from death twice, and the third death is 
 
   /* The second fall: accepting death is asked once more, and going back from it keeps the choice open. */
   await fallToWyrm(page, '.prompt-card.between');
-  await expect(between).toContainText('One life remains: your last');
+  await expect(between).toContainText('Once before you stood here.');
   await between.locator('.between-choice.danger').click();
   await expect(page.locator('.prompt-card')).toContainText('Accept death?');
   await page.locator('.prompt-card .card-button', { hasText: 'Go back' }).click();
   await between.locator('.between-choice', { hasText: 'Return to safety' }).click();
   await waitAtCommand(page);
-  expect(await hero()).toMatchObject({ lives: 1, dead: 0, depth: 0, town: 1 });
-  /* The return is saved at once, with the lives left and the town the hero woke in. */
+  expect(await hero()).toMatchObject({ deaths: 2, dead: 0, depth: 0, town: 1 });
+  /* The return is saved at once, with the deaths and the town the hero woke in. */
   await expect
     .poll(() => page.evaluate(() => new TextDecoder().decode(window.__tome!.engine.fs!.readFile('/home/web_user/.tome/2.4/save/Doomed.adventure')).trim()))
     .toBe('1 2 1');
 
-  /* The third fall is the last. */
-  const death = page.locator('.prompt-card.death');
-  await fallToWyrm(page, '.prompt-card.death');
-  await expect(death).toContainText('All 3 lives are spent.');
-  await expect(death).toContainText('You have died');
+  /* The character sheet and Settings count the deaths. */
+  await page.locator('#hud .hud-player .name').click();
+  await expect(page.locator('.sheet .stat', { hasText: 'Deaths' })).toContainText('2');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+  await page.locator('#toolbar [data-action="menu"]').click();
+  await page.locator('.sheet .row-button', { hasText: 'Settings' }).click();
+  await expect(page.locator('.adventure-rules .run-deaths')).toHaveText('Returned from death twice.');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-layer')).toBeHidden();
+
+  /* There is no last life: the third fall asks again, and only accepting death ends the adventure. */
+  await fallToWyrm(page, '.prompt-card.between');
+  await expect(between).toContainText('Twice before you stood here.');
   /* The wyrm's chaos can leave the hero seeing it as something else: tome2 records the killer as seen. */
   const killer = await page.evaluate(() => window.__tome!.engine.gameState()?.player?.diedFrom ?? '');
   expect(killer).not.toBe('');
-  await expect(death).toContainText(killer);
-  await expect(death.locator('.card-button')).toHaveCount(1);
-  await death.locator('.card-button.primary').click();
-
+  await expect(between).toContainText(killer);
+  await between.locator('.between-choice.danger').click();
+  await page.locator('.prompt-card .card-button.danger', { hasText: 'Accept death' }).click();
+  /* tome2 asked to dump the screen as the hero fell, before the Halls, so the end follows at once (after wizard mode's Die?). */
   const finish = page.locator('#toolbar [data-action="finish"]');
   await untilVisible(page, finish);
+  expect(await hero()).toMatchObject({ deaths: 2, dead: 1 });
   await expect(page.locator('.termview')).toContainText('Your tale');
+  await expect(page.locator('.termview .stat', { hasText: 'Deaths' })).toContainText('2');
   await page.locator('#toolbar [data-action="fallen"]').click();
   await expect(page.locator('.sheet-fallen .fallen-cause')).toContainText(killer);
   await page.keyboard.press('Escape');
@@ -457,6 +474,12 @@ test('a hero whose adventure ended can be looked back on and begun anew as a new
   await waitForEngine(page);
   await createCharacter(page, 'Anew');
   const stats = await page.evaluate(() => window.__tome!.engine.character()!.stats.map((s) => s.use));
+  /* Three deaths returned from (as kept beside the savefile, which wizard mode would leave unscored) count in the score. */
+  await saveAndQuit(page);
+  await waitForEngine(page);
+  await page.evaluate(() => window.__tome!.engine.fs!.writeFile('/home/web_user/.tome/2.4/save/Anew.adventure', new TextEncoder().encode('1 3 0\n')));
+  await continueAs(page, 'Anew');
+  expect((await page.evaluate(() => window.__tome!.engine.gameState()?.player))?.deaths).toBe(3);
 
   await abandonFromKeyboard(page);
   const finish = page.locator('#toolbar [data-action="finish"]');
@@ -464,9 +487,13 @@ test('a hero whose adventure ended can be looked back on and begun anew as a new
   await finish.click();
   await expect(page.locator('.termview .fame-row')).toHaveCount(1);
   await expect(page.locator('.termview .fame-row').first()).toHaveClass(/current/);
+  await expect(page.locator('.termview .fame-row').first()).toContainText('Three deaths');
+  const [score] = await page.evaluate(() => window.__tome!.engine.scores());
+  expect(score).toMatchObject({ deaths: 3, adventure: 1 });
   await page.locator('.termview .fame-row').first().click();
   await expect(page.locator('.sheet-fame-hero .sheet-title')).toHaveText('Anew');
   await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText('Abandoned in Bree');
+  await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText('Deaths3');
   await expect(page.locator('.sheet-fame-hero .sheet-action')).toHaveText(['Begin anew', 'Look back']);
   await page.locator('.sheet-fame-hero [data-action="look"]').click();
   await expect(page.locator('.sheet-fallen .fallen-cause')).toHaveText('Adventure abandoned');
@@ -483,6 +510,8 @@ test('a hero whose adventure ended can be looked back on and begun anew as a new
   await expect(page.locator('#title-screen')).toBeHidden({ timeout: 30_000 });
   await expect(page.locator('#hud .hud-player .name')).toHaveText('Anew II');
   expect(await page.evaluate(() => window.__tome!.engine.character()!.stats.map((s) => s.use))).toEqual(stats);
+  /* The new run keeps the mode, with no deaths. */
+  expect(await page.evaluate(() => window.__tome!.engine.gameState()?.player)).toMatchObject({ adventure: 1, deaths: 0 });
 
   await saveAndQuit(page);
   await waitForEngine(page);

@@ -174,13 +174,13 @@ export interface PlayerState {
   dead?: number;
   /** What killed the hero. */
   diedFrom?: string;
-  /** 1 in Adventure mode (three lives), 0 in Roguelike (one). */
+  /** 1 in Adventure mode (a hero may return from every death), 0 in Roguelike (one life). */
   adventure?: number;
-  /** Lives left in Adventure mode, this one included; 0 in Roguelike. */
-  lives?: number;
+  /** Deaths returned from in Adventure mode; 0 in Roguelike. */
+  deaths?: number;
   /**
    * Once dead: `choice` when the hero will be asked whether to return
-   * (Adventure mode, a life to spare), `rescue` when tome2 itself saves them
+   * (Adventure mode, unless death was accepted), `rescue` when tome2 itself saves them
    * (the Blood of Life, the One Ring's hold), `final` otherwise.
    */
   fate?: 'choice' | 'rescue' | 'final';
@@ -300,7 +300,12 @@ export interface ScoreEntry {
   name: string;
   race: string;
   cls: string;
+  /** The score, with the deaths returned from counted. */
   points: number;
+  /** Deaths returned from before the end. */
+  deaths: number;
+  /** 1 in Adventure mode, 0 in Roguelike. */
+  adventure: number;
   gold: number;
   turns: number;
   /** Date as tome2 writes it: mm/dd/yy. */

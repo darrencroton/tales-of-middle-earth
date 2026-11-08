@@ -43,7 +43,7 @@ import { GameFeel, READ_MS, type QuestEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
 import { diggerWorn, INVEN_WIELD, itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { ABANDONED, hasFallen } from './play/memorial.ts';
-import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/lives.ts';
+import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/death.ts';
 import { CharacterPanel, type CharacterScreen } from './ui/character.ts';
 import { companionsLater, openCompanions } from './ui/companions.ts';
 import { openKnowledge } from './ui/knowledge.ts';
@@ -169,10 +169,13 @@ function newRunState() {
     placeAt: 0,
     placePos: { x: -1, y: -1 },
     inStore: false,
-    /** The lives the hero had when asked whether to return from death (`followReturn`), else null. */
-    askedLives: null as number | null,
-    /** The hero has returned from death: the game is saved at the next command prompt, as tome2 saves a death at once. */
-    saveOnReturn: false,
+    /** The deaths the hero had when asked whether to return from death (`followReturn`), else null. */
+    askedDeaths: null as number | null,
+    /**
+     * The game is saved at the next quiet command prompt: after a return from death, as tome2 saves a death at once,
+     * and on arriving on another level (`movedLevel`).
+     */
+    saveSoon: false,
     quitting: false,
     /** The hero whose adventure is being abandoned through tome2's quit: once the game has closed, what the frontend keeps of them is forgotten. */
     abandoning: null as string | null,
@@ -647,10 +650,11 @@ function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
 
 /*
  * Entries of tome2's options menu left out: what the app sets itself (Settings → Animation sets the delay; the map's
- * edge pulses at low health), what means nothing here (windows, option files), the Automatizer (a keyboard editor)
- * and the menu's own key prompt.
+ * edge pulses at low health; the game saves on arriving on another level), what means nothing here (windows, option
+ * files), the Automatizer (a keyboard editor) and the menu's own key prompt.
  */
-const OWNED_OPTIONS = /\((D|H|T|W|U|O)\) (Base Delay Factor|Hitpoint Warning|Automatizer|Window Flags|Dump Options setting|Load Options setting)|^Command:/;
+const OWNED_OPTIONS =
+  /\((A|D|H|T|W|U|O)\) (Autosave Options|Base Delay Factor|Hitpoint Warning|Automatizer|Window Flags|Dump Options setting|Load Options setting)|^Command:/;
 
 /** Flips a tome2 option: moves its cursor to the row, then answers y or n. */
 function toggleOption(option: OptionBlock, options: OptionBlock[]): void {
@@ -679,11 +683,11 @@ function updatePromptCard(): void {
   if (kind === 'yesno' && /Dump the screen\?|Make a last screenshot\?/.test(rowZeroText()) && quiet) {
     const player = engine.gameState(0)?.player;
     if (player && !hasFallen(player)) {
-      /* A life to return with, or tome2 saves the hero: no death card, and no screen dump. */
+      /* The hero may return, or tome2 saves them: no death card, and no screen dump. */
       promptCard.hide();
       send(keyCodes('n'));
     } else {
-      promptCard.showDeath(player?.diedFrom ?? '', !!player?.adventure && player.lives === 1);
+      promptCard.showDeath(player?.diedFrom ?? '');
     }
     return;
   }
@@ -691,7 +695,7 @@ function updatePromptCard(): void {
     const player = engine.gameState(0)?.player;
     promptCard.showReturn({
       cause: player?.diedFrom ?? '',
-      lives: (player?.lives ?? 1) - 1,
+      deaths: player?.deaths ?? 0,
       battlefield: battlefieldText(game.place),
       safety: player?.closed ? { refusal: SAFETY_CLOSED[player.closed] } : { text: safetyText(player?.haven ?? '') },
       refuse,
@@ -867,12 +871,12 @@ function refresh(): void {
     game.inStore = !!shop.shown;
     audio.setView(game.ended ? 'gameover' : state.player?.dead && state.player.fate === 'choice' ? 'between' : 'game');
     if (state.player) {
-      const follow = followReturn(game.askedLives, state.player);
-      game.askedLives = follow.asked;
+      const follow = followReturn(game.askedDeaths, state.player);
+      game.askedDeaths = follow.asked;
       if (follow.returned) {
-        feel.play({ kind: 'returned', lives: state.player.lives ?? 0 });
+        feel.play({ kind: 'returned', deaths: state.player.deaths ?? 0 });
         audio.cue('returned');
-        game.saveOnReturn = true;
+        game.saveSoon = true;
       }
     }
     abilities.hearGear(snap.turn);
@@ -1605,8 +1609,6 @@ const engine = new Engine(buffer, {
         },
       );
     }
-    /* After the sync above, which is for a save already written: this one syncs at the next command prompt. */
-    if (game.saveOnReturn && engine.pendingKeys === 0 && saveGame('silent')) game.saveOnReturn = false;
     if (engine.pendingKeys > 0) {
       requestFrame();
       return;
@@ -1645,6 +1647,8 @@ const engine = new Engine(buffer, {
       game.quitting = false;
       game.abandoning = null;
     }
+    /* Last, once a macro or journey has had its step: its own sync follows at the next command prompt. */
+    if (game.saveSoon && engine.pendingKeys === 0 && !macros.running && !journeys.active && saveGame('silent')) game.saveSoon = false;
     requestFrame();
   },
   onKey(code) {
@@ -1775,8 +1779,9 @@ const memory = new HeroMemoryKeeper({
   adventurers: heroes.adventurers,
   place: () => game.place,
   state: () => game.lastState,
-  onLevel: () => {
+  onLevel: (moved) => {
     if (journeys.exploring) journeys.stop(null, 'level');
+    if (moved) game.saveSoon = true;
   },
   changed: () => {
     dirty = true;
@@ -2049,7 +2054,7 @@ function openSettingsSheet(): void {
 function adventureRules(): AdventureRules | null {
   const player = game.lastState?.player;
   const run = inGame() ? engine.runOptions() : null;
-  return player?.name && run ? { hero: player.name, run, lives: player.lives ?? 0 } : null;
+  return player?.name && run ? { hero: player.name, run, deaths: player.deaths ?? 0 } : null;
 }
 
 /** Applies the settings that live in CSS: text size and animation. */

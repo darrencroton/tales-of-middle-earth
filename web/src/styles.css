@@ -455,26 +455,8 @@ html.keyboard-open .sheet-layer {
   line-height: 1.45;
 }
 
-.between-lives {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
+.between-deaths {
   margin: 0 0 0.8rem;
-  color: #e6edf7;
-}
-
-.between-lives .life {
-  text-shadow: 0 0 8px rgb(200 220 255 / 0.7);
-}
-
-.between-lives .life.spent {
-  color: var(--faint);
-  text-shadow: none;
-}
-
-.between-lives-text {
-  margin-left: 0.35rem;
   color: var(--muted);
   font-size: var(--fs-small);
 }
@@ -2905,7 +2887,7 @@ html.keyboard-tight .prompt-card.text .card-title {
   margin: 0 0 0.3rem;
 }
 
-.run-lives {
+.run-deaths {
   color: var(--fg);
 }
 
