@@ -222,6 +222,9 @@ test('items are dropped by the number chosen, used, wielded and taken off from t
 
   await dismissMore(page);
   await page.locator('#toolbar [data-action="inventory"]').click();
+  /* What was used heads the pack under Recent, highlighted first, as in the Magic panel. */
+  await expect(page.locator('.sheet .recent h3')).toHaveText('Recent');
+  await expect(page.locator('.sheet .recent-button.is-active')).toContainText('Ration');
   await page.locator('.sheet .item-row', { hasText: /Sword|Dagger|Axe|Mace|Spear|Whip/ }).first().click();
   /* A weapon's card tells the blows and damage it would give the hero, as tome2's examining does. */
   await expect(page.locator('.sheet-item .sheet-section h3', { hasText: 'Average damage a turn' })).toBeVisible();

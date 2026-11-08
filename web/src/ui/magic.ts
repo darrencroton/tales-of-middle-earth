@@ -6,9 +6,6 @@ import {
   itemRecent,
   magicArts,
   recentKey,
-  recentLabel,
-  recentMagicItem,
-  recentSource,
   rememberRecent,
   skillActionName,
   techniques,
@@ -17,11 +14,12 @@ import {
   type RecentAction,
 } from '../play/recent.ts';
 import { capitalise, stripArticle } from '../play/text.ts';
-import type { InventoryState, ItemState, MagicItem, PowerInfo, SpellInfo, SpellState } from '../render/snapshot.ts';
+import type { ItemState, MagicItem, PowerInfo, SpellInfo, SpellState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { el, iconText, section, stat } from './dom.ts';
 import { abilityRow, openSpellCard, powerNotes, spellRow } from './inspect.ts';
 import { openItem } from './inventory.ts';
+import { itemState, recentSection } from './recent.ts';
 
 const STORAGE_KEY = 'tome2mobile.recent.v1';
 
@@ -89,26 +87,8 @@ export function magicSpellRow(api: GameApi, spell: SpellInfo, handlers: MagicHan
   return row;
 }
 
-function recentDetail(entry: RecentAction, spells: SpellState | null, carried: Pick<InventoryState, 'pack' | 'equip'>): string {
-  if (entry.kind === 'spell') {
-    const spell = spells?.books.flatMap((b) => b.spells).find((s) => s.name === entry.name);
-    return spell ? `${spell.mana} mana · ${spell.fail}%` : 'Spell';
-  }
-  if (entry.kind === 'path') return recentSource(entry);
-  const item = recentMagicItem(entry, spells, carried);
-  return [entry.verb, item ? itemState(item) : ''].filter(Boolean).join(' · ');
-}
-
 /* What a tap on an item used as magic does. */
 const ITEM_VERBS: Readonly<Record<MagicItem['command'], string>> = { A: 'Activate', a: 'Aim', u: 'Use', z: 'Zap' };
-
-/** Whether an item used as magic is ready: worn only, its charges, charging; empty when that is not known. */
-function itemState(item: MagicItem): string {
-  if (item.wear) return 'Not worn';
-  if (item.charges !== undefined) return item.charges ? `${item.charges} charge${item.charges === 1 ? '' : 's'}` : 'No charges';
-  if (item.charging) return item.command === 'A' ? 'Recharging' : 'Charging';
-  return item.fail === undefined ? '' : 'Ready';
-}
 
 /** The carried or worn item an entry of the spells export's items stands for. */
 function carriedItem(api: GameApi, index: number): ItemState | null {
@@ -248,22 +228,8 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
   const body = el('div', 'magic');
   let initial: HTMLElement | null = null;
 
-  const recent = usableRecents(recents, spells, carried);
-  if (recent.length) {
-    const grid = el('div', 'action-grid recent-grid');
-    for (const entry of recent) {
-      const why = api.castRefusal(entry);
-      const button = el('button', why ? 'action-button recent-button unavailable' : 'action-button recent-button');
-      button.type = 'button';
-      button.dataset.nav = '';
-      button.dataset.key = recentKey(entry);
-      button.append(el('span', 'row-label', recentLabel(entry)), el('span', 'row-hint', recentDetail(entry, spells, carried)));
-      if (why) button.setAttribute('aria-description', why);
-      button.addEventListener('click', () => handlers.run(entry));
-      grid.append(button);
-    }
-    body.append(section('Recent', grid));
-  }
+  const recent = recentSection(api, usableRecents(recents, spells, carried), (entry) => handlers.run(entry));
+  if (recent) body.append(recent);
 
   if (current === 'magic') {
     for (const book of spells?.books ?? []) {
