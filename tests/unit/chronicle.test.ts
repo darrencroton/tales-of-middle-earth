@@ -112,15 +112,6 @@ describe('chronicle', () => {
     assert.equal(c.deaths, 12);
   });
 
-  it('marks reaching level 25 without a death', () => {
-    const career = newCareer();
-    const deathless = newChronicle('Pippin');
-    record(deathless, career, { ...hero, lev: 25, deaths: 0 }, []);
-    assert.ok(newDeeds(deathless, career, new Set()).some((d) => d.id === 'deathless'));
-    const returned = newChronicle('Merry');
-    record(returned, career, { ...hero, lev: 25, deaths: 1 }, []);
-    assert.ok(!newDeeds(returned, career, new Set()).some((d) => d.id === 'deathless'));
-  });
 
   it('gives a tip for the next hero', () => {
     const c = newChronicle('Pippin');

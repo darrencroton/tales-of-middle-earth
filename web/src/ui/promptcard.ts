@@ -1,5 +1,5 @@
 import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, keyCodes as codes, typedAnswer } from '../input/keys.ts';
-import { ordinal, RETURN_KEYS } from '../play/death.ts';
+import { RETURN_KEYS } from '../play/death.ts';
 import { bracketChoices, choiceQuestion, type PromptKind } from '../play/prompts.ts';
 import { el, iconText, leadIn, stepper, type Stepper } from './dom.ts';
 import { cleanPrompt } from './prompttext.ts';
@@ -191,7 +191,7 @@ export class PromptCard {
     if (key === this.renderedKey || `${key}\u0000accept` === this.renderedKey) return;
     this.renderedKey = key;
     this.root.className = 'prompt-card between';
-    const count = el('p', 'between-deaths', `Your ${ordinal(offer.deaths + 1)} death. Returning lowers your score a little.`);
+    const count = el('p', 'between-deaths', `Deaths so far: ${offer.deaths}. Returning lowers your score a little.`);
     const battle = this.choiceButton('Return to the battlefield', offer.battlefield, () => this.answer(codes(RETURN_KEYS.battlefield)), 'primary');
     const offered = offer.safety;
     const safety =

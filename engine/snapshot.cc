@@ -1395,6 +1395,12 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	if (delay_override >= 0 && options) options->delay_factor = delay_override;
 	/* The hero is drawn as their race's symbol, as in the snapshot, never as a digit for their health. */
 	if (options) options->player_char_health = false;
+	/* The frontend saves on arriving on another level; tome2's own autosaves stay off. */
+	if (options)
+	{
+		options->autosave_l = false;
+		options->autosave_t = false;
+	}
 	web_memory_tick();
 	web_run_options_tick();
 	web_adventure_tick();

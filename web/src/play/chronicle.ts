@@ -67,7 +67,6 @@ export const DEEDS: readonly Deed[] = [
   { id: 'hoard', title: 'Dragon’s hoard', text: 'Carry 10,000 gold.', earned: (c) => c.peakGold >= 10000 },
   { id: 'close-call', title: 'Close call', text: 'Fall below a tenth of your health, and live.', earned: (_, k) => k.closeCalls >= 1 },
   { id: 'sent-back', title: 'Sent back', text: 'Return from death to finish what you began.', earned: (c) => c.deaths >= 1 },
-  { id: 'deathless', title: 'Deathless', text: 'Reach level 25 without dying.', earned: (c) => c.peakLevel >= 25 && c.deaths === 0 },
   { id: 'wanderer', title: 'Wanderer', text: 'Set out across the world map.', earned: (_, k) => k.worldMap },
 ];
 

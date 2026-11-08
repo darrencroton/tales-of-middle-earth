@@ -10,19 +10,10 @@ export function isReturnPrompt(rowZero: string): boolean {
 export const RETURN_KEYS = { battlefield: 'b', safety: 's', accept: 'ay' } as const;
 
 const COUNT_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
-const ORDINAL_WORDS = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
 
 /** "No deaths", "One death", "Two deaths", "12 deaths". */
 export function deathsText(deaths: number): string {
   return `${COUNT_WORDS[deaths] ?? String(deaths)} ${deaths === 1 ? 'death' : 'deaths'}`;
-}
-
-/** "first", "second", "11th", "22nd". */
-export function ordinal(n: number): string {
-  if (ORDINAL_WORDS[n]) return ORDINAL_WORDS[n];
-  const teen = n % 100 >= 11 && n % 100 <= 13;
-  const suffix = teen ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th';
-  return `${n}${suffix}`;
 }
 
 /** What returning to the battlefield means from where the hero fell. */

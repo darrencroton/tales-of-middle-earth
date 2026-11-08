@@ -650,10 +650,11 @@ function panelOptions(layout: 'panel' | 'full'): TermViewOptions {
 
 /*
  * Entries of tome2's options menu left out: what the app sets itself (Settings → Animation sets the delay; the map's
- * edge pulses at low health), what means nothing here (windows, option files), the Automatizer (a keyboard editor)
- * and the menu's own key prompt.
+ * edge pulses at low health; the game saves on arriving on another level), what means nothing here (windows, option
+ * files), the Automatizer (a keyboard editor) and the menu's own key prompt.
  */
-const OWNED_OPTIONS = /\((D|H|T|W|U|O)\) (Base Delay Factor|Hitpoint Warning|Automatizer|Window Flags|Dump Options setting|Load Options setting)|^Command:/;
+const OWNED_OPTIONS =
+  /\((A|D|H|T|W|U|O)\) (Autosave Options|Base Delay Factor|Hitpoint Warning|Automatizer|Window Flags|Dump Options setting|Load Options setting)|^Command:/;
 
 /** Flips a tome2 option: moves its cursor to the row, then answers y or n. */
 function toggleOption(option: OptionBlock, options: OptionBlock[]): void {
@@ -1608,8 +1609,6 @@ const engine = new Engine(buffer, {
         },
       );
     }
-    /* After the sync above, which is for a save already written: this one syncs at the next command prompt. */
-    if (game.saveSoon && engine.pendingKeys === 0 && !macros.running && !journeys.active && saveGame('silent')) game.saveSoon = false;
     if (engine.pendingKeys > 0) {
       requestFrame();
       return;
@@ -1648,6 +1647,8 @@ const engine = new Engine(buffer, {
       game.quitting = false;
       game.abandoning = null;
     }
+    /* Last, once a macro or journey has had its step: its own sync follows at the next command prompt. */
+    if (game.saveSoon && engine.pendingKeys === 0 && !macros.running && !journeys.active && saveGame('silent')) game.saveSoon = false;
     requestFrame();
   },
   onKey(code) {
