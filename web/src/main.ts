@@ -171,8 +171,11 @@ function newRunState() {
     inStore: false,
     /** The deaths the hero had when asked whether to return from death (`followReturn`), else null. */
     askedDeaths: null as number | null,
-    /** The hero has returned from death: the game is saved at the next command prompt, as tome2 saves a death at once. */
-    saveOnReturn: false,
+    /**
+     * The game is saved at the next quiet command prompt: after a return from death, as tome2 saves a death at once,
+     * and on arriving on another level (`movedLevel`).
+     */
+    saveSoon: false,
     quitting: false,
     /** The hero whose adventure is being abandoned through tome2's quit: once the game has closed, what the frontend keeps of them is forgotten. */
     abandoning: null as string | null,
@@ -872,7 +875,7 @@ function refresh(): void {
       if (follow.returned) {
         feel.play({ kind: 'returned', deaths: state.player.deaths ?? 0 });
         audio.cue('returned');
-        game.saveOnReturn = true;
+        game.saveSoon = true;
       }
     }
     abilities.hearGear(snap.turn);
@@ -1606,7 +1609,7 @@ const engine = new Engine(buffer, {
       );
     }
     /* After the sync above, which is for a save already written: this one syncs at the next command prompt. */
-    if (game.saveOnReturn && engine.pendingKeys === 0 && saveGame('silent')) game.saveOnReturn = false;
+    if (game.saveSoon && engine.pendingKeys === 0 && !macros.running && !journeys.active && saveGame('silent')) game.saveSoon = false;
     if (engine.pendingKeys > 0) {
       requestFrame();
       return;
@@ -1775,8 +1778,9 @@ const memory = new HeroMemoryKeeper({
   adventurers: heroes.adventurers,
   place: () => game.place,
   state: () => game.lastState,
-  onLevel: () => {
+  onLevel: (moved) => {
     if (journeys.exploring) journeys.stop(null, 'level');
+    if (moved) game.saveSoon = true;
   },
   changed: () => {
     dirty = true;

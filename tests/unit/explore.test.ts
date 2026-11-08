@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { Explore, exploreOutcome, nextStop, WAY_ON, type ExplorePlan } from '../../web/src/play/explore.ts';
+import { movedLevel } from '../../web/src/play/heromemory.ts';
 import { decodeRuns, encodeRuns, levelKey, mergeKnown, missingCells } from '../../web/src/play/mapmemory.ts';
 import { approachTarget, inferredFloor } from '../../web/src/play/travel.ts';
 import { diggerWorn, fightingStyle, suggestedGear } from '../../web/src/play/items.ts';
@@ -266,6 +267,16 @@ describe('map memory', () => {
     assert.equal(levelKey({ dungeon: 0, depth: 0, wild: 0, wx: 12, wy: 40 }), 'land:12,40');
     assert.equal(levelKey({ dungeon: 0, depth: 0, wild: 1, wx: 12, wy: 40 }), null);
     assert.equal(levelKey({ dungeon: 4, depth: 3, wild: 0, quest: 2 }), null);
+  });
+
+  it('tells a move to another level from a first sight or a walk across the land', () => {
+    assert.equal(movedLevel('level:4:3', 'level:4:4'), true);
+    assert.equal(movedLevel('land:12,40', 'level:4:1'), true);
+    assert.equal(movedLevel('other:0:0:1', 'land:12,40'), true);
+    assert.equal(movedLevel('land:12,40', 'other:0:0:1'), true);
+    assert.equal(movedLevel('level:4:3', 'other:4:5:0'), true);
+    assert.equal(movedLevel('land:12,40', 'land:13,40'), false);
+    assert.equal(movedLevel(null, 'level:4:3'), false);
   });
 });
 
