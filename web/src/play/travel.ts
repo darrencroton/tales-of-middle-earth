@@ -159,21 +159,17 @@ export function travelGrid(snap: LevelSnapshot, materials: readonly Material[], 
 /* tome2's FEAT_RUBBLE: the rubble a digger clears (the town's pile is a permanent feature of its own). */
 const FEAT_RUBBLE = 0x31;
 
-/**
- * Direction digits of the rubble beside the hero that blocks their way:
- * remembered (tome2 digs only what the hero has marked), with no creature
- * shown on it (tome2 would attack it instead), and not walkable for the hero
- * (a flyer passes over it).
- */
+/** Direction digits of the rubble beside the hero: remembered, with no creature shown on it, and none while the hero can walk over rubble. */
 export function rubbleBeside(snap: LevelSnapshot, materials: readonly Material[]): string[] {
   const digits: string[] = [];
+  if (materials[FEAT_RUBBLE]?.walkable) return digits;
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
       const x = snap.px + dx;
       const y = snap.py + dy;
       if ((dx === 0 && dy === 0) || x < 0 || y < 0 || x >= snap.width || y >= snap.height) continue;
       const i = y * snap.width + x;
-      if (snap.feat[i] !== FEAT_RUBBLE || !(snap.info[i] & CAVE_MARK) || materials[FEAT_RUBBLE]?.walkable) continue;
+      if (snap.feat[i] !== FEAT_RUBBLE || !(snap.info[i] & CAVE_MARK)) continue;
       if ((snap.layer[i] & LAYER_MASK) === LAYER_MONSTER) continue;
       digits.push(directionDigit(dx, dy)!);
     }

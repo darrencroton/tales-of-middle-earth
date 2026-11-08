@@ -941,19 +941,40 @@ test('Explore in town never leads to a way down, the quest level below Bree stay
   await equipSuggested(page);
   await wizardCommand(page, 'w');
   await wizardCommand(page, 'z');
-  await wizardCommand(page, 'F', 49);
-  const rubble = await playerPos(page);
-  const way = await page.evaluate(() => {
+  /* Two bare floor cells side by side, the nearest the hero can reach: rubble made on the first, the hero steps to the second. */
+  const spots = await page.evaluate(() => {
     const tome = window.__tome!;
     const snap = tome.engine.snapshot()!;
     const features = tome.engine.features();
-    const steps: Record<string, [number, number]> = { '2': [0, 1], '4': [-1, 0], '6': [1, 0], '8': [0, -1], '1': [-1, 1], '3': [1, 1], '7': [-1, -1], '9': [1, -1] };
-    return Object.keys(steps).find((digit) => {
-      const i = (snap.py + steps[digit][1]) * snap.width + snap.px + steps[digit][0];
-      return /floor$|^dirt$|grass$/.test(features[snap.feat[i]]?.name ?? '') && snap.layer[i] === 1;
-    });
+    const bare = (x: number, y: number) => {
+      const i = y * snap.width + x;
+      return x >= 0 && y >= 0 && x < snap.width && y < snap.height && /floor$|^dirt$|grass$/.test(features[snap.feat[i]]?.name ?? '') && snap.layer[i] === 1 && (snap.info[i] & 0x11) !== 0;
+    };
+    const steps: [string, number, number][] = [['6', 1, 0], ['2', 0, 1], ['3', 1, 1], ['1', -1, 1]];
+    const found: { x: number; y: number; way: string }[] = [];
+    for (let y = 0; y < snap.height; y++) {
+      for (let x = 0; x < snap.width; x++) {
+        const step = bare(x, y) && steps.find(([, dx, dy]) => bare(x + dx, y + dy));
+        if (step) found.push({ x, y, way: step[0] });
+      }
+    }
+    const distance = (p: { x: number; y: number }) => Math.max(Math.abs(p.x - snap.px), Math.abs(p.y - snap.py));
+    return found.sort((a, b) => distance(a) - distance(b)).slice(0, 5);
   });
-  expect(way, 'no bare floor beside the hero').toBeDefined();
+  let spot: (typeof spots)[number] | undefined;
+  for (const candidate of spots) {
+    await travelTo(page, candidate);
+    const here = await playerPos(page);
+    if (here.x === candidate.x && here.y === candidate.y) {
+      spot = candidate;
+      break;
+    }
+  }
+  expect(spot, 'no bare floor within reach').toBeDefined();
+  const rubble = { x: spot!.x, y: spot!.y };
+  const way = spot!.way;
+  await waitAtCommand(page);
+  await wizardCommand(page, 'F', 49);
   await sendText(page, `\\;${way}`);
   await expect.poll(() => playerPos(page)).not.toEqual(rubble);
   await dismissMore(page);
@@ -965,9 +986,15 @@ test('Explore in town never leads to a way down, the quest level below Bree stay
   await page.locator('.sheet .sheet-action', { hasText: 'Wield' }).click();
   await expect(page.locator('#toolbar [data-action="tunnel"]')).toBeVisible();
   expect(await first()).toBe('tunnel');
-  await page.locator('#toolbar [data-action="tunnel"]').click();
   const feat = () => page.evaluate(({ x, y }) => window.__tome!.engine.snapshot()!.feat[y * window.__tome!.engine.snapshot()!.width + x], rubble);
-  await expect.poll(feat, { timeout: 60_000 }).not.toBe(49);
+  /* tome2 digs on until the pile is gone or something disturbs it; Tunnel again after a disturbance. */
+  for (let i = 0; i < 5 && (await feat()) === 49; i++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await page.locator('#toolbar [data-action="tunnel"]').click();
+    await expect.poll(feat, { timeout: 20_000 }).not.toBe(49).catch(() => undefined);
+  }
+  expect(await feat()).not.toBe(49);
   await dismissMore(page);
   await waitAtCommand(page);
   await expect.poll(first).toBe('explore');

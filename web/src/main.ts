@@ -1005,10 +1005,12 @@ function talkPartner(): MonsterState | null {
   return (game.lastState?.monsters ?? []).find((m) => isNeutral(m) && isAdjacent(m.x, m.y, snap.px, snap.py)) ?? null;
 }
 
-/** Direction digits of the rubble beside the hero, when they carry a digger to clear it. */
+/** Direction digits of the rubble beside the hero, when a digger is in their tool slot. */
 function rubbleToDig(snap: LevelSnapshot): string[] {
+  const rubble = rubbleBeside(snap, heroMaterials());
+  if (!rubble.length) return [];
   const inventory = engine.inventory();
-  return inventory?.ready && diggerWorn(inventory) ? rubbleBeside(snap, heroMaterials()) : [];
+  return inventory?.ready && diggerWorn(inventory) ? rubble : [];
 }
 
 function useSuggested(): void {
