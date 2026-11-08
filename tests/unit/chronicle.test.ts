@@ -99,17 +99,27 @@ describe('chronicle', () => {
     assert.ok(newDeeds(c, career, new Set()).some((d) => d.id === 'close-call'));
   });
 
-  it('remembers how often an Adventure hero returned from death, and never forgets one', () => {
+  it('remembers the deaths an Adventure hero returned from, and never forgets one', () => {
     const c = newChronicle('Merry');
     const career = newCareer();
-    record(c, career, { ...hero, adventure: 1, lives: 3 }, []);
-    assert.equal(c.returns, 0);
-    record(c, career, { ...hero, adventure: 1, lives: 2 }, []);
-    assert.equal(c.returns, 1);
+    record(c, career, { ...hero, deaths: 0 }, []);
+    assert.equal(c.deaths, 0);
+    record(c, career, { ...hero, deaths: 12 }, []);
+    assert.equal(c.deaths, 12);
     assert.ok(newDeeds(c, career, new Set()).some((d) => d.id === 'sent-back'));
     /* A game loaded from before the return still keeps it in the tale. */
-    record(c, career, { ...hero, adventure: 1, lives: 3 }, []);
-    assert.equal(c.returns, 1);
+    record(c, career, { ...hero, deaths: 11 }, []);
+    assert.equal(c.deaths, 12);
+  });
+
+  it('marks reaching level 25 without a death', () => {
+    const career = newCareer();
+    const deathless = newChronicle('Pippin');
+    record(deathless, career, { ...hero, lev: 25, deaths: 0 }, []);
+    assert.ok(newDeeds(deathless, career, new Set()).some((d) => d.id === 'deathless'));
+    const returned = newChronicle('Merry');
+    record(returned, career, { ...hero, lev: 25, deaths: 1 }, []);
+    assert.ok(!newDeeds(returned, career, new Set()).some((d) => d.id === 'deathless'));
   });
 
   it('gives a tip for the next hero', () => {

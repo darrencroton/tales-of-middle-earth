@@ -1,5 +1,5 @@
+import { MODE_TEXT } from '../flow/runoptions.ts';
 import type { Chronicle } from '../play/chronicle.ts';
-import { returnsText } from '../play/lives.ts';
 import { dayOf, type Memorial, type MemorialFoe } from '../play/memorial.ts';
 import { FEET_PER_LEVEL, type ScoreEntry } from '../render/snapshot.ts';
 import { titleName } from './api.ts';
@@ -95,7 +95,7 @@ export function tombElements(tomb: Tomb, extras: TombExtras): HTMLElement[] {
     if (tale.uniques.length) stats.push(['Legends slain', String(tale.uniques.length)]);
     stats.push(['Deepest', tale.deepestFeet ? `${count(tale.deepestFeet)} ft` : 'The surface']);
     if (tale.mightiest) stats.push(['Mightiest foe', titleName(tale.mightiest.name)]);
-    if (tale.returns) stats.push(['Returned from death', returnsText(tale.returns)]);
+    if (tale.deaths) stats.push(['Deaths', count(tale.deaths)]);
   }
   if (m) stats.push(['Days survived', String(dayOf(m.turn))]);
   for (const [label, value] of stats) grid.append(stat(label, value));
@@ -152,7 +152,10 @@ export function openFameCard(sheets: Sheets, hero: FallenHero & { entry: ScoreEn
   if (m) fact('Days', String(dayOf(m.turn)));
   fact('Deepest', e.maxDepth > 0 ? `${count(e.maxDepth * FEET_PER_LEVEL)} ft` : 'The surface');
   if (m?.tale) fact('Foes slain', count(m.tale.kills));
+  fact('Played', e.adventure ? MODE_TEXT.adventure.label : MODE_TEXT.roguelike.label);
+  if (e.adventure) fact('Deaths', count(e.deaths));
   fact('Score', count(e.points));
+  if (e.deaths) fact('Before deaths', `${count(e.base)} · ${e.scoreKept}% kept`);
   const body = el('div', 'adventurer-detail');
   body.append(facts);
   const buttons: SheetAction[] = [];
@@ -216,7 +219,7 @@ export function hallOfFameElements(
     const who = [entry.race, entry.cls].filter(Boolean).join(' ');
     main.append(
       el('span', 'fame-name', entry.name),
-      el('span', 'fame-who', `${who ? `${who} · ` : ''}Level ${entry.level}`),
+      el('span', 'fame-who', [who, `Level ${entry.level}`, entry.deaths ? `${count(entry.deaths)} ${entry.deaths === 1 ? 'death' : 'deaths'}, ${entry.scoreKept}% kept` : ''].filter(Boolean).join(' · ')),
       el('span', 'fame-fate', fateText(entry, memorialOf(entry))),
     );
     row.append(

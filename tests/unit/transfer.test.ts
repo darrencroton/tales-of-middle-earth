@@ -15,7 +15,7 @@ const entry = (name: string, level: number, saved: string) => ({ name, level, ra
 function device(tom: { save: string; level: number; saved: string }, extra: SaveFile[] = []): SaveFile[] {
   return [
     file('2.4/save/Old_Tom', tom.save),
-    file('2.4/save/Old_Tom.adventure', 'lives'),
+    file('2.4/save/Old_Tom.adventure', '1 0 1'),
     file('2.4/save/Bob', 'bob'),
     file('2.4/Old_Tom.nte', 'notes'),
     file('2.4/save/global.svg', 'ToME@1Old_Tom@Old Tom, the Hobbit Rogue is alive\nToME@1Bob@Bob, the Human Warrior is alive\n'),

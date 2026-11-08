@@ -1,13 +1,15 @@
 /*
- * Adventure mode for the web frontend: a hero chosen to play it has three
- * lives. At each of the first two deaths the hero is asked, between death
- * and life, whether to return where they fell, return to the last town they
- * stood in, or accept death. tome2's own way of cheating death (HOOK_DIE,
- * as the One Ring and the wizard's "Die?" use) does the rest: full health,
- * mana and sanity, ailments cured, then a level is made where the hero is
- * sent. A kept level is loaded as it was left.
+ * Adventure mode for the web frontend: at every death a hero chosen to play
+ * it is asked, between death and life, whether to return where they fell,
+ * return to the last town they stood in, or accept death. tome2's own way of
+ * cheating death (HOOK_DIE, as the One Ring and the wizard's "Die?" use) does
+ * the rest: full health, mana and sanity, ailments cured, then a level is
+ * made where the hero is sent. A kept level is loaded as it was left.
  *
- * The mode, the lives spent and the last town are kept next to the savefile
+ * Each return counts a death, and the score written to the Hall of Fame is
+ * divided by one and a tenth of a point for each (`adjusted_score`).
+ *
+ * The mode, the deaths and the last town are kept next to the savefile
  * (`<savefile>.adventure`), written whenever tome2 writes the savefile and
  * read whenever it reads one, so they always agree with it.
  *
@@ -28,6 +30,7 @@
 #include "files.hpp"
 #include "game.hpp"
 #include "hook_wild_gen_in.hpp"
+#include "hiscore.hpp"
 #include "hooks.hpp"
 #include "monster3.hpp"
 #include "monster_type.hpp"
@@ -52,6 +55,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
@@ -63,8 +67,8 @@ void forget_saved_view();
 
 namespace {
 
-/* Lives in all, the first included. */
-constexpr int LIVES = 3;
+/* Deaths that add a whole score's worth to the score's divisor: each one adds a tenth. */
+constexpr long long DEATHS_PER_SCORE = 10;
 
 /* Grids searched around a landing place for a safe one. */
 constexpr int LANDING_REACH = 12;
@@ -72,8 +76,8 @@ constexpr int LANDING_REACH = 12;
 struct Adventure
 {
 	bool on = true;
-	/* Lives spent returning from death. */
-	int spent = 0;
+	/* Deaths the hero has returned from. */
+	int deaths = 0;
 	/* The last town the hero stood in (tome2's town index), 0 before any. */
 	int town = 0;
 };
@@ -97,7 +101,7 @@ bool write_side_file()
 {
 	FILE *f = std::fopen(side_file().c_str(), "w");
 	if (!f) return false;
-	bool const ok = std::fprintf(f, "%d %d %d\n", adventure.on ? 1 : 0, adventure.spent, adventure.town) > 0;
+	bool const ok = std::fprintf(f, "%d %d %d\n", adventure.on ? 1 : 0, adventure.deaths, adventure.town) > 0;
 	return (std::fclose(f) == 0) && ok;
 }
 
@@ -105,19 +109,20 @@ void read_side_file()
 {
 	FILE *f = std::fopen(side_file().c_str(), "r");
 	if (!f) return;
-	int on = 1, spent = 0, town = 0;
-	if (std::fscanf(f, "%d %d %d", &on, &spent, &town) == 3)
+	int on = 1, deaths = 0, town = 0;
+	if (std::fscanf(f, "%d %d %d", &on, &deaths, &town) == 3)
 	{
 		adventure.on = on != 0;
-		adventure.spent = std::max(0, std::min(LIVES - 1, spent));
+		adventure.deaths = std::max(0, deaths);
 		adventure.town = std::max(0, town);
 	}
 	std::fclose(f);
 }
 
-int lives_left()
+/* The score once the deaths returned from are counted: the base divided by 1 + deaths / 10. */
+long long adjusted_score(long long base, int deaths)
 {
-	return adventure.on ? LIVES - adventure.spent : 0;
+	return base * DEATHS_PER_SCORE / (DEATHS_PER_SCORE + std::max(0, deaths));
 }
 
 /* The town of a surface area, or 0 (as tome2's generate_area reads it). */
@@ -172,7 +177,7 @@ std::string town_name(int town)
 	return name;
 }
 
-/* The One Ring holds the hero: it sustains their life while it can, and then ends it, whatever lives are left. */
+/* The One Ring holds the hero: it sustains their life while it can, and then ends it, whatever the mode. */
 bool ring_hold()
 {
 	return quest[QUEST_ONE].status == QUEST_STATUS_FAILED_DONE;
@@ -196,7 +201,7 @@ char const *safety_closed()
 /* Whether this death in progress will ask the hero what to do. */
 bool may_return()
 {
-	return alive && death && !accepted && lives_left() > 1 && !ring_hold() && !rescued();
+	return adventure.on && alive && death && !accepted && !ring_hold() && !rescued();
 }
 
 enum class Choice { BATTLEFIELD, SAFETY, ACCEPT };
@@ -383,7 +388,7 @@ bool die_hook(void *, void *, void *)
 		accepted = true;
 		return false;
 	}
-	adventure.spent++;
+	adventure.deaths++;
 	if (choice == Choice::SAFETY) go_to_safety();
 	else go_back();
 	/* Last among the level's hooks, so the hero lands after quests and joke monsters have placed their creatures. */
@@ -397,7 +402,14 @@ bool die_hook(void *, void *, void *)
 
 } // namespace
 
-/* Whether the hero plays in Adventure mode, with three lives (else Roguelike, with one). */
+/* The share of the score kept with these deaths, in whole per cent. */
+int score_kept(int deaths)
+{
+	long long const divisor = DEATHS_PER_SCORE + std::max(0, deaths);
+	return static_cast<int>((100 * DEATHS_PER_SCORE + divisor / 2) / divisor);
+}
+
+/* Whether the hero plays in Adventure mode, returning from death as often as they choose (else Roguelike, with one life). */
 bool adventure_mode()
 {
 	return adventure.on;
@@ -416,8 +428,9 @@ void web_adventure_tick()
 }
 
 /*
- * The hero's lives for the player JSON (web_state_json): `adventure`, the
- * lives left with this one (`lives`), and once dead `fate`: `choice` (they
+ * The hero's deaths for the player JSON (web_state_json): `adventure`, the
+ * deaths returned from (`deaths`), the share of the score they leave
+ * (`scoreKept`, per cent), and once dead `fate`: `choice` (they
  * are asked whether to return, or have chosen to and are on their way;
  * `haven` names the town, or `closed` says why there is none: `astral`,
  * `held` or `none`), `rescue` (tome2 itself saves them) or `final`.
@@ -425,7 +438,8 @@ void web_adventure_tick()
 void json_adventure(JsonWriter &w)
 {
 	w.field("adventure", adventure.on ? 1 : 0);
-	w.field("lives", lives_left());
+	w.field("deaths", adventure.deaths);
+	w.field("scoreKept", score_kept(adventure.deaths));
 	if (!death) return;
 	bool const choice = returning || may_return();
 	w.field("fate", choice ? "choice" : (alive && !accepted && rescued()) ? "rescue" : "final");
@@ -437,6 +451,7 @@ void json_adventure(JsonWriter &w)
 extern "C" {
 
 bool __real__Z11save_playerv();
+int __real__Z13highscore_addiP10high_score(int highscore_fd, high_score *score);
 bool __real__Z11load_playerRK12program_args(program_args const &args);
 
 /* tome2's save_player, followed by the side file; a save without it has failed. */
@@ -450,7 +465,7 @@ bool __wrap__Z11save_playerv()
  * (Adventure mode, small levels), and after it the side file and the level
  * loaded cleared of the view it was saved with. A hero begun
  * from a fallen one's savefile keeps the mode, as tome2 keeps the birth
- * options, but has every life.
+ * options, with no deaths.
  */
 bool __wrap__Z11load_playerRK12program_args(program_args const &args)
 {
@@ -463,10 +478,34 @@ bool __wrap__Z11load_playerRK12program_args(program_args const &args)
 	forget_saved_view();
 	if (!character_loaded)
 	{
-		adventure.spent = 0;
+		adventure.deaths = 0;
 		adventure.town = 0;
 	}
 	return ok;
+}
+
+/* Copies a number into a fixed-width field of a score, right-aligned as tome2 writes its own, without a terminator. */
+static void score_field(char *field, std::size_t size, long long value)
+{
+	char text[32];
+	std::snprintf(text, sizeof(text), "%*lld", static_cast<int>(size), value);
+	std::memcpy(field, text, size);
+}
+
+/*
+ * tome2's highscore_add, called once as the Hall of Fame takes a hero (top_twenty):
+ * the score is the one tome2 worked out with the deaths returned from counted,
+ * and the record keeps the base score, the deaths and the mode in fields tome2
+ * keeps unused (read back by web_scores_json).
+ */
+int __wrap__Z13highscore_addiP10high_score(int highscore_fd, high_score *score)
+{
+	long long const base = std::atoll(score->pts);
+	score_field(score->pts, sizeof(score->pts) - 1, adjusted_score(base, adventure.deaths));
+	score_field(score->unused_1, sizeof(score->unused_1), std::min(base, 99999999LL));
+	score_field(score->unused_2, sizeof(score->unused_2), std::min(adventure.deaths, 9999));
+	score_field(score->unused_3, sizeof(score->unused_3), adventure.on ? 1 : 0);
+	return __real__Z13highscore_addiP10high_score(highscore_fd, score);
 }
 
 /* Chooses the mode of the hero being created; false once the game has begun. */

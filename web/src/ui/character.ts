@@ -1,6 +1,5 @@
 import { depthLabel } from '../hud.ts';
 import { godNamed } from '../play/gods.ts';
-import { LIVES } from '../play/lives.ts';
 import { FEET_PER_LEVEL, type PlayerState, type SkillEntry } from '../render/snapshot.ts';
 import { NOT_NOW, type GameApi } from './api.ts';
 import { KEY_BACKSLASH, KEY_ENTER, KEY_ESCAPE, keyCodes } from '../input/keys.ts';
@@ -550,7 +549,9 @@ function summaryBody(api: GameApi): HTMLElement | null {
     stat('Deepest', `${sheet.maxDepth * FEET_PER_LEVEL} ft`),
     ...(player.god ? [] : [stat('God', 'None')]),
     stat('Infravision', `${sheet.infra} ft`),
-    stat('Lives left', player.adventure ? `${player.lives ?? 0} of ${LIVES}` : 'One (Roguelike)'),
+    ...(player.adventure
+      ? [stat('Deaths', String(player.deaths ?? 0)), ...(player.deaths ? [stat('Score kept', `${player.scoreKept ?? 100}%`)] : [])]
+      : [stat('Life', 'One (Roguelike)')]),
   );
   body.append(section('Progress', progress));
   const god = godNamed(player.god);

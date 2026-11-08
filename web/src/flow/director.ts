@@ -790,7 +790,7 @@ export class Director {
     );
   }
 
-  /** The run's options under the hero about to begin: lives, random quests and tome2's birth options, set as they are tapped. */
+  /** The run's options under the hero about to begin: the mode, random quests and tome2's birth options, set as they are tapped. */
   private runCard(run: RunOptions): HTMLElement {
     const card = el('article', 'birth-card run');
     card.append(

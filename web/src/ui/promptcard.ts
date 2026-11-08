@@ -1,5 +1,5 @@
 import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, keyCodes as codes, typedAnswer } from '../input/keys.ts';
-import { LIVES, livesText, RETURN_KEYS } from '../play/lives.ts';
+import { ordinal, RETURN_KEYS } from '../play/death.ts';
 import { bracketChoices, choiceQuestion, type PromptKind } from '../play/prompts.ts';
 import { el, iconText, leadIn, stepper, type Stepper } from './dom.ts';
 import { cleanPrompt } from './prompttext.ts';
@@ -42,8 +42,8 @@ function quantityLimit(text: string): number | null {
 interface ReturnOffer {
   /** What killed the hero. */
   cause: string;
-  /** Lives left once the hero goes back, the one they go back to included. */
-  lives: number;
+  /** Deaths the hero has returned from before this one. */
+  deaths: number;
   /** What returning to the battlefield means from here. */
   battlefield: string;
   /** What returning to safety means, or why it cannot be done. */
@@ -156,11 +156,10 @@ export class PromptCard {
 
   /**
    * The hero has died: what killed them and Continue (which declines
-   * tome2's screen dump and leads to the end-of-game summary). `lastLife`
-   * says that an Adventure hero has no life left.
+   * tome2's screen dump and leads to the end-of-game summary).
    */
-  showDeath(cause: string, lastLife = false): void {
-    const key = `death\u0000${cause}\u0000${lastLife}`;
+  showDeath(cause: string): void {
+    const key = `death\u0000${cause}`;
     this.root.hidden = false;
     this.leading = false;
     if (key === this.renderedKey) return;
@@ -174,7 +173,6 @@ export class PromptCard {
     this.root.replaceChildren(
       this.title(retired ? 'Your journey ends' : 'You have died'),
       el('p', 'card-fate', fate),
-      ...(lastLife ? [el('p', 'card-fate', `All ${LIVES} lives are spent.`)] : []),
       el('p', 'card-hint', 'Tap your hero, or the creatures still around you, to look back on the last fight.'),
       buttons,
     );
@@ -187,16 +185,13 @@ export class PromptCard {
    * which is asked once more.
    */
   showReturn(offer: ReturnOffer): void {
-    const key = `return\u0000${offer.cause}\u0000${offer.lives}\u0000${offer.battlefield}\u0000${JSON.stringify(offer.safety)}`;
+    const key = `return\u0000${offer.cause}\u0000${offer.deaths}\u0000${offer.battlefield}\u0000${JSON.stringify(offer.safety)}`;
     this.root.hidden = false;
     this.leading = false;
     if (key === this.renderedKey || `${key}\u0000accept` === this.renderedKey) return;
     this.renderedKey = key;
     this.root.className = 'prompt-card between';
-    const pips = el('p', 'between-lives');
-    pips.setAttribute('aria-label', livesText(offer.lives));
-    for (let i = 0; i < LIVES; i++) pips.append(el('span', i < offer.lives ? 'life' : 'life spent', iconText(i < offer.lives ? '✦' : '✧')));
-    pips.append(el('span', 'between-lives-text', livesText(offer.lives)));
+    const count = el('p', 'between-deaths', `Your ${ordinal(offer.deaths + 1)} death. Returning lowers your score a little.`);
     const battle = this.choiceButton('Return to the battlefield', offer.battlefield, () => this.answer(codes(RETURN_KEYS.battlefield)), 'primary');
     const offered = offer.safety;
     const safety =
@@ -210,7 +205,7 @@ export class PromptCard {
       el('p', 'card-title', 'The Halls of Waiting'),
       el('p', 'card-fate', offer.cause ? `Killed by ${offer.cause}.` : 'You have fallen.'),
       el('p', 'between-words', 'Darkness, then a grey hall beyond the walls of the world. A voice like the sea: “Your thread is not yet cut. Will you go back?”'),
-      pips,
+      count,
       choices,
     );
     battle.focus({ preventScroll: true });

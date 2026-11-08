@@ -1,6 +1,6 @@
 /**
  * A hero carried from one device to another as a file (`Name.tome2hero.json`): their
- * savefile, lives, kept levels and notes, their entries in the files every
+ * savefile, adventure, kept levels and notes, their entries in the files every
  * hero shares, and the Hall of Fame, deeds, career and fallen heroes to
  * combine. Pure: `ui/transfer.ts` sends and receives it.
  */
@@ -36,7 +36,7 @@ function sharedFile(path: string): SharedFile | null {
   return (SHARED_FILES as readonly string[]).includes(name) ? (name as SharedFile) : null;
 }
 
-/** The hero (savefile name) a file belongs to: the savefile, its lives and kept levels (`save/Base`, `save/Base.lvl4_2`), and its notes (`Base.nte`). */
+/** The hero (savefile name) a file belongs to: the savefile, its adventure and kept levels (`save/Base`, `save/Base.lvl4_2`), and its notes (`Base.nte`). */
 function heroOf(path: string): string | null {
   const save = /(?:^|\/)save\/([A-Za-z0-9_]+)(?:\.[^/]+)?$/.exec(path);
   if (save) return path.endsWith('/global.svg') ? null : save[1];

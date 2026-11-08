@@ -71,7 +71,7 @@ export interface Memorial {
   tale?: Chronicle;
 }
 
-/** The hero has died for good: no life left to return with, nothing in tome2 to save them, or they let go. */
+/** The hero has died for good: in Roguelike mode, with nothing in tome2 to save them, or they let go. */
 export function hasFallen(player: Pick<PlayerState, 'dead' | 'fate'> | null | undefined): boolean {
   return !!player?.dead && player.fate === 'final';
 }

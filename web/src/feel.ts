@@ -1,7 +1,7 @@
 import type { AnimationLevel } from './settings.ts';
 import { feetOf, placeName, type PlayerState } from './render/snapshot.ts';
 import { blessingsGone, heroEffects } from './play/effects.ts';
-import { livesText } from './play/lives.ts';
+import { deathsText } from './play/death.ts';
 import { el, iconText } from './ui/dom.ts';
 
 /** Health below this fraction of the maximum counts as low. */
@@ -27,8 +27,8 @@ export type FeelEvent =
   | { kind: 'exp'; amount: number }
   /** Blessings or sustained powers that began or ended, by name ("Doom shield"), the first one's glyph first. */
   | { kind: 'blessing'; ended: boolean; icon: string; names: string[] }
-  /** Back from death in Adventure mode, with `lives` left (this one included); played by main.ts (`followReturn`). */
-  | { kind: 'returned'; lives: number };
+  /** Back from death in Adventure mode, with the `deaths` returned from, this one included; played by main.ts (`followReturn`). */
+  | { kind: 'returned'; deaths: number };
 
 type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown' | 'quest' | 'quests' | 'effects' | 'pray' | 'dead'>;
 
@@ -324,7 +324,7 @@ export class GameFeel {
         break;
       case 'returned':
         this.flash('returned', 1);
-        this.showBanner('Returned from death', livesText(event.lives), 'returned');
+        this.showBanner('Returned from death', `${deathsText(event.deaths)} behind you`, 'returned');
         vibrate([60, 120, 60]);
         break;
     }

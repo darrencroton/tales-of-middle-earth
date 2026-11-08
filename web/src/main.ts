@@ -43,7 +43,7 @@ import { GameFeel, READ_MS, type QuestEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
 import { diggerWorn, INVEN_WIELD, itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { ABANDONED, hasFallen } from './play/memorial.ts';
-import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/lives.ts';
+import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/death.ts';
 import { CharacterPanel, type CharacterScreen } from './ui/character.ts';
 import { companionsLater, openCompanions } from './ui/companions.ts';
 import { openKnowledge } from './ui/knowledge.ts';
@@ -169,8 +169,8 @@ function newRunState() {
     placeAt: 0,
     placePos: { x: -1, y: -1 },
     inStore: false,
-    /** The lives the hero had when asked whether to return from death (`followReturn`), else null. */
-    askedLives: null as number | null,
+    /** The deaths the hero had when asked whether to return from death (`followReturn`), else null. */
+    askedDeaths: null as number | null,
     /** The hero has returned from death: the game is saved at the next command prompt, as tome2 saves a death at once. */
     saveOnReturn: false,
     quitting: false,
@@ -679,11 +679,11 @@ function updatePromptCard(): void {
   if (kind === 'yesno' && /Dump the screen\?|Make a last screenshot\?/.test(rowZeroText()) && quiet) {
     const player = engine.gameState(0)?.player;
     if (player && !hasFallen(player)) {
-      /* A life to return with, or tome2 saves the hero: no death card, and no screen dump. */
+      /* The hero may return, or tome2 saves them: no death card, and no screen dump. */
       promptCard.hide();
       send(keyCodes('n'));
     } else {
-      promptCard.showDeath(player?.diedFrom ?? '', !!player?.adventure && player.lives === 1);
+      promptCard.showDeath(player?.diedFrom ?? '');
     }
     return;
   }
@@ -691,7 +691,7 @@ function updatePromptCard(): void {
     const player = engine.gameState(0)?.player;
     promptCard.showReturn({
       cause: player?.diedFrom ?? '',
-      lives: (player?.lives ?? 1) - 1,
+      deaths: player?.deaths ?? 0,
       battlefield: battlefieldText(game.place),
       safety: player?.closed ? { refusal: SAFETY_CLOSED[player.closed] } : { text: safetyText(player?.haven ?? '') },
       refuse,
@@ -867,10 +867,10 @@ function refresh(): void {
     game.inStore = !!shop.shown;
     audio.setView(game.ended ? 'gameover' : state.player?.dead && state.player.fate === 'choice' ? 'between' : 'game');
     if (state.player) {
-      const follow = followReturn(game.askedLives, state.player);
-      game.askedLives = follow.asked;
+      const follow = followReturn(game.askedDeaths, state.player);
+      game.askedDeaths = follow.asked;
       if (follow.returned) {
-        feel.play({ kind: 'returned', lives: state.player.lives ?? 0 });
+        feel.play({ kind: 'returned', deaths: state.player.deaths ?? 0 });
         audio.cue('returned');
         game.saveOnReturn = true;
       }
@@ -2049,7 +2049,7 @@ function openSettingsSheet(): void {
 function adventureRules(): AdventureRules | null {
   const player = game.lastState?.player;
   const run = inGame() ? engine.runOptions() : null;
-  return player?.name && run ? { hero: player.name, run, lives: player.lives ?? 0 } : null;
+  return player?.name && run ? { hero: player.name, run, deaths: player.deaths ?? 0, scoreKept: player.scoreKept ?? 100 } : null;
 }
 
 /** Applies the settings that live in CSS: text size and animation. */

@@ -108,13 +108,14 @@ void web_scratch_term_end();
 void display_weapon_damage(object_type *o_ptr);
 void display_ammo_damage(object_type *o_ptr);
 
-/* Map memory (engine/memory.cc), run options (engine/runoptions.cc) and lives (engine/adventure.cc). */
+/* Map memory (engine/memory.cc), run options (engine/runoptions.cc) and Adventure mode (engine/adventure.cc). */
 void web_memory_tick();
 int level_quest();
 bool level_quest_open();
 void web_run_options_tick();
 void web_adventure_tick();
 void json_adventure(JsonWriter &w);
+int score_kept(int deaths);
 
 /* Shared with the other exports (engine/knowledge.cc). */
 /*
@@ -2340,7 +2341,9 @@ EMSCRIPTEN_KEEPALIVE char const *web_character_json()
 }
 
 /*
- * Returns the Hall of Fame (the scores file) as JSON, best first.
+ * Returns the Hall of Fame (the scores file) as JSON, best first: each
+ * entry's score (`points`), the score before deaths (`base`), the deaths
+ * returned from, the share they left (`scoreKept`) and the mode.
  */
 EMSCRIPTEN_KEEPALIVE char const *web_scores_json()
 {
@@ -2394,7 +2397,15 @@ EMSCRIPTEN_KEEPALIVE char const *web_scores_json()
 		w.field("name", field(score.who, sizeof(score.who)));
 		w.field("race", race);
 		w.field("cls", cls);
-		w.field("points", atol(score.pts));
+		/* engine/adventure.cc keeps the base score, the deaths and the mode in fields tome2 leaves unused. */
+		long const points = atol(score.pts);
+		long const base = atol(field(score.unused_1, sizeof(score.unused_1)).c_str());
+		int const deaths = atoi(field(score.unused_2, sizeof(score.unused_2)).c_str());
+		w.field("points", points);
+		w.field("base", base > 0 ? base : points);
+		w.field("deaths", deaths);
+		w.field("scoreKept", score_kept(deaths));
+		w.field("adventure", atoi(field(score.unused_3, sizeof(score.unused_3)).c_str()));
 		w.field("gold", atol(score.gold));
 		w.field("turns", atol(score.turns));
 		w.field("day", field(score.day, sizeof(score.day)));

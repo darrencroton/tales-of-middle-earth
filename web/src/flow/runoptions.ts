@@ -1,19 +1,19 @@
 /** A birth option the last character creation screen offers, by the name the engine gives it. */
 type RunOptionName = 'smallLevels' | 'fates' | 'preserve' | 'noSelling' | 'unusualRooms' | 'jokes';
 
-/** The run as tome2 will play it (`web_run_options_json`): its birth options, in order, its random quests and its lives. */
+/** The run as tome2 will play it (`web_run_options_json`): its birth options, in order, its random quests and its mode. */
 export interface RunOptions {
   options: { name: RunOptionName; on: number }[];
   /** Random quests drawn, which can be fewer than asked for. */
   drawn: number;
   maxQuests: number;
-  /** 1 in Adventure mode (three lives), 0 in Roguelike (one). */
+  /** 1 in Adventure mode (a return from every death), 0 in Roguelike (one life). */
   adventure: number;
 }
 
 /** How each way of playing is shown: Adventure (the default) or Roguelike. */
 export const MODE_TEXT: Readonly<Record<'adventure' | 'roguelike', { label: string; detail: string }>> = {
-  adventure: { label: 'Adventure', detail: 'Three lives. The first two times you fall, you may return where you fell or to the last town you visited.' },
+  adventure: { label: 'Adventure', detail: 'Each time you fall, you may return where you fell or to the last town you visited, as often as you like. Each return counts as a death and lowers your score a little.' },
   roguelike: { label: 'Roguelike', detail: 'One life, as ToME has always been: when you fall, the adventure ends.' },
 };
 
