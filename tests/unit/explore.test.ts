@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { Explore, exploreOutcome, nextStop, WAY_ON, type ExplorePlan } from '../../web/src/play/explore.ts';
 import { decodeRuns, encodeRuns, levelKey, mergeKnown, missingCells } from '../../web/src/play/mapmemory.ts';
 import { approachTarget, inferredFloor } from '../../web/src/play/travel.ts';
-import { fightingStyle, suggestedGear } from '../../web/src/play/items.ts';
+import { diggerWorn, fightingStyle, suggestedGear } from '../../web/src/play/items.ts';
 import type { Material } from '../../web/src/render/materials.ts';
 import { CAVE_MARK, LAYER_MONSTER, LAYER_OBJECT, LAYER_TERRAIN, type EquipSlot, type ItemState, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
 import { snapshot } from './fixtures.ts';
@@ -293,6 +293,12 @@ describe('suggested gear', () => {
     assert.equal(suggestedGear({ pack: [torch], equip: armed }, { ...calm, inDungeon: false }), null);
     assert.equal(suggestedGear({ pack: [torch], equip: lit }, calm), null);
     assert.equal(suggestedGear({ pack: [torch, dagger], equip: [] }, { ...calm, wieldsWeapons: false })?.kind, 'light');
+  });
+
+  it('knows a shovel or pick in the tool slot', () => {
+    assert.ok(diggerWorn({ equip: [...armed, { i: 51, part: 51, name: 'a Shovel', tval: 20 }] as EquipSlot[] }));
+    assert.ok(!diggerWorn({ equip: [...armed, { i: 51, part: 51, empty: 1 }] as EquipSlot[] }));
+    assert.ok(!diggerWorn({ equip: [{ i: 24, part: 24, name: 'a Pick', tval: 20 }] as EquipSlot[] }));
   });
 
   it('relights a light that has gone out: fuel for it, else another light', () => {

@@ -17,7 +17,7 @@ import { hasEffect } from './play/effects.ts';
 import { contextActions, contextualAction, commandRefusal, CONTROLLING, exploreRefusal, creaturePowersMacro, releaseMacro, restMacro, waitCommand, type Action, type ActionContext, type CommandContext, type NativeView } from './play/actions.ts';
 import { MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
-import { goAction, tapAction, type TapAction } from './play/travel.ts';
+import { goAction, rubbleBeside, tapAction, type TapAction } from './play/travel.ts';
 import { Journeys } from './play/journeys.ts';
 import { HeroMemoryKeeper } from './play/heromemory.ts';
 import { Conversation } from './play/conversation.ts';
@@ -41,7 +41,7 @@ import { NOT_NOW, type GameApi } from './ui/api.ts';
 import { titleName } from './play/text.ts';
 import { GameFeel, READ_MS, type QuestEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
-import { INVEN_WIELD, itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
+import { diggerWorn, INVEN_WIELD, itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { ABANDONED, hasFallen } from './play/memorial.ts';
 import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/lives.ts';
 import { CharacterPanel, type CharacterScreen } from './ui/character.ts';
@@ -1005,6 +1005,12 @@ function talkPartner(): MonsterState | null {
   return (game.lastState?.monsters ?? []).find((m) => isNeutral(m) && isAdjacent(m.x, m.y, snap.px, snap.py)) ?? null;
 }
 
+/** Direction digits of the rubble beside the hero, when they carry a digger to clear it. */
+function rubbleToDig(snap: LevelSnapshot): string[] {
+  const inventory = engine.inventory();
+  return inventory?.ready && diggerWorn(inventory) ? rubbleBeside(snap, heroMaterials()) : [];
+}
+
 function useSuggested(): void {
   const gear = gearSuggestion();
   if (gear) runMacro(itemMacro({ id: gear.kind, label: gear.kind, command: gear.command }, gear.item, 'pack'));
@@ -1017,6 +1023,7 @@ function mapSituation(snap: LevelSnapshot): Partial<ActionContext> {
   const quick = abilities.quick();
   return {
     talk: !!talkPartner(),
+    rubble: rubbleToDig(snap),
     altar: altarHere(snap),
     exploreNext: journeys.exploreNext(snap),
     exploreRefusal: exploreRefusal(surroundings()),
