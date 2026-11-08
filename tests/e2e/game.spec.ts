@@ -355,7 +355,11 @@ test('a hero in Adventure mode returns from every death until they accept it, an
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Doomed');
+  /* Arriving on another level saves the game. */
+  const saved = () => page.evaluate(() => (window.__tome!.engine.fs!.stat('/home/web_user/.tome/2.4/save/Doomed') as unknown as { mtime: Date }).mtime.getTime());
+  const before = await saved().catch(() => 0);
   await jumpToLevel(page, 1);
+  await expect.poll(() => saved().catch(() => 0)).toBeGreaterThan(before);
   /* The hero falls in open ground, so there is somewhere off the wyrm's reach to return to (a staircase can sit in a dead end). */
   const openNeighbours = () =>
     page.evaluate(() => {

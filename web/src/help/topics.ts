@@ -599,7 +599,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'Saving, sending a hero to another device, and backups.',
         keywords: 'save saving load continue export import backup device browser quit delete abandon heroes adventurers send receive share airdrop transfer iphone ipad',
         body: [
-          'The game saves when you leave the app. Menu → *Save game* saves now; *Save and quit* saves and returns to the title.',
+          'The game saves when you leave the app and each time you arrive on another level: down or up the stairs, into or out of a dungeon, onto or off the world map, or by Word of Recall. Menu → *Save game* saves now; *Save and quit* saves and returns to the title.',
           'On the title screen *Continue* takes you straight back into your last hero\'s game; *Game Roster* lists every saved hero. Tap a hero there for *Play*, *Share* or *Delete*.',
           'Menu → *Abandon adventure* ends the current adventure for good. It is remembered in the Hall of Fame, where you can begin anew with the same hero.',
           'Everything is kept in this browser. To play a hero on another device, tap *Share* on their card in the Game Roster and send the file with AirDrop, Messages or *Save to Files* (where the browser cannot share it, as on Android, it is downloaded instead). On the other device, choose *Share & backup* → *Receive a hero* on the title screen and pick the file. The hero joins any already there, and the Hall of Fame and your deeds are combined. A hero sent back after playing on comes home without a question; if they were played on both devices meanwhile, you choose which journey goes on.',
