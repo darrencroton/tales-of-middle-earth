@@ -293,7 +293,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'Health, healing, and getting out.',
         keywords: 'hp health hit points heal healing potion escape phase door teleport die death dead',
         body: [
-          'Watch your health bar. *Rest* between fights brings it back; healing potions are for emergencies, and *Recently used* at the top of your pack keeps them one tap away.',
+          'Watch your health bar. *Rest* between fights brings it back; healing potions are for emergencies, and *Recent* at the top of your pack keeps them one tap away.',
           { heading: 'Ways out' },
           {
             terms: [

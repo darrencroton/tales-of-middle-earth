@@ -24,7 +24,9 @@ export type RecentAction =
 /** Something to use as a recent item: what `itemRecent` and `recentItem` read of an item. */
 type ItemKind = Pick<ItemState, 'i' | 'tval' | 'sval' | 'base'>;
 
-const MAX_RECENT = 5;
+/* Recent actions kept of each group (abilities, other item uses), and shown in a Recent list. */
+const RECENT_KEPT = 12;
+const RECENT_SHOWN = 6;
 
 /* tome2's "use a skill" menu keys for school spells (MKEY_SCHOOL) and stealing (MKEY_STEAL, under More's Steal). */
 const MKEY_SCHOOL = 17;
@@ -134,10 +136,10 @@ export function validRecent(entry: unknown): entry is RecentAction {
 
 /**
  * The list with `entry` moved (or added) to the front, keeping at most `max`
- * of each kind. Once aimed, it stays so: a use that failed before tome2 asked
- * where says nothing of it.
+ * of each group (abilities, other item uses). Once aimed, it stays so: a use
+ * that failed before tome2 asked where says nothing of it.
  */
-export function rememberRecent(list: readonly RecentAction[], entry: RecentAction, max = MAX_RECENT): RecentAction[] {
+export function rememberRecent(list: readonly RecentAction[], entry: RecentAction, max = RECENT_KEPT): RecentAction[] {
   const key = recentKey(entry);
   const aimed = entry.aimed || list.some((e) => recentKey(e) === key && e.aimed);
   const next = [{ ...entry, ...(aimed ? { aimed } : {}) }, ...list.filter((e) => recentKey(e) !== key)];
@@ -164,7 +166,7 @@ export function recentLabel(entry: RecentAction): string {
       return last === entry.steps[0] && entry.command === 'm' ? skillActionName(last) : displayName(last);
     }
     case 'item':
-      return entry.name;
+      return displayName(entry.name);
   }
 }
 
@@ -222,9 +224,14 @@ function recentUsable(entry: RecentAction, spells: SpellState | null, carried: C
   return !!found && !!recentItemAction(entry, found.item);
 }
 
-/** Spells, powers and items used as magic recently that the hero still has. */
+/** The Magic panel's Recent: spells, powers and items used as magic recently that the hero still has, newest first. */
 export function usableRecents(recents: readonly RecentAction[], spells: SpellState | null, carried: Carried): RecentAction[] {
-  return recents.filter((e) => isAbility(e) && recentUsable(e, spells, carried));
+  return recents.filter((e) => isAbility(e) && recentUsable(e, spells, carried)).slice(0, RECENT_SHOWN);
+}
+
+/** The Pack tab's Recent: items used recently (as magic too) that are still in the pack, newest first. */
+export function packRecents(recents: readonly RecentAction[], carried: Carried): RecentAction[] {
+  return recents.filter((e) => e.kind === 'item' && recentItem(e, carried)?.place === 'pack').slice(0, RECENT_SHOWN);
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   techniques,
   screenChoices,
   thenAim,
+  packRecents,
   usableRecents,
   validRecent,
   type RecentAction,
@@ -42,15 +43,15 @@ const SKILL_MENU = [
 ].join('\n');
 
 describe('recent actions', () => {
-  it('keeps the newest first, without repeats, and at most five of each group (items used as magic count with spells)', () => {
+  it('keeps the newest first, without repeats, and at most twelve of each group (items used as magic count with spells)', () => {
     let list: RecentAction[] = [];
-    for (const name of ['A', 'B', 'C', 'D', 'E']) list = rememberRecent(list, { kind: 'spell', name });
+    for (const name of ['X', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']) list = rememberRecent(list, { kind: 'spell', name });
     list = rememberRecent(list, { kind: 'item', command: 'q', verb: 'Quaff', tval: 71, sval: 1, name: 'Potion' });
     list = rememberRecent(list, { kind: 'item', command: 'A', verb: 'Activate', tval: 39, sval: 4, name: 'Phial' });
     list = rememberRecent(list, { kind: 'spell', name: 'D' });
     assert.deepEqual(
       list.map((e) => (e.kind === 'item' ? e.verb : e.kind === 'spell' ? e.name : '')),
-      ['D', 'Activate', 'Quaff', 'E', 'C', 'B'],
+      ['D', 'Activate', 'Quaff', 'K', 'J', 'I', 'H', 'G', 'F', 'E', 'C', 'B', 'A'],
     );
     assert.ok(isAbility({ kind: 'item', command: 'z', verb: 'Zap', tval: 67, sval: 10, name: 'Wooden Rod of Detection' }));
     const wand: RecentAction = { kind: 'item', command: 'a', verb: 'Aim', tval: 65, sval: 1, name: 'Wand of Fire Bolt', aimed: true };
@@ -240,6 +241,18 @@ describe('recent actions', () => {
       const potion = itemRecent('q', 'Quaff', { i: 3, tval: 71, sval: 4, base: 'Potion of Cure Light Wounds' });
       assert.deepEqual(usableRecents([bolt, { kind: 'spell', name: 'Gone' }, spit, aimedWand, potion], carrying(5), carried), [bolt, spit, aimedWand]);
       assert.deepEqual(usableRecents([aimedWand], spells, carried), []);
+      const names = Array.from({ length: 8 }, (_, n) => `Spell ${n}`);
+      const learnt = { ...spells, books: [{ i: 0, name: 'Magic Book', spells: names.map((name) => spell(name)) }] };
+      assert.deepEqual(usableRecents(names.map((name): RecentAction => ({ kind: 'spell', name })), learnt, carried).map((e) => recentLabel(e)), names.slice(0, 6));
+    });
+
+    it('offers the items used recently that are still in the pack, devices too, six at most', () => {
+      const potions = Array.from({ length: 8 }, (_, n): ItemState => ({ ...wand, i: 3 + n, name: `a Potion ${n}`, base: `Potion ${n}`, tval: 71, sval: n }));
+      const quaffs = potions.map((p) => itemRecent('q', 'Quaff', p));
+      const pack = { pack: [wand, ...potions], equip: [] };
+      assert.deepEqual(packRecents([bolt, aimedWand, quaffs[0], itemRecent('q', 'Quaff', { ...potions[1], sval: 40 })], pack), [aimedWand, quaffs[0]]);
+      assert.deepEqual(packRecents(quaffs, pack), quaffs.slice(0, 6));
+      assert.deepEqual(packRecents(quaffs, nothing), []);
     });
 
     it('repeats the last usable spell or device of a caster, else their first spell, else a power', () => {

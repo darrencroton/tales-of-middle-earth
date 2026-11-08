@@ -1,9 +1,10 @@
 import { SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
-import { itemRecent, recentItem, recentKey } from '../play/recent.ts';
+import { itemRecent, packRecents } from '../play/recent.ts';
 import type { EquipSlot, InventoryState, ItemState, SpellInfo } from '../render/snapshot.ts';
 import { capitalise, itemGlyph, pounds, titleName, type GameApi } from './api.ts';
-import { el, section } from './dom.ts';
+import { el } from './dom.ts';
 import { itemCardBody } from './inspect.ts';
+import { recentSection } from './recent.ts';
 import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
 
 
@@ -58,8 +59,8 @@ export function openInventory(api: GameApi, tab: InventoryTab = 'pack', replace 
   body.append(burden);
 
   if (current === 'pack') {
-    const quick = quickUse(api, inventory);
-    if (quick) body.append(quick);
+    const recent = recentSection(api, packRecents(api.recent(), inventory), api.engine.spells(), inventory, (entry) => api.cast(entry));
+    if (recent) body.append(recent);
   }
 
   const list = el('div', 'item-list');
@@ -87,35 +88,13 @@ export function openInventory(api: GameApi, tab: InventoryTab = 'pack', replace 
     body,
     tabs: tabs(api, inventory, current),
     className: 'sheet-inventory',
-    initial: list.querySelector<HTMLElement>('[data-nav]'),
   };
   if (replace) api.sheets.replace(content);
   else api.sheets.open(content);
 }
 
-/* Item actions remembered as recent and repeated from Recently used, the Magic panel and the toolbar. */
+/* Item actions remembered as recent and repeated from Recent, the Magic panel and the toolbar. */
 const QUICK_USES = new Set(['quaff', 'read', 'eat', 'aim', 'use', 'zap', 'throw', 'activate']);
-
-/** Recently used items still in the pack, one tap to use again. */
-function quickUse(api: GameApi, inventory: InventoryState): HTMLElement | null {
-  const grid = el('div', 'action-grid recent-grid');
-  for (const entry of api.recent()) {
-    if (entry.kind !== 'item') continue;
-    const found = recentItem(entry, inventory);
-    if (found?.place !== 'pack') continue;
-    const why = api.castRefusal(entry);
-    const button = el('button', why ? 'action-button recent-button unavailable' : 'action-button recent-button');
-    button.type = 'button';
-    button.dataset.nav = '';
-    button.dataset.key = recentKey(entry);
-    button.append(el('span', 'row-label', `${entry.verb} · ${entry.name}`));
-    if (found.item.number > 1) button.append(el('span', 'row-hint', `×${found.item.number}`));
-    if (why) button.setAttribute('aria-description', why);
-    button.addEventListener('click', () => api.cast(entry));
-    grid.append(button);
-  }
-  return grid.childElementCount ? section('Recently used', grid) : null;
-}
 
 function placeLabel(item: ItemState, place: ItemPlace, slot?: EquipSlot): string {
   const weight = pounds(item.weight * item.number);

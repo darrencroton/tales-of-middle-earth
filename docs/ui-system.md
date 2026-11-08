@@ -309,7 +309,7 @@ hero's other commands. A map tap steps the creature towards the place
 tapped; the changing button is *Release*; More adds *Release creature*,
 *Creature powers*, *Creature's pack*, *Creature picks up* and *Creature drops
 all*; the hero's own actions (toolbar, More, item, creature and look cards,
-*Recently used*, the character sheet's Skills and Abilities) are dimmed
+the Pack tab's Recent, the character sheet's Skills and Abilities) are dimmed
 with why, and journeys are refused.
 
 | tome2 | Command | Reached from |
@@ -329,7 +329,7 @@ with why, and journeys are refused.
 | `x` | engrave a rune | More, once a rune is learnt |
 | `l` `M` `L` `*` | look, level map, locate, target | long-press; More (*Look*, *Level map*, *Choose target*: the foes in reach as a card); a foe's card (*Target*); dragging the map |
 | `i` `e` `w` `t` `d` `k` `{` `}` | inventory and its management | Items and each item's card (Inscribe with nothing removes an inscription) |
-| `q` `r` `E` `F` `v` `f` | use items, fire, throw | item cards, *Recently used*, Again, Fire, gear suggestions (`w` `F`); More → Use an item / Fight and magic |
+| `q` `r` `E` `F` `v` `f` | use items, fire, throw | item cards, the Pack tab's Recent, Again, Fire, gear suggestions (`w` `F`); More → Use an item / Fight and magic |
 | `a` `u` `z` `A` | aim a wand, use a staff, zap a rod, activate | Powers → Gear and Devices (ready, charges, failure, effect; dimmed with why), its Recent, Again; item cards; More → *Activate or zap* (the Powers tab) |
 | `b` `I` | browse a book, examine an item | the item's card (a book's card lists its spells, each with its own card) |
 | `h` `K` | butcher a corpse, cure meat | the corpse's or meat's card |
