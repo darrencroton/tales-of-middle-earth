@@ -1,4 +1,4 @@
-import { deathsText } from '../play/death.ts';
+import { timesText } from '../play/death.ts';
 import { MODE_TEXT, questChoices, questsText, RUN_OPTION_TEXT, type RunOptions } from '../flow/runoptions.ts';
 import { el } from './dom.ts';
 import { segmented } from './menus.ts';
@@ -28,7 +28,7 @@ export function runElements(
   );
   if (!change) for (const button of modes.querySelectorAll('button')) button.disabled = true;
   modeBox.append(el('h4', undefined, 'When you fall'), modes, el('p', 'muted', MODE_TEXT[mode].detail));
-  if (run.adventure && deaths !== undefined) modeBox.append(el('p', 'run-deaths', `${deathsText(deaths)} so far.`));
+  if (run.adventure && deaths !== undefined) modeBox.append(el('p', 'run-deaths', deaths ? `Returned from death ${timesText(deaths)}.` : 'Not yet fallen.'));
   const unusual = run.options.some((o) => o.name === 'unusualRooms' && o.on);
   const questBox = el('section', 'run-quests');
   questBox.append(el('h4', undefined, 'Random quests'));

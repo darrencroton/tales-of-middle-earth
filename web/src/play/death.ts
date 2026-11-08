@@ -11,9 +11,28 @@ export const RETURN_KEYS = { battlefield: 'b', safety: 's', accept: 'ay' } as co
 
 const COUNT_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
 
+const TIMES = ['', 'once', 'twice'];
+
 /** "No deaths", "One death", "Two deaths", "12 deaths". */
 export function deathsText(deaths: number): string {
   return `${COUNT_WORDS[deaths] ?? String(deaths)} ${deaths === 1 ? 'death' : 'deaths'}`;
+}
+
+/** How often: "once", "twice", "three times", "12 times". */
+export function timesText(n: number): string {
+  return TIMES[n] ?? `${(COUNT_WORDS[n] ?? String(n)).toLowerCase()} times`;
+}
+
+/** What the Halls of Waiting say to a hero who has stood in them `deaths` times before: the scene, and what a return means. */
+export function hallsWords(deaths: number): { scene: string; count: string } {
+  const scene =
+    deaths === 0
+      ? 'Darkness, then a grey hall beyond the walls of the world. A voice like the sea: “Your thread is not yet cut. Will you go back?”'
+      : deaths < 5
+        ? 'The grey hall once more, and the voice like the sea, patient: “Your thread holds yet. Will you go back?”'
+        : 'The grey hall knows your step now. The voice like the sea is grave: “Your thread is frayed, but it holds. Will you go back?”';
+  const before = deaths === 0 ? 'Your first time in these halls.' : `${timesText(deaths)[0].toUpperCase()}${timesText(deaths).slice(1)} before you stood here.`;
+  return { scene, count: `${before} A return dims your renown.` };
 }
 
 /** What returning to the battlefield means from where the hero fell. */

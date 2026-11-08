@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { battlefieldText, deathsText, followReturn, isReturnPrompt, safetyText } from '../../web/src/play/death.ts';
+import { battlefieldText, deathsText, followReturn, hallsWords, isReturnPrompt, safetyText, timesText } from '../../web/src/play/death.ts';
 import { hasFallen } from '../../web/src/play/memorial.ts';
 
 describe('death', () => {
@@ -13,6 +13,11 @@ describe('death', () => {
     assert.equal(deathsText(0), 'No deaths');
     assert.equal(deathsText(1), 'One death');
     assert.equal(deathsText(12), '12 deaths');
+    assert.deepEqual([1, 2, 3, 12].map(timesText), ['once', 'twice', 'three times', '12 times']);
+    assert.match(hallsWords(0).count, /^Your first time in these halls\./);
+    assert.equal(hallsWords(2).count, 'Twice before you stood here. A return dims your renown.');
+    assert.notEqual(hallsWords(0).scene, hallsWords(1).scene);
+    assert.notEqual(hallsWords(1).scene, hallsWords(5).scene);
   });
 
   it('says what each way back means from where the hero fell', () => {

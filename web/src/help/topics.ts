@@ -46,7 +46,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'What the game is, and what you are here to do.',
         keywords: 'goal quest aim win roguelike permadeath sauron morgoth ring',
         body: [
-          'Tales of Middle-earth is a roguelike: every dungeon level is made when you first enter it, and no two adventures are alike. In Adventure mode a fallen hero may go back as often as you like, each death counted in their tale and their score; choose *Roguelike* when you make them and their first death ends the tale. It is hard, and that is half the fun: each hero teaches you something for the next.',
+          'Tales of Middle-earth is a roguelike: every dungeon level is made when you first enter it, and no two adventures are alike. In Adventure mode a fallen hero may go back as often as you like, each death written in their tale and dimming their renown; choose *Roguelike* when you make them and their first death ends the tale. It is hard, and that is half the fun: each hero teaches you something for the next.',
           { heading: 'Your quest' },
           'A shadow lies over Mirkwood. Your first great task is to find the Necromancer in the tower of *Dol Guldur* and defeat him. That wakes a greater evil: *Sauron* must be found and beaten, and the *One Ring* cast into the fires of *Mount Doom*, where it was forged. Last of all, *Morgoth* waits in the depths of *Angband*.',
           'It is a long road. Along the way are towns to rest in, people who need help, dozens of dungeons and treasures with stories of their own.',
@@ -305,7 +305,7 @@ export const HELP: readonly HelpGroup[] = [
             ],
           },
           'Leave while you still can: an escape works best before a fight turns bad.',
-          'In Adventure mode a hero who falls may go back, but each death is counted and lowers their score. Only accepting death ends the tale; in Roguelike mode the first fall does.',
+          'In Adventure mode a hero who falls may go back, but each death is written in their tale and dims their renown. Only accepting death ends the tale; in Roguelike mode the first fall does.',
         ],
         see: ['death', 'ailments', 'fighting', 'deeds'],
       },
@@ -332,8 +332,8 @@ export const HELP: readonly HelpGroup[] = [
             ],
           },
           'Either way back counts a death. It restores health, mana and sanity, cures ailments (poison, cuts, stunning, fear, blindness, confusion, hallucination, paralysis, slowness, the Black Breath) and hunger, and ends a Word of Recall under way. What lasts stays: drained attributes and experience, curses, corruptions, and quests done or failed. The game is saved at once.',
-          { heading: 'Deaths and your score' },
-          'A hero\'s score in the Hall of Fame is ToME\'s own (level, experience, depth, gold, quests and foes slain), divided by one plus a tenth for each death they came back from: one death keeps 91% of it, five keep 67%, ten keep half. The death that ends the tale is not counted, so a hero who never came back scores in full, in Adventure and Roguelike alike.',
+          { heading: 'Deaths and your renown' },
+          'A hero\'s renown, their score in the Hall of Fame, is ToME\'s own (level, experience, depth, gold, quests and foes slain), divided by one plus a tenth for each death they came back from: one death keeps 91% of it, five keep 67%, ten keep half. The death that ends the tale is not counted, so a hero who never came back scores in full, in Adventure and Roguelike alike.',
           'Your deaths are on the character sheet, at the foot of Settings and in the Hall of Fame.',
           'The *Blood of Life* saves you first and counts no death; while the One Ring holds you, it alone decides. Eru may still raise a devoted follower who accepts death, or a Roguelike hero.',
         ],
@@ -535,7 +535,7 @@ export const HELP: readonly HelpGroup[] = [
           'Last comes *Ready to begin?*: the hero you have made, and how your adventure is set up. These can only be chosen now:',
           {
             terms: [
-              ['When you fall', `${MODE_TEXT.adventure.label} (return from every death, each one lowering your score) or ${MODE_TEXT.roguelike.label} (one life).`],
+              ['When you fall', `${MODE_TEXT.adventure.label} (return from every death, each one dimming your renown) or ${MODE_TEXT.roguelike.label} (one life).`],
               ['Random quests', 'How many random quests wait in the dungeons: none, 10, 20, 40 or 60.'],
               ...Object.values(RUN_OPTION_TEXT).map(({ label, detail }): [string, string] => [label, detail]),
             ],

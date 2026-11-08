@@ -1,7 +1,7 @@
 import type { AnimationLevel } from './settings.ts';
 import { feetOf, placeName, type PlayerState } from './render/snapshot.ts';
 import { blessingsGone, heroEffects } from './play/effects.ts';
-import { deathsText } from './play/death.ts';
+import { timesText } from './play/death.ts';
 import { el, iconText } from './ui/dom.ts';
 
 /** Health below this fraction of the maximum counts as low. */
@@ -324,7 +324,7 @@ export class GameFeel {
         break;
       case 'returned':
         this.flash('returned', 1);
-        this.showBanner('Returned from death', `${deathsText(event.deaths)} behind you`, 'returned');
+        this.showBanner('Returned from death', `Sent back ${timesText(event.deaths)}`, 'returned');
         vibrate([60, 120, 60]);
         break;
     }

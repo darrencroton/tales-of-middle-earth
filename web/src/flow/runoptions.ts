@@ -13,7 +13,7 @@ export interface RunOptions {
 
 /** How each way of playing is shown: Adventure (the default) or Roguelike. */
 export const MODE_TEXT: Readonly<Record<'adventure' | 'roguelike', { label: string; detail: string }>> = {
-  adventure: { label: 'Adventure', detail: 'Each time you fall, you may return where you fell or to the last town you visited, as often as you like. Each return counts as a death and lowers your score a little.' },
+  adventure: { label: 'Adventure', detail: 'Each time you fall, the Halls of Waiting let you return where you fell or to the last town you visited, as often as you choose. Every return is written in your tale, and dims your renown a little.' },
   roguelike: { label: 'Roguelike', detail: 'One life, as ToME has always been: when you fall, the adventure ends.' },
 };
 

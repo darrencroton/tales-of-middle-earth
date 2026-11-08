@@ -1,5 +1,5 @@
 import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, keyCodes as codes, typedAnswer } from '../input/keys.ts';
-import { RETURN_KEYS } from '../play/death.ts';
+import { hallsWords, RETURN_KEYS } from '../play/death.ts';
 import { bracketChoices, choiceQuestion, type PromptKind } from '../play/prompts.ts';
 import { el, iconText, leadIn, stepper, type Stepper } from './dom.ts';
 import { cleanPrompt } from './prompttext.ts';
@@ -191,7 +191,7 @@ export class PromptCard {
     if (key === this.renderedKey || `${key}\u0000accept` === this.renderedKey) return;
     this.renderedKey = key;
     this.root.className = 'prompt-card between';
-    const count = el('p', 'between-deaths', `Deaths so far: ${offer.deaths}. Returning lowers your score a little.`);
+    const words = hallsWords(offer.deaths);
     const battle = this.choiceButton('Return to the battlefield', offer.battlefield, () => this.answer(codes(RETURN_KEYS.battlefield)), 'primary');
     const offered = offer.safety;
     const safety =
@@ -204,8 +204,8 @@ export class PromptCard {
     this.root.replaceChildren(
       el('p', 'card-title', 'The Halls of Waiting'),
       el('p', 'card-fate', offer.cause ? `Killed by ${offer.cause}.` : 'You have fallen.'),
-      el('p', 'between-words', 'Darkness, then a grey hall beyond the walls of the world. A voice like the sea: “Your thread is not yet cut. Will you go back?”'),
-      count,
+      el('p', 'between-words', words.scene),
+      el('p', 'between-deaths', words.count),
       choices,
     );
     battle.focus({ preventScroll: true });

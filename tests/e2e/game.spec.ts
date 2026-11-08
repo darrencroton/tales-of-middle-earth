@@ -307,7 +307,7 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('.sheet .fame-row')).toHaveCount(3);
   await expect(page.locator('.sheet .fame-row').nth(1)).toContainText("Killed by Grip, Farmer Maggot's Dog on the surface");
   await expect(page.locator('.sheet')).toContainText('Career');
-  await expect(page.locator('.sheet .deed')).toHaveCount(16);
+  await expect(page.locator('.sheet .deed')).toHaveCount(17);
   await expect(page.locator('.sheet .stat', { hasText: 'Fallen' })).toContainText('0');
   await page.locator('.sheet .fame-row').first().click();
   await expect(page.locator('.sheet-fame-hero .sheet-title')).toHaveText('Bilbo');
@@ -389,7 +389,7 @@ test('a hero in Adventure mode returns from every death until they accept it, an
   /* The first fall: the Halls of Waiting, with the Mandos theme behind them. */
   const between = page.locator('.prompt-card.between');
   await fallToWyrm(page, '.prompt-card.between');
-  await expect(between).toContainText('Deaths so far: 0.');
+  await expect(between).toContainText('Your first time in these halls.');
   await expect(between.locator('.between-choice.primary')).toContainText('Return to the battlefield');
   await expect(between.locator('.between-choice', { hasText: 'Return to safety' })).toContainText('Wake in Bree,');
   await expect(page.locator('#app')).toHaveClass(/between/);
@@ -407,7 +407,7 @@ test('a hero in Adventure mode returns from every death until they accept it, an
   const back = await hero();
   expect(back.chp).toBe(back.mhp);
   await expect(page.locator('.feel-banner')).toContainText('Returned from death');
-  await expect(page.locator('.feel-banner')).toContainText('One death behind you');
+  await expect(page.locator('.feel-banner')).toContainText('Sent back once');
   expect(await where()).not.toEqual(fell);
   const wyrmReach = await page.evaluate(() => {
     const tome = window.__tome!;
@@ -419,7 +419,7 @@ test('a hero in Adventure mode returns from every death until they accept it, an
 
   /* The second fall: accepting death is asked once more, and going back from it keeps the choice open. */
   await fallToWyrm(page, '.prompt-card.between');
-  await expect(between).toContainText('Deaths so far: 1.');
+  await expect(between).toContainText('Once before you stood here.');
   await between.locator('.between-choice.danger').click();
   await expect(page.locator('.prompt-card')).toContainText('Accept death?');
   await page.locator('.prompt-card .card-button', { hasText: 'Go back' }).click();
@@ -438,14 +438,14 @@ test('a hero in Adventure mode returns from every death until they accept it, an
   await expect(page.locator('.sheet-layer')).toBeHidden();
   await page.locator('#toolbar [data-action="menu"]').click();
   await page.locator('.sheet .row-button', { hasText: 'Settings' }).click();
-  await expect(page.locator('.adventure-rules .run-deaths')).toHaveText('Two deaths so far.');
+  await expect(page.locator('.adventure-rules .run-deaths')).toHaveText('Returned from death twice.');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
 
   /* There is no last life: the third fall asks again, and only accepting death ends the adventure. */
   await fallToWyrm(page, '.prompt-card.between');
-  await expect(between).toContainText('Deaths so far: 2.');
+  await expect(between).toContainText('Twice before you stood here.');
   /* The wyrm's chaos can leave the hero seeing it as something else: tome2 records the killer as seen. */
   const killer = await page.evaluate(() => window.__tome!.engine.gameState()?.player?.diedFrom ?? '');
   expect(killer).not.toBe('');
