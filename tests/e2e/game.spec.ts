@@ -427,15 +427,14 @@ test('a hero in Adventure mode returns from every death until they accept it, an
     .poll(() => page.evaluate(() => new TextDecoder().decode(window.__tome!.engine.fs!.readFile('/home/web_user/.tome/2.4/save/Doomed.adventure')).trim()))
     .toBe('1 2 1');
 
-  /* The character sheet counts the deaths, with the share of the score they leave. */
+  /* The character sheet and Settings count the deaths. */
   await page.locator('#hud .hud-player .name').click();
   await expect(page.locator('.sheet .stat', { hasText: 'Deaths' })).toContainText('2');
-  await expect(page.locator('.sheet .stat', { hasText: 'Score kept' })).toContainText('83%');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
   await page.locator('#toolbar [data-action="menu"]').click();
   await page.locator('.sheet .row-button', { hasText: 'Settings' }).click();
-  await expect(page.locator('.adventure-rules .run-deaths')).toHaveText('Two deaths so far: your score keeps 83%.');
+  await expect(page.locator('.adventure-rules .run-deaths')).toHaveText('Two deaths so far.');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheet-layer')).toBeHidden();
@@ -484,15 +483,13 @@ test('a hero whose adventure ended can be looked back on and begun anew as a new
   await finish.click();
   await expect(page.locator('.termview .fame-row')).toHaveCount(1);
   await expect(page.locator('.termview .fame-row').first()).toHaveClass(/current/);
-  await expect(page.locator('.termview .fame-row').first()).toContainText('3 deaths, 77% kept');
+  await expect(page.locator('.termview .fame-row').first()).toContainText('Three deaths');
   const [score] = await page.evaluate(() => window.__tome!.engine.scores());
-  expect(score).toMatchObject({ deaths: 3, scoreKept: 77, adventure: 1 });
-  expect(score.base).toBeGreaterThan(0);
-  expect(score.points).toBe(Math.floor((score.base * 10) / 13));
+  expect(score).toMatchObject({ deaths: 3, adventure: 1 });
   await page.locator('.termview .fame-row').first().click();
   await expect(page.locator('.sheet-fame-hero .sheet-title')).toHaveText('Anew');
   await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText('Abandoned in Bree');
-  await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText(`Before deaths${score.base.toLocaleString('en-GB')} · 77% kept`);
+  await expect(page.locator('.sheet-fame-hero .hero-facts')).toContainText('Deaths3');
   await expect(page.locator('.sheet-fame-hero .sheet-action')).toHaveText(['Begin anew', 'Look back']);
   await page.locator('.sheet-fame-hero [data-action="look"]').click();
   await expect(page.locator('.sheet-fallen .fallen-cause')).toHaveText('Adventure abandoned');

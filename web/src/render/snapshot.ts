@@ -178,8 +178,6 @@ export interface PlayerState {
   adventure?: number;
   /** Deaths returned from in Adventure mode; 0 in Roguelike. */
   deaths?: number;
-  /** The share of the score the deaths leave, in per cent (100 with none). */
-  scoreKept?: number;
   /**
    * Once dead: `choice` when the hero will be asked whether to return
    * (Adventure mode, unless death was accepted), `rescue` when tome2 itself saves them
@@ -304,12 +302,8 @@ export interface ScoreEntry {
   cls: string;
   /** The score, with the deaths returned from counted. */
   points: number;
-  /** The score before deaths. */
-  base: number;
   /** Deaths returned from before the end. */
   deaths: number;
-  /** The share of the base score kept, in per cent. */
-  scoreKept: number;
   /** 1 in Adventure mode, 0 in Roguelike. */
   adventure: number;
   gold: number;

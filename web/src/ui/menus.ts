@@ -83,8 +83,6 @@ export interface AdventureRules {
   run: RunOptions;
   /** Deaths returned from in Adventure mode. */
   deaths: number;
-  /** The share of the score they leave, in per cent. */
-  scoreKept: number;
 }
 
 /** Display settings, applied as they change; during a game, the adventure's own rules below them, which cannot change. */
@@ -181,7 +179,7 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
     const fixed = section(
       'Your adventure',
       el('p', 'muted', `Chosen when ${rules.hero} was created, these rules hold for the whole adventure.`),
-      ...runElements(rules.run, rules.run.drawn, { deaths: { count: rules.deaths, scoreKept: rules.scoreKept } }),
+      ...runElements(rules.run, rules.run.drawn, { deaths: rules.deaths }),
     );
     fixed.classList.add('adventure-rules');
     body.append(fixed);

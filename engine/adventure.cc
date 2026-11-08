@@ -402,12 +402,6 @@ bool die_hook(void *, void *, void *)
 
 } // namespace
 
-/* The share of the score kept with these deaths, in whole per cent. */
-int score_kept(int deaths)
-{
-	long long const divisor = DEATH_DIVISOR + std::max(0, deaths);
-	return static_cast<int>((100 * DEATH_DIVISOR + divisor / 2) / divisor);
-}
 
 /* Whether the hero plays in Adventure mode, returning from death as often as they choose (else Roguelike, with one life). */
 bool adventure_mode()
@@ -429,8 +423,7 @@ void web_adventure_tick()
 
 /*
  * The hero's deaths for the player JSON (web_state_json): `adventure`, the
- * deaths returned from (`deaths`), the share of the score they leave
- * (`scoreKept`, per cent), and once dead `fate`: `choice` (they
+ * deaths returned from (`deaths`), and once dead `fate`: `choice` (they
  * are asked whether to return, or have chosen to and are on their way;
  * `haven` names the town, or `closed` says why there is none: `astral`,
  * `held` or `none`), `rescue` (tome2 itself saves them) or `final`.
@@ -439,7 +432,6 @@ void json_adventure(JsonWriter &w)
 {
 	w.field("adventure", adventure.on ? 1 : 0);
 	w.field("deaths", adventure.deaths);
-	w.field("scoreKept", score_kept(adventure.deaths));
 	if (!death) return;
 	bool const choice = returning || may_return();
 	w.field("fate", choice ? "choice" : (alive && !accepted && rescued()) ? "rescue" : "final");
@@ -495,14 +487,13 @@ static void score_field(char *field, std::size_t size, long long value)
 /*
  * tome2's highscore_add, called once as the Hall of Fame takes a hero (top_twenty):
  * the score is the one tome2 worked out with the deaths returned from counted,
- * and the record keeps the base score, the deaths and the mode in fields tome2
- * keeps unused (read back by web_scores_json).
+ * and the record keeps the deaths and the mode in fields tome2 leaves unused
+ * (read back by web_scores_json).
  */
 int __wrap__Z13highscore_addiP10high_score(int highscore_fd, high_score *score)
 {
 	long long const base = std::atoll(score->pts);
 	score_field(score->pts, sizeof(score->pts) - 1, adjusted_score(base, adventure.deaths));
-	score_field(score->unused_1, sizeof(score->unused_1), std::min(base, 99999999LL));
 	score_field(score->unused_2, sizeof(score->unused_2), std::min(adventure.deaths, 9999));
 	score_field(score->unused_3, sizeof(score->unused_3), adventure.on ? 1 : 0);
 	return __real__Z13highscore_addiP10high_score(highscore_fd, score);

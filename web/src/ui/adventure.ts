@@ -1,4 +1,4 @@
-import { deathsLine } from '../play/death.ts';
+import { deathsText } from '../play/death.ts';
 import { MODE_TEXT, questChoices, questsText, RUN_OPTION_TEXT, type RunOptions } from '../flow/runoptions.ts';
 import { el } from './dom.ts';
 import { segmented } from './menus.ts';
@@ -19,7 +19,7 @@ interface RunChanges {
 export function runElements(
   run: RunOptions,
   quests: number,
-  { change, deaths }: { change?: RunChanges; deaths?: { count: number; scoreKept: number } } = {},
+  { change, deaths }: { change?: RunChanges; deaths?: number } = {},
 ): HTMLElement[] {
   const mode = run.adventure ? 'adventure' : 'roguelike';
   const modeBox = el('section', 'run-mode');
@@ -28,7 +28,7 @@ export function runElements(
   );
   if (!change) for (const button of modes.querySelectorAll('button')) button.disabled = true;
   modeBox.append(el('h4', undefined, 'When you fall'), modes, el('p', 'muted', MODE_TEXT[mode].detail));
-  if (run.adventure && deaths) modeBox.append(el('p', 'run-deaths', deathsLine(deaths.count, deaths.scoreKept)));
+  if (run.adventure && deaths !== undefined) modeBox.append(el('p', 'run-deaths', `${deathsText(deaths)} so far.`));
   const unusual = run.options.some((o) => o.name === 'unusualRooms' && o.on);
   const questBox = el('section', 'run-quests');
   questBox.append(el('h4', undefined, 'Random quests'));

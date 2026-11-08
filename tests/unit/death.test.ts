@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { battlefieldText, deathsLine, deathsText, followReturn, isReturnPrompt, ordinal, safetyText } from '../../web/src/play/death.ts';
+import { battlefieldText, deathsText, followReturn, isReturnPrompt, ordinal, safetyText } from '../../web/src/play/death.ts';
 import { hasFallen } from '../../web/src/play/memorial.ts';
 
 describe('death', () => {
@@ -14,8 +14,6 @@ describe('death', () => {
     assert.equal(deathsText(1), 'One death');
     assert.equal(deathsText(12), '12 deaths');
     assert.deepEqual([1, 2, 10, 11, 12, 13, 21, 22, 23, 101].map(ordinal), ['first', 'second', 'tenth', '11th', '12th', '13th', '21st', '22nd', '23rd', '101st']);
-    assert.equal(deathsLine(0, 100), 'No deaths so far.');
-    assert.equal(deathsLine(2, 83), 'Two deaths so far: your score keeps 83%.');
   });
 
   it('says what each way back means from where the hero fell', () => {

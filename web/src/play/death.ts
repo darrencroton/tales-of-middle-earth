@@ -25,11 +25,6 @@ export function ordinal(n: number): string {
   return `${n}${suffix}`;
 }
 
-/** The deaths an Adventure hero has returned from and the share of the score they leave: "Two deaths so far: your score keeps 83%." */
-export function deathsLine(deaths: number, kept: number): string {
-  return `${deathsText(deaths)} so far${deaths ? `: your score keeps ${kept}%` : ''}.`;
-}
-
 /** What returning to the battlefield means from where the hero fell. */
 export function battlefieldText(place: Pick<Place, 'depth' | 'kept' | 'quest'> | null): string {
   if (place?.quest) return 'Wake on the surface, outside the quest’s own place.';

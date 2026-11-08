@@ -91,7 +91,7 @@ Other buildings ─────────────── native panel: thei
 Death (Adventure mode) ──────── Halls of Waiting (map card over a grey veil: Return to the battlefield · Return
   (every time)                  to safety · Accept death → confirmation) → the map, with a banner; or, accepted, as below
 Death ──────────────────────── death card → end-of-game summary (full screen) → Hall of Fame (full screen)
-                                └── a hero ──────── card: how it ended, when, deepest, mode, deaths, score (and before deaths); Begin anew · Look back
+                                └── a hero ──────── card: how it ended, when, deepest, mode, deaths, score; Begin anew · Look back
                                     └── Fallen hero panel, tabs Hero · Gear · Skills · Last moments
                                         └── Item / foe  card
 Title ──────────────────────── Continue as (last hero, straight into the game) · Game Roster · New character

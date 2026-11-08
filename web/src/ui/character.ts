@@ -549,9 +549,7 @@ function summaryBody(api: GameApi): HTMLElement | null {
     stat('Deepest', `${sheet.maxDepth * FEET_PER_LEVEL} ft`),
     ...(player.god ? [] : [stat('God', 'None')]),
     stat('Infravision', `${sheet.infra} ft`),
-    ...(player.adventure
-      ? [stat('Deaths', String(player.deaths ?? 0)), ...(player.deaths ? [stat('Score kept', `${player.scoreKept ?? 100}%`)] : [])]
-      : [stat('Life', 'One (Roguelike)')]),
+    player.adventure ? stat('Deaths', String(player.deaths ?? 0)) : stat('Life', 'One (Roguelike)'),
   );
   body.append(section('Progress', progress));
   const god = godNamed(player.god);

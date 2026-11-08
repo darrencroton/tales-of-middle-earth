@@ -2053,7 +2053,7 @@ function openSettingsSheet(): void {
 function adventureRules(): AdventureRules | null {
   const player = game.lastState?.player;
   const run = inGame() ? engine.runOptions() : null;
-  return player?.name && run ? { hero: player.name, run, deaths: player.deaths ?? 0, scoreKept: player.scoreKept ?? 100 } : null;
+  return player?.name && run ? { hero: player.name, run, deaths: player.deaths ?? 0 } : null;
 }
 
 /** Applies the settings that live in CSS: text size and animation. */

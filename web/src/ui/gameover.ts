@@ -1,5 +1,6 @@
 import { MODE_TEXT } from '../flow/runoptions.ts';
 import type { Chronicle } from '../play/chronicle.ts';
+import { deathsText } from '../play/death.ts';
 import { dayOf, type Memorial, type MemorialFoe } from '../play/memorial.ts';
 import { FEET_PER_LEVEL, type ScoreEntry } from '../render/snapshot.ts';
 import { titleName } from './api.ts';
@@ -155,7 +156,6 @@ export function openFameCard(sheets: Sheets, hero: FallenHero & { entry: ScoreEn
   fact('Played', e.adventure ? MODE_TEXT.adventure.label : MODE_TEXT.roguelike.label);
   if (e.adventure) fact('Deaths', count(e.deaths));
   fact('Score', count(e.points));
-  if (e.deaths) fact('Before deaths', `${count(e.base)} · ${e.scoreKept}% kept`);
   const body = el('div', 'adventurer-detail');
   body.append(facts);
   const buttons: SheetAction[] = [];
@@ -219,7 +219,7 @@ export function hallOfFameElements(
     const who = [entry.race, entry.cls].filter(Boolean).join(' ');
     main.append(
       el('span', 'fame-name', entry.name),
-      el('span', 'fame-who', [who, `Level ${entry.level}`, entry.deaths ? `${count(entry.deaths)} ${entry.deaths === 1 ? 'death' : 'deaths'}, ${entry.scoreKept}% kept` : ''].filter(Boolean).join(' · ')),
+      el('span', 'fame-who', [who, `Level ${entry.level}`, entry.deaths ? deathsText(entry.deaths) : ''].filter(Boolean).join(' · ')),
       el('span', 'fame-fate', fateText(entry, memorialOf(entry))),
     );
     row.append(
