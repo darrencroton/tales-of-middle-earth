@@ -941,7 +941,7 @@ test('Explore in town never leads to a way down, the quest level below Bree stay
   await equipSuggested(page);
   await wizardCommand(page, 'w');
   await wizardCommand(page, 'z');
-  /* Two bare floor cells side by side, the nearest the hero can reach: rubble made on the first, the hero steps to the second. */
+  /* Two bare floor cells side by side, the nearest the hero can reach with no rubble about: rubble made on the first, the hero steps to the second. */
   const spots = await page.evaluate(() => {
     const tome = window.__tome!;
     const snap = tome.engine.snapshot()!;
@@ -950,11 +950,15 @@ test('Explore in town never leads to a way down, the quest level below Bree stay
       const i = y * snap.width + x;
       return x >= 0 && y >= 0 && x < snap.width && y < snap.height && /floor$|^dirt$|grass$/.test(features[snap.feat[i]]?.name ?? '') && snap.layer[i] === 1 && (snap.info[i] & 0x11) !== 0;
     };
+    const rubbleNear = (x: number, y: number) => {
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (snap.feat[(y + dy) * snap.width + x + dx] === 49) return true;
+      return false;
+    };
     const steps: [string, number, number][] = [['6', 1, 0], ['2', 0, 1], ['3', 1, 1], ['1', -1, 1]];
     const found: { x: number; y: number; way: string }[] = [];
     for (let y = 0; y < snap.height; y++) {
       for (let x = 0; x < snap.width; x++) {
-        const step = bare(x, y) && steps.find(([, dx, dy]) => bare(x + dx, y + dy));
+        const step = bare(x, y) && steps.find(([, dx, dy]) => bare(x + dx, y + dy) && !rubbleNear(x + dx, y + dy));
         if (step) found.push({ x, y, way: step[0] });
       }
     }
