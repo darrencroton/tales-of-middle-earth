@@ -13,7 +13,7 @@ export function itemState(item: MagicItem): string {
   return item.fail === undefined ? '' : 'Ready';
 }
 
-/** A recent entry's second line: a spell's mana and failure, where a power comes from, an item's use, readiness and how many are carried. */
+/** A recent entry's second line: a spell's mana and failure, where a power comes from, an item's readiness (else its use) and how many are carried. */
 function recentHint(entry: RecentAction, spells: SpellState | null, carried: Carried): string {
   if (entry.kind === 'spell') {
     const spell = spells?.books.flatMap((b) => b.spells).find((s) => s.name === entry.name);
@@ -21,8 +21,9 @@ function recentHint(entry: RecentAction, spells: SpellState | null, carried: Car
   }
   if (entry.kind === 'path') return recentSource(entry);
   const magic = recentMagicItem(entry, spells, carried);
+  const state = magic ? itemState(magic) : '';
   const count = recentItem(entry, carried)?.item.number ?? 0;
-  return [entry.verb, magic ? itemState(magic) : '', count > 1 ? `×${count}` : ''].filter(Boolean).join(' · ');
+  return [state && state !== 'Ready' ? state : entry.verb, count > 1 ? `×${count}` : ''].filter(Boolean).join(' · ');
 }
 
 /**
@@ -30,10 +31,14 @@ function recentHint(entry: RecentAction, spells: SpellState | null, carried: Car
  * buttons, one tap to do again, dimmed when it cannot be done now (`run`
  * says why). Null when there is nothing to show.
  */
-export function recentSection(api: GameApi, entries: readonly RecentAction[], run: (entry: RecentAction) => void): HTMLElement | null {
+export function recentSection(
+  api: GameApi,
+  entries: readonly RecentAction[],
+  spells: SpellState | null,
+  carried: Carried,
+  run: (entry: RecentAction) => void,
+): HTMLElement | null {
   if (!entries.length) return null;
-  const spells = api.engine.spells();
-  const carried = api.engine.inventory() ?? { pack: [], equip: [] };
   const grid = el('div', 'recent-grid');
   for (const entry of entries) {
     const why = api.castRefusal(entry);

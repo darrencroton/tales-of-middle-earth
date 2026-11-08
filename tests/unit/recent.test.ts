@@ -241,8 +241,9 @@ describe('recent actions', () => {
       const potion = itemRecent('q', 'Quaff', { i: 3, tval: 71, sval: 4, base: 'Potion of Cure Light Wounds' });
       assert.deepEqual(usableRecents([bolt, { kind: 'spell', name: 'Gone' }, spit, aimedWand, potion], carrying(5), carried), [bolt, spit, aimedWand]);
       assert.deepEqual(usableRecents([aimedWand], spells, carried), []);
-      const many = Array.from({ length: 8 }, (_, n): RecentAction => ({ kind: 'spell', name: n % 2 ? 'Manathrust' : 'Phase Door' }));
-      assert.equal(usableRecents(many, spells, carried).length, 6);
+      const names = Array.from({ length: 8 }, (_, n) => `Spell ${n}`);
+      const learnt = { ...spells, books: [{ i: 0, name: 'Magic Book', spells: names.map((name) => spell(name)) }] };
+      assert.deepEqual(usableRecents(names.map((name): RecentAction => ({ kind: 'spell', name })), learnt, carried).map((e) => recentLabel(e)), names.slice(0, 6));
     });
 
     it('offers the items used recently that are still in the pack, devices too, six at most', () => {

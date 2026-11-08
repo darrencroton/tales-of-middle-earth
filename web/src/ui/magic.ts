@@ -228,7 +228,7 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
   const body = el('div', 'magic');
   let initial: HTMLElement | null = null;
 
-  const recent = recentSection(api, usableRecents(recents, spells, carried), (entry) => handlers.run(entry));
+  const recent = recentSection(api, usableRecents(recents, spells, carried), spells, carried, (entry) => handlers.run(entry));
   if (recent) body.append(recent);
 
   if (current === 'magic') {

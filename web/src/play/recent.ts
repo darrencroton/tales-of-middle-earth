@@ -136,8 +136,8 @@ export function validRecent(entry: unknown): entry is RecentAction {
 
 /**
  * The list with `entry` moved (or added) to the front, keeping at most `max`
- * of each kind. Once aimed, it stays so: a use that failed before tome2 asked
- * where says nothing of it.
+ * of each group (abilities, other item uses). Once aimed, it stays so: a use
+ * that failed before tome2 asked where says nothing of it.
  */
 export function rememberRecent(list: readonly RecentAction[], entry: RecentAction, max = RECENT_KEPT): RecentAction[] {
   const key = recentKey(entry);

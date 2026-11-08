@@ -59,7 +59,7 @@ export function openInventory(api: GameApi, tab: InventoryTab = 'pack', replace 
   body.append(burden);
 
   if (current === 'pack') {
-    const recent = recentSection(api, packRecents(api.recent(), inventory), (entry) => api.cast(entry));
+    const recent = recentSection(api, packRecents(api.recent(), inventory), api.engine.spells(), inventory, (entry) => api.cast(entry));
     if (recent) body.append(recent);
   }
 
