@@ -333,7 +333,7 @@ export const HELP: readonly HelpGroup[] = [
           },
           'Either way back counts a death. It restores health, mana and sanity, cures ailments (poison, cuts, stunning, fear, blindness, confusion, hallucination, paralysis, slowness, the Black Breath) and hunger, and ends a Word of Recall under way. What lasts stays: drained attributes and experience, curses, corruptions, and quests done or failed. The game is saved at once.',
           { heading: 'Deaths and your score' },
-          'A hero\'s score in the Hall of Fame is ToME\'s own (level, experience, depth, gold, quests and foes slain), divided by one and a tenth for each death they came back from: one death keeps 91% of it, five keep 67%, ten keep half. The death that ends the tale is not counted, so a hero who never came back scores in full, in Adventure and Roguelike alike.',
+          'A hero\'s score in the Hall of Fame is ToME\'s own (level, experience, depth, gold, quests and foes slain), divided by one plus a tenth for each death they came back from: one death keeps 91% of it, five keep 67%, ten keep half. The death that ends the tale is not counted, so a hero who never came back scores in full, in Adventure and Roguelike alike.',
           'Your deaths, with the share of the score they leave, are on the character sheet and at the foot of Settings; the Hall of Fame shows each hero\'s deaths and their score before them.',
           'The *Blood of Life* saves you first and counts no death; while the One Ring holds you, it alone decides. Eru may still raise a devoted follower who accepts death, or a Roguelike hero.',
         ],

@@ -7,7 +7,7 @@
  * made where the hero is sent. A kept level is loaded as it was left.
  *
  * Each return counts a death, and the score written to the Hall of Fame is
- * divided by one and a tenth of a point for each (`adjusted_score`).
+ * divided by 1 + deaths / 10 (`adjusted_score`).
  *
  * The mode, the deaths and the last town are kept next to the savefile
  * (`<savefile>.adventure`), written whenever tome2 writes the savefile and
@@ -67,8 +67,8 @@ void forget_saved_view();
 
 namespace {
 
-/* Deaths that add a whole score's worth to the score's divisor: each one adds a tenth. */
-constexpr long long DEATHS_PER_SCORE = 10;
+/* Each death adds 1 / DEATH_DIVISOR to the score's divisor. */
+constexpr long long DEATH_DIVISOR = 10;
 
 /* Grids searched around a landing place for a safe one. */
 constexpr int LANDING_REACH = 12;
@@ -122,7 +122,7 @@ void read_side_file()
 /* The score once the deaths returned from are counted: the base divided by 1 + deaths / 10. */
 long long adjusted_score(long long base, int deaths)
 {
-	return base * DEATHS_PER_SCORE / (DEATHS_PER_SCORE + std::max(0, deaths));
+	return base * DEATH_DIVISOR / (DEATH_DIVISOR + std::max(0, deaths));
 }
 
 /* The town of a surface area, or 0 (as tome2's generate_area reads it). */
@@ -405,8 +405,8 @@ bool die_hook(void *, void *, void *)
 /* The share of the score kept with these deaths, in whole per cent. */
 int score_kept(int deaths)
 {
-	long long const divisor = DEATHS_PER_SCORE + std::max(0, deaths);
-	return static_cast<int>((100 * DEATHS_PER_SCORE + divisor / 2) / divisor);
+	long long const divisor = DEATH_DIVISOR + std::max(0, deaths);
+	return static_cast<int>((100 * DEATH_DIVISOR + divisor / 2) / divisor);
 }
 
 /* Whether the hero plays in Adventure mode, returning from death as often as they choose (else Roguelike, with one life). */

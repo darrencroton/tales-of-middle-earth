@@ -307,7 +307,7 @@ test('the Hall of Fame follows the end of an adventure and stays on the title sc
   await expect(page.locator('.sheet .fame-row')).toHaveCount(3);
   await expect(page.locator('.sheet .fame-row').nth(1)).toContainText("Killed by Grip, Farmer Maggot's Dog on the surface");
   await expect(page.locator('.sheet')).toContainText('Career');
-  await expect(page.locator('.sheet .deed')).toHaveCount(16);
+  await expect(page.locator('.sheet .deed')).toHaveCount(17);
   await expect(page.locator('.sheet .stat', { hasText: 'Fallen' })).toContainText('0');
   await page.locator('.sheet .fame-row').first().click();
   await expect(page.locator('.sheet-fame-hero .sheet-title')).toHaveText('Bilbo');
