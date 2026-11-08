@@ -12,7 +12,7 @@ taps from the map. **Type** refers to the taxonomy in section 3.
 ```
 Map (toolbar, HUD, gestures)
 ├── Toolbar (≤ 7 buttons: one changing button first — Walk here, Release, Descend/Ascend/Enter rift, Enter shop/home,
-│   Attack, Talk, Pick up, Drink, Wield/Light, Explore/Way down/Way up — then the hero's
+│   Attack, Talk, Pick up, Drink, Wield/Light, Tunnel, Explore/Way down/Way up — then the hero's
 │   own buttons in fixed places: quick spell or aimed item, Cast/Powers, Fire, Items, Rest, More,
 │   Menu; while exploring: Stop, Speed, Menu)
 │   ├── Items ─────────────── Inventory            panel, tabs Pack · Equipment · Floor     depth 1
@@ -319,7 +319,7 @@ with why, and journeys are refused.
 | `R` | rest | toolbar *Rest*; More (both answer *how long?* only when tome2 asks) |
 | `<` `>` | stairs, world map | changing button (Descend, Ascend, Shaft down, Shaft up, Walk here…); More (*Go down*, *Go up* / *World map*) |
 | `_` | enter a building | walk in; changing button *Enter shop* |
-| `o` `c` `B` `j` `T` | open, close, bash, jam (spikes), tunnel | tap a door (opens it); More → Doors and walls |
+| `o` `c` `B` `j` `T` | open, close, bash, jam (spikes), tunnel | tap a door (opens it); changing button *Tunnel* beside rubble with a digger worn; More → Doors and walls |
 | `+` | alter (attack, open or tunnel by terrain) | covered by the above and Attack |
 | `Y` | talk | tap a neutral creature beside you; changing button *Talk*; its card; More |
 | `y` | give | a creature's card beside you; More |

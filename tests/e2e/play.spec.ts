@@ -891,7 +891,7 @@ test.describe(() => {
   });
 });
 
-test('Explore in town never leads to a way down, and the quest level below Bree stays native', async ({ page }) => {
+test('Explore in town never leads to a way down, the quest level below Bree stays native, and rubble alongside is tunnelled once a digger is worn', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Delver');
@@ -936,6 +936,72 @@ test('Explore in town never leads to a way down, and the quest level below Bree 
   await expect(page.locator('.termview')).toBeHidden();
   expect((await screenText(page)).split('\n')[0]).not.toMatch(/-more-/);
   expect(await page.evaluate(() => window.__tome!.engine.gameState()!.messages!.length)).toBeGreaterThan(0);
+
+  /* Rubble left behind: Explore stays first until a digger is worn, then Tunnel digs it and gives way to Explore again. */
+  await equipSuggested(page);
+  await wizardCommand(page, 'w');
+  await wizardCommand(page, 'z');
+  /* Two bare floor cells side by side, the nearest the hero can reach with no rubble about: rubble made on the first, the hero steps to the second. */
+  const spots = await page.evaluate(() => {
+    const tome = window.__tome!;
+    const snap = tome.engine.snapshot()!;
+    const features = tome.engine.features();
+    const bare = (x: number, y: number) => {
+      const i = y * snap.width + x;
+      return x >= 0 && y >= 0 && x < snap.width && y < snap.height && /floor$|^dirt$|grass$/.test(features[snap.feat[i]]?.name ?? '') && snap.layer[i] === 1 && (snap.info[i] & 0x11) !== 0;
+    };
+    const rubbleNear = (x: number, y: number) => {
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (snap.feat[(y + dy) * snap.width + x + dx] === 49) return true;
+      return false;
+    };
+    const steps: [string, number, number][] = [['6', 1, 0], ['2', 0, 1], ['3', 1, 1], ['1', -1, 1]];
+    const found: { x: number; y: number; way: string }[] = [];
+    for (let y = 0; y < snap.height; y++) {
+      for (let x = 0; x < snap.width; x++) {
+        const step = bare(x, y) && steps.find(([, dx, dy]) => bare(x + dx, y + dy) && !rubbleNear(x + dx, y + dy));
+        if (step) found.push({ x, y, way: step[0] });
+      }
+    }
+    const distance = (p: { x: number; y: number }) => Math.max(Math.abs(p.x - snap.px), Math.abs(p.y - snap.py));
+    return found.sort((a, b) => distance(a) - distance(b)).slice(0, 5);
+  });
+  let spot: (typeof spots)[number] | undefined;
+  for (const candidate of spots) {
+    await travelTo(page, candidate);
+    const here = await playerPos(page);
+    if (here.x === candidate.x && here.y === candidate.y) {
+      spot = candidate;
+      break;
+    }
+  }
+  expect(spot, 'no bare floor within reach').toBeDefined();
+  const rubble = { x: spot!.x, y: spot!.y };
+  const way = spot!.way;
+  await waitAtCommand(page);
+  await wizardCommand(page, 'F', 49);
+  await sendText(page, `\\;${way}`);
+  await expect.poll(() => playerPos(page)).not.toEqual(rubble);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  expect(await first()).toBe('explore');
+  await wizardGive(page, '-', 84);
+  await page.locator('#toolbar [data-action="inventory"]').click();
+  await page.locator('.sheet .item-row', { hasText: 'Shovel' }).click();
+  await page.locator('.sheet .sheet-action', { hasText: 'Wield' }).click();
+  await expect(page.locator('#toolbar [data-action="tunnel"]')).toBeVisible();
+  expect(await first()).toBe('tunnel');
+  const feat = () => page.evaluate(({ x, y }) => window.__tome!.engine.snapshot()!.feat[y * window.__tome!.engine.snapshot()!.width + x], rubble);
+  /* tome2 digs on until the pile is gone or something disturbs it; Tunnel again after a disturbance. */
+  for (let i = 0; i < 5 && (await feat()) === 49; i++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await page.locator('#toolbar [data-action="tunnel"]').click();
+    await expect.poll(feat, { timeout: 20_000 }).not.toBe(49).catch(() => undefined);
+  }
+  expect(await feat()).not.toBe(49);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  await expect.poll(first).toBe('explore');
 });
 
 test('a random quest is told on arrival, its chip tells what it asks, it survives a save, and it is named again on the next visit', async ({ page }) => {

@@ -202,6 +202,8 @@ export function* creaturePowersMacro(): Macro {
   if (/Use which power/.test(s.prompt)) yield keyCodes('*');
 }
 
+const TUNNEL: CommandDef = { label: 'Tunnel', icon: '#', command: 'T' };
+
 /**
  * Every command the More sheet can offer, by what the player means to do.
  * Items are also used from their cards (Items); Character, Knowledge,
@@ -265,7 +267,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
       { label: 'Close', icon: '⊏', command: 'c' },
       { label: 'Bash door', icon: '+', command: 'B' },
       { label: 'Jam door', icon: '⊣', command: 'j' },
-      { label: 'Tunnel', icon: '#', command: 'T' },
+      TUNNEL,
     ],
   },
   {
@@ -359,6 +361,8 @@ export interface ActionContext {
   foe?: string | null;
   /** A neutral creature stands next to the player (someone to talk to). */
   talk?: boolean;
+  /** Direction digits of the rubble beside the hero that they can dig through. */
+  rubble?: readonly string[];
   /** What the altar underfoot offers the hero: worship, or Melkor's offerings. */
   altar?: 'worship' | 'offer' | null;
   /** The hero controls another creature: walking moves it, and the hero's own actions wait. */
@@ -448,6 +452,7 @@ const EXPLORE_LABELS: Readonly<Record<ExploreNext, [string, string]>> = {
  * underfoot (a staircase is always what it does); the door of a shop or
  * other building underfoot; Attack a foe alongside; what lies underfoot to
  * pick up or use (an altar only when it offers worship or offerings); gear the hero needs to go on; Talk to someone alongside;
+ * Tunnel through rubble alongside (tome2 asks which way when there is more than one);
  * and Explore, named for what it will do (dimmed where it cannot be used).
  */
 export function contextualAction(ctx: ActionContext): Action {
@@ -465,6 +470,10 @@ export function contextualAction(ctx: ActionContext): Action {
     return { id: 'equip', label, icon, effect: { kind: 'native', view: 'equip' }, primary: true };
   }
   if (ctx.talk) return { id: 'talk', label: 'Talk', icon: '❝', effect: { kind: 'native', view: 'talk' }, primary: true };
+  if (ctx.rubble?.length) {
+    const keys = commandKeys(TUNNEL);
+    return { id: 'tunnel', label: TUNNEL.label, icon: TUNNEL.icon, effect: { kind: 'keys', keys: ctx.rubble.length === 1 ? [...keys, ...text(ctx.rubble[0])] : keys }, primary: true };
+  }
   const [label, icon] = EXPLORE_LABELS[ctx.exploreNext ?? 'explore'];
   return { id: 'explore', label, icon, effect: { kind: 'native', view: 'explore' }, primary: !ctx.exploreRefusal, ...unavailable(ctx.exploreRefusal) };
 }

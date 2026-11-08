@@ -121,7 +121,7 @@ export const HELP: readonly HelpGroup[] = [
         title: 'The toolbar',
         icon: '▭',
         summary: 'What each button does, and the one that changes.',
-        keywords: 'button bar action descend ascend stairs attack talk pick up wield explore way down way up again cast fire items rest more menu',
+        keywords: 'button bar action descend ascend stairs attack talk pick up wield tunnel dig rubble explore way down way up again cast fire items rest more menu',
         body: [
           'The first button changes with where you are and what is around you. It is the first of these that applies:',
           {
@@ -132,6 +132,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Talk', 'Someone neutral stands next to you: hear what they have to say.'],
               ['Pick up, Drink, Sacrifice', 'Something lies at your feet, or you stand at a fountain or an altar.'],
               ['Wield, Light', 'Your weapon hand is empty, or you have no light below ground. *Light* also relights a torch or lantern that has gone out.'],
+              ['Tunnel', 'Rubble blocks the way next to you and you have a shovel or pick in your tool slot: dig through it. Beside more than one pile, choose which. Walls and veins can still be dug from More.'],
               ['Explore', 'Walk on to the next place you have not seen, in a town or a dungeon.'],
               ['Way down, Way up', 'This dungeon level is explored: go straight to its stairs.'],
             ],

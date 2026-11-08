@@ -4,9 +4,9 @@ import { commandGroups, commandKeys, commandRefusal, contextActions, contextualA
 import { findPath, floodFill, gridDistance, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
-import { approachTarget, FAR_WALK_STEPS, goAction, isKnown, outOfSight, pushPast, stepTowards, STOP_MESSAGES, stopMessage, tapAction, Travel, travelGrid, type StopContext, type TravelContext } from '../../web/src/play/travel.ts';
-import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials } from '../../web/src/render/materials.ts';
-import { CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
+import { approachTarget, FAR_WALK_STEPS, goAction, isKnown, outOfSight, pushPast, rubbleBeside, stepTowards, STOP_MESSAGES, stopMessage, tapAction, Travel, travelGrid, type StopContext, type TravelContext } from '../../web/src/play/travel.ts';
+import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials, walkableFor } from '../../web/src/render/materials.ts';
+import { CAVE_MARK, CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
 import { monster, snapshot } from './fixtures.ts';
 
 const keys = (s: string) => [...s].map((c) => c.charCodeAt(0));
@@ -676,6 +676,34 @@ describe('actions', () => {
     assert.equal(contextualAction({ ...base, talk: true, foe: '6' }).id, 'attack');
     assert.equal(contextualAction({ ...base, talk: true, floorObjects: 1 }).id, 'pickup');
     assert.equal(contextualAction({ ...base, talk: true, gear: 'light' }).id, 'equip');
+  });
+
+  it('tunnels through rubble beside the hero, below everything but Explore', () => {
+    const base = { mode: 'map' as const, atCommand: true, underfoot: '', floorObjects: 0, alwaysPickup: false, prompt: 'none' as const };
+    const one = contextualAction({ ...base, rubble: ['6'], exploreNext: 'down' });
+    assert.deepEqual([one.id, one.label, one.primary], ['tunnel', 'Tunnel', true]);
+    assert.deepEqual(one.effect, { kind: 'keys', keys: [92, ...keys('T6')] });
+    assert.deepEqual(contextualAction({ ...base, rubble: ['6', '2'] }).effect, { kind: 'keys', keys: [92, ...keys('T')] });
+    assert.equal(contextualAction({ ...base, rubble: [] }).id, 'explore');
+    for (const over of [{ foe: '6' }, { floorObjects: 1 }, { gear: 'light' as const }, { talk: true }, { underfoot: 'down staircase' }]) {
+      assert.notEqual(contextualAction({ ...base, rubble: ['6'], ...over }).id, 'tunnel');
+    }
+  });
+
+  it('finds remembered rubble beside the hero that blocks the way', () => {
+    const features = Array.from({ length: 50 }, () => ({ name: 'open floor', ch: 46, attr: 1, flags: FB_FLOOR }));
+    features[49] = { name: 'pile of rubble', ch: 58, attr: 1, flags: FB_NO_WALK | FB_WALL | FB_NO_VISION };
+    features[2] = { name: 'granite wall', ch: 35, attr: 1, flags: FB_NO_WALK | FB_WALL | FB_NO_VISION };
+    const materials = buildMaterials(features);
+    const snap = snapshot(3, 3, { px: 1, py: 1 });
+    snap.info.fill(CAVE_MARK);
+    snap.feat.set([49, 2, 2, 1, 1, 49, 2, 2, 49]);
+    assert.deepEqual(rubbleBeside(snap, materials), ['7', '6', '3']);
+    assert.deepEqual(rubbleBeside(snap, walkableFor(materials, [49])), []);
+    snap.info[5] = 0;
+    snap.layer[8] = LAYER_MONSTER;
+    assert.deepEqual(rubbleBeside(snap, materials), ['7']);
+    assert.deepEqual(rubbleBeside({ ...snap, px: 0, py: 0 }, materials), []);
   });
 
   it('names the way to and from the world map on the surface', () => {
