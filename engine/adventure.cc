@@ -248,7 +248,7 @@ void go_back()
 	cmsg_print(TERM_L_GREEN, "You return to life where you fell.");
 }
 
-/* The last town, as Word of Recall would leave the dungeon: the way back down is kept. */
+/* The last town, with the way back down kept for Word of Recall. */
 void go_to_safety()
 {
 	int const town = haven();

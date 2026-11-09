@@ -1376,7 +1376,11 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
 function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
   const armed = game.digArmed;
   const marked = armed && armed.turn === snap.turn && performance.now() < armed.until ? armed.cell : null;
-  game.digArmed = null;
+  if (armed) {
+    game.digArmed = null;
+    map.flashHighlight(armed.cell, 0);
+    redraw();
+  }
   doTap(tapAction(snap, heroMaterials(), cell, prompt, { monsters: game.lastState?.monsters, steered: steered(), dig: digSkill(snap), armed: marked }));
 }
 

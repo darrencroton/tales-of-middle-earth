@@ -17,6 +17,7 @@
 #include "dungeon_info_type.hpp"
 #include "files.hpp"
 #include "game.hpp"
+#include "hook_wild_gen_in.hpp"
 #include "hooks.hpp"
 #include "level_data.hpp"
 #include "level_marker.hpp"
@@ -382,10 +383,10 @@ void way_back_underfoot()
 }
 
 /*
- * Gives each dungeon with one entrance on the world map that entrance as the
- * place a hero climbing out of its top level comes up (tome2's d_info ix/iy,
- * which only Moria's flags set); else tome2 leaves them where they last
- * stood on the land, the town a Word of Recall left from. True once done.
+ * Gives each dungeon with one entrance on the world map, the lost temple
+ * aside (its quest moves it), that entrance as the area a hero climbing out
+ * of its top level comes up in (tome2's d_info ix/iy, which only Moria's
+ * flags set). Returns whether the world map holds any entrance yet.
  */
 bool note_entrances()
 {
@@ -413,11 +414,36 @@ bool note_entrances()
 	{
 		if (!found[d]) continue;
 		any = true;
-		if (found[d] > 1 || d_info[d].ix >= 0) continue;
+		if (found[d] > 1 || d_info[d].ix >= 0 || d == DUNGEON_LOST_TEMPLE) continue;
 		d_info[d].ix = at[d].first;
 		d_info[d].iy = at[d].second;
 	}
 	return any;
+}
+
+/* Puts a hero who has climbed out of a dungeon into its entrance's area on the staircase there into it, with no creature on it (tome2 puts them where they last stood on the land). */
+void out_by_entrance()
+{
+	if (dun_level || !left_dungeon) return;
+	auto const &d = game->edit_data.d_info[left_dungeon];
+	if (p_ptr->wilderness_x != d.ix || p_ptr->wilderness_y != d.iy) return;
+	for (int y = 0; y < cur_hgt; y++)
+	{
+		for (int x = 0; x < cur_wid; x++)
+		{
+			auto const &c = cave[y][x];
+			if (c.feat != FEAT_MORE || c.special != left_dungeon || c.m_idx) continue;
+			p_ptr->py = y;
+			p_ptr->px = x;
+			return;
+		}
+	}
+}
+
+bool wild_made_hook(void *, void *in_, void *)
+{
+	if (!static_cast<hook_wild_gen_in const *>(in_)->small) out_by_entrance();
+	return false;
 }
 
 bool level_made_hook(void *, void *, void *)
@@ -463,6 +489,7 @@ void web_memory_tick()
 		add_hook_new(HOOK_GEN_LEVEL_BEGIN, level_begin_hook, "web_level_begin", nullptr);
 		add_hook_new(HOOK_END_TURN, end_turn_hook, "web_end_turn", nullptr);
 		add_hook_new(HOOK_LEVEL_END_GEN, level_made_hook, "web_level_made", nullptr);
+		add_hook_new(HOOK_WILD_GEN, wild_made_hook, "web_wild_made", nullptr);
 		hooks_added = true;
 	}
 	apply_persistence();
