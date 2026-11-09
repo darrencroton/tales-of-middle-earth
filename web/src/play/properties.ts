@@ -29,6 +29,8 @@ interface PropertyDef {
   unit?: { value: (n: number) => string; share: (n: number) => string };
   /** The amount is capped, so the sources need not add up to it (no "Other" for the difference). */
   capped?: boolean;
+  /** What the amount the sources do not account for is ("Base", "Birth"); else *Other*. */
+  rest?: string;
 }
 
 /** How one source counts for a property. */
@@ -95,15 +97,15 @@ const BONUSES: [string, PropertyDef[]][] = [
       { id: 'speed', label: 'Speed', kind: 'number', does: 'How much faster than normal you act: +10 is twice as many turns as a normal creature. A heavy load slows you.' },
       { id: 'stealth', label: 'Stealth', kind: 'number', does: 'What your gear, tactic and way of moving add to your stealth, which lets you pass sleeping creatures without waking them.' },
       { id: 'tunnel', label: 'Tunnelling', kind: 'number', does: 'What your gear adds to digging through rubble, veins and walls.' },
-      { id: 'luck', label: 'Luck', kind: 'number', does: 'Luck tips many rolls in your favour, from finding better items to avoiding harm.' },
+      { id: 'luck', label: 'Luck', kind: 'number', rest: 'Birth', does: 'Luck tips many rolls in your favour, from finding better items to avoiding harm.' },
     ],
   ],
   [
     'Fighting and magic',
     [
-      { id: 'blows', label: 'Extra blows', kind: 'number', does: 'Blows added to each round of melee.' },
+      { id: 'blows', label: 'Blows', kind: 'number', unit: LEVEL, does: 'The blows you strike each round of melee. With a weapon, your Strength and Dexterity against its weight give the base, up to a limit for your class; gear, your class and weapon mastery add more.' },
       { id: 'crit', label: 'Critical hits', kind: 'number', unit: PERCENT, does: 'Added to the chance in a hundred that your blows and shots land critical hits.' },
-      { id: 'shots', label: 'Extra shots', kind: 'number', does: 'Shots added to each round of firing your launcher.' },
+      { id: 'shots', label: 'Shots', kind: 'number', unit: LEVEL, rest: 'Base', does: 'The shots you fire each round with your launcher: one, and more from gear and archery skill.' },
       { id: 'might', label: 'Extra might', kind: 'number', does: 'Added to your launcher’s multiplier, so each missile hits harder.' },
       { id: 'spell', label: 'Spell power', kind: 'number', does: 'Added to the power of the spells you cast.' },
       { id: 'mana', label: 'Mana', kind: 'number', unit: PERCENT, does: 'How much your gear and traits add to your mana.' },
@@ -140,16 +142,14 @@ const DEFENCES: [string, PropertyDef[]][] = [
     ],
   ],
   [
-    'Protections',
+    'Immunities',
     [
-      { id: 'fear', label: 'Fear', kind: 'flag', does: 'Keeps you from being frightened, which stops you fighting in melee.' },
-      { id: 'conf', label: 'Confusion', kind: 'flag', does: 'Keeps you from being confused, which sends you stumbling and stops you reading. Resisting chaos resists confusion too.' },
-      { id: 'blind', label: 'Blindness', kind: 'flag', does: 'Keeps you from being blinded, which stops you seeing, reading and casting from books.' },
-      { id: 'paralysis', label: 'Free action', kind: 'flag', does: 'Keeps you from being paralysed, put to sleep or slowed by spells.' },
-      { id: 'holdLife', label: 'Hold life', kind: 'flag', does: 'When something drains your experience you usually keep it all, and otherwise lose much less.' },
+      { id: 'fear', label: 'Fear', kind: 'flag', does: 'You are never frightened, which would stop you fighting in melee.' },
+      { id: 'conf', label: 'Confusion', kind: 'flag', does: 'You are never confused, which would send you stumbling and stop you reading; confusion attacks also hurt you less. Resisting chaos does this too.' },
+      { id: 'blind', label: 'Blindness', kind: 'flag', does: 'You are never blinded, which would stop you seeing, reading and casting from books. Light and darkness still hurt.' },
+      { id: 'paralysis', label: 'Paralysis', kind: 'flag', does: 'Free action: you are never paralysed, put to sleep or slowed by spells.' },
       { id: 'stun', label: 'Stunning', kind: 'flag', does: 'Your body cannot be stunned.' },
       { id: 'cuts', label: 'Cuts', kind: 'flag', does: 'Your body cannot be cut and does not bleed.' },
-      { id: 'blackBreathResist', label: 'Black Breath', kind: 'flag', does: 'The Black Breath, if it takes you, saps your experience far less often.' },
     ],
   ],
   [
@@ -166,6 +166,8 @@ const DEFENCES: [string, PropertyDef[]][] = [
   [
     'Other defences',
     [
+      { id: 'holdLife', label: 'Hold life', kind: 'flag', does: 'When something drains your experience you usually keep it all, and otherwise lose much less.' },
+      { id: 'blackBreathResist', label: 'Resist Black Breath', kind: 'flag', does: 'The Black Breath, if it takes you, saps your experience far less often.' },
       { id: 'reflect', label: 'Reflection', kind: 'flag', does: 'Bolts and arrows aimed at you may bounce back at whoever sent them.' },
       { id: 'regen', label: 'Regeneration', kind: 'flag', does: 'You heal faster (twice as fast when lasting), but grow hungry faster.' },
       { id: 'auraFire', label: 'Fiery aura', kind: 'flag', does: 'Creatures that strike you in melee are burned.' },
@@ -297,8 +299,12 @@ function row(def: PropertyDef, state: PropertyState | undefined, census: Propert
     const shares: SourceShare[] = from.map((f) => ({ source: sourceOf(f.s), detail: unit.share(f.n ?? 0), turns: turnsOf(f.s), cancelled: false }));
     const sum = from.reduce((total, f) => total + (f.n ?? 0), 0);
     const value = state?.now ?? sum;
-    if (state?.now !== undefined && !def.capped && value !== sum) shares.push({ source: null, detail: unit.share(value - sum), turns: null, cancelled: false });
+    if (state?.now !== undefined && !def.capped && value !== sum) shares.push({ source: def.rest ? { kind: 'stats', name: def.rest } : null, detail: unit.share(value - sum), turns: null, cancelled: false });
     const temporary = value !== 0 && from.length > 0 && from.every((f) => timed(f.s));
+    if (def.id === 'blows' && census.blowsLimit !== undefined) {
+      const raised = census.blowsRaised ? `, raised by ${census.blowsRaised === 1 ? 'an Extra Max Blow ability' : 'your Extra Max Blow abilities'}` : '';
+      base.note = `Strength and Dexterity give you at most ${census.blowsLimit} blows with a weapon${raised}.`;
+    }
     if (def.id === 'antimagicField' && value && census.antimagicRadius !== undefined) base.note = `It reaches ${census.antimagicRadius} grid${census.antimagicRadius === 1 ? '' : 's'} around you.`;
     return { ...base, temporary, state: value === 0 && !shares.length ? NONE : unit.value(value), tone: value > 0 ? 'good' : value < 0 ? 'bad' : 'off', shares };
   }

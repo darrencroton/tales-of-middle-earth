@@ -561,9 +561,9 @@ export interface CharacterState {
   turn: number;
 }
 
-/** What gives the hero a property: gear (by inventory index), a trait, a timed effect (by `EffectState.id`), their tactic or way of moving, their load. */
+/** What gives the hero a property: gear (by inventory index), a trait, a timed effect (by `EffectState.id`), their tactic or way of moving, their load, their Strength and Dexterity (blows). */
 export interface PropertySource {
-  kind: 'race' | 'class' | 'skill' | 'god' | 'corruption' | 'form' | 'fate' | 'item' | 'effect' | 'tactic' | 'movement' | 'load';
+  kind: 'race' | 'class' | 'skill' | 'god' | 'corruption' | 'form' | 'fate' | 'item' | 'effect' | 'tactic' | 'movement' | 'load' | 'stats';
   name?: string;
   i?: number;
   effect?: string;
@@ -585,6 +585,9 @@ export interface PropertyCensus {
   props: PropertyState[];
   /** How far the anti-magic field reaches, when there is one. */
   antimagicRadius?: number;
+  /** With a weapon: the most blows Strength and Dexterity can give, and how many Extra Max Blow abilities raised it. */
+  blowsLimit?: number;
+  blowsRaised?: number;
 }
 
 /** One row of the skills screen's whole list; values in thousandths. */

@@ -59,6 +59,8 @@
 
 /* tome2's xtra1.cc */
 int get_archery_skill();
+int get_weaponmastery_skill();
+void analyze_blow(int *num, int *wgt, int *mul);
 
 /* engine/snapshot.cc */
 JsonWriter start_json();
@@ -154,9 +156,9 @@ std::vector<prop> const &props()
 		{ "speed", prop_kind::number, { { TR_SPEED, "", 1 } }, [] { return p_ptr->pspeed - 110; } },
 		{ "stealth", prop_kind::number, { { TR_STEALTH, "", 1 } }, nullptr, false },
 		{ "tunnel", prop_kind::number, { { TR_TUNNEL, "", 1 } }, nullptr, false },
-		{ "blows", prop_kind::number, { { TR_BLOWS, "", 1 } }, nullptr, false },
+		{ "blows", prop_kind::number, { { TR_BLOWS, "", 1 } }, [] { return int(p_ptr->num_blow); } },
 		{ "crit", prop_kind::number, { { TR_CRIT, "", 1 } }, [] { return int(p_ptr->xtra_crit); } },
-		{ "shots", prop_kind::number, { { TR_XTRA_SHOTS, "", 0, 1 } }, nullptr, false },
+		{ "shots", prop_kind::number, { { TR_XTRA_SHOTS, "", 0, 1 } }, [] { return int(p_ptr->num_fire); } },
 		{ "might", prop_kind::number, { { TR_XTRA_MIGHT, "", 1 } }, [] { return int(p_ptr->xtra_might); } },
 		{ "spell", prop_kind::number, { { TR_SPELL, "", 1 } }, [] { return int(p_ptr->to_s); } },
 		{ "mana", prop_kind::number, { { TR_MANA, "", 20 } }, [] { return p_ptr->to_m * 20; } },
@@ -187,7 +189,7 @@ std::vector<prop> const &props()
 		{ "blind", prop_kind::flag, { { TR_RES_BLIND } }, [] { return int(p_ptr->resist_blind); } },
 		{ "paralysis", prop_kind::flag, { { TR_FREE_ACT } }, [] { return int(p_ptr->free_act); } },
 		{ "holdLife", prop_kind::flag, { { TR_HOLD_LIFE } }, [] { return int(p_ptr->hold_life); } },
-		{ "stun", prop_kind::flag, {}, [] { return int(race_flags_p(PR_NO_STUN)); } },
+		{ "stun", prop_kind::flag, {}, [] { return int(race_flags_p(PR_NO_STUN) || p_ptr->tim_roots > 0); } },
 		{ "cuts", prop_kind::flag, {}, [] { return int(race_flags_p(PR_NO_CUT)); } },
 		{ "blackBreathResist", prop_kind::flag, {}, [] { return int(race_flags_p(PR_RESIST_BLACK_BREATH)); } },
 		{ "sustStr", prop_kind::flag, { { TR_SUST_STR } }, [] { return int(p_ptr->sustain_str); } },
@@ -583,6 +585,14 @@ void effects(std::vector<source> &out)
 	add("fast", p_ptr->fast, {}, { { "speed", p_ptr->speed_factor } });
 	add("lightspeed", p_ptr->lightspeed, {}, { { "speed", 50 } });
 	add("slow", p_ptr->slow, {}, { { "speed", -10 } });
+	if (p_ptr->tim_roots > 0)
+	{
+		source s { "effect" };
+		s.effect = "roots";
+		s.turns = p_ptr->tim_roots;
+		s.grants["stun"] = "";
+		out.push_back(std::move(s));
+	}
 	if (p_ptr->black_breath)
 	{
 		source s { "effect" };
@@ -617,6 +627,47 @@ void archery(std::vector<source> &out)
 	bool const matched = (skill == SKILL_SLING && p_ptr->tval_ammo == TV_SHOT) || (skill == SKILL_BOW && p_ptr->tval_ammo == TV_ARROW) || (skill == SKILL_XBOW && p_ptr->tval_ammo == TV_BOLT);
 	if (matched) s.nums["might"] += get_skill(skill) / 30;
 	if (s.nums["shots"] || s.nums["might"]) out.push_back(std::move(s));
+}
+
+/*
+ * The blows of a round (calc_bonuses): with a weapon, Strength and
+ * Dexterity against its weight give the base, up to the class's limit
+ * (raised by the Extra Max Blow abilities), and gear, the class and
+ * weapon mastery add to it; bare-handed, the Barehand combat skill gives
+ * them; a body without hands, Strength and Dexterity. The base is what the
+ * others leave.
+ */
+void blows(std::vector<source> &out)
+{
+	source base { "stats", "Strength and Dexterity" };
+	auto add = [&out](source &&s) {
+		if (s.nums["blows"]) out.push_back(std::move(s));
+	};
+	if (p_ptr->inventory[INVEN_WIELD].k_ptr)
+	{
+		for (auto &s : out)
+		{
+			if (!std::strcmp(s.kind, "class")) s.nums["blows"] += p_ptr->lev * cp_ptr->extra_blows / 50;
+		}
+		if (int const mastery = get_weaponmastery_skill(); mastery != -1)
+		{
+			source s { "skill", skill_name(mastery) };
+			s.nums["blows"] = get_skill_scale(mastery, 2);
+			add(std::move(s));
+		}
+		source s { "skill", skill_name(SKILL_MASTERY) };
+		s.nums["blows"] = get_skill_scale(SKILL_MASTERY, 3);
+		add(std::move(s));
+	}
+	else if (p_ptr->melee_style == SKILL_HAND)
+	{
+		base = source { "skill", skill_name(SKILL_HAND) };
+	}
+	prop const *const blows_prop = &*std::find_if(props().begin(), props().end(), [](prop const &p) { return !std::strcmp(p.id, "blows"); });
+	int rest = p_ptr->num_blow;
+	for (auto const &s : out) rest -= share_of(s, *blows_prop).n;
+	base.nums["blows"] = rest;
+	add(std::move(base));
 }
 
 /* The glow of a trait, an aura or anything but a worn light, which lights radius 1 only when nothing else gives light (calc_torch): given to the first that glows. */
@@ -684,6 +735,7 @@ std::vector<source> sources(source &hidden)
 	equipment(out, hidden);
 	effects(out);
 	glow(out);
+	blows(out);
 	{
 		source s { "tactic", tactic_info[static_cast<byte>(p_ptr->tactic)].name };
 		s.nums["stealth"] = tactic_info[static_cast<byte>(p_ptr->tactic)].to_stealth;
@@ -822,6 +874,13 @@ extern "C" EMSCRIPTEN_KEEPALIVE char const *web_properties_json()
 	}
 	w.end_array();
 	if (p_ptr->antimagic) w.field("antimagicRadius", p_ptr->antimagic_dis);
+	if (p_ptr->inventory[INVEN_WIELD].k_ptr)
+	{
+		int num = 0, wgt = 0, mul = 0;
+		analyze_blow(&num, &wgt, &mul);
+		w.field("blowsLimit", num);
+		w.field("blowsRaised", (p_ptr->has_ability(AB_MAX_BLOW1) ? 1 : 0) + (p_ptr->has_ability(AB_MAX_BLOW2) ? 1 : 0));
+	}
 	w.end_object();
 	return json.c_str();
 }

@@ -31,7 +31,7 @@ describe('the census of the hero’s properties', () => {
     assert.ok(rows.every((r) => r.state === '—' && r.tone === 'off' && !r.shares.length));
     assert.deepEqual(
       propertyGroups(census([]), 'defences').map((g) => g.title),
-      ['Elements', 'Higher resistances', 'Protections', 'Sustains', 'Other defences'],
+      ['Elements', 'Higher resistances', 'Immunities', 'Sustains', 'Other defences'],
     );
   });
 
@@ -70,6 +70,21 @@ describe('the census of the hero’s properties', () => {
     const light = find(census([{ id: 'light', now: 5, from: [{ s: 2, n: 3 }, { s: 4, n: 3 }] }]), 'light');
     assert.deepEqual([light.state, light.shares.length], ['5', 2]);
     assert.equal(find(census([{ id: 'infra', now: 40, from: [{ s: 0, n: 40 }] }]), 'infra').state, '40 ft');
+  });
+
+  it('shows blows and shots as the totals the hero has, with the limit Strength and Dexterity reach, and the base shot', () => {
+    const c = census(
+      [
+        { id: 'blows', now: 4, from: [{ s: 1, n: 1 }, { s: 5, n: 3 }] },
+        { id: 'shots', now: 2, from: [{ s: 2, n: 1 }] },
+      ],
+      { sources: [...SOURCES, { kind: 'stats', name: 'Strength and Dexterity' }], blowsLimit: 6, blowsRaised: 2 },
+    );
+    const blows = find(c, 'blows');
+    assert.deepEqual([blows.state, blows.shares.map((s) => s.detail)], ['4', ['+1', '+3']]);
+    assert.match(blows.note ?? '', /at most 6 blows .*Extra Max Blow abilities/);
+    const shots = find(c, 'shots');
+    assert.deepEqual([shots.state, shots.shares.map((s) => [s.source?.name, s.detail])], ['2', [["The Ring of Power 'Narya'", '+1'], ['Base', '+1']]]);
   });
 
   it('marks a drawback as bad and a property no source gives now as not in force', () => {
