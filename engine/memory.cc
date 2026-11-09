@@ -105,6 +105,7 @@ int persistent_wanted = -1;
 int persistent_applied = -1;
 bool forget_pending = false;
 bool hooks_added = false;
+bool entrances_noted = false;
 
 /* The level the hero is on: noted when it is built (or first seen after loading a game), as commands change the key before leaving. */
 byte here_dungeon = 0;
@@ -380,6 +381,45 @@ void way_back_underfoot()
 	if (shaft || cave_clean_bold(y, x)) cave_set_feat(y, x, feat);
 }
 
+/*
+ * Gives each dungeon with one entrance on the world map that entrance as the
+ * place a hero climbing out of its top level comes up (tome2's d_info ix/iy,
+ * which only Moria's flags set); else tome2 leaves them where they last
+ * stood on the land, the town a Word of Recall left from. True once done.
+ */
+bool note_entrances()
+{
+	auto &d_info = game->edit_data.d_info;
+	auto const &wf_info = game->edit_data.wf_info;
+	auto const &wilderness = game->wilderness;
+	std::vector<int> found(d_info.size(), 0);
+	std::vector<std::pair<int, int>> at(d_info.size());
+	for (std::size_t x = 0; x < wilderness.width(); x++)
+	{
+		for (std::size_t y = 0; y < wilderness.height(); y++)
+		{
+			auto const &w = wilderness(x, y);
+			int entrance = wf_info[w.feat].entrance;
+			if (!entrance) entrance = w.entrance;
+			if (entrance < 1000) continue;
+			std::size_t const d = entrance - 1000;
+			if (d >= d_info.size()) continue;
+			found[d]++;
+			at[d] = std::make_pair(static_cast<int>(x), static_cast<int>(y));
+		}
+	}
+	bool any = false;
+	for (std::size_t d = 0; d < d_info.size(); d++)
+	{
+		if (!found[d]) continue;
+		any = true;
+		if (found[d] > 1 || d_info[d].ix >= 0) continue;
+		d_info[d].ix = at[d].first;
+		d_info[d].iy = at[d].second;
+	}
+	return any;
+}
+
 bool level_made_hook(void *, void *, void *)
 {
 	forget_saved_view();
@@ -427,6 +467,7 @@ void web_memory_tick()
 	}
 	apply_persistence();
 	if (!character_generated || !p_ptr) return;
+	if (!entrances_noted) entrances_noted = note_entrances();
 	if (forget_pending)
 	{
 		forget_levels();

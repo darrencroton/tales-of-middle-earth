@@ -171,6 +171,18 @@ test('kept levels stay as the hero left them, their stairs lead one level on and
   await waitAtCommand(page);
   expect((await level(page)).terrain).toBe(first.terrain);
   expect(await arrival(page, firstAt)).toEqual({ underfoot: expect.stringMatching(WAY_UP), nearest: true });
+
+  /* Out of a dungeon by its top stairs, the hero comes up by its entrance however they went in: the Maze, entered from Bree as Word of Recall would, leads out south of Bree. */
+  await wizardCommand(page, 'D', 18);
+  await wizardCommand(page, 'F', 6);
+  await sendText(page, '\\<');
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.snapshot()!.depth), { timeout: 30_000 }).toBe(0);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  expect(await page.evaluate(() => {
+    const place = window.__tome!.engine.place()!;
+    return { wx: place.wx, wy: place.wy, town: place.town };
+  })).toEqual({ wx: 35, wy: 25, town: 0 });
 });
 
 test.describe(() => {

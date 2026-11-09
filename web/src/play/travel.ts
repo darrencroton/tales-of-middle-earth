@@ -162,6 +162,9 @@ const FEAT_RUBBLE = 0x31;
 /** What a tap on terrain too hard for the hero's digger says. */
 export const TOO_HARD = 'Too hard for your digger: Tunnel, under More, tries anyway.';
 
+/** What the first tap on something to dig into says. */
+export const TAP_AGAIN = 'Tap again to dig.';
+
 /**
  * The digging skill a cell needs (tome2's skill_req_1pct), when the hero can
  * dig into it (do_cmd_tunnel_test): remembered terrain tome2 tunnels through
@@ -266,6 +269,7 @@ export type TapAction =
   | { kind: 'step'; cell: Point }
   | { kind: 'talk'; digit: string }
   | { kind: 'dig'; digit: string }
+  | { kind: 'arm'; cell: Point }
   | { kind: 'steer'; digit: string }
   | { kind: 'refuse'; why: string }
   | { kind: 'none' };
@@ -276,6 +280,8 @@ export interface TapContext {
   monsters?: readonly MonsterState[];
   /** The hero's digging skill, while they can dig. */
   dig?: number;
+  /** The cell a first tap has marked for digging, which a second tap there digs. */
+  armed?: Point | null;
   /** Where the creature the hero controls stands (null out of sight); given only while they control one. */
   steered?: Point | null;
 }
@@ -285,24 +291,28 @@ export interface TapContext {
  * one step to a neighbouring cell, and one step towards anywhere unseen,
  * blank screen beyond the level included. A tap on a neutral creature beside
  * the hero talks to it, where a step would only stop short of it (after
- * Pixel Dungeon, whose townsfolk answer a tap); a tap on a wall, vein, rubble
- * or tree beside a hero who can dig digs into it, where a step would only
- * bump it, when their skill gets through it at 1% a turn or better, and
- * otherwise says it is too hard (after NetHack's autodig).
+ * Pixel Dungeon, whose townsfolk answer a tap); a wall, vein, rubble or tree
+ * beside a hero who can dig, where a step would only bump it, is marked by a
+ * first tap and dug into by a second (`armed`), when their skill gets through
+ * it at 1% a turn or better, and is otherwise too hard (after NetHack's
+ * autodig, with a confirming tap so a stray one never digs).
  */
 export function goAction(
   snap: LevelSnapshot,
   materials: readonly Material[],
   point: Point,
-  { monsters = [], dig }: TapContext = {},
-): Extract<TapAction, { kind: 'travel' | 'step' | 'talk' | 'dig' | 'refuse' | 'none' }> {
+  { monsters = [], dig, armed }: TapContext = {},
+): Extract<TapAction, { kind: 'travel' | 'step' | 'talk' | 'dig' | 'arm' | 'refuse' | 'none' }> {
   const known = isKnown(snap, point);
   const near = isAdjacent(snap.px, snap.py, point.x, point.y);
   if (known && !near) return { kind: 'travel', cell: point };
   const digit = directionDigit(point.x - snap.px, point.y - snap.py) ?? '5';
   if (near && monsters.some((m) => m.x === point.x && m.y === point.y && isNeutral(m))) return { kind: 'talk', digit };
   const needed = near && dig !== undefined ? digNeeded(snap, materials, point) : null;
-  if (needed !== null) return dig! >= needed ? { kind: 'dig', digit } : { kind: 'refuse', why: TOO_HARD };
+  if (needed !== null) {
+    if (dig! < needed) return { kind: 'refuse', why: TOO_HARD };
+    return armed?.x === point.x && armed.y === point.y ? { kind: 'dig', digit } : { kind: 'arm', cell: point };
+  }
   const step = known ? point : stepTowards(snap, materials, point);
   return step ? { kind: 'step', cell: step } : { kind: 'none' };
 }

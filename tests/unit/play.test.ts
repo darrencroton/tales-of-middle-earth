@@ -224,13 +224,16 @@ describe('travel', () => {
     assert.deepEqual(tapAction(snap, MATERIALS, { x: 1, y: 0 }, 'direction', { monsters: [creature(1, 0)] }), { kind: 'direction', digit: '4' });
   });
 
-  it('digs into a wall beside a hero who can dig, says when it is too hard, and only bumps a door, a permanent wall or the level\'s edge', () => {
+  it('marks a wall beside a hero who can dig on the first tap and digs on the second, says when it is too hard, and only bumps a door, a permanent wall or the level\'s edge', () => {
     const snap = level(['#####', '#*#+#', '#%..#', '#####'], { x: 2, y: 2 });
     snap.info.fill(CAVE_MARK);
     const weak = { dig: 30 };
-    assert.deepEqual(tapAction(snap, MATERIALS, { x: 1, y: 1 }, 'none', weak), { kind: 'dig', digit: '7' });
-    assert.deepEqual(goAction(snap, MATERIALS, { x: 2, y: 1 }, weak), { kind: 'refuse', why: TOO_HARD });
-    assert.deepEqual(goAction(snap, MATERIALS, { x: 2, y: 1 }, { dig: 56 }), { kind: 'dig', digit: '8' });
+    const vein = { x: 1, y: 1 };
+    assert.deepEqual(tapAction(snap, MATERIALS, vein, 'none', weak), { kind: 'arm', cell: vein });
+    assert.deepEqual(tapAction(snap, MATERIALS, vein, 'none', { ...weak, armed: vein }), { kind: 'dig', digit: '7' });
+    assert.deepEqual(goAction(snap, MATERIALS, vein, { ...weak, armed: { x: 2, y: 1 } }), { kind: 'arm', cell: vein });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 2, y: 1 }, { ...weak, armed: { x: 2, y: 1 } }), { kind: 'refuse', why: TOO_HARD });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 2, y: 1 }, { dig: 56, armed: { x: 2, y: 1 } }), { kind: 'dig', digit: '8' });
     for (const [x, y, ctx] of [[2, 1, {}], [3, 1, weak], [1, 2, weak], [2, 3, weak]] as const) {
       assert.deepEqual(goAction(snap, MATERIALS, { x, y }, ctx), { kind: 'step', cell: { x, y } });
     }
