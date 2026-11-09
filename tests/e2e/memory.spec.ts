@@ -335,6 +335,8 @@ test("a quest level is never kept as the dungeon level of its depth, Thráin's l
 
   /* Nirnaeth Arnoediad ends as the hero takes its stairs out; its entrance in Gondolin, shown while it is taken, lies below the Dragons' one. */
   await wizardCommand(page, 'q', 14);
+  /* Up to the land first: from a dungeon level, the wizard's teleport to a town comes up by the dungeon's entrance, as climbing out does. */
+  await jumpToLevel(page, 0);
   await wizardCommand(page, 'T', 2);
   const nirnaeth = await page.evaluate(() => {
     const tome = window.__tome!;
