@@ -1008,7 +1008,9 @@ struct flag_label {
  * its order and with its rules (an immunity hides the resistance, a bane the
  * slaying, telepathy the senses), grouped: stat (bonuses, with the pval),
  * attack, immune, resist, sustain, ability and drawback. Stealth is among
- * the bonuses too, as the character sheet shows it.
+ * the bonuses too, as the character sheet shows it; confusion and blindness,
+ * which their resistance keeps away entirely, among the immunities, as the
+ * character sheet's census lists them.
  */
 void json_item_props(JsonWriter &w, object_type const *o_ptr, object_flag_set const &flags)
 {
@@ -1062,6 +1064,8 @@ void json_item_props(JsonWriter &w, object_type const *o_ptr, object_flag_set co
 		{ TR_IM_NETHER, "immune", "Nether" },
 		{ TR_FREE_ACT, "immune", "Paralysis" },
 		{ TR_RES_FEAR, "immune", "Fear" },
+		{ TR_RES_CONF, "immune", "Confusion" },
+		{ TR_RES_BLIND, "immune", "Blindness" },
 		{ TR_HOLD_LIFE, "resist", "Life draining" },
 	};
 	static const flag_label resists[] = {
@@ -1072,8 +1076,6 @@ void json_item_props(JsonWriter &w, object_type const *o_ptr, object_flag_set co
 		{ TR_RES_POIS, "resist", "Poison" },
 		{ TR_RES_LITE, "resist", "Light" },
 		{ TR_RES_DARK, "resist", "Darkness" },
-		{ TR_RES_BLIND, "resist", "Blindness" },
-		{ TR_RES_CONF, "resist", "Confusion" },
 		{ TR_RES_SOUND, "resist", "Sound" },
 		{ TR_RES_SHARDS, "resist", "Shards" },
 		{ TR_RES_NETHER, "resist", "Nether" },
@@ -1082,8 +1084,9 @@ void json_item_props(JsonWriter &w, object_type const *o_ptr, object_flag_set co
 		{ TR_RES_DISEN, "resist", "Disenchantment" },
 	};
 	static const object_flag_set immunity_of[] = {
-		TR_IM_ACID, TR_IM_ELEC, TR_IM_FIRE, TR_IM_COLD, {}, {}, {}, {}, {}, {}, {}, TR_IM_NETHER, {}, {}, {},
+		TR_IM_ACID, TR_IM_ELEC, TR_IM_FIRE, TR_IM_COLD, {}, {}, {}, {}, {}, TR_IM_NETHER, {}, {}, {},
 	};
+	static_assert(std::size(immunity_of) == std::size(resists));
 	static const flag_label abilities[] = {
 		{ TR_SENS_FIRE, "drawback", "Vulnerable to fire" },
 		{ TR_WRAITH, "ability", "Incorporeal" },

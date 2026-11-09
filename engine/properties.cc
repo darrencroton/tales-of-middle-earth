@@ -17,6 +17,7 @@
  */
 
 #include "artifact_type.hpp"
+#include "body.hpp"
 #include "corrupt.hpp"
 #include "defines.hpp"
 #include "deity_type.hpp"
@@ -59,6 +60,8 @@
 
 /* tome2's xtra1.cc */
 int get_archery_skill();
+int get_weaponmastery_skill();
+void analyze_blow(int *num, int *wgt, int *mul);
 
 /* engine/snapshot.cc */
 JsonWriter start_json();
@@ -154,9 +157,9 @@ std::vector<prop> const &props()
 		{ "speed", prop_kind::number, { { TR_SPEED, "", 1 } }, [] { return p_ptr->pspeed - 110; } },
 		{ "stealth", prop_kind::number, { { TR_STEALTH, "", 1 } }, nullptr, false },
 		{ "tunnel", prop_kind::number, { { TR_TUNNEL, "", 1 } }, nullptr, false },
-		{ "blows", prop_kind::number, { { TR_BLOWS, "", 1 } }, nullptr, false },
+		{ "blows", prop_kind::number, { { TR_BLOWS, "", 1 } }, [] { return int(p_ptr->num_blow); } },
 		{ "crit", prop_kind::number, { { TR_CRIT, "", 1 } }, [] { return int(p_ptr->xtra_crit); } },
-		{ "shots", prop_kind::number, { { TR_XTRA_SHOTS, "", 0, 1 } }, nullptr, false },
+		{ "shots", prop_kind::number, { { TR_XTRA_SHOTS, "", 0, 1 } }, [] { return int(p_ptr->num_fire); } },
 		{ "might", prop_kind::number, { { TR_XTRA_MIGHT, "", 1 } }, [] { return int(p_ptr->xtra_might); } },
 		{ "spell", prop_kind::number, { { TR_SPELL, "", 1 } }, [] { return int(p_ptr->to_s); } },
 		{ "mana", prop_kind::number, { { TR_MANA, "", 20 } }, [] { return p_ptr->to_m * 20; } },
@@ -187,7 +190,7 @@ std::vector<prop> const &props()
 		{ "blind", prop_kind::flag, { { TR_RES_BLIND } }, [] { return int(p_ptr->resist_blind); } },
 		{ "paralysis", prop_kind::flag, { { TR_FREE_ACT } }, [] { return int(p_ptr->free_act); } },
 		{ "holdLife", prop_kind::flag, { { TR_HOLD_LIFE } }, [] { return int(p_ptr->hold_life); } },
-		{ "stun", prop_kind::flag, {}, [] { return int(race_flags_p(PR_NO_STUN)); } },
+		{ "stun", prop_kind::flag, {}, [] { return int(race_flags_p(PR_NO_STUN) || p_ptr->tim_roots > 0); } },
 		{ "cuts", prop_kind::flag, {}, [] { return int(race_flags_p(PR_NO_CUT)); } },
 		{ "blackBreathResist", prop_kind::flag, {}, [] { return int(race_flags_p(PR_RESIST_BLACK_BREATH)); } },
 		{ "sustStr", prop_kind::flag, { { TR_SUST_STR } }, [] { return int(p_ptr->sustain_str); } },
@@ -583,6 +586,14 @@ void effects(std::vector<source> &out)
 	add("fast", p_ptr->fast, {}, { { "speed", p_ptr->speed_factor } });
 	add("lightspeed", p_ptr->lightspeed, {}, { { "speed", 50 } });
 	add("slow", p_ptr->slow, {}, { { "speed", -10 } });
+	if (p_ptr->tim_roots > 0)
+	{
+		source s { "effect" };
+		s.effect = "roots";
+		s.turns = p_ptr->tim_roots;
+		s.grants["stun"] = "";
+		out.push_back(std::move(s));
+	}
 	if (p_ptr->black_breath)
 	{
 		source s { "effect" };
@@ -617,6 +628,66 @@ void archery(std::vector<source> &out)
 	bool const matched = (skill == SKILL_SLING && p_ptr->tval_ammo == TV_SHOT) || (skill == SKILL_BOW && p_ptr->tval_ammo == TV_ARROW) || (skill == SKILL_XBOW && p_ptr->tval_ammo == TV_BOLT);
 	if (matched) s.nums["might"] += get_skill(skill) / 30;
 	if (s.nums["shots"] || s.nums["might"]) out.push_back(std::move(s));
+}
+
+/* Whether gear's extra blows count: tome2 adds them in every way of fighting but one, an empty hand with a weapon's style. */
+bool gear_blows = true;
+
+/*
+ * The blows of a round (calc_bonuses): with a weapon, Strength and
+ * Dexterity against its weight give the base from tome2's table, up to the
+ * class's limit (raised by the Extra Max Blow abilities), and gear, the
+ * class and weapon mastery add to it; bare-handed, the Barehand combat
+ * skill gives them; in bear form, the Bearform combat skill; a body
+ * without hands, Strength and Dexterity. What a mimic form adds is left to
+ * credit_form, and gear not yet identified to none.
+ */
+void blows(std::vector<source> &out, source const &hidden)
+{
+	auto const &r_info = game->edit_data.r_info;
+	auto credit = [&out](char const *kind, std::string const &name, int n) {
+		if (!n) return;
+		auto it = std::find_if(out.begin(), out.end(), [&](source const &s) { return !std::strcmp(s.kind, kind) && s.name == name; });
+		if (it == out.end()) it = out.insert(out.end(), source { kind, name });
+		it->nums["blows"] += n;
+	};
+	auto rest = [&out, &hidden] {
+		auto const &blows_prop = *std::find_if(props().begin(), props().end(), [](prop const &p) { return !std::strcmp(p.id, "blows"); });
+		int n = p_ptr->num_blow - share_of(hidden, blows_prop).n;
+		for (auto const &s : out) n -= share_of(s, blows_prop).n;
+		return n;
+	};
+	gear_blows = true;
+	object_type const *weapon = &p_ptr->inventory[INVEN_WIELD];
+	if (weapon->k_ptr)
+	{
+		int num = 0, wgt = 0, mul = 0;
+		analyze_blow(&num, &wgt, &mul);
+		int const div = std::max<int>(wgt, weapon->weight);
+		int const str = std::min(11, adj_str_blow[p_ptr->stat_ind[A_STR]] * mul / div);
+		int const dex = std::min<int>(11, adj_dex_blow[p_ptr->stat_ind[A_DEX]]);
+		credit("stats", "Strength and Dexterity", std::min<int>(blows_table[str][dex], num));
+		credit("class", cp_ptr->title, p_ptr->lev * cp_ptr->extra_blows / 50);
+		if (int const mastery = get_weaponmastery_skill(); mastery != -1) credit("skill", skill_name(mastery), get_skill_scale(mastery, 2));
+		credit("skill", skill_name(SKILL_MASTERY), get_skill_scale(SKILL_MASTERY, 3));
+	}
+	else if (p_ptr->melee_style == SKILL_HAND)
+	{
+		credit("skill", skill_name(SKILL_HAND), rest());
+	}
+	else if (!r_info[p_ptr->body_monster].body_parts[BODY_WEAPON])
+	{
+		credit("stats", "Strength and Dexterity", rest());
+	}
+	else if (!p_ptr->body_monster && p_ptr->mimic_form == resolve_mimic_name("Bear") && p_ptr->melee_style == SKILL_BEAR)
+	{
+		credit("skill", skill_name(SKILL_BEAR), 2 + get_skill(SKILL_BEAR) / 5);
+	}
+	else
+	{
+		gear_blows = false;
+		credit("stats", "Unarmed", 1);
+	}
 }
 
 /* The glow of a trait, an aura or anything but a worn light, which lights radius 1 only when nothing else gives light (calc_torch): given to the first that glows. */
@@ -684,6 +755,7 @@ std::vector<source> sources(source &hidden)
 	equipment(out, hidden);
 	effects(out);
 	glow(out);
+	blows(out, hidden);
 	{
 		source s { "tactic", tactic_info[static_cast<byte>(p_ptr->tactic)].name };
 		s.nums["stealth"] = tactic_info[static_cast<byte>(p_ptr->tactic)].to_stealth;
@@ -758,11 +830,13 @@ void credit_form(prop const &p, int now, std::vector<std::pair<std::size_t, shar
  * [{kind, name, i (an item's inventory index), effect (json_effects' id),
  * turns}] and `props` [{id, now, from: [{s, as, n}]}]: kind race, class,
  * skill, god, corruption, form, fate, item, effect, tactic, movement,
- * load; `now` the hero's state (1/0; an element's grade 3 immune,
+ * load, stats (Strength and Dexterity's blows); `now` the hero's state (1/0; an element's grade 3 immune,
  * 2 resisted twice, 1, -1 vulnerable; an amount), left out for an amount
  * tome2 keeps nowhere; `as` "immune" or "vulnerable"; `n` what a source
  * adds to an amount. Gear not yet identified shows nothing: what only it
- * gives is left out.
+ * gives is left out. With a weapon, `blowsLimit` is the most blows
+ * Strength and Dexterity give, and `blowsRaised` the Extra Max Blow
+ * abilities that raised it.
  */
 extern "C" EMSCRIPTEN_KEEPALIVE char const *web_properties_json()
 {
@@ -791,7 +865,8 @@ extern "C" EMSCRIPTEN_KEEPALIVE char const *web_properties_json()
 		for (std::size_t i = 0; i < all.size(); i++)
 		{
 			auto const sh = share_of(all[i], p);
-			if (sh.counts) from.emplace_back(i, sh);
+			bool const ignored = !gear_blows && !std::strcmp(p.id, "blows") && !std::strcmp(all[i].kind, "item");
+			if (sh.counts && !ignored) from.emplace_back(i, sh);
 		}
 		auto const unseen = share_of(hidden, p);
 		w.begin_object();
@@ -822,6 +897,13 @@ extern "C" EMSCRIPTEN_KEEPALIVE char const *web_properties_json()
 	}
 	w.end_array();
 	if (p_ptr->antimagic) w.field("antimagicRadius", p_ptr->antimagic_dis);
+	if (p_ptr->inventory[INVEN_WIELD].k_ptr)
+	{
+		int num = 0, wgt = 0, mul = 0;
+		analyze_blow(&num, &wgt, &mul);
+		w.field("blowsLimit", num);
+		w.field("blowsRaised", (p_ptr->has_ability(AB_MAX_BLOW1) ? 1 : 0) + (p_ptr->has_ability(AB_MAX_BLOW2) ? 1 : 0));
+	}
 	w.end_object();
 	return json.c_str();
 }
