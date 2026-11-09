@@ -98,7 +98,7 @@ export function refusal(why: StoreOffer['why'], store: Pick<StoreState, 'home' |
     case 'nothing':
       return 'Offers nothing for it';
     case 'full':
-      return store.home ? 'No room at home' : store.museum ? 'No room on show' : 'No room on the shelves';
+      return store.home ? 'No room at home' : store.museum ? 'No room in the museum' : 'No room on the shelves';
     default:
       return '';
   }
@@ -111,9 +111,9 @@ function full(store: Pick<StoreState, 'stock' | 'capacity'>): boolean {
 
 /** Why there is no room for something carried, in the building's own voice. */
 function fullNote(store: Pick<StoreState, 'home' | 'museum' | 'owner' | 'name'>): string {
-  if (store.home) return 'Your home is full to the rafters: not even a hobbit could squeeze in one thing more. Take something out first.';
-  if (store.museum) return 'Every hall and case of the museum is taken: there is nowhere left to show it.';
-  return `${keeper(store)}’s shelves are full to the rafters: only more of what is already on them will fit. Come back once some of the stock has found new owners.`;
+  if (store.home) return 'Every shelf at home is full: only more of what is already stored will fit.';
+  if (store.museum) return 'Every case in the museum is full: only more of what is already on show will fit.';
+  return `${keeper(store)}’s shelves are full to the rafters: only more of what is already there will fit. Come back once some stock has found new owners.`;
 }
 
 /** The most of a shelf item the hero can take: all of it in the home, as many as their gold buys in a shop (tome2 asks for at most 99). */

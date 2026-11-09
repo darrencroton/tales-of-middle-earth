@@ -27,7 +27,7 @@ describe('prompt classification', () => {
     const row0 = (text: string) => text.slice(0, 80).trim();
     assert.equal(classifyPrompt(row0('Sell an Elven Bar Chain Mail of Resistance (-2 to accuracy) [18,+12] (+3 to stealth)? [y/n/RET/ESC] ')), 'yesno');
     assert.equal(classifyPrompt(row0('Buy a Spectral Lucerne Hammer (*Defender*) (2d5) (+1,-2) [+1] (+4 to stealth)? [y/n/RET/ESC] ')), 'yesno');
-    assert.equal(classifyPrompt('Sell which item? (Inven: a-w, / for Equip, ESC)'), 'item');
+    assert.equal(classifyPrompt('(Inven: a-w, / for Equip, ESC) Sell which item?'), 'item');
   });
 });
 
