@@ -35,7 +35,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.EMSDK_DIR }}
-          key: emsdk-${{ runner.os }}-${{ env.EMSDK_VERSION }}
+          key: emsdk-${{ runner.os }}-${{ env.EMSDK_VERSION }}-ports
 
       - name: Install Emscripten SDK
         if: steps.emsdk-cache.outputs.cache-hit != 'true'
@@ -50,6 +50,15 @@ jobs:
           echo "PATH=$PATH" >> "$GITHUB_ENV"
           echo "EMSDK=$EMSDK" >> "$GITHUB_ENV"
           emcc --version
+
+      # Emscripten downloads its ports from GitHub Releases on first use; fetched here with retries so the cache saved after a miss holds them.
+      - name: Fetch Emscripten ports
+        run: |
+          for attempt in 1 2 3 4 5; do
+            embuilder build boost_headers && exit 0
+            sleep $((attempt * 20))
+          done
+          exit 1
 
       - name: Install dependencies
         run: npm ci
