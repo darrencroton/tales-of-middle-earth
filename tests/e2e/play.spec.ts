@@ -901,7 +901,7 @@ test.describe(() => {
   });
 });
 
-test('Explore in town never leads to a way down, the quest level below Bree stays native, and rubble alongside is tunnelled once a digger is worn', async ({ page }) => {
+test('Explore in town never leads to a way down, the quest level below Bree stays native, and rubble alongside is tunnelled once a digger is worn, by the toolbar or a tap', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Delver');
@@ -1012,6 +1012,31 @@ test('Explore in town never leads to a way down, the quest level below Bree stay
   await dismissMore(page);
   await waitAtCommand(page);
   await expect.poll(first).toBe('explore');
+
+  /* Rubble again: the look card offers Dig, and a tap on the pile digs it. */
+  await sendText(page, `\\;${10 - Number(way)}`);
+  await expect.poll(() => playerPos(page)).toEqual(rubble);
+  await waitAtCommand(page);
+  await wizardCommand(page, 'F', 49);
+  await sendText(page, `\\;${way}`);
+  await expect.poll(() => playerPos(page)).not.toEqual(rubble);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  const pile = await page.evaluate(({ x, y }) => window.__tome!.mapCellCentre(x, y), rubble);
+  await page.mouse.move(pile.x, pile.y);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await expect(page.locator('#look-card .look-button', { hasText: 'Dig' })).toBeVisible();
+  await page.locator('#look-card .look-button', { hasText: '✕' }).click();
+  for (let i = 0; i < 5 && (await feat()) === 49; i++) {
+    await dismissMore(page);
+    await waitAtCommand(page);
+    await page.evaluate(({ x, y }) => window.__tome!.tapCell(x, y), rubble);
+    await expect.poll(feat, { timeout: 20_000 }).not.toBe(49).catch(() => undefined);
+  }
+  expect(await feat()).not.toBe(49);
+  expect(await playerPos(page)).not.toEqual(rubble);
 });
 
 test('a random quest is told on arrival, its chip tells what it asks, it survives a save, and it is named again on the next visit', async ({ page }) => {

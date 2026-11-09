@@ -89,12 +89,12 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Playing by touch',
         icon: '☝',
         summary: 'Tap, hold, drag and pinch.',
-        keywords: 'gesture tap touch move walk travel zoom pan look hold swipe close back',
+        keywords: 'gesture tap touch move walk travel zoom pan look hold swipe close back dig tunnel wall',
         body: [
           {
             terms: [
               ['Tap a place', 'Walk there by the way you know. A tap on somewhere unseen takes one step towards it.'],
-              ['Tap next to you', 'One step. A foe there is attacked; someone neutral, such as a worried hobbit in town, is talked to; a closed door is opened.'],
+              ['Tap next to you', 'One step. A foe there is attacked; someone neutral, such as a worried hobbit in town, is talked to; a closed door is opened. With a shovel or pick in your tool slot, a wall, vein, rubble or tree there is dug into until it gives way, or you are told it is too hard for your digger (*Tunnel*, under More, tries anyway).'],
               ['Tap yourself', 'Wait a turn, to let a creature come to you.'],
               ['Press and hold', 'Look at anything on the map: creatures, items, terrain.'],
               ['Drag', 'Look around without moving. Your next move brings the view back.'],
@@ -132,7 +132,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Talk', 'Someone neutral stands next to you: hear what they have to say.'],
               ['Pick up, Drink, Sacrifice', 'Something lies at your feet, or you stand at a fountain or an altar.'],
               ['Wield, Light', 'Your weapon hand is empty, or you have no light below ground. *Light* also relights a torch or lantern that has gone out.'],
-              ['Tunnel', 'Rubble blocks the way next to you and you have a shovel or pick in your tool slot: dig through it. Beside more than one pile, choose which. Walls and veins can still be dug from More.'],
+              ['Tunnel', 'Rubble blocks the way next to you and you have a shovel or pick in your tool slot: dig through it. Beside more than one pile, choose which. To dig into a wall, vein or tree, tap it.'],
               ['Explore', 'Walk on to the next place you have not seen, in a town or a dungeon.'],
               ['Way down, Way up', 'This dungeon level is explored: go straight to its stairs.'],
             ],
@@ -146,7 +146,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Fire', 'Shoot the nearest foe, while a bow, sling or crossbow is wielded.'],
               ['Items', 'Your pack, your equipment and what lies at your feet.'],
               ['Rest', 'Rest until you have recovered, or until something happens.'],
-              ['More', 'Every other command, grouped by what you want to do: get around, fight and use magic or powers, use an item, deal with people and creatures, doors and walls, and your journal. Commands that need something here (a fountain, an altar, someone beside you) brighten when it is.'],
+              ['More', 'Every other command, grouped by what you want to do: get around, fight and use magic or powers, use an item, deal with people and creatures, doors, and your journal. Commands that need something here (a fountain, an altar, someone beside you) brighten when it is.'],
               ['Menu', 'Your character, messages, knowledge, saving, settings and this help.'],
             ],
           },

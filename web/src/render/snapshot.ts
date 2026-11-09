@@ -166,6 +166,8 @@ export interface PlayerState {
   faithless?: 'race' | 'antimagic';
   /** Terrain tome2 does not let one walk on that the hero can enter now (trees for a tree walker), by feature index. */
   passes?: number[];
+  /** The hero's digging skill (tome2's skill_dig), with a shovel or pick in the tool slot and unless they pass through walls. */
+  dig?: number;
   /** Runes (tome2's inscriptions) the hero has learnt to engrave. */
   runes?: number;
   /** The id of the creature the hero controls (a Fire Golem, or one taken by Mind Steal), 0 when none. */
