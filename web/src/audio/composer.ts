@@ -28,8 +28,8 @@ interface PhraseNote {
 }
 
 const DEFAULT_SECTIONS: Record<Role, SectionKind[]> = {
-  drone: ['intro', 'a', 'b', 'breath'],
-  pad: ['intro', 'a', 'b', 'breath'],
+  drone: ['intro', 'a', 'b', 'breath', 'hush'],
+  pad: ['intro', 'a', 'b', 'breath', 'hush'],
   bass: ['a', 'b', 'breath'],
   arp: ['a', 'b', 'breath'],
   melody: ['a', 'b', 'breath'],
@@ -101,7 +101,7 @@ export function secondsPerBar(theme: Pick<Theme, 'bpm' | 'meter'>): number {
  * Sections of one piece: the motif, its answer, a breath where the melody
  * only echoes, and variations. Only a theme's first piece has an intro, and
  * pieces follow each other without a pause. A theme with silence leaves
- * hushed bars of differing length after some sections.
+ * hushed bars of differing length after some sections, but never ends on them.
  */
 export function planPiece(theme: Theme, rng: Rng, first = true): PieceSection[] {
   const p = theme.chords.length;
@@ -113,7 +113,10 @@ export function planPiece(theme: Theme, rng: Rng, first = true): PieceSection[] 
     [s('a', p), s('b', p), s('breath', half), s('a', p, 1), s('b', p, 1)],
   ];
   const silence = theme.silence ?? 0;
-  const piece = rng.pick(templates).flatMap((section) => (rng.chance(silence) ? [section, s('hush', rng.int(1, Math.max(1, Math.round(silence * half))))] : [section]));
+  const sections = rng.pick(templates);
+  const piece = sections.flatMap((section, i) =>
+    i < sections.length - 1 && rng.chance(silence) ? [section, s('hush', rng.int(1, Math.max(1, Math.round(silence * half))))] : [section],
+  );
   const intro = theme.intro ?? 1;
   return first && intro > 0 ? [s('intro', intro), ...piece] : piece;
 }
@@ -142,8 +145,10 @@ function patternFor(layer: Layer, meter: number): string {
 export class Composer {
   readonly theme: Theme;
   private readonly rng: Rng;
-  /** Draws bar lengths, apart from the notes so a seed still writes the same notes. */
+  /** Draws bar lengths, apart from the notes. */
   private readonly timing: Rng;
+  /** The bar lengths of the section being played, in an unsteady theme. */
+  private wobbles: { section: PieceSection; shares: number[] } | null = null;
   private readonly scale: readonly number[];
   private readonly motif: PhraseNote[];
   private readonly answer: PhraseNote[] | null;
@@ -168,11 +173,16 @@ export class Composer {
     return planPiece(this.theme, this.rng, first);
   }
 
-  /** How much longer than written a bar lasts: rubato, and in an unsteady theme a share either way drawn afresh each bar. */
-  stretch(section: PieceSection, bar: number, endsPiece: boolean): number {
+  /** How much longer or shorter than steady a bar lasts in an unsteady theme; a section's bars add up to its steady length. */
+  wobble(section: PieceSection, bar: number): number {
     const unsteady = this.theme.unsteady ?? 0;
-    const wobble = unsteady > 0 ? 1 + unsteady * (this.timing.next() * 1.5 - 0.5) : 1;
-    return barStretch(this.theme, section, bar, endsPiece) * wobble;
+    if (unsteady <= 0) return 1;
+    if (this.wobbles?.section !== section) {
+      const draws = Array.from({ length: section.bars }, () => this.timing.next() * 2 - 1);
+      const mean = draws.reduce((a, b) => a + b, 0) / draws.length;
+      this.wobbles = { section, shares: draws.map((d) => (unsteady * (d - mean)) / 2) };
+    }
+    return 1 + (this.wobbles.shares[bar] ?? 0);
   }
 
   /** Chord degree for a bar of a section. */
@@ -424,7 +434,7 @@ export class Composer {
     return this.fragments.phrase;
   }
 
-  /** Leaves some bars of a phrase silent, never two in a row, and cuts the rest off after a few notes, the last left to ring to the end of its bar. */
+  /** Leaves some bars of a phrase silent, never two with notes in a row, and cuts the rest off after a few notes, the last left to ring to the end of its bar. */
   private fragment(phrase: readonly PhraseNote[], silence: number): PhraseNote[] {
     const meter = this.theme.meter;
     const bars = new Map<number, PhraseNote[]>();

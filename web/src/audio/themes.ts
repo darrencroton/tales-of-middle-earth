@@ -31,7 +31,7 @@ export const PERCUSSION: ReadonlySet<Instrument> = new Set(['drum', 'timpani', '
 
 export type Role = 'drone' | 'pad' | 'bass' | 'arp' | 'melody' | 'counter' | 'bells' | 'perc';
 
-/** `hush`: bars left to the ambience, where only layers that ask for it (or danger layers) sound. */
+/** `hush`: bars where the melody and figures rest: only drones, pads, layers that list it and danger layers sound. */
 export type SectionKind = 'intro' | 'a' | 'b' | 'breath' | 'hush';
 
 export interface Layer {
@@ -103,8 +103,6 @@ export interface Theme {
   space: number;
   /** Echo send 0..1. */
   echo?: number;
-  /** Seconds between an echo's repeats (default 0.42). */
-  echoDelay?: number;
   /** Tone colour 0 (muffled) .. 1 (bright). */
   bright?: number;
   ambience: [Ambience, number][];
@@ -118,7 +116,7 @@ export interface Theme {
   rubato?: number;
   /** How much of the music is silence (0..1): hushed bars between sections, and phrases broken into fragments. */
   silence?: number;
-  /** How unevenly bars fall (0..0.5): each is longer or shorter by up to this share, and notes land a little late. */
+  /** How unevenly bars fall (0..0.5): each is longer or shorter by up to this share, evening out over a section, and notes land a little late. */
   unsteady?: number;
 }
 
@@ -735,7 +733,7 @@ const THEMES: Theme[] = [
     motif: augmentMelody(melodyBars(SHADOW, 4), 2),
     answer: augmentMelody(melodyBars(SHADOW_ANSWER, 4), 2),
     layers: [
-      { role: 'drone', inst: 'drone', octave: -1, vol: 0.5, in: ['intro', 'a', 'b', 'breath', 'hush'] },
+      { role: 'drone', inst: 'drone', octave: -1, vol: 0.5 },
       { role: 'pad', inst: 'organ', vol: 0.4 },
       { role: 'pad', inst: 'choir', vol: 0.4 },
       { role: 'bass', inst: 'cello', octave: -1, vol: 0.5, pattern: 'x..xx...' },
@@ -1044,7 +1042,6 @@ const THEMES: Theme[] = [
     ],
     space: 0.95,
     echo: 0.45,
-    echoDelay: 0.9,
     bright: 0.4,
     ambience: [['drips', 0.4], ['cave', 0.35], ['echoes', 0.5]],
     silence: 0.6,
@@ -1221,7 +1218,7 @@ const THEMES: Theme[] = [
     motif: augmentMelody(melodyBars(EAST, 4), 2),
     answer: augmentMelody(melodyBars(EAST_ANSWER, 4), 2),
     layers: [
-      { role: 'drone', inst: 'drone', vol: 0.45, in: ['intro', 'a', 'b', 'breath', 'hush'] },
+      { role: 'drone', inst: 'drone', vol: 0.45 },
       { role: 'pad', inst: 'strings', vol: 0.28 },
       { role: 'melody', inst: 'cello', octave: 1 },
       { role: 'perc', inst: 'drum', octave: -1, pattern: 'x..x....', vol: 0.4 },
@@ -1445,6 +1442,7 @@ function derived(): Theme[] {
     group: 'Quests',
     mood: 'Spiders of Mirkwood: webs everywhere, and they are hungry.',
     bpm: 180,
+    silence: 0,
     floor: 0.3,
   }));
   add(variant(t('marsh'), 'poison', {
@@ -1562,14 +1560,14 @@ function derived(): Theme[] {
     group: 'Quests',
     mood: 'A hobbit lost in the Maze: the Hearth tune, far off and broken, dripping through the cold passages.',
     scale: 'aeolian',
-    bpm: 84,
+    bpm: 96,
     meter: 6,
     chords: HEARTH_CHORDS,
     motif: HEARTH,
     answer: HEARTH_ANSWER,
     layers: [
       ...t('maze').layers.filter((l) => l.inst !== 'cello'),
-      { role: 'melody', inst: 'whistle', octave: 1, vol: 0.55, pan: 0.4, in: ['b'] },
+      { role: 'melody', inst: 'whistle', octave: 1, vol: 0.9, pan: 0.4, in: ['b'] },
     ],
     silence: 0.5,
   }));
@@ -1600,14 +1598,14 @@ function derived(): Theme[] {
  */
 const MEASURED_DB: Readonly<Record<string, number>> = {
   title: -24.4, lament: -21.7, overworld: -27.5, bree: -27.8, gondolin: -23.7, 'minas-anor': -25.9, lorien: -26.7,
-  khazad: -26.2, haven: -26, plains: -25.5, forest: -26.3, mountains: -26.2, marsh: -29.2, desert: -29, ice: -30.4,
-  coast: -26.7, ashlands: -23.5, depths: -23.6, mirkwood: -27.5, mordor: -26.8, angband: -28.8, barrow: -29.7,
-  doom: -27.7, nether: -31.6, numenor: -26.3, mandos: -28.3, 'cirith-ungol': -29.3, heart: -25.7, void: -31.3,
-  'paths-dead': -27, illusory: -25.6, maze: -35.8, 'orc-cave': -27.9, moria: -26.1, 'dol-guldur': -29,
-  'water-cave': -33.9, sacred: -30.9, rhun: -27.3, sandworm: -23.9, temple: -26.6, thieves: -28.8, nazgul: -26.2,
-  trolls: -27.3, wolves: -25.4, captive: -28, erebor: -28.4, hobbit: -27.7, wight: -30.4, spiders: -27.3,
-  poison: -28.5, narsil: -25.5, eol: -24.7, nirnaeth: -22.1, 'gondolin-falls': -20.4, alliance: -25.7, dragons: -26.7,
-  haunted: -27.4, evil: -28.9, thrain: -28.8, apotheosis: -30.2, helcaraxe: -30.6, 'lost-hobbit': -38.2,
+  khazad: -26.2, haven: -26, plains: -25.5, forest: -26.3, mountains: -26, marsh: -29.2, desert: -29, ice: -30.1,
+  coast: -26.7, ashlands: -24.6, depths: -25.4, mirkwood: -27.4, mordor: -26.8, angband: -28.3, barrow: -31,
+  doom: -27.7, nether: -31.7, numenor: -26.6, mandos: -28.3, 'cirith-ungol': -28.8, heart: -24.8, void: -31.2,
+  'paths-dead': -27.1, illusory: -25.5, maze: -36.7, 'orc-cave': -27.9, moria: -25.5, 'dol-guldur': -28.4,
+  'water-cave': -34.2, sacred: -30.9, rhun: -27.3, sandworm: -23.7, temple: -27.4, thieves: -28.8, nazgul: -26.2,
+  trolls: -27.3, wolves: -25.4, captive: -28, erebor: -28.4, hobbit: -27.7, wight: -30.4, spiders: -27.1,
+  poison: -29, narsil: -25.5, eol: -24.7, nirnaeth: -22.1, 'gondolin-falls': -20.4, alliance: -25.7, dragons: -26.7,
+  haunted: -27.4, evil: -30.1, thrain: -29.1, apotheosis: -30.2, helcaraxe: -30.9, 'lost-hobbit': -36.1,
   'old-forest': -27.2,
 };
 const TARGET_DB = -27;

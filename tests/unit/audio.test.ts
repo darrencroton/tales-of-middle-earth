@@ -135,6 +135,8 @@ describe('themes', () => {
       assert.ok(theme.name.length > 2, `${theme.id} has a name`);
       assert.ok(quarterTempo(theme) >= 40 && quarterTempo(theme) <= 160, `${theme.id} tempo`);
       assert.ok((theme.rubato ?? 0) >= 0 && (theme.rubato ?? 0) <= 0.3, `${theme.id} rubato`);
+      assert.ok((theme.silence ?? 0) >= 0 && (theme.silence ?? 0) <= 1, `${theme.id} silence`);
+      assert.ok((theme.unsteady ?? 0) >= 0 && (theme.unsteady ?? 0) <= 0.5, `${theme.id} unsteady`);
       for (const layer of theme.layers) if (layer.delay !== undefined) assert.equal(layer.role, 'melody', `${theme.id} delays only melodies`);
       assert.ok(theme.layers.some((l) => l.role === 'pad' || l.role === 'drone'), `${theme.id} has a bed`);
       assert.ok(theme.layers.some((l) => l.role === 'melody'), `${theme.id} has a melody`);
@@ -372,6 +374,7 @@ describe('composer', () => {
     assert.ok(pieces.filter((piece) => piece.some((s) => s.kind === 'hush')).length >= 15, 'nearly every piece of the Maze has silences');
     assert.ok(new Set(pieces.flatMap((piece) => piece.filter((s) => s.kind === 'hush').map((s) => s.bars))).size > 1, 'of differing length');
     assert.ok(planPiece(themeById('bree'), new Rng(1)).every((s) => s.kind !== 'hush'), 'a theme without silence never hushes');
+    assert.ok(pieces.every((piece) => piece[piece.length - 1].kind !== 'hush'), 'nor does a piece end on one');
 
     const hush = { kind: 'hush' as const, bars: 2, variation: 0 };
     const theme = {
@@ -383,7 +386,7 @@ describe('composer', () => {
       ],
     };
     const roles = (intensity: number) => new Set(new Composer(theme, 3).bar(hush, 0, 0, intensity).map((n) => n.role));
-    assert.deepEqual([...roles(0)], ['bells'], 'only what asks for the hush sounds in it');
+    assert.deepEqual([...roles(0)].sort(), ['bells', 'pad'], 'the bed holds; of the rest only what asks for the hush sounds in it');
     assert.ok(roles(0.8).has('perc'), 'danger still finds its way into the silence');
 
     const section = () => ({ kind: 'a' as const, bars: maze.chords.length, variation: 0 });
@@ -396,21 +399,22 @@ describe('composer', () => {
   });
 
   it('lets layers fall silent as danger grows', () => {
-    const theme = { ...themeById('cirith-ungol'), unsteady: 0 };
+    const theme = themeById('cirith-ungol');
     const a = { kind: 'a' as const, bars: 8, variation: 0 };
     const arps = (intensity: number) => Array.from({ length: 8 }, (_, b) => new Composer(theme, 2).bar(a, b, b, intensity)).flat().filter((n) => n.role === 'arp');
     assert.ok(arps(0).length > 0);
     assert.equal(arps(0.8).length, 0, 'the ticking stops when she is near');
   });
 
-  it('keeps an unsteady theme off a steady pulse', () => {
+  it('keeps an unsteady theme off a steady pulse, evening out over a section', () => {
     const a = { kind: 'a' as const, bars: 8, variation: 0 };
-    const steady = new Composer(themeById('bree'), 4);
-    assert.equal(steady.stretch(a, 2, false), 1);
+    assert.equal(new Composer(themeById('bree'), 4).wobble(a, 2), 1);
     const maze = new Composer(themeById('maze'), 4);
-    const lengths = Array.from({ length: 12 }, () => maze.stretch(a, 2, false));
-    assert.ok(lengths.every((x) => x >= 1 - 0.35 / 2 && x <= 1 + 0.35), 'within its share either way');
+    const lengths = Array.from({ length: a.bars }, (_, b) => maze.wobble(a, b));
+    assert.ok(lengths.every((x) => x >= 1 - 0.35 && x <= 1 + 0.35), 'within its share either way');
     assert.ok(Math.max(...lengths) - Math.min(...lengths) > 0.1, 'bars differ in length');
+    assert.ok(Math.abs(lengths.reduce((x, y) => x + y, 0) - a.bars) < 1e-9, 'held notes end with their section');
+    assert.equal(maze.wobble(a, 3), lengths[3], 'drawn once a section');
   });
 
   it('voices chords near the previous voicing', () => {

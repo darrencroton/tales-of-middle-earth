@@ -39,10 +39,9 @@ test('music follows the player from the title to town and dungeon, and actions m
   expect(below.recent).toContain('stairs-down');
   expect(below.scene).not.toMatch(/^bree/);
 
-  /* The Maze: water drops and silences, its echo far down the passages. */
+  /* The Maze has a theme of its own, of water drops and silences. */
   await wizardCommand(page, 'D', 18);
   await expect.poll(async () => (await audioStatus(page)).theme, { timeout: 15_000 }).toBe('maze');
-  await page.waitForTimeout(6000);
 
   /* Music off stops the theme; sound effects carry on. */
   await page.evaluate(() => window.__tome!.audio.setVolumes('off', 'medium'));

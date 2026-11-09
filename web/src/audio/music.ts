@@ -1,4 +1,4 @@
-import { Composer, pivotChord, secondsPerBar, sombreness, type PieceSection } from './composer.ts';
+import { barStretch, Composer, pivotChord, secondsPerBar, sombreness, type PieceSection } from './composer.ts';
 import type { AudioCore } from './core.ts';
 import { themeGain, type Instrument, type Role, type Theme } from './themes.ts';
 import { hashString } from './theory.ts';
@@ -7,8 +7,6 @@ import { playVoice } from './voices.ts';
 /** How far ahead bars are written to the audio clock. */
 const LOOKAHEAD_S = 0.35;
 const FIRST_FADE_S = 0.5;
-/** Seconds between an echo's repeats unless a theme sets its own. */
-const ECHO_DELAY_S = 0.42;
 const FADE_OUT_S = 1.8;
 /** Longest wait for the bar to end before changing theme. */
 const MAX_WAIT_S = 2.4;
@@ -120,7 +118,6 @@ export class MusicPlayer {
     this.current = playback;
     this.core.musicReverb.gain.setTargetAtTime(0.25 + theme.space * 0.75, now, 1.2);
     this.core.musicEcho.gain.setTargetAtTime((theme.echo ?? 0) * 0.5, now, 1.2);
-    this.core.echoDelay.setTargetAtTime(theme.echoDelay ?? ECHO_DELAY_S, now, 0.6);
   }
 
   stop(): void {
@@ -149,11 +146,11 @@ export class MusicPlayer {
     const section = p.piece[p.section];
     const target = 1 + DRIVE * Math.max(0, this.level - (p.theme.floor ?? 0));
     p.drive += Math.max(-DRIVE_STEP, Math.min(DRIVE_STEP, target - p.drive));
-    const stretch = p.composer.stretch(section, p.bar, p.section === p.piece.length - 1);
-    const barSeconds = (secondsPerBar(p.theme) * stretch) / p.drive;
+    const steady = (secondsPerBar(p.theme) * barStretch(p.theme, section, p.bar, p.section === p.piece.length - 1)) / p.drive;
+    const barSeconds = steady * p.composer.wobble(section, p.bar);
     p.barSeconds = barSeconds;
     const start = Math.max(p.nextAt, now + 0.02);
-    this.writeBar(p, section, start, barSeconds);
+    this.writeBar(p, section, start, barSeconds, steady);
     p.globalBar++;
     p.bar++;
     p.nextAt = start + barSeconds;
@@ -209,13 +206,15 @@ export class MusicPlayer {
     return length;
   }
 
-  private writeBar(p: Playback, section: PieceSection, start: number, barSeconds: number): void {
+  /** Writes a bar's notes; held notes (pads, drones) are timed by the steady bar, as a section's unsteady bars add up to it. */
+  private writeBar(p: Playback, section: PieceSection, start: number, barSeconds: number, steadySeconds: number): void {
     const beat = barSeconds / p.theme.meter;
+    const held = steadySeconds / p.theme.meter;
     const bright = p.theme.bright ?? 0.7;
     for (const note of p.composer.bar(section, p.bar, p.globalBar, this.level)) {
       const jitter = note.role === 'perc' ? 0 : Math.random() * 0.012;
       const t = start + note.at * beat + jitter;
-      const dur = Math.max(0.05, note.beats * beat * (SUSTAINED.has(note.role) ? 1 : 0.92));
+      const dur = Math.max(0.05, SUSTAINED.has(note.role) ? note.beats * held : note.beats * beat * 0.92);
       try {
         playVoice(this.core, note.inst, this.pan(p, note.pan), t, dur, note.midi, note.vel, { bright, sustained: SUSTAINED.has(note.role) });
       } catch (err) {
