@@ -742,6 +742,31 @@ object_type one_of(object_type const *o_ptr)
 	return one;
 }
 
+/* As store.cc's store_object_similar (static there): whether a shop stacks an object onto one it has. */
+static bool shop_stacks(object_type const *o_ptr, object_type const *j_ptr)
+{
+	if (o_ptr == j_ptr || o_ptr->k_ptr != j_ptr->k_ptr) return false;
+	if (o_ptr->pval != j_ptr->pval && o_ptr->tval != TV_WAND) return false;
+	if (o_ptr->pval2 != j_ptr->pval2 || o_ptr->pval3 != j_ptr->pval3) return false;
+	if (o_ptr->to_h != j_ptr->to_h || o_ptr->to_d != j_ptr->to_d || o_ptr->to_a != j_ptr->to_a) return false;
+	if (o_ptr->name1 != j_ptr->name1 || o_ptr->name2 != j_ptr->name2 || o_ptr->name2b != j_ptr->name2b) return false;
+	if (!o_ptr->artifact_name.empty() || !j_ptr->artifact_name.empty()) return false;
+	if (o_ptr->art_flags != j_ptr->art_flags) return false;
+	if (o_ptr->xtra1 || j_ptr->xtra1) return false;
+	if (o_ptr->tval == TV_LITE ? o_ptr->timeout != j_ptr->timeout : (o_ptr->timeout || j_ptr->timeout)) return false;
+	if (o_ptr->ac != j_ptr->ac || o_ptr->dd != j_ptr->dd || o_ptr->ds != j_ptr->ds) return false;
+	return o_ptr->discount == j_ptr->discount;
+}
+
+/* As store.cc's store_check_num (static there): whether the shop, home or museum has room for an object, free or on a stack it joins. */
+static bool shop_has_room(store_type const &st, bool home_like, object_type const *o_ptr)
+{
+	if (st.stock.size() < st.stock_size) return true;
+	return std::any_of(st.stock.begin(), st.stock.end(), [&](object_type const &o_ref) {
+		return home_like ? object_similar(&o_ref, o_ptr) : shop_stacks(&o_ref, o_ptr);
+	});
+}
+
 /*
  * tome2's device ("stick") mode, off while spells are read for the hero and
  * put back after: tome2 may be inside a wand's or staff's spell (asking where
@@ -2025,7 +2050,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_object_info(int index)
  * to the hero, name), its whole stock (price of one to buy, as tome2 decides
  * how many the hero can afford; none in the home), and for each item carried whether
  * the shop takes it and what it pays for one ("why" says why not: "kind",
- * "worthless", "cursed").
+ * "worthless", "cursed", "full": no room on its shelves, "nothing").
  */
 EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 {
@@ -2109,6 +2134,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 		if (!takes) why = "kind";
 		else if (!home && !museum && object_value(o_ptr) <= 0) why = "worthless";
 		else if (cursed_p(o_ptr) && (i >= INVEN_WIELD || (object_flags(o_ptr) & TR_CURSE_NO_DROP))) why = "cursed";
+		else if (auto const one = one_of(o_ptr); !shop_has_room(*st, home || museum, &one)) why = "full";
 		long price = 0;
 		if (!*why && !home && !museum)
 		{

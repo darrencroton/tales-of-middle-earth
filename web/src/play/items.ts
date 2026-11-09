@@ -2,6 +2,7 @@ import { KEY_BACKSLASH as BACKSLASH, KEY_ENTER as ENTER, KEY_SPACE as SPACE, key
 import type { InventoryState, ItemState } from '../render/snapshot.ts';
 import { pickupCommand } from './actions.ts';
 import type { Macro, MacroScreen } from './macro.ts';
+import { classifyPrompt } from './prompts.ts';
 
 export type ItemPlace = 'pack' | 'equip' | 'floor';
 
@@ -246,7 +247,7 @@ export function* itemMacro(action: ItemAction, item: ItemState, place: ItemPlace
       s = yield [...keyCodes(String(quantityAnswer(action.quantity, item.number))), ENTER];
     } else if (action.confirm && /-more-/.test(s.prompt)) {
       s = yield [SPACE];
-    } else if (action.confirm && /\[y\/n/.test(s.prompt)) {
+    } else if (action.confirm && classifyPrompt(s.prompt) === 'yesno') {
       s = yield keyCodes('y');
     } else if (action.needsText && /Inscri/i.test(s.prompt)) {
       s = yield typedAnswer(text, item.ins);

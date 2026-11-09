@@ -238,10 +238,13 @@ describe('shops', () => {
   });
 
   it('says why something carried is not taken', () => {
-    assert.equal(refusal(''), '');
-    assert.match(refusal('kind'), /Not wanted/);
-    assert.match(refusal('cursed'), /Cursed/);
-    assert.match(refusal('nothing'), /Offers nothing/);
+    const shop = store({});
+    assert.equal(refusal('', shop), '');
+    assert.match(refusal('kind', shop), /Not wanted/);
+    assert.match(refusal('cursed', shop), /Cursed/);
+    assert.match(refusal('nothing', shop), /Offers nothing/);
+    assert.match(refusal('full', shop), /No room on the shelves/);
+    assert.match(refusal('full', store({ home: 1 })), /No room at home/);
   });
 
   it('reads the page of the list tome2 shows', () => {

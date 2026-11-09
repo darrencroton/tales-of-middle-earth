@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { createCharacter, equipSuggested, expect, findFeature, jumpToLevel, sendText, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
+import { createCharacter, equipSuggested, expect, findFeature, jumpToLevel, sendText, summonBeside, test, waitAtCommand, waitForEngine, waitForScreen, wizardCommand, wizardGive } from './helpers.ts';
 
 /** The door of a town building, by the glyph and colour tome2 draws it with (st_info.txt). */
 async function door(page: Page, glyph: string, colour: number): Promise<{ x: number; y: number }> {
@@ -36,6 +36,8 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
 
   /* Townsfolk sent away, so nothing stops the walks. */
   await wizardCommand(page, 'z');
+  /* Belegennon, for its long name. */
+  await wizardGive(page, 'C', 22);
 
   /* A museum that tome2 words differently from a shop is shown the same way, not as tome2's raw screen. */
   expect(await walkIn(page, await door(page, '+', 5))).toBe('The Mathom-house');
@@ -113,6 +115,14 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
   await page.locator('.termview .row-button', { hasText: 'Race legends' }).click();
   await expect(page.locator('.sheet-service')).toContainText('You) Shopper the Human');
   await page.locator('.sheet-service .sheet-action.primary').click();
+  await leave(page);
+
+  /* tome2 asks "Sell …? [y/n/RET/ESC]" without shortening the name, so with a long one the [y/n] runs off the screen: still answered. */
+  expect(await walkIn(page, await door(page, '2', 2))).toBe('Armoury');
+  await page.locator('.termview [data-tab="offer"]').click();
+  await page.locator('.termview .shop-row', { hasText: 'Belegennon' }).click();
+  await page.locator('.sheet-item [data-action="offer"]').click();
+  await expect(page.locator('#toast')).toContainText(/Sold .*Belegennon/);
   await leave(page);
 
   /* At charisma 3 a black marketeer's offer goes below nothing, which tome2 would take from the hero's gold: not offered. */

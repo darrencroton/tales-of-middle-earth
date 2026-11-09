@@ -2,6 +2,13 @@ import { gridDistance } from './pathfinding.ts';
 
 export type PromptKind = 'none' | 'more' | 'yesno' | 'aim' | 'direction' | 'item' | 'quantity' | 'text' | 'choice' | 'other';
 
+/*
+ * A shop's "Buy …? [y/n/RET/ESC]" or "Sell …?" (store.cc's prompt_yesno) does
+ * not shorten the item's name, as get_check does, so with a long name the
+ * question runs past the 80 columns of row 0, [y/n] and all.
+ */
+const CUT_SHOP_QUESTION = /^(Buy|Sell) .{70,}$/;
+
 /**
  * Classifies tome2's prompt line (terminal row 0) so the UI can offer the
  * right controls. `typing` is true when tome2's cursor sits on that line,
@@ -11,7 +18,7 @@ export function classifyPrompt(rowZero: string, typing = false): PromptKind {
   const text = rowZero.trim();
   if (!text) return 'none';
   if (/-more-$/.test(text)) return 'more';
-  if (/\[y\/n[\]/]/i.test(text)) return 'yesno';
+  if (/\[y\/n[\]/]/i.test(text) || CUT_SHOP_QUESTION.test(text)) return 'yesno';
   if (bracketChoices(text).length > 1) return 'choice';
   if (/^Direction \(.*target/.test(text)) return 'aim';
   if (/Direction(\s*\(Escape to cancel\))?\?\s*$/.test(text)) return 'direction';
