@@ -50,10 +50,15 @@
 
 #include <algorithm>
 #include <cstring>
+#include <array>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
+
+/* tome2's xtra1.cc */
+int get_archery_skill();
 
 /* engine/snapshot.cc */
 JsonWriter start_json();
@@ -76,6 +81,8 @@ struct source {
 	std::string name;
 	/* An item's place in the inventory. */
 	int item = -1;
+	/* The form taken by mimicry, whose bonuses calc_mimic adds directly. */
+	bool mimic = false;
 	/* The timed effect behind it (an id of json_effects), and the turns it has left. */
 	char const *effect = nullptr;
 	int turns = 0;
@@ -180,6 +187,9 @@ std::vector<prop> const &props()
 		{ "blind", prop_kind::flag, { { TR_RES_BLIND } }, [] { return int(p_ptr->resist_blind); } },
 		{ "paralysis", prop_kind::flag, { { TR_FREE_ACT } }, [] { return int(p_ptr->free_act); } },
 		{ "holdLife", prop_kind::flag, { { TR_HOLD_LIFE } }, [] { return int(p_ptr->hold_life); } },
+		{ "stun", prop_kind::flag, {}, [] { return int(race_flags_p(PR_NO_STUN)); } },
+		{ "cuts", prop_kind::flag, {}, [] { return int(race_flags_p(PR_NO_CUT)); } },
+		{ "blackBreathResist", prop_kind::flag, {}, [] { return int(race_flags_p(PR_RESIST_BLACK_BREATH)); } },
 		{ "sustStr", prop_kind::flag, { { TR_SUST_STR } }, [] { return int(p_ptr->sustain_str); } },
 		{ "sustInt", prop_kind::flag, { { TR_SUST_INT } }, [] { return int(p_ptr->sustain_int); } },
 		{ "sustWis", prop_kind::flag, { { TR_SUST_WIS } }, [] { return int(p_ptr->sustain_wis); } },
@@ -194,7 +204,7 @@ std::vector<prop> const &props()
 		{ "feather", prop_kind::flag, { { TR_FEATHER } }, [] { return int(p_ptr->ffall); } },
 		{ "fly", prop_kind::flag, { { TR_FLY } }, [] { return int(p_ptr->fly); } },
 		{ "climb", prop_kind::flag, { { TR_CLIMB } }, [] { return int(p_ptr->climb); } },
-		{ "wraith", prop_kind::flag, { { TR_WRAITH } }, [] { return int(p_ptr->wraith_form); } },
+		{ "wraith", prop_kind::flag, { { TR_WRAITH } }, [] { return int(p_ptr->wraith_form || race_flags_p(PR_SEMI_WRAITH)); } },
 		{ "waterBreath", prop_kind::flag, { { TR_WATER_BREATH } }, [] { return int(p_ptr->water_breath); } },
 		{ "magicBreath", prop_kind::flag, { { TR_MAGIC_BREATH } }, [] { return int(p_ptr->magical_breath); } },
 		{ "slowDigest", prop_kind::flag, { { TR_SLOW_DIGEST } }, [] { return int(p_ptr->slow_digest); } },
@@ -283,14 +293,11 @@ int lite_radius(object_flag_set const &f)
 template<class LF>
 void add_lflags(source &s, LF const &lflags)
 {
-	object_flag_set all;
 	for (int i = 1; i <= p_ptr->lev; i++)
 	{
 		if (lflags[i].oflags.empty() && !lflags[i].pval) continue;
 		s.parts.push_back({ lflags[i].oflags, lflags[i].pval });
-		all |= lflags[i].oflags;
 	}
-	if (int light = lite_radius(all)) s.nums["light"] += light;
 }
 
 void add_stats(source &s, std::array<s16b, 6> const &adj)
@@ -387,7 +394,7 @@ void corruptions(std::vector<source> &out, object_flag_set &given)
 		at++;
 		switch (i)
 		{
-		case CORRUPT_BALROG_AURA: s.parts.push_back({ TR_SH_FIRE | TR_LITE1 }); s.nums["light"] = 1; break;
+		case CORRUPT_BALROG_AURA: s.parts.push_back({ TR_SH_FIRE | TR_LITE1 }); break;
 		case CORRUPT_BALROG_WINGS: s.parts.push_back({ TR_FLY }); add_stats(s, { 0, 0, 0, -2, 0, -4 }); break;
 		case CORRUPT_BALROG_STRENGTH: add_stats(s, { 3, 0, 0, -3, 1, -1 }); break;
 		case CORRUPT_DEMON_SPIRIT: add_stats(s, { 0, 1, 0, 0, 0, -2 }); break;
@@ -500,7 +507,12 @@ void form(std::vector<source> &out, object_flag_set const &corrupted)
 	if (p_ptr->mimic_form)
 	{
 		source s { "form", get_mimic_name(p_ptr->mimic_form) };
-		if (p_ptr->tim_mimic > 0) s.effect = "mimic";
+		s.mimic = true;
+		if (p_ptr->tim_mimic > 0)
+		{
+			s.effect = "mimic";
+			s.turns = p_ptr->tim_mimic;
+		}
 		s.parts.push_back({ p_ptr->xtra_flags & ~corrupted });
 		out.push_back(std::move(s));
 		return;
@@ -580,6 +592,54 @@ void effects(std::vector<source> &out)
 	}
 }
 
+/* What the race, its modifier and the class give by their own flags (race_flags_p): a weakness to light (only in the hero's own body), never stunned or cut, walking through walls, holding off the Black Breath, a bow's extra might. */
+void race_flags(source &s, player_race_flag_set const &flags, bool own_body)
+{
+	if (own_body && (flags & PR_HURT_LITE)) s.grants["lite"] = "vulnerable";
+	if (flags & PR_NO_STUN) s.grants["stun"] = "";
+	if (flags & PR_NO_CUT) s.grants["cuts"] = "";
+	if (flags & PR_SEMI_WRAITH) s.grants["wraith"] = "";
+	if (flags & PR_RESIST_BLACK_BREATH) s.grants["blackBreathResist"] = "";
+	bool const might = ((flags & PR_XTRA_MIGHT_BOW) && p_ptr->tval_ammo == TV_ARROW) || ((flags & PR_XTRA_MIGHT_SLING) && p_ptr->tval_ammo == TV_SHOT) ||
+	                   ((flags & PR_XTRA_MIGHT_XBOW) && p_ptr->tval_ammo == TV_BOLT);
+	if (might) s.nums["might"] += 1;
+}
+
+/* The shots and might archery skill adds to a launcher the hero can hold steady (calc_bonuses). */
+void archery(std::vector<source> &out)
+{
+	if (!p_ptr->inventory[INVEN_BOW].k_ptr || p_ptr->heavy_shoot) return;
+	int const skill = get_archery_skill();
+	if (skill == -1) return;
+	source s { "skill", skill_name(skill) };
+	s.nums["shots"] = get_skill(skill) / 16;
+	s.nums["might"] = get_skill(skill) / 25;
+	bool const matched = (skill == SKILL_SLING && p_ptr->tval_ammo == TV_SHOT) || (skill == SKILL_BOW && p_ptr->tval_ammo == TV_ARROW) || (skill == SKILL_XBOW && p_ptr->tval_ammo == TV_BOLT);
+	if (matched) s.nums["might"] += get_skill(skill) / 30;
+	if (s.nums["shots"] || s.nums["might"]) out.push_back(std::move(s));
+}
+
+/* The glow of a trait, an aura or anything but a worn light, which lights radius 1 only when nothing else gives light (calc_torch): given to the first that glows. */
+void glow(std::vector<source> &out)
+{
+	if (!p_ptr->lite) return;
+	int lit = 0;
+	for (auto const &s : out)
+	{
+		if (!std::strcmp(s.kind, "item") || !std::strcmp(s.kind, "effect"))
+		{
+			if (auto it = s.nums.find("light"); it != s.nums.end()) lit += it->second;
+		}
+	}
+	if (lit) return;
+	for (auto &s : out)
+	{
+		if (!std::strcmp(s.kind, "item") || !(s.flags() & (TR_LITE1 | TR_LITE2 | TR_LITE3 | TR_SH_FIRE))) continue;
+		s.nums["light"] += 1;
+		return;
+	}
+}
+
 /* Every source of the hero's properties, as calc_bonuses applies them. */
 std::vector<source> sources(source &hidden)
 {
@@ -589,11 +649,8 @@ std::vector<source> sources(source &hidden)
 		source s { "race", rp_ptr->title };
 		add_stats(s, rp_ptr->ps.adj);
 		s.nums["infra"] = rp_ptr->infra * 10;
-		if (own_body)
-		{
-			add_lflags(s, rp_ptr->lflags);
-			if (race_flags_p(PR_HURT_LITE)) s.grants["lite"] = "vulnerable";
-		}
+		if (own_body) add_lflags(s, rp_ptr->lflags);
+		race_flags(s, rp_ptr->flags, own_body);
 		out.push_back(std::move(s));
 	}
 	if (rmp_ptr && rmp_ptr->title.find_first_not_of(' ') != std::string::npos)
@@ -602,15 +659,18 @@ std::vector<source> sources(source &hidden)
 		add_stats(s, rmp_ptr->ps.adj);
 		s.nums["infra"] = rmp_ptr->infra * 10;
 		if (own_body) add_lflags(s, rmp_ptr->lflags);
+		race_flags(s, rmp_ptr->flags, own_body);
 		out.push_back(std::move(s));
 	}
 	{
 		source s { "class", cp_ptr->title };
 		add_stats(s, cp_ptr->ps.adj);
 		add_lflags(s, cp_ptr->lflags);
+		race_flags(s, cp_ptr->flags | spp_ptr->flags, own_body);
 		out.push_back(std::move(s));
 	}
 	skills(out);
+	archery(out);
 	god(out);
 	object_flag_set corrupted;
 	corruptions(out, corrupted);
@@ -623,6 +683,7 @@ std::vector<source> sources(source &hidden)
 	}
 	equipment(out, hidden);
 	effects(out);
+	glow(out);
 	{
 		source s { "tactic", tactic_info[static_cast<byte>(p_ptr->tactic)].name };
 		s.nums["stealth"] = tactic_info[static_cast<byte>(p_ptr->tactic)].to_stealth;
@@ -653,18 +714,41 @@ std::vector<source> sources(source &hidden)
 	return out;
 }
 
-/* The grade the hero's known sources give an element, as calc_bonuses and the damage functions combine them (used when unknown gear would show through). */
-int known_grade(std::vector<std::pair<std::size_t, share>> const &from, std::vector<source> const &all)
+/* The grade the hero's known sources give an element, as calc_bonuses and the damage functions combine them (used when unknown gear would show through): only the five elements have a timed resistance of their own, and light and a weakness to it cancel out. */
+int known_grade(prop const &p, std::vector<std::pair<std::size_t, share>> const &from, std::vector<source> const &all)
 {
+	static std::set<std::string> const timed = { "acid", "elec", "fire", "cold", "pois" };
 	bool immune = false, resist = false, oppose = false, vulnerable = false;
 	for (auto const &[i, sh] : from)
 	{
 		if (!std::strcmp(sh.as, "immune")) immune = true;
 		else if (!std::strcmp(sh.as, "vulnerable")) vulnerable = true;
-		else if (all[i].turns > 0) oppose = true;
+		else if (all[i].turns > 0 && timed.count(p.id)) oppose = true;
 		else resist = true;
 	}
+	if (!std::strcmp(p.id, "lite") && resist && vulnerable) return 0;
 	return grade(immune, resist, oppose, vulnerable && !resist && !oppose && !immune);
+}
+
+/* What a mimic form adds by itself (calc_mimic sets stats, speed and some abilities directly), credited to the form: what its known sources leave unexplained. */
+void credit_form(prop const &p, int now, std::vector<std::pair<std::size_t, share>> &from, std::vector<source> const &all)
+{
+	auto const form = std::find_if(all.begin(), all.end(), [](source const &s) { return s.mimic; });
+	if (form == all.end() || !std::strcmp(p.id, "light")) return;
+	std::size_t const at = form - all.begin();
+	auto mine = std::find_if(from.begin(), from.end(), [at](auto const &f) { return f.first == at; });
+	if (p.kind == prop_kind::number)
+	{
+		int sum = 0;
+		for (auto const &[i, sh] : from) sum += sh.n;
+		if (!p.known || now == sum) return;
+		if (mine == from.end()) mine = from.insert(std::upper_bound(from.begin(), from.end(), at, [](std::size_t i, auto const &f) { return i < f.first; }), { at, share { true, "", 0 } });
+		mine->second.n += now - sum;
+	}
+	else if (now > 0 && from.empty())
+	{
+		from.emplace_back(at, share { true, "", 0 });
+	}
 }
 
 } // namespace <anonymous>
@@ -718,10 +802,11 @@ extern "C" EMSCRIPTEN_KEEPALIVE char const *web_properties_json()
 			if (unseen.counts)
 			{
 				if (p.kind == prop_kind::number) now -= unseen.n;
-				else if (p.kind == prop_kind::grade) now = known_grade(from, all);
+				else if (p.kind == prop_kind::grade) now = known_grade(p, from, all);
 				else if (from.empty()) now = 0;
 			}
 			if (p.known) w.field("now", now);
+			credit_form(p, now, from, all);
 		}
 		w.key("from").begin_array();
 		for (auto const &[i, sh] : from)

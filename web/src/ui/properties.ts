@@ -38,7 +38,7 @@ function sourceOpener(api: GameApi, share: SourceShare, effects: readonly Effect
 
 /** A property's card: what it does in the game, the hero's state and every source, each opening its own card where it has one. */
 function openProperty(api: GameApi, row: PropertyRow, effects: readonly Effect[]): void {
-  const body = el('div', 'description property-card');
+  const body = el('div', 'description');
   body.append(el('p', undefined, row.does));
   if (row.note) body.append(el('p', 'muted', row.note));
   if (row.shares.length) {
@@ -71,7 +71,7 @@ function openProperty(api: GameApi, row: PropertyRow, effects: readonly Effect[]
 
 /** One property as a row: its name and state, and below, what gives it; dimmed when the hero lacks it. */
 function propertyRow(api: GameApi, row: PropertyRow, effects: readonly Effect[]): HTMLButtonElement {
-  const button = el('button', `property-row ${row.tone}${row.temporary ? ' temporary' : ''}`);
+  const button = el('button', `property-row ${row.tone}`);
   button.type = 'button';
   button.dataset.nav = '';
   button.dataset.key = `property-${row.id}`;
