@@ -171,6 +171,20 @@ test('kept levels stay as the hero left them, their stairs lead one level on and
   await waitAtCommand(page);
   expect((await level(page)).terrain).toBe(first.terrain);
   expect(await arrival(page, firstAt)).toEqual({ underfoot: expect.stringMatching(WAY_UP), nearest: true });
+
+  /* Out of a dungeon by its top stairs, the hero comes up on its entrance however they went in: the Maze, entered from Bree as Word of Recall would, leads out south of Bree. */
+  await wizardCommand(page, 'D', 18);
+  await wizardCommand(page, 'F', 6);
+  await sendText(page, '\\<');
+  await expect.poll(() => page.evaluate(() => window.__tome!.engine.snapshot()!.depth), { timeout: 30_000 }).toBe(0);
+  await dismissMore(page);
+  await waitAtCommand(page);
+  expect(await page.evaluate(() => {
+    const tome = window.__tome!;
+    const place = tome.engine.place()!;
+    const snap = tome.engine.snapshot()!;
+    return { wx: place.wx, wy: place.wy, town: place.town, underfoot: tome.engine.features()[snap.feat[snap.py * snap.width + snap.px]].name };
+  })).toEqual({ wx: 35, wy: 25, town: 0, underfoot: 'down staircase' });
 });
 
 test.describe(() => {
@@ -321,6 +335,8 @@ test("a quest level is never kept as the dungeon level of its depth, Thráin's l
 
   /* Nirnaeth Arnoediad ends as the hero takes its stairs out; its entrance in Gondolin, shown while it is taken, lies below the Dragons' one. */
   await wizardCommand(page, 'q', 14);
+  /* Up to the land first: from a dungeon level, the wizard's teleport to a town comes up by the dungeon's entrance, as climbing out does. */
+  await jumpToLevel(page, 0);
   await wizardCommand(page, 'T', 2);
   const nirnaeth = await page.evaluate(() => {
     const tome = window.__tome!;

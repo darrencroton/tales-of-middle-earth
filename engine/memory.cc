@@ -17,6 +17,7 @@
 #include "dungeon_info_type.hpp"
 #include "files.hpp"
 #include "game.hpp"
+#include "hook_wild_gen_in.hpp"
 #include "hooks.hpp"
 #include "level_data.hpp"
 #include "level_marker.hpp"
@@ -105,6 +106,7 @@ int persistent_wanted = -1;
 int persistent_applied = -1;
 bool forget_pending = false;
 bool hooks_added = false;
+bool entrances_noted = false;
 
 /* The level the hero is on: noted when it is built (or first seen after loading a game), as commands change the key before leaving. */
 byte here_dungeon = 0;
@@ -380,6 +382,70 @@ void way_back_underfoot()
 	if (shaft || cave_clean_bold(y, x)) cave_set_feat(y, x, feat);
 }
 
+/*
+ * Gives each dungeon with one entrance on the world map, the lost temple
+ * aside (its quest moves it), that entrance as the area a hero climbing out
+ * of its top level comes up in (tome2's d_info ix/iy, which only Moria's
+ * flags set). Returns whether the world map holds any entrance yet.
+ */
+bool note_entrances()
+{
+	auto &d_info = game->edit_data.d_info;
+	auto const &wf_info = game->edit_data.wf_info;
+	auto const &wilderness = game->wilderness;
+	std::vector<int> found(d_info.size(), 0);
+	std::vector<std::pair<int, int>> at(d_info.size());
+	for (std::size_t x = 0; x < wilderness.width(); x++)
+	{
+		for (std::size_t y = 0; y < wilderness.height(); y++)
+		{
+			auto const &w = wilderness(x, y);
+			int entrance = wf_info[w.feat].entrance;
+			if (!entrance) entrance = w.entrance;
+			if (entrance < 1000) continue;
+			std::size_t const d = entrance - 1000;
+			if (d >= d_info.size()) continue;
+			found[d]++;
+			at[d] = std::make_pair(static_cast<int>(x), static_cast<int>(y));
+		}
+	}
+	bool any = false;
+	for (std::size_t d = 0; d < d_info.size(); d++)
+	{
+		if (!found[d]) continue;
+		any = true;
+		if (found[d] > 1 || d_info[d].ix >= 0 || d == DUNGEON_LOST_TEMPLE) continue;
+		d_info[d].ix = at[d].first;
+		d_info[d].iy = at[d].second;
+	}
+	return any;
+}
+
+/* Puts a hero who has climbed out of a dungeon into its entrance's area on the staircase there into it, with no creature on it (tome2 puts them where they last stood on the land). */
+void out_by_entrance()
+{
+	if (dun_level || !left_dungeon) return;
+	auto const &d = game->edit_data.d_info[left_dungeon];
+	if (p_ptr->wilderness_x != d.ix || p_ptr->wilderness_y != d.iy) return;
+	for (int y = 0; y < cur_hgt; y++)
+	{
+		for (int x = 0; x < cur_wid; x++)
+		{
+			auto const &c = cave[y][x];
+			if (c.feat != FEAT_MORE || c.special != left_dungeon || c.m_idx) continue;
+			p_ptr->py = y;
+			p_ptr->px = x;
+			return;
+		}
+	}
+}
+
+bool wild_made_hook(void *, void *in_, void *)
+{
+	if (!static_cast<hook_wild_gen_in const *>(in_)->small) out_by_entrance();
+	return false;
+}
+
 bool level_made_hook(void *, void *, void *)
 {
 	forget_saved_view();
@@ -423,10 +489,12 @@ void web_memory_tick()
 		add_hook_new(HOOK_GEN_LEVEL_BEGIN, level_begin_hook, "web_level_begin", nullptr);
 		add_hook_new(HOOK_END_TURN, end_turn_hook, "web_end_turn", nullptr);
 		add_hook_new(HOOK_LEVEL_END_GEN, level_made_hook, "web_level_made", nullptr);
+		add_hook_new(HOOK_WILD_GEN, wild_made_hook, "web_wild_made", nullptr);
 		hooks_added = true;
 	}
 	apply_persistence();
 	if (!character_generated || !p_ptr) return;
+	if (!entrances_noted) entrances_noted = note_entrances();
 	if (forget_pending)
 	{
 		forget_levels();

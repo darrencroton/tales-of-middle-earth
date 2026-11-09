@@ -94,7 +94,7 @@ export const HELP: readonly HelpGroup[] = [
           {
             terms: [
               ['Tap a place', 'Walk there by the way you know. A tap on somewhere unseen takes one step towards it.'],
-              ['Tap next to you', 'One step. A foe there is attacked; someone neutral, such as a worried hobbit in town, is talked to; a closed door is opened. With a shovel or pick in your tool slot, a wall, vein, rubble or tree there is dug into until it gives way, or you are told it is too hard for your digger (*Tunnel*, under More, tries anyway).'],
+              ['Tap next to you', 'One step. A foe there is attacked; someone neutral, such as a worried hobbit in town, is talked to; a closed door is opened. With a shovel or pick in your tool slot, a wall, vein, rubble or tree there is marked; tap it again to dig into it until it gives way. Too hard for your digger, you are told so (*Tunnel*, under More, tries anyway).'],
               ['Tap yourself', 'Wait a turn, to let a creature come to you.'],
               ['Press and hold', 'Look at anything on the map: creatures, items, terrain.'],
               ['Drag', 'Look around without moving. Your next move brings the view back.'],
@@ -132,7 +132,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Talk', 'Someone neutral stands next to you: hear what they have to say.'],
               ['Pick up, Drink, Sacrifice', 'Something lies at your feet, or you stand at a fountain or an altar.'],
               ['Wield, Light', 'Your weapon hand is empty, or you have no light below ground. *Light* also relights a torch or lantern that has gone out.'],
-              ['Tunnel', 'Rubble blocks the way next to you and you have a shovel or pick in your tool slot: dig through it. Beside more than one pile, choose which. To dig into a wall, vein or tree, tap it.'],
+              ['Tunnel', 'Rubble blocks the way next to you and you have a shovel or pick in your tool slot: dig through it. Beside more than one pile, choose which. To dig into a wall, vein or tree, tap it twice.'],
               ['Explore', 'Walk on to the next place you have not seen, in a town or a dungeon.'],
               ['Way down, Way up', 'This dungeon level is explored: go straight to its stairs.'],
             ],
@@ -202,7 +202,7 @@ export const HELP: readonly HelpGroup[] = [
           'A *shaft* can skip levels: one down drops one to three, one up climbs two to four. Its button reads *Shaft down* or *Shaft up*, and *Way down* and *Way up* never take one.',
           'Some levels are always made anew: quest levels and a few special places.',
           { heading: 'Word of Recall' },
-          'A scroll of *Word of Recall* takes you from a dungeon back to town, and from town back down to the deepest level you reached there. It takes a while to work, so read it before you need it.',
+          'A scroll of *Word of Recall* takes you from a dungeon up to the land, where you stood before going down (the town, if you came down by recall), and from the land back down to the deepest level you reached there. It takes a while to work, so read it before you need it. Climbing out by the stairs brings you up by the dungeon’s entrance.',
         ],
         see: ['explore', 'dungeons', 'land'],
       },
@@ -301,7 +301,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Teleportation', 'Far across the level.'],
               ['Teleport Level', 'Off the level altogether, up or down.'],
               ['Stairs', 'Always a way out, if you can reach them.'],
-              ['Word of Recall', 'Home to town, but only after a while.'],
+              ['Word of Recall', 'Up to the land or back down, but only after a while.'],
             ],
           },
           'Leave while you still can: an escape works best before a fight turns bad.',
@@ -327,7 +327,7 @@ export const HELP: readonly HelpGroup[] = [
           {
             terms: [
               ['Return to the battlefield', 'Back where you fell, whole again. A level kept as you left it is just as it was, your foes still there, so you wake a step or two away from them when there is room. Elsewhere you wake at the same depth on a level made anew; from a quest’s own level, on the surface outside it.'],
-              ['Return to safety', 'In the last town you stood in, as Word of Recall would leave you: the way back down is kept. Not where Word of Recall cannot take you out, nor for an astral being.'],
+              ['Return to safety', 'In the last town you stood in, with the way back down kept for Word of Recall. Not where Word of Recall cannot take you out, nor for an astral being.'],
               ['Accept death', 'The adventure ends for good, and goes into the Hall of Fame.'],
             ],
           },

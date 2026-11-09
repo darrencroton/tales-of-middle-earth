@@ -17,7 +17,7 @@ import { hasEffect } from './play/effects.ts';
 import { contextActions, contextualAction, commandRefusal, CONTROLLING, exploreRefusal, creaturePowersMacro, releaseMacro, restMacro, waitCommand, type Action, type ActionContext, type CommandContext, type NativeView } from './play/actions.ts';
 import { MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
-import { goAction, rubbleBeside, tapAction, type TapAction } from './play/travel.ts';
+import { goAction, rubbleBeside, TAP_AGAIN, tapAction, type TapAction } from './play/travel.ts';
 import { Journeys } from './play/journeys.ts';
 import { HeroMemoryKeeper } from './play/heromemory.ts';
 import { Conversation } from './play/conversation.ts';
@@ -185,6 +185,8 @@ function newRunState() {
     /** Sheets covered by a tome2 screen, reopened once it closes. */
     returnTo: null as SheetTrail | null,
     lastSavedTurn: -1,
+    /** The cell a first tap marked for digging, on the game turn it was marked, until its mark fades (`HIGHLIGHT_MS`). */
+    digArmed: null as { cell: MapPoint; turn: number; until: number } | null,
   };
 }
 
@@ -1372,14 +1374,21 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
 }
 
 function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
-  doTap(tapAction(snap, heroMaterials(), cell, prompt, { monsters: game.lastState?.monsters, steered: steered(), dig: digSkill(snap) }));
+  const armed = game.digArmed;
+  const marked = armed && armed.turn === snap.turn && performance.now() < armed.until ? armed.cell : null;
+  if (armed) {
+    game.digArmed = null;
+    map.flashHighlight(armed.cell, 0);
+    redraw();
+  }
+  doTap(tapAction(snap, heroMaterials(), cell, prompt, { monsters: game.lastState?.monsters, steered: steered(), dig: digSkill(snap), armed: marked }));
 }
 
-/** What a tap on a cell beside the hero does when it is something to dig into: dig, or say it is too hard. */
+/** What the look card's Dig does on a cell beside the hero, when it is something to dig into: dig at once, or say it is too hard. */
 function digAction(point: MapPoint): Extract<TapAction, { kind: 'dig' | 'refuse' }> | null {
   const snap = game.lastSnap;
   if (!snap?.atCommand) return null;
-  const action = goAction(snap, heroMaterials(), point, { dig: digSkill(snap) });
+  const action = goAction(snap, heroMaterials(), point, { dig: digSkill(snap), armed: point });
   return action.kind === 'dig' || action.kind === 'refuse' ? action : null;
 }
 
@@ -1414,6 +1423,11 @@ function doTap(action: TapAction): void {
     case 'dig':
       hideToast();
       send([BACKSLASH, ...keyCodes(`T${action.digit}`)]);
+      break;
+    case 'arm':
+      game.digArmed = { cell: action.cell, turn: game.lastSnap?.turn ?? -1, until: performance.now() + HIGHLIGHT_MS };
+      flash(action.cell);
+      showToast(TAP_AGAIN, { log: false });
       break;
     case 'steer':
       send([BACKSLASH, ...keyCodes(`;${action.digit}`)]);
