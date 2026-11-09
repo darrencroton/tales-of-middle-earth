@@ -509,8 +509,8 @@ export interface StockItem {
 /** Whether the shop takes something carried (by inventory index) and what it pays for one. */
 export interface StoreOffer {
   i: number;
-  /** Why it does not: not the kind of thing it deals in, worthless, cursed (worn, or stuck to the hand), or the keeper's offer is below nothing (tome2 would charge for the sale). */
-  why: '' | 'kind' | 'worthless' | 'cursed' | 'nothing';
+  /** Why it does not: not the kind of thing it deals in, worthless, cursed (worn, or stuck to the hand), no room for it (the shelves are full and it joins no stack there), or the keeper's offer is below nothing (tome2 would charge for the sale). */
+  why: '' | 'kind' | 'worthless' | 'cursed' | 'full' | 'nothing';
   price: number;
 }
 

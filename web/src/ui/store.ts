@@ -1,6 +1,7 @@
 import { KEY_BACKSLASH as BACKSLASH, KEY_ENTER as ENTER, KEY_SPACE as SPACE, keyCodes } from '../input/keys.ts';
 import { itemActions, itemMacro, SLOT_NAMES, type ItemAction, type ItemPlace } from '../play/items.ts';
 import { type Macro, type MacroScreen } from '../play/macro.ts';
+import { classifyPrompt } from '../play/prompts.ts';
 import { STORE_ACTION, type InventoryState, type ItemState, type StockItem, type StoreCommand, type StoreOffer, type StoreState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { capitalise, itemGlyph, pounds, titleName } from './api.ts';
@@ -86,7 +87,7 @@ function keeper(store: Pick<StoreState, 'owner' | 'name'>): string {
 }
 
 /** Why the shop will not take something carried, in a few words. */
-export function refusal(why: StoreOffer['why']): string {
+export function refusal(why: StoreOffer['why'], store: Pick<StoreState, 'home' | 'museum'>): string {
   switch (why) {
     case 'kind':
       return 'Not wanted here';
@@ -96,9 +97,23 @@ export function refusal(why: StoreOffer['why']): string {
       return 'Cursed: cannot be let go';
     case 'nothing':
       return 'Offers nothing for it';
+    case 'full':
+      return store.home ? 'No room at home' : store.museum ? 'No room in the museum' : 'No room on the shelves';
     default:
       return '';
   }
+}
+
+/** The shelves hold all they can: only more of what is already on them fits (tome2's store_check_num). */
+function full(store: Pick<StoreState, 'stock' | 'capacity'>): boolean {
+  return store.stock.length >= store.capacity;
+}
+
+/** Why there is no room for something carried, in the building's own voice. */
+function fullNote(store: Pick<StoreState, 'home' | 'museum' | 'owner' | 'name'>): string {
+  if (store.home) return 'Every shelf at home is full: only more of what is already stored will fit.';
+  if (store.museum) return 'Every case in the museum is full: only more of what is already on show will fit.';
+  return `${keeper(store)}’s shelves are full to the rafters: only more of what is already there will fit. Come back once some stock has found new owners.`;
 }
 
 /** The most of a shelf item the hero can take: all of it in the home, as many as their gold buys in a shop (tome2 asks for at most 99). */
@@ -122,7 +137,7 @@ function* answerTrade(first: MacroScreen, quantity: number): Macro {
   for (let i = 0; i < 6; i++) {
     if (/-more-/.test(s.prompt)) s = yield [SPACE];
     else if (/Quantity/i.test(s.prompt)) s = yield [...keyCodes(String(quantity)), ENTER];
-    else if (/\[y\/n/.test(s.prompt)) s = yield keyCodes('y');
+    else if (classifyPrompt(s.prompt) === 'yesno') s = yield keyCodes('y');
     else return;
   }
 }
@@ -213,12 +228,13 @@ export function offerElements(api: GameApi, store: StoreState, model: ShopModel,
     else if (wants) elements.push(el('p', 'shop-note muted', `${keeper(store)} buys ${wants}.`));
     if (store.buys && store.noSelling) elements.push(el('p', 'shop-note muted', 'In this adventure shops pay nothing for what you bring them.'));
   }
+  if (store.buys && full(store)) elements.push(el('p', 'shop-note', fullNote(store)));
   const listOf = (items: readonly ItemState[], place: ItemPlace) => {
     const list = el('div', 'item-list');
     for (const item of items) {
       const o = offers.get(item.i);
       const why = o?.why ?? 'kind';
-      const aside = why ? refusal(why) : store.home || store.museum ? pounds(item.weight * item.number) : `${o?.price ?? 0} gold`;
+      const aside = why ? refusal(why, store) : store.home || store.museum ? pounds(item.weight * item.number) : `${o?.price ?? 0} gold`;
       list.append(row(api, rowKey(place, item.name), item, aside, !why && !store.home && !store.museum, !!why, () => openOfferItem(api, store, model, item, place, o ?? null, handlers)));
     }
     return list;
@@ -229,7 +245,7 @@ export function offerElements(api: GameApi, store: StoreState, model: ShopModel,
     return elements;
   }
   const usable = [...inventory.pack, ...worn].some((item) => !offers.get(item.i)?.why);
-  if (!usable && store.buys) {
+  if (!usable && store.buys && !full(store)) {
     elements.push(el('p', 'empty', store.home ? 'Nothing you carry can be stored.' : 'Nothing you carry catches the shopkeeper’s eye.'));
   }
   if (inventory.pack.length) elements.push(section('Pack', listOf(inventory.pack, 'pack')));
@@ -312,7 +328,9 @@ function openOfferItem(api: GameApi, store: StoreState, model: ShopModel, item: 
       ? `${keeper(store)} sells, but never buys.`
       : why === 'nothing'
         ? `${keeper(store)} offers nothing for it.`
-        : `${refusal(why)}.`;
+        : why === 'full'
+          ? fullNote(store)
+          : `${refusal(why, store)}.`;
   const amount =
     !note && key && item.number > 1
       ? stepper(item.number, 1, (n) => {
