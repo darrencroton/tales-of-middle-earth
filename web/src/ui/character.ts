@@ -3,11 +3,12 @@ import { godNamed } from '../play/gods.ts';
 import { FEET_PER_LEVEL, type PlayerState, type SkillEntry } from '../render/snapshot.ts';
 import { NOT_NOW, type GameApi } from './api.ts';
 import { KEY_BACKSLASH, KEY_ENTER, KEY_ESCAPE, keyCodes } from '../input/keys.ts';
-import { fullSheetElements, sheetPageKeys, SHEET_PAGES, type FullSheet } from './charsheet.ts';
+import { CENSUS_PAGES, fullSheetElements, sheetPageKeys, SHEET_PAGES, type FullSheet } from './charsheet.ts';
 import { bar, el, navButton, section, signed, stat } from './dom.ts';
 import { effectSections } from './effects.ts';
 import { faithLine, openHeroGod } from './gods.ts';
 import type { MessageBox } from './msgbox.ts';
+import { propertyElements } from './properties.ts';
 import type { SheetAction, SheetContent, SheetTab } from './sheet.ts';
 import { abilityTableElements, cursorKeys, raiseRefusal, selectedAbility, selectedSkill, skillTableElements, type AbilitiesScreen, type SkillsScreen } from './skills.ts';
 
@@ -37,8 +38,6 @@ export interface CharacterScreen {
 interface CharacterDeps {
   /** Sends keys to tome2 without closing any sheet. */
   sendKeys(keys: number[]): void;
-  /** Name of an equipment letter on the full sheet. */
-  source(letter: string): string;
   /** Asks for `step` to run now if tome2 is already waiting for a key. */
   poke(): void;
 }
@@ -69,7 +68,8 @@ function screenTab(screen: CharacterScreen): CharacterTab | null {
 
 /**
  * The character sheet: a summary built from engine data, and tome2's
- * skills, abilities and full sheet screens shown in the same sheet. The
+ * skills, abilities and full sheet screens shown in the same sheet (the
+ * full sheet's pages of flags as the census of the hero's properties). The
  * tabs at its foot never move; a tab backed by a tome2 screen opens that
  * screen underneath and the sheet shows it natively.
  */
@@ -344,9 +344,11 @@ export class CharacterPanel {
         onKey: (e) => this.skillKey(e, false),
       };
     }
-    if (this.want === 'sheet' && screen?.sheet) {
+    const census = this.want === 'sheet' && screen?.sheet && screen.sheet.page > 0 ? this.api.engine.properties() : null;
+    if (this.want === 'sheet' && screen?.sheet && (screen.sheet.page === 0 || census)) {
       const sheet = screen.sheet;
-      body.append(...fullSheetElements(sheet, { send, source: (letter) => this.deps.source(letter) }));
+      if (sheet.page === 0) body.append(...fullSheetElements(sheet, { send }));
+      else if (census) body.append(...propertyElements(this.api, census, CENSUS_PAGES[sheet.page]));
       return {
         ...base,
         subtitle: SHEET_PAGES[sheet.page],

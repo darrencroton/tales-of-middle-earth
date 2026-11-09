@@ -14,7 +14,7 @@ import { readableColour } from '../../web/src/render/colour.ts';
 import { STORE_ACTION, type ItemState, type StoreState } from '../../web/src/render/snapshot.ts';
 import { affordable, drawnBlocks, offerMacro, refusal, serviceReply, shelfMacro, shelfPage, shopModel, trades } from '../../web/src/ui/store.ts';
 import { cursorKeys, parseAbilities, parseSkills, raiseRefusal, selectedAbility, selectedSkill } from '../../web/src/ui/skills.ts';
-import { flagLabel, parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
+import { parseFullSheet, sheetPageKeys } from '../../web/src/ui/charsheet.ts';
 import { heroEntry } from '../../web/src/ui/gameover.ts';
 import { damageLabel, effectText, loreText, spellText, powerNotes, propGroups, propText, spellNotes } from '../../web/src/ui/inspect.ts';
 import { fateText } from '../../web/src/ui/memorial.ts';
@@ -450,30 +450,15 @@ describe('full character sheet', () => {
     assert.equal(sheet.movement, 'normal');
   });
 
-  it('reads active flags with their sources', () => {
+  it('tells which page of flags is shown, which the census replaces', () => {
     const lines: string[] = ['', '', ''];
     lines[3] = '           adefz@                                  adefz@';
     lines[4] = 'Sust Str  :......                       Res Acid  :+...+.';
-    lines[5] = 'Sust Int  :......                       Imm Fire  :*.....';
     lines[22] = footer;
-    const sheet = parseFullSheet(rows(lines));
-    assert.ok(sheet && 'flags' in sheet);
-    assert.equal(sheet.page, 2);
-    assert.deepEqual(
-      sheet.flags.map((f) => [f.label, f.value, f.sources.join('')]),
-      [
-        ['Resist acid', 'Yes', 'az'],
-        ['Immune to fire', 'Immune', 'a'],
-      ],
-    );
+    assert.deepEqual(parseFullSheet(rows(lines)), { page: 2 });
   });
 
-  it('names flags and pages', () => {
-    assert.equal(flagLabel('Res Pois'), 'Resist poison');
-    assert.equal(flagLabel('Sust Con'), 'Sustain constitution');
-    assert.equal(flagLabel('Add Str'), 'Strength');
-    assert.equal(flagLabel('Orc.ESP'), 'Sense orcs');
-    assert.equal(flagLabel('Free Act'), 'Free action');
+  it('pages forwards', () => {
     assert.equal(sheetPageKeys(0, 2), 'nn');
     assert.equal(sheetPageKeys(3, 0), 'nn');
   });

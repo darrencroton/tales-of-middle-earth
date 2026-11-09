@@ -322,7 +322,14 @@ test('the character sheet keeps its tabs at the foot and its skill rows still, a
   await page.locator('.sheet [data-tab="sheet"]').click();
   await expect(page.locator('.sheet .stat-label', { hasText: 'Fighting' })).toBeVisible();
   await page.locator('.sheet [data-action="page-2"]').click();
-  await expect(page.locator('.sheet-subtitle')).toHaveText('Resists');
+  await expect(page.locator('.sheet-subtitle')).toHaveText('Defences');
+  /* The census shows every defence, those the hero lacks too, each opening a card of what it does and what gives it. */
+  await expect(page.locator('.sheet [data-key="property-fire"]')).toBeVisible();
+  await expect(page.locator('.sheet .property-row.off').first()).toBeVisible();
+  await page.locator('.sheet [data-key="property-fire"]').click();
+  await expect(page.locator('.sheet-property .description')).toContainText('Fire burns');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sheet-property')).toBeHidden();
   expect(await tabsAt()).toBe(tabs);
 
   await page.locator('.sheet [data-tab="summary"]').click();

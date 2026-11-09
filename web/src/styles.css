@@ -3490,34 +3490,89 @@ html.keyboard-tight .prompt-card.text .card-title {
   text-transform: capitalize;
 }
 
-.flag-row {
-  margin: 0 0 0.35rem;
-  padding: 0.45rem 0.7rem;
+/* The census of the hero's properties (Full sheet: Bonuses, Defences, Traits, Senses): a table of rows, two or more across where there is room; what the hero lacks is dimmed. */
+
+.property-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  gap: 1px;
+  overflow: hidden;
   border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: var(--panel-raised);
+  border-radius: 10px;
+  background: var(--panel);
 }
 
-.flag-main {
+.property-row {
+  box-shadow: 0 0 0 1px var(--panel-border);
   display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+  min-height: calc(var(--touch) * 0.8);
+  padding: 0.3rem 0.75rem;
+  border: 0;
+  background: var(--button);
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.property-row.is-active {
+  outline-offset: -2px;
+}
+
+.property-main {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 0.6rem;
 }
 
-.flag-value {
-  font-family: var(--mono);
+.property-state {
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.property-temp {
+  margin-left: auto;
+  color: var(--boon);
+  font-size: var(--fs-small);
+  font-style: italic;
+}
+
+.property-row.good .property-state {
   color: #7fcf7a;
 }
 
-.flag-row.bad .flag-value {
+.property-row.bad .property-state {
   color: #e07a6a;
 }
 
-.flag-sources {
-  display: block;
+.property-row.off {
+  background: var(--panel);
+}
+
+.property-row.off .property-label,
+.property-row.off .property-state {
+  color: var(--faint);
+}
+
+.property-from {
   color: var(--muted);
   font-size: var(--fs-small);
+}
+
+.property-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.property-source {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.3rem 0.9rem;
 }
 
 /* End of game */

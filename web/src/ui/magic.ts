@@ -14,11 +14,11 @@ import {
   type RecentAction,
 } from '../play/recent.ts';
 import { capitalise, stripArticle } from '../play/text.ts';
-import type { ItemState, MagicItem, PowerInfo, SpellInfo, SpellState } from '../render/snapshot.ts';
+import type { MagicItem, PowerInfo, SpellInfo, SpellState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { el, iconText, section, stat } from './dom.ts';
 import { abilityRow, openSpellCard, powerNotes, spellRow } from './inspect.ts';
-import { openItem } from './inventory.ts';
+import { carriedItem, openItem } from './inventory.ts';
 import { itemState, recentSection } from './recent.ts';
 
 const STORAGE_KEY = 'tome2mobile.recent.v1';
@@ -89,13 +89,6 @@ export function magicSpellRow(api: GameApi, spell: SpellInfo, handlers: MagicHan
 
 /* What a tap on an item used as magic does. */
 const ITEM_VERBS: Readonly<Record<MagicItem['command'], string>> = { A: 'Activate', a: 'Aim', u: 'Use', z: 'Zap' };
-
-/** The carried or worn item an entry of the spells export's items stands for. */
-function carriedItem(api: GameApi, index: number): ItemState | null {
-  const inventory = api.engine.inventory();
-  const found = index >= INVEN_WIELD ? inventory?.equip.find((slot) => slot.i === index && !slot.empty && !!slot.name) : inventory?.pack.find((i) => i.i === index);
-  return (found as ItemState | undefined) ?? null;
-}
 
 /** An item used as magic as a tappable row (one tap activates, aims, uses or zaps it; dimmed, saying why, when it cannot), with ⓘ for its card. */
 function magicItemRow(api: GameApi, item: MagicItem, handlers: MagicHandlers): HTMLElement {

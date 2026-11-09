@@ -42,6 +42,7 @@ Map (toolbar, HUD, gestures)
 │       ├── Character ─────── Character            panel, tabs Summary · Skills · Abilities · Full sheet
 │       │                     ├── Ailments · Blessings · Sustained (Summary) ─ Effect card over Character (Praying: God card)
 │       │                     ├── Faith (Summary) ─ God card over Character (gifts lit; prayers carried, a tap prays; Pray · Stop praying)
+│       │                     ├── a property (Full sheet: Bonuses, Defences, Traits, Senses) ─ Property card over Character (what it does; its sources: item card, read-only · Effect card · God card)
 │       │                     └── Save skill points? card over Character (Discard · Save)
 │       ├── Messages ──────── Messages             panel (log, newest at the foot)
 │       ├── Knowledge ─────── Knowledge            menu, each entry with its count          depth 2
@@ -377,7 +378,9 @@ the top in landscape. A new e2e test covers the reader, help links and cards
   tome2 still pages its own list underneath, and a trade turns it to the
   item's page first.
 - **Character → Full sheet** keeps tome2's pages as labelled buttons (they are
-  different views, not pagination).
+  different views, not pagination): *Stats* is tome2's own page; *Bonuses*,
+  *Defences*, *Traits* and *Senses* are the census of the hero's properties,
+  each a card of what it does and what gives it.
 - The **original ToME manual** (reached from Help) is tome2's own text, keys
   and all; our Help topics are what the player is meant to read.
 - **Spell lists, options and other tome2 menus** remain TermView panels

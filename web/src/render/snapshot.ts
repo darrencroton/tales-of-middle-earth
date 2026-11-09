@@ -561,6 +561,32 @@ export interface CharacterState {
   turn: number;
 }
 
+/** What gives the hero a property: gear (by inventory index), a trait, a timed effect (by `EffectState.id`), their tactic or way of moving, their load. */
+export interface PropertySource {
+  kind: 'race' | 'class' | 'skill' | 'god' | 'corruption' | 'form' | 'fate' | 'item' | 'effect' | 'tactic' | 'movement' | 'load';
+  name?: string;
+  i?: number;
+  effect?: string;
+  turns?: number;
+}
+
+/** A property of the hero (`web_properties_json`): its state now and what gives it. */
+export interface PropertyState {
+  id: string;
+  /** 1 or 0; an element's grade (3 immune, 2 resisted twice, 1 resisted, -1 vulnerable); an amount. Left out for an amount tome2 keeps nowhere. */
+  now?: number;
+  /** Each source by its index in `PropertyCensus.sources`: "immune" or "vulnerable" when it counts so, and what it adds to an amount. */
+  from: { s: number; as?: 'immune' | 'vulnerable'; n?: number }[];
+}
+
+export interface PropertyCensus {
+  ready: number;
+  sources: PropertySource[];
+  props: PropertyState[];
+  /** How far the anti-magic field reaches, when there is one. */
+  antimagicRadius?: number;
+}
+
 /** One row of the skills screen's whole list; values in thousandths. */
 export interface SkillEntry {
   name: string;

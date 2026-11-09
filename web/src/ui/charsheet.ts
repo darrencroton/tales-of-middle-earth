@@ -1,3 +1,4 @@
+import type { PropertyPage } from '../play/properties.ts';
 import { rowText, type TermRow } from './termparse.ts';
 import { el, section, stat } from './dom.ts';
 
@@ -6,7 +7,11 @@ const TERM_RED = 4;
 const TERM_L_RED = 12;
 const GOOD_COLOURS = new Set([5, 6, 10, 13, 14]);
 
-export const SHEET_PAGES = ['Stats', 'Bonuses', 'Resists', 'Traits', 'Senses'] as const;
+/* tome2's pages of its sheet: its summary, then four pages of flags, which the census shows instead. */
+export const SHEET_PAGES = ['Stats', 'Bonuses', 'Defences', 'Traits', 'Senses'] as const;
+
+/** The census page shown for each of tome2's pages of flags. */
+export const CENSUS_PAGES: Readonly<Record<1 | 2 | 3 | 4, PropertyPage>> = { 1: 'bonuses', 2: 'defences', 3: 'traits', 4: 'senses' };
 
 interface SheetStat {
   label: string;
@@ -19,17 +24,9 @@ interface SheetGroup {
   stats: SheetStat[];
 }
 
-interface SheetFlag {
-  label: string;
-  value: string;
-  tone: 'good' | 'bad';
-  /** Equipment letters ('a'…), 'z' for a carried symbiote, '@' for the character. */
-  sources: string[];
-}
-
 export type FullSheet =
   | { page: 0; groups: SheetGroup[]; tactic: string; movement: string }
-  | { page: 1 | 2 | 3 | 4; flags: SheetFlag[] };
+  | { page: 1 | 2 | 3 | 4 };
 
 const tidy = (text: string) => text.replace(/\s+/g, ' ').replace(/ ?\/ ?/g, ' / ').trim();
 
@@ -113,107 +110,13 @@ function summary(rows: readonly TermRow[]): FullSheet {
   return { page: 0, groups, tactic, movement };
 }
 
-function flags(rows: readonly TermRow[], page: 1 | 2 | 3 | 4): FullSheet {
-  const out: SheetFlag[] = [];
-  for (const x0 of [0, 40]) {
-    const header = rowText(rows[3]).slice(x0 + 11, x0 + 40).trimEnd();
-    for (let y = 4; y < Math.min(rows.length, 20); y++) {
-      const row = rows[y];
-      const text = rowText(row);
-      if (text[x0 + 10] !== ':') continue;
-      const name = text.slice(x0, x0 + 10).trim();
-      let value = '';
-      let total = 0;
-      const sources: string[] = [];
-      for (let i = 0; i < header.length; i++) {
-        const ch = text[x0 + 11 + i];
-        if (!ch || ch === '.' || ch === ' ') continue;
-        sources.push(header[i]);
-        if (ch === '*') value = 'Immune';
-        else if (/\d/.test(ch)) total += (row.attrs[x0 + 11 + i] === TERM_RED ? -1 : 1) * Number(ch);
-      }
-      if (!sources.length) continue;
-      if (!value) value = total ? `${total > 0 ? '+' : ''}${total}` : 'Yes';
-      const attr = row.attrs[x0];
-      out.push({ label: flagLabel(name), value, tone: attr === TERM_RED || attr === TERM_L_RED ? 'bad' : 'good', sources });
-    }
-  }
-  return { page, flags: out };
-}
-
-const FLAG_WORDS: Readonly<Record<string, string>> = {
-  Str: 'strength',
-  Int: 'intelligence',
-  Wis: 'wisdom',
-  Dex: 'dexterity',
-  Con: 'constitution',
-  Chr: 'charisma',
-  'Stea.': 'stealth',
-  'Tun..': 'tunnelling',
-  'Anim.': 'animals',
-  'Und.': 'undead',
-  'Drag.': 'dragons',
-  Neth: 'nether',
-  Disen: 'disenchantment',
-  Pois: 'poison',
-  Elec: 'lightning',
-  Conf: 'confusion',
-  Blind: 'blindness',
-  Shard: 'shards',
-};
-
-const FLAG_NAMES: Readonly<Record<string, string>> = {
-  'Mul Mana': 'Mana multiplier',
-  'Mul SPower': 'Spell power',
-  'Add Infra': 'Infravision',
-  'Add Speed': 'Speed',
-  'Add Blows': 'Extra blows',
-  'Poison Brd': 'Poison brand',
-  'Mul life': 'Life multiplier',
-  'Sens Fire': 'Vulnerable to fire',
-  Reflect: 'Reflection',
-  'Free Act': 'Free action',
-  'Auto Curse': 'Gathers curses',
-  NoTeleport: 'No teleport',
-  AntiMagic: 'Anti-magic',
-  WraithForm: 'Wraith form',
-  EvilCurse: 'Evil curse',
-  'Xtra Might': 'Extra might',
-  'Xtra Shots': 'Extra shots',
-  Regen: 'Regeneration',
-  Digestion: 'Slow digestion',
-  'Drain Exp': 'Drains experience',
-  'See Invis': 'See invisible',
-  Lite: 'Light',
-  'Hvy Curse': 'Heavy curse',
-  'Prm Curse': 'Permanent curse',
-  'Precogn.': 'Precognition',
-  'B.Breath': 'Black breath',
-  'Mrg.Curse': 'Morgoth’s curse',
-  'Full ESP': 'Telepathy',
-};
-
-/** "Res Acid" → "Resist acid", "Orc.ESP" → "Sense orcs". */
-export function flagLabel(raw: string): string {
-  const name = raw.trim();
-  if (FLAG_NAMES[name]) return FLAG_NAMES[name];
-  const esp = /^(\w+)[. ]ESP$/.exec(name);
-  if (esp) return `Sense ${esp[1].toLowerCase()}${/s$/.test(esp[1]) ? '' : 's'}`.replace('Sense tlords', 'Sense Valar').replace('Sense nlives', 'Sense non-living');
-  const m = /^(Add|Sust|Res|Imm|Slay|Kill|Aura)\s+(\S+)$/.exec(name);
-  if (!m) return name;
-  const word = FLAG_WORDS[m[2]] ?? m[2].toLowerCase();
-  const verb = { Add: '', Sust: 'Sustain ', Res: 'Resist ', Imm: 'Immune to ', Slay: 'Slay ', Kill: 'Kill ', Aura: 'Aura of ' }[m[1]];
-  return verb ? `${verb}${word}` : word[0].toUpperCase() + word.slice(1);
-}
-
 /** Reads tome2's full character sheet (rows of the whole terminal), or null. */
 export function parseFullSheet(rows: readonly TermRow[]): FullSheet | null {
   const footer = rows.slice(-3).map(rowText).join(' ');
   if (!/'p' for previous, 'n' for next/.test(footer)) return null;
   if (/^\s*Name\s*:/.test(rowText(rows[2]))) return summary(rows);
   const first = rowText(rows[4]).slice(0, 10).trim();
-  const page = first.startsWith('Add Str') ? 1 : first.startsWith('Sust Str') ? 2 : first.startsWith('Aura') ? 3 : 4;
-  return flags(rows, page);
+  return { page: first.startsWith('Add Str') ? 1 : first.startsWith('Sust Str') ? 2 : first.startsWith('Aura') ? 3 : 4 };
 }
 
 /** n-presses from one sheet page to another (pages cycle forwards). */
@@ -224,8 +127,6 @@ export function sheetPageKeys(from: number, to: number): string {
 interface FullSheetHandlers {
   /** Sends keys to the sheet. */
   send(keys: string): void;
-  /** Name for an equipment letter from the sheet. */
-  source(letter: string): string;
 }
 
 function statGrid(stats: SheetStat[]): HTMLElement {
@@ -253,27 +154,12 @@ function stepper(title: string, value: string, back: string, next: string, handl
   return row;
 }
 
-/** Elements for the native full character sheet. */
-export function fullSheetElements(sheet: FullSheet, handlers: FullSheetHandlers): HTMLElement[] {
-  const out: HTMLElement[] = [];
-  if (sheet.page === 0) {
-    for (const group of sheet.groups) out.push(section(group.title, statGrid(group.stats)));
-    const style: HTMLElement[] = [];
-    if (sheet.tactic) style.push(stepper('Tactic', sheet.tactic, 't', 'T', handlers));
-    if (sheet.movement) style.push(stepper('Movement', sheet.movement, 'e', 'E', handlers));
-    if (style.length) out.push(section('Style', ...style));
-    return out;
-  }
-  if (!sheet.flags.length) {
-    out.push(el('p', 'tv-empty', 'Nothing yet. Equipment and abilities that grant these will show here.'));
-    return out;
-  }
-  for (const flag of sheet.flags) {
-    const row = el('div', `flag-row ${flag.tone}`);
-    const main = el('div', 'flag-main');
-    main.append(el('span', 'flag-label', flag.label), el('span', 'flag-value', flag.value));
-    row.append(main, el('span', 'flag-sources', flag.sources.map((s) => handlers.source(s)).join(' · ')));
-    out.push(row);
-  }
+/** Elements for tome2's summary page of the full character sheet. */
+export function fullSheetElements(sheet: Extract<FullSheet, { page: 0 }>, handlers: FullSheetHandlers): HTMLElement[] {
+  const out = sheet.groups.map((group) => section(group.title, statGrid(group.stats)));
+  const style: HTMLElement[] = [];
+  if (sheet.tactic) style.push(stepper('Tactic', sheet.tactic, 't', 'T', handlers));
+  if (sheet.movement) style.push(stepper('Movement', sheet.movement, 'e', 'E', handlers));
+  if (style.length) out.push(section('Style', ...style));
   return out;
 }
