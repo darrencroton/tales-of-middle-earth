@@ -32,7 +32,6 @@ const TV = {
   ARROW: 17,
   BOLT: 18,
   BOW: 19,
-  DIGGING: 20,
   LITE: 39,
   STAFF: 55,
   WAND: 65,
@@ -54,8 +53,6 @@ const INVEN_LITE = 36;
 /** Equipment indexes of the launcher and the quiver. */
 export const INVEN_BOW = 27;
 export const INVEN_AMMO = 50;
-/** Equipment index of the tool slot. */
-const INVEN_TOOL = 51;
 
 /** Equipment slot groups, keyed by their first inventory index. */
 export const SLOT_NAMES: Readonly<Record<number, string>> = {
@@ -302,11 +299,6 @@ export function suggestedGear(inventory: Pick<InventoryState, 'pack' | 'equip'>,
         find('light', 'w', (i) => i.tval === TV.LITE && burning(i)))
       : null)
   );
-}
-
-/** A shovel or pick is in the tool slot, as tome2 needs for tunnelling. */
-export function diggerWorn(inventory: Pick<InventoryState, 'equip'>): boolean {
-  return inventory.equip.some((slot) => slot.i === INVEN_TOOL && !!slot.name && slot.tval === TV.DIGGING);
 }
 
 /** How the hero fights: with weapons, with magic and powers, or both. */

@@ -13,6 +13,8 @@ export interface FeatureInfo {
   ch: number;
   attr: number;
   flags: number;
+  /** The digging skill that gets through it at 1% a turn (tome2's skill_req_1pct); none for what a tap does not dig. */
+  dig?: number;
   /** The god of an altar. */
   god?: string;
 }
@@ -40,6 +42,8 @@ export interface Material {
   door: boolean;
   /** Floor, where the hero can push past a companion (tome2's cave_floor_bold). */
   floor: boolean;
+  /** The digging skill that gets through it at 1% a turn: walls, veins, rubble and trees; none for doors and what tome2 does not tunnel. */
+  dig?: number;
   /** Walkable only by the hero's own ability (trees for a tree walker): travel avoids it unless it saves a long way round, and exploring never uses it. */
   shortcut?: boolean;
 }
@@ -145,7 +149,7 @@ export function classifyFeature(f: FeatureInfo): Material {
   const name = f.name.toLowerCase();
   const rule = RULES.find(([pattern]) => pattern.test(name));
   const m = rule ? rule[1](f) : fallback(f);
-  return { ...m, walkable: (f.flags & FB_NO_WALK) === 0, door: (f.flags & FB_DOOR) !== 0, floor: (f.flags & FB_FLOOR) !== 0 };
+  return { ...m, walkable: (f.flags & FB_NO_WALK) === 0, door: (f.flags & FB_DOOR) !== 0, floor: (f.flags & FB_FLOOR) !== 0, ...(f.dig === undefined ? {} : { dig: f.dig }) };
 }
 
 export function buildMaterials(features: readonly FeatureInfo[]): Material[] {

@@ -159,19 +159,30 @@ export function travelGrid(snap: LevelSnapshot, materials: readonly Material[], 
 /* tome2's FEAT_RUBBLE: the rubble a digger clears (the town's pile is a permanent feature of its own). */
 const FEAT_RUBBLE = 0x31;
 
-/** Direction digits of the rubble beside the hero: remembered, with no creature shown on it, and none while the hero can walk over rubble. */
+/** What a tap on terrain too hard for the hero's digger says. */
+export const TOO_HARD = 'Too hard for your digger: Tunnel, under More, tries anyway.';
+
+/**
+ * The digging skill a cell needs (tome2's skill_req_1pct), when the hero can
+ * dig into it (do_cmd_tunnel_test): remembered terrain tome2 tunnels through
+ * that the hero cannot walk onto, with no creature shown on it, inside the
+ * level's edge (the land's border shows the next area's terrain); else null.
+ */
+export function digNeeded(snap: LevelSnapshot, materials: readonly Material[], point: Point): number | null {
+  if (point.x <= 0 || point.y <= 0 || point.x >= snap.width - 1 || point.y >= snap.height - 1) return null;
+  const i = point.y * snap.width + point.x;
+  const m = materials[snap.feat[i]];
+  if (m?.dig === undefined || m.walkable || !(snap.info[i] & CAVE_MARK) || (snap.layer[i] & LAYER_MASK) === LAYER_MONSTER) return null;
+  return m.dig;
+}
+
+/** Direction digits of the rubble beside the hero that they can dig into. */
 export function rubbleBeside(snap: LevelSnapshot, materials: readonly Material[]): string[] {
   const digits: string[] = [];
-  if (materials[FEAT_RUBBLE]?.walkable) return digits;
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
-      const x = snap.px + dx;
-      const y = snap.py + dy;
-      if ((dx === 0 && dy === 0) || x < 0 || y < 0 || x >= snap.width || y >= snap.height) continue;
-      const i = y * snap.width + x;
-      if (snap.feat[i] !== FEAT_RUBBLE || !(snap.info[i] & CAVE_MARK)) continue;
-      if ((snap.layer[i] & LAYER_MASK) === LAYER_MONSTER) continue;
-      digits.push(directionDigit(dx, dy)!);
+      const point = { x: snap.px + dx, y: snap.py + dy };
+      if ((dx || dy) && digNeeded(snap, materials, point) !== null && snap.feat[point.y * snap.width + point.x] === FEAT_RUBBLE) digits.push(directionDigit(dx, dy)!);
     }
   }
   return digits;
@@ -254,29 +265,44 @@ export type TapAction =
   | { kind: 'travel'; cell: Point }
   | { kind: 'step'; cell: Point }
   | { kind: 'talk'; digit: string }
+  | { kind: 'dig'; digit: string }
   | { kind: 'steer'; digit: string }
   | { kind: 'refuse'; why: string }
   | { kind: 'none' };
+
+/** What a tap on the map can do besides walking. */
+export interface TapContext {
+  /** Creatures on the level, for talking to a neutral one beside the hero. */
+  monsters?: readonly MonsterState[];
+  /** The hero's digging skill, while they can dig. */
+  dig?: number;
+  /** Where the creature the hero controls stands (null out of sight); given only while they control one. */
+  steered?: Point | null;
+}
 
 /**
  * Where a tap on the map takes the hero: travel to a place they have seen,
  * one step to a neighbouring cell, and one step towards anywhere unseen,
  * blank screen beyond the level included. A tap on a neutral creature beside
  * the hero talks to it, where a step would only stop short of it (after
- * Pixel Dungeon, whose townsfolk answer a tap).
+ * Pixel Dungeon, whose townsfolk answer a tap); a tap on a wall, vein, rubble
+ * or tree beside a hero who can dig digs into it, where a step would only
+ * bump it, when their skill gets through it at 1% a turn or better, and
+ * otherwise says it is too hard (after NetHack's autodig).
  */
 export function goAction(
   snap: LevelSnapshot,
   materials: readonly Material[],
   point: Point,
-  monsters: readonly MonsterState[] = [],
-): Extract<TapAction, { kind: 'travel' | 'step' | 'talk' | 'none' }> {
+  { monsters = [], dig }: TapContext = {},
+): Extract<TapAction, { kind: 'travel' | 'step' | 'talk' | 'dig' | 'refuse' | 'none' }> {
   const known = isKnown(snap, point);
   const near = isAdjacent(snap.px, snap.py, point.x, point.y);
   if (known && !near) return { kind: 'travel', cell: point };
-  if (near && monsters.some((m) => m.x === point.x && m.y === point.y && isNeutral(m))) {
-    return { kind: 'talk', digit: directionDigit(point.x - snap.px, point.y - snap.py) ?? '5' };
-  }
+  const digit = directionDigit(point.x - snap.px, point.y - snap.py) ?? '5';
+  if (near && monsters.some((m) => m.x === point.x && m.y === point.y && isNeutral(m))) return { kind: 'talk', digit };
+  const needed = near && dig !== undefined ? digNeeded(snap, materials, point) : null;
+  if (needed !== null) return dig! >= needed ? { kind: 'dig', digit } : { kind: 'refuse', why: TOO_HARD };
   const step = known ? point : stepTowards(snap, materials, point);
   return step ? { kind: 'step', cell: step } : { kind: 'none' };
 }
@@ -295,16 +321,10 @@ function steerAction(steered: Point | null, cell: Point): TapAction {
 /**
  * What a tap on a map cell does for the question tome2 is asking: choose a
  * direction or target, interrupt a rest or run, steer the creature the hero
- * controls (`steered`, given only then), wait in place, or go there.
+ * controls, wait in place, or go there.
  */
-export function tapAction(
-  snap: LevelSnapshot,
-  materials: readonly Material[],
-  cell: Point,
-  prompt: PromptKind,
-  monsters: readonly MonsterState[] = [],
-  steered?: Point | null,
-): TapAction {
+export function tapAction(snap: LevelSnapshot, materials: readonly Material[], cell: Point, prompt: PromptKind, context: TapContext = {}): TapAction {
+  const { steered } = context;
   const near = isAdjacent(snap.px, snap.py, cell.x, cell.y);
   const direction = (): TapAction => ({ kind: 'direction', digit: directionDigit(cell.x - snap.px, cell.y - snap.py) ?? '5' });
   if (prompt === 'direction') return near ? direction() : { kind: 'none' };
@@ -313,7 +333,7 @@ export function tapAction(
   if (!snap.atCommand) return prompt === 'none' ? { kind: 'interrupt' } : { kind: 'none' };
   if (steered !== undefined) return steerAction(steered, cell);
   if (cell.x === snap.px && cell.y === snap.py) return { kind: 'wait' };
-  return goAction(snap, materials, cell, monsters);
+  return goAction(snap, materials, cell, context);
 }
 
 /** What keeps the hero from pushing past a companion: tome2 makes them stop, or strike, while confused, stunned or seeing things. */

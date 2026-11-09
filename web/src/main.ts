@@ -40,7 +40,7 @@ import { CastWatcher, fireMacro, hasMagic, hasPowers, recentLabel } from './play
 import { NOT_NOW, type GameApi } from './ui/api.ts';
 import { GameFeel, READ_MS, type QuestEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
-import { diggerWorn, itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
+import { itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { ABANDONED, hasFallen } from './play/memorial.ts';
 import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/death.ts';
 import { CharacterPanel, type CharacterScreen } from './ui/character.ts';
@@ -998,12 +998,15 @@ function talkPartner(): MonsterState | null {
   return (game.lastState?.monsters ?? []).find((m) => isNeutral(m) && isAdjacent(m.x, m.y, snap.px, snap.py)) ?? null;
 }
 
-/** Direction digits of the rubble beside the hero, when a digger is in their tool slot. */
+/** The hero's digging skill while they can dig: a digger in the tool slot, not confused, not on the world map, not controlling a creature. */
+function digSkill(snap: LevelSnapshot): number | undefined {
+  if (worldMap(snap) || controlling() || hasEffect(game.lastState?.player, 'confused')) return undefined;
+  return game.lastState?.player?.dig;
+}
+
+/** Direction digits of the rubble beside the hero, when they can dig. */
 function rubbleToDig(snap: LevelSnapshot): string[] {
-  const rubble = rubbleBeside(snap, heroMaterials());
-  if (!rubble.length) return [];
-  const inventory = engine.inventory();
-  return inventory?.ready && diggerWorn(inventory) ? rubble : [];
+  return digSkill(snap) === undefined ? [] : rubbleBeside(snap, heroMaterials());
 }
 
 function useSuggested(): void {
@@ -1369,11 +1372,19 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
 }
 
 function tapMapCell(snap: LevelSnapshot, cell: MapPoint, prompt: ReturnType<typeof classifyPrompt>): void {
-  doTap(tapAction(snap, heroMaterials(), cell, prompt, game.lastState?.monsters, steered()));
+  doTap(tapAction(snap, heroMaterials(), cell, prompt, { monsters: game.lastState?.monsters, steered: steered(), dig: digSkill(snap) }));
+}
+
+/** What a tap on a cell beside the hero does when it is something to dig into: dig, or say it is too hard. */
+function digAction(point: MapPoint): Extract<TapAction, { kind: 'dig' | 'refuse' }> | null {
+  const snap = game.lastSnap;
+  if (!snap?.atCommand) return null;
+  const action = goAction(snap, heroMaterials(), point, { dig: digSkill(snap) });
+  return action.kind === 'dig' || action.kind === 'refuse' ? action : null;
 }
 
 function goTowards(snap: LevelSnapshot, point: MapPoint): void {
-  doTap(goAction(snap, heroMaterials(), point, game.lastState?.monsters));
+  doTap(goAction(snap, heroMaterials(), point, { monsters: game.lastState?.monsters }));
 }
 
 /** Carries out what a tap on the map decided. */
@@ -1399,6 +1410,10 @@ function doTap(action: TapAction): void {
       break;
     case 'talk':
       conversation.converse('Y', action.digit);
+      break;
+    case 'dig':
+      hideToast();
+      send([BACKSLASH, ...keyCodes(`T${action.digit}`)]);
       break;
     case 'steer':
       send([BACKSLASH, ...keyCodes(`;${action.digit}`)]);
@@ -1726,7 +1741,13 @@ const look = new LookCard({
   map,
   go: (point) => {
     setLooking(false);
-    journeys.travelTo(point);
+    const dig = digAction(point);
+    if (dig) doTap(dig);
+    else journeys.travelTo(point);
+  },
+  dig: (point) => {
+    const action = digAction(point);
+    return action && { refusal: action.kind === 'refuse' ? action.why : null };
   },
   redraw,
   requestFrame: () => requestFrame(),

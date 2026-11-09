@@ -72,7 +72,7 @@ Map (toolbar, HUD, gestures)
 │   ├── creature / item chip ─ Creature / Item     card (a creature beside you, not hostile: Talk · Give; a foe: Target,
 │   │                                              Send companions; one of yours: Call off, Dismiss)
 │   └── message log ───────── Messages             panel
-├── Map tap / long-press ───── travel (a neutral creature beside you: talk) / look card (terrain; an altar's god, each creature and item there → its card)
+├── Map tap / long-press ───── travel (a neutral creature beside you: talk; a wall beside you, with a digger: dig) / look card (terrain; an altar's god, each creature and item there → its card)
 ├── A quest begun or ended ─── quest card (the scene tome2 told, then what it asks) or its banner
 └── tome2 asks something ───── question card on the map (yes/no, how many, text, direction,
                                aim, lettered choice, message box) or a TermView panel
@@ -320,7 +320,8 @@ with why, and journeys are refused.
 | `R` | rest | toolbar *Rest*; More (both answer *how long?* only when tome2 asks) |
 | `<` `>` | stairs, world map | changing button (Descend, Ascend, Shaft down, Shaft up, Walk here…); More (*Go down*, *Go up* / *World map*) |
 | `_` | enter a building | walk in; changing button *Enter shop* |
-| `o` `c` `B` `j` `T` | open, close, bash, jam (spikes), tunnel | tap a door (opens it); changing button *Tunnel* beside rubble with a digger worn; More → Doors and walls |
+| `o` `c` `B` `j` | open, close, bash, jam (spikes) | tap a door (opens it); More → Doors |
+| `T` | tunnel | tap a wall, vein, rubble or tree beside the hero with a digger worn (or the look card's *Dig*; too hard for the digger, it says so); changing button *Tunnel* beside rubble; More → Get around |
 | `+` | alter (attack, open or tunnel by terrain) | covered by the above and Attack |
 | `Y` | talk | tap a neutral creature beside you; changing button *Talk*; its card; More |
 | `y` | give | a creature's card beside you; More |

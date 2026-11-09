@@ -4,8 +4,8 @@ import { commandGroups, commandKeys, commandRefusal, contextActions, contextualA
 import { findPath, floodFill, gridDistance, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
-import { approachTarget, FAR_WALK_STEPS, goAction, isKnown, outOfSight, pushPast, rubbleBeside, stepTowards, STOP_MESSAGES, stopMessage, tapAction, Travel, travelGrid, type StopContext, type TravelContext } from '../../web/src/play/travel.ts';
-import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials, walkableFor } from '../../web/src/render/materials.ts';
+import { approachTarget, FAR_WALK_STEPS, goAction, isKnown, outOfSight, pushPast, rubbleBeside, stepTowards, STOP_MESSAGES, stopMessage, tapAction, TOO_HARD, Travel, travelGrid, type StopContext, type TravelContext } from '../../web/src/play/travel.ts';
+import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials, walkableFor, type FeatureInfo } from '../../web/src/render/materials.ts';
 import { CAVE_MARK, CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
 import { monster, snapshot } from './fixtures.ts';
 
@@ -100,8 +100,10 @@ describe('pathfinding', () => {
 const FEATURES = [
   { name: 'nothing', ch: 32, attr: 0, flags: 0 },
   { name: 'open floor', ch: 46, attr: 1, flags: FB_FLOOR },
-  { name: 'granite wall', ch: 35, attr: 1, flags: FB_WALL | FB_NO_WALK | FB_NO_VISION },
+  { name: 'granite wall', ch: 35, attr: 1, flags: FB_WALL | FB_NO_WALK | FB_NO_VISION, dig: 56 },
   { name: 'door', ch: 43, attr: 7, flags: FB_DOOR | FB_NO_WALK | FB_NO_VISION },
+  { name: 'permanent wall', ch: 35, attr: 1, flags: FB_WALL | FB_NO_WALK | FB_NO_VISION },
+  { name: 'magma vein', ch: 35, attr: 1, flags: FB_WALL | FB_NO_WALK | FB_NO_VISION, dig: 14 },
 ];
 const MATERIALS = buildMaterials(FEATURES);
 
@@ -114,7 +116,7 @@ function level(rows: string[], player: { x: number; y: number }): LevelSnapshot 
   rows.forEach((row, y) =>
     [...row].forEach((ch, x) => {
       const i = y * width + x;
-      feat[i] = ch === '#' ? 2 : ch === '+' ? 3 : 1;
+      feat[i] = ch === '#' ? 2 : ch === '+' ? 3 : ch === '%' ? 4 : ch === '*' ? 5 : 1;
       if (ch === 'k') layer[i] = LAYER_MONSTER;
     }),
   );
@@ -215,19 +217,34 @@ describe('travel', () => {
   it('talks to a neutral creature tapped beside the hero, and steps towards anyone else', () => {
     const snap = level(['.....'], { x: 2, y: 0 });
     const creature = (x: number, status: number) => ({ id: 1, name: 'Melinda Proudfoot', ch: 104, attr: 1, x, y: 0, hp: 9, maxhp: 9, asleep: 0, afraid: 0, unique: 1, status });
-    assert.deepEqual(tapAction(snap, MATERIALS, { x: 1, y: 0 }, 'none', [creature(1, 0)]), { kind: 'talk', digit: '4' });
-    assert.deepEqual(goAction(snap, MATERIALS, { x: 3, y: 0 }, [creature(3, 0)]), { kind: 'talk', digit: '6' });
-    assert.deepEqual(goAction(snap, MATERIALS, { x: 3, y: 0 }, [creature(3, -2)]), { kind: 'step', cell: { x: 3, y: 0 } });
-    assert.deepEqual(goAction(snap, MATERIALS, { x: 4, y: 0 }, [creature(4, 0)]), { kind: 'travel', cell: { x: 4, y: 0 } });
-    assert.deepEqual(tapAction(snap, MATERIALS, { x: 1, y: 0 }, 'direction', [creature(1, 0)]), { kind: 'direction', digit: '4' });
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 1, y: 0 }, 'none', { monsters: [creature(1, 0)] }), { kind: 'talk', digit: '4' });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 3, y: 0 }, { monsters: [creature(3, 0)] }), { kind: 'talk', digit: '6' });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 3, y: 0 }, { monsters: [creature(3, -2)] }), { kind: 'step', cell: { x: 3, y: 0 } });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 4, y: 0 }, { monsters: [creature(4, 0)] }), { kind: 'travel', cell: { x: 4, y: 0 } });
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 1, y: 0 }, 'direction', { monsters: [creature(1, 0)] }), { kind: 'direction', digit: '4' });
+  });
+
+  it('digs into a wall beside a hero who can dig, says when it is too hard, and only bumps a door, a permanent wall or the level\'s edge', () => {
+    const snap = level(['#####', '#*#+#', '#%..#', '#####'], { x: 2, y: 2 });
+    snap.info.fill(CAVE_MARK);
+    const weak = { dig: 30 };
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 1, y: 1 }, 'none', weak), { kind: 'dig', digit: '7' });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 2, y: 1 }, weak), { kind: 'refuse', why: TOO_HARD });
+    assert.deepEqual(goAction(snap, MATERIALS, { x: 2, y: 1 }, { dig: 56 }), { kind: 'dig', digit: '8' });
+    for (const [x, y, ctx] of [[2, 1, {}], [3, 1, weak], [1, 2, weak], [2, 3, weak]] as const) {
+      assert.deepEqual(goAction(snap, MATERIALS, { x, y }, ctx), { kind: 'step', cell: { x, y } });
+    }
+    assert.equal(goAction(snap, walkableFor(MATERIALS, [5]), { x: 1, y: 1 }, weak).kind, 'step');
+    snap.layer[6] = LAYER_MONSTER;
+    assert.equal(goAction(snap, MATERIALS, { x: 1, y: 1 }, weak).kind, 'step');
   });
 
   it('steers the creature the hero controls a step towards the place tapped', () => {
     const snap = level(['.....', '.....', '.....'], { x: 0, y: 0 });
-    assert.deepEqual(tapAction(snap, MATERIALS, { x: 4, y: 2 }, 'none', [], { x: 2, y: 1 }), { kind: 'steer', digit: '3' });
-    assert.deepEqual(tapAction(snap, MATERIALS, { x: 0, y: 0 }, 'none', [], { x: 2, y: 1 }), { kind: 'steer', digit: '7' });
-    assert.deepEqual(tapAction(snap, MATERIALS, { x: 2, y: 1 }, 'none', [], { x: 2, y: 1 }), { kind: 'none' });
-    assert.equal(tapAction(snap, MATERIALS, { x: 4, y: 2 }, 'none', [], null).kind, 'refuse');
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 4, y: 2 }, 'none', { steered: { x: 2, y: 1 } }), { kind: 'steer', digit: '3' });
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 0, y: 0 }, 'none', { steered: { x: 2, y: 1 } }), { kind: 'steer', digit: '7' });
+    assert.deepEqual(tapAction(snap, MATERIALS, { x: 2, y: 1 }, 'none', { steered: { x: 2, y: 1 } }), { kind: 'none' });
+    assert.equal(tapAction(snap, MATERIALS, { x: 4, y: 2 }, 'none', { steered: null }).kind, 'refuse');
   });
 
   it('words why a journey stopped', () => {
@@ -665,8 +682,9 @@ describe('actions', () => {
     assert.equal(why('Powers', { powers: true }), undefined);
     assert.deepEqual(
       commandGroups(COMMANDS).map((g) => g.title),
-      ['Get around', 'Fight and magic', 'Use an item', 'People and creatures', 'Doors and walls', 'Journal'],
+      ['Get around', 'Fight and magic', 'Use an item', 'People and creatures', 'Doors', 'Journal'],
     );
+    assert.ok(commandGroups(COMMANDS)[0].commands.some((c) => c.label === 'Tunnel'));
     assert.deepEqual(commandGroups(COMMANDS)[1].commands.slice(0, 2).map((c) => [c.label, c.native]), [
       ['Magic', 'magic'],
       ['Powers', 'powers'],
@@ -698,19 +716,19 @@ describe('actions', () => {
   });
 
   it('finds remembered rubble beside the hero that blocks the way', () => {
-    const features = Array.from({ length: 50 }, () => ({ name: 'open floor', ch: 46, attr: 1, flags: FB_FLOOR }));
-    features[49] = { name: 'pile of rubble', ch: 58, attr: 1, flags: FB_NO_WALK | FB_WALL | FB_NO_VISION };
-    features[2] = { name: 'granite wall', ch: 35, attr: 1, flags: FB_NO_WALK | FB_WALL | FB_NO_VISION };
+    const features: FeatureInfo[] = Array.from({ length: 50 }, () => ({ name: 'open floor', ch: 46, attr: 1, flags: FB_FLOOR }));
+    features[49] = { name: 'pile of rubble', ch: 58, attr: 1, flags: FB_NO_WALK | FB_WALL | FB_NO_VISION, dig: 2 };
+    features[2] = { name: 'granite wall', ch: 35, attr: 1, flags: FB_NO_WALK | FB_WALL | FB_NO_VISION, dig: 56 };
     const materials = buildMaterials(features);
-    const snap = snapshot(3, 3, { px: 1, py: 1 });
+    const snap = snapshot(5, 5, { px: 2, py: 2 });
     snap.info.fill(CAVE_MARK);
-    snap.feat.set([49, 2, 2, 1, 1, 49, 2, 2, 49]);
+    snap.feat.set([2, 2, 2, 2, 2, 2, 49, 2, 2, 2, 2, 1, 1, 49, 2, 2, 2, 2, 49, 2, 2, 2, 2, 2, 49]);
     assert.deepEqual(rubbleBeside(snap, materials), ['7', '6', '3']);
     assert.deepEqual(rubbleBeside(snap, walkableFor(materials, [49])), []);
-    snap.info[5] = 0;
-    snap.layer[8] = LAYER_MONSTER;
+    snap.info[13] = 0;
+    snap.layer[18] = LAYER_MONSTER;
     assert.deepEqual(rubbleBeside(snap, materials), ['7']);
-    assert.deepEqual(rubbleBeside({ ...snap, px: 0, py: 0 }, materials), []);
+    assert.deepEqual(rubbleBeside({ ...snap, px: 4, py: 4 }, materials), []);
   });
 
   it('names the way to and from the world map on the surface', () => {

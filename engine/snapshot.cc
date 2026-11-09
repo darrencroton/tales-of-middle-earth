@@ -1490,7 +1490,28 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 }
 
 /*
- * Returns the terrain feature table as JSON: [{name, ch, attr, flags}, ...].
+ * The digging skill that gets through a feature at 1% a turn, as
+ * do_cmd_tunnel_aux rates it (its skill_req_1pct), or -1 for terrain tome2
+ * does not tunnel, permanent walls and doors.
+ */
+static int dig_skill(int feat)
+{
+	auto const &f = game->edit_data.f_info[feat];
+	if (!(f.flags & FF_TUNNELABLE) || (f.flags & FF_PERMANENT)) return -1;
+	if ((feat == FEAT_TREES) || (feat == FEAT_DEAD_TREE)) return 14;
+	if ((feat >= FEAT_WALL_EXTRA) && (feat <= FEAT_WALL_SOLID)) return 56;
+	if (((feat >= FEAT_MAGMA) && (feat <= FEAT_QUARTZ_K)) || ((feat >= FEAT_SANDWALL) && (feat <= FEAT_SANDWALL_K)))
+	{
+		if ((feat == FEAT_SANDWALL_H) || (feat == FEAT_SANDWALL_K)) return 8;
+		return ((feat - FEAT_MAGMA) & 0x01) ? 28 : 14;
+	}
+	if (feat == FEAT_RUBBLE) return 2;
+	if ((feat >= FEAT_DOOR_HEAD) && (feat <= FEAT_DOOR_TAIL)) return -1;
+	return 42;
+}
+
+/*
+ * Returns the terrain feature table as JSON: [{name, ch, attr, flags, dig?, god?}, ...].
  */
 EMSCRIPTEN_KEEPALIVE char const *web_features_json()
 {
@@ -1518,6 +1539,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_features_json()
 		w.field("ch", static_cast<unsigned char>(f.x_char));
 		w.field("attr", f.x_attr);
 		w.field("flags", bits);
+		if (int const dig = dig_skill(static_cast<int>(i)); dig >= 0) w.field("dig", dig);
 		if (auto const *god = altar_god(static_cast<int>(i))) w.field("god", god->name);
 		w.end_object();
 	}
@@ -1779,6 +1801,9 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	if (race_flags_p(PR_NO_GOD)) w.field("faithless", "race");
 	else if (get_skill(SKILL_ANTIMAGIC) > 0) w.field("faithless", "antimagic");
 	json_passes(w);
+	/* The hero's digging skill, with a digger in the tool slot and unless they pass through walls (player_can_enter). */
+	auto const &tool = p_ptr->inventory[INVEN_TOOL];
+	if (tool.k_ptr && (tool.tval == TV_DIGGING) && !p_ptr->wraith_form && !race_flags_p(PR_SEMI_WRAITH)) w.field("dig", p_ptr->skill_dig);
 	w.field("runes", static_cast<int>(std::count(p_ptr->inscriptions.begin(), p_ptr->inscriptions.end(), true)));
 	w.field("control", p_ptr->control);
 	w.field("dead", death ? 1 : 0);

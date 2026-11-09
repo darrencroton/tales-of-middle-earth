@@ -219,6 +219,7 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
       { label: 'Level map', icon: '▦', command: 'M', native: 'overview' },
       { label: 'Go down', icon: '>', command: '>' },
       { label: 'Go up', icon: '<', command: '<' },
+      TUNNEL,
       { label: 'Drink from fountain', icon: '⌂', command: 'H', refuse: (c) => (/fountain/.test(c.underfoot) ? null : 'There is no fountain here.') },
       { label: 'Kneel at altar', icon: '☼', command: 'O', native: 'altar', refuse: (c) => (/altar/.test(c.underfoot) ? null : 'There is no altar here.') },
       { label: 'Engrave a rune', icon: 'ᚱ', command: 'x', when: (c) => c.runes },
@@ -261,13 +262,12 @@ const COMMAND_GROUPS: { title: string; commands: CommandEntry[] }[] = [
     ],
   },
   {
-    title: 'Doors and walls',
+    title: 'Doors',
     commands: [
       { label: 'Open', icon: '⊐', command: 'o' },
       { label: 'Close', icon: '⊏', command: 'c' },
       { label: 'Bash door', icon: '+', command: 'B' },
       { label: 'Jam door', icon: '⊣', command: 'j' },
-      TUNNEL,
     ],
   },
   {

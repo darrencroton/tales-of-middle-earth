@@ -13,8 +13,10 @@ interface LookCardDeps {
   /** The card's element, at the foot of the map. */
   element: HTMLElement;
   map: MapRenderer;
-  /** Sets off for a place looked at (Go there, Attack). */
+  /** Sets off for a place looked at (Go there, Attack), or digs into it (Dig). */
   go(point: MapPoint): void;
+  /** Whether going to a place digs into it (a wall, vein, rubble or tree beside a hero who can dig), and why it cannot now; null when it does not. */
+  dig(point: MapPoint): { refusal: string | null } | null;
   redraw(): void;
   requestFrame(): void;
 }
@@ -22,7 +24,7 @@ interface LookCardDeps {
 /* How the look card says where a cell's contents are known from. */
 const LOOK_NOTES: Readonly<Record<CellDescription['note'], string>> = { here: 'Where you stand', view: 'In view', remembered: 'Remembered', unknown: '' };
 
-/** What is at a map cell, as a card at the foot of the map: its terrain, then an altar's god, each creature and each item there (a tap opens its card), and Go there. */
+/** What is at a map cell, as a card at the foot of the map: its terrain, then an altar's god, each creature and each item there (a tap opens its card), and Go there (or Attack, or Dig). */
 export class LookCard {
   private readonly deps: LookCardDeps;
   /** The card's highlight: its rows and buttons, moved by arrows and swipes. */
@@ -85,7 +87,9 @@ export class LookCard {
     };
     const monster = description.monsters[0];
     if (!description.player && description.known && api.snapshot()?.atCommand) {
-      add(monster && isHostile(monster) ? 'Attack' : 'Go there', () => this.deps.go(point), api.travelRefusal());
+      const dig = monster && isHostile(monster) ? null : this.deps.dig(point);
+      const label = monster && isHostile(monster) ? 'Attack' : dig ? 'Dig' : 'Go there';
+      add(label, () => this.deps.go(point), api.travelRefusal() ?? dig?.refusal ?? null);
     }
     add('✕', () => this.hide());
     this.deps.element.replaceChildren(head, ...(rows.childElementCount ? [rows] : []), buttons);
