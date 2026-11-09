@@ -1,4 +1,4 @@
-// Renders every theme offline in headless Chromium and prints its level (dBFS before the theme gain) for MEASURED_DB in web/src/audio/themes.ts.
+// Renders every theme offline in headless Chromium and prints its level (dBFS before the theme gain, its silences left out) for MEASURED_DB in web/src/audio/themes.ts.
 // Usage: npm run dev, then node scripts/measure-themes.mjs [seconds] [id,id...]
 import { chromium } from '@playwright/test';
 const seconds = Number(process.argv[2] ?? 30);
@@ -26,14 +26,22 @@ const result = await page.evaluate(async ({ seconds, only }) => {
     music.play(theme);
     for (fake = 0; fake < seconds; fake += 0.09) music.tick();
     const buffer = await ctx.startRendering();
-    let sum = 0;
-    let n = 0;
+    /* Gated as BS.1770 gates loudness: 400 ms blocks, those 10 dB under the rest left out, so a theme's silences do not count as quietness. */
+    const block = Math.floor(sr * 0.4);
+    const blocks = [];
     let peak = 0;
-    for (let c = 0; c < 2; c++) {
-      const d = buffer.getChannelData(c);
-      for (let i = 0; i < d.length; i++) { sum += d[i] * d[i]; n++; peak = Math.max(peak, Math.abs(d[i])); }
+    for (let start = 0; start + block <= buffer.length; start += block) {
+      let sum = 0;
+      for (let c = 0; c < 2; c++) {
+        const d = buffer.getChannelData(c);
+        for (let i = start; i < start + block; i++) { sum += d[i] * d[i]; peak = Math.max(peak, Math.abs(d[i])); }
+      }
+      blocks.push(sum / (2 * block));
     }
-    const db = 10 * Math.log10(sum / n) - 20 * Math.log10(themeGain(theme.id));
+    const mean = (list) => list.reduce((a, b) => a + b, 0) / Math.max(1, list.length);
+    const audible = blocks.filter((ms) => ms > 1e-7);
+    const gate = mean(audible) / 10;
+    const db = 10 * Math.log10(mean(audible.filter((ms) => ms >= gate))) - 20 * Math.log10(themeGain(theme.id));
     out[theme.id] = { db: Math.round(db * 10) / 10, peak: Math.round(peak * 100) / 100 };
   }
   return out;

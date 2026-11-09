@@ -244,6 +244,26 @@ const VOICES: Record<Instrument, Voice> = {
     h.connect(g);
     g.connect(d);
   },
+  drop: (c, d, t, _dur, m, v, o) => {
+    const f = midiToFrequency(m);
+    const end = t + 1.4;
+    const g = gain(c);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.13 * v, t + 0.003);
+    g.gain.setTargetAtTime(0, t + 0.003, 0.18 + 0.12 * o.bright);
+    const body = osc(c, 'sine', f * 0.6, t, end);
+    body.frequency.exponentialRampToValueAtTime(f, t + 0.03);
+    body.connect(g);
+    const plink = gain(c);
+    plink.gain.setValueAtTime(0.0001, t);
+    plink.gain.linearRampToValueAtTime(0.05 * v, t + 0.002);
+    plink.gain.setTargetAtTime(0, t + 0.002, 0.03);
+    const tip = osc(c, 'sine', f * 1.8, t, t + 0.3);
+    tip.frequency.exponentialRampToValueAtTime(f * 2.7, t + 0.04);
+    tip.connect(plink);
+    plink.connect(d);
+    g.connect(d);
+  },
   drone: (c, d, t, dur, m, v, o) => {
     const f = midiToFrequency(m);
     const g = gain(c);

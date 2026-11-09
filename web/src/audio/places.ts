@@ -69,7 +69,7 @@ const QUEST_THEMES: Readonly<Record<number, string>> = {
   3: 'angband',
   4: 'thieves',
   5: 'captive',
-  6: 'hobbit',
+  6: 'lost-hobbit',
   7: 'nazgul',
   8: 'trolls',
   9: 'wight',

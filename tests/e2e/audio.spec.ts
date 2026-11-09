@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { createCharacter, equipSuggested, expect, jumpToLevel, test, waitForEngine } from './helpers.ts';
+import { createCharacter, equipSuggested, expect, jumpToLevel, test, waitForEngine, wizardCommand } from './helpers.ts';
 
 async function audioStatus(page: Page) {
   return page.evaluate(() => window.__tome!.audio.status);
@@ -38,6 +38,10 @@ test('music follows the player from the title to town and dungeon, and actions m
   const below = await audioStatus(page);
   expect(below.recent).toContain('stairs-down');
   expect(below.scene).not.toMatch(/^bree/);
+
+  /* The Maze has a theme of its own, of water drops and silences. */
+  await wizardCommand(page, 'D', 18);
+  await expect.poll(async () => (await audioStatus(page)).theme, { timeout: 15_000 }).toBe('maze');
 
   /* Music off stops the theme; sound effects carry on. */
   await page.evaluate(() => window.__tome!.audio.setVolumes('off', 'medium'));

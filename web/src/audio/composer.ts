@@ -28,8 +28,8 @@ interface PhraseNote {
 }
 
 const DEFAULT_SECTIONS: Record<Role, SectionKind[]> = {
-  drone: ['intro', 'a', 'b', 'breath'],
-  pad: ['intro', 'a', 'b', 'breath'],
+  drone: ['intro', 'a', 'b', 'breath', 'hush'],
+  pad: ['intro', 'a', 'b', 'breath', 'hush'],
   bass: ['a', 'b', 'breath'],
   arp: ['a', 'b', 'breath'],
   melody: ['a', 'b', 'breath'],
@@ -38,7 +38,7 @@ const DEFAULT_SECTIONS: Record<Role, SectionKind[]> = {
   perc: ['a', 'b'],
 };
 
-const ALL_SECTIONS: SectionKind[] = ['intro', 'a', 'b', 'breath'];
+const ALL_SECTIONS: SectionKind[] = ['intro', 'a', 'b', 'breath', 'hush'];
 
 const DEFAULT_PAN: Record<Role, number> = {
   drone: 0,
@@ -77,6 +77,7 @@ export const RANGES: Record<Instrument, [number, number]> = {
   anvil: [60, 96],
   shaker: [60, 96],
   wood: [60, 96],
+  drop: [60, 96],
 };
 
 export function fitRange(midi: number, inst: Instrument): number {
@@ -87,6 +88,9 @@ export function fitRange(midi: number, inst: Instrument): number {
   return m < low ? midi : m;
 }
 
+/** Roles whose notes land a little late in an unsteady theme. */
+const LOOSE: ReadonlySet<Role> = new Set(['melody', 'counter', 'bells']);
+
 const STEP_VELOCITY: Record<string, number> = { X: 1, x: 0.8, o: 0.45 };
 
 export function secondsPerBar(theme: Pick<Theme, 'bpm' | 'meter'>): number {
@@ -96,7 +100,8 @@ export function secondsPerBar(theme: Pick<Theme, 'bpm' | 'meter'>): number {
 /**
  * Sections of one piece: the motif, its answer, a breath where the melody
  * only echoes, and variations. Only a theme's first piece has an intro, and
- * pieces follow each other without a pause.
+ * pieces follow each other without a pause. A theme with silence leaves
+ * hushed bars of differing length after some sections, but never ends on them.
  */
 export function planPiece(theme: Theme, rng: Rng, first = true): PieceSection[] {
   const p = theme.chords.length;
@@ -107,7 +112,11 @@ export function planPiece(theme: Theme, rng: Rng, first = true): PieceSection[] 
     [s('a', p), s('a', p, 1), s('b', p), s('breath', half), s('a', p, 2)],
     [s('a', p), s('b', p), s('breath', half), s('a', p, 1), s('b', p, 1)],
   ];
-  const piece = rng.pick(templates);
+  const silence = theme.silence ?? 0;
+  const sections = rng.pick(templates);
+  const piece = sections.flatMap((section, i) =>
+    i < sections.length - 1 && rng.chance(silence) ? [section, s('hush', rng.int(1, Math.max(1, Math.round(silence * half))))] : [section],
+  );
   const intro = theme.intro ?? 1;
   return first && intro > 0 ? [s('intro', intro), ...piece] : piece;
 }
@@ -136,10 +145,16 @@ function patternFor(layer: Layer, meter: number): string {
 export class Composer {
   readonly theme: Theme;
   private readonly rng: Rng;
+  /** Draws bar lengths, apart from the notes. */
+  private readonly timing: Rng;
+  /** The bar lengths of the section being played, in an unsteady theme. */
+  private wobbles: { section: PieceSection; shares: number[] } | null = null;
   private readonly scale: readonly number[];
   private readonly motif: PhraseNote[];
   private readonly answer: PhraseNote[] | null;
   private readonly cache = new Map<string, PhraseNote[]>();
+  /** The phrase as broken up for the section being played, in a theme with silence. */
+  private fragments: { section: PieceSection; phrase: PhraseNote[] } | null = null;
   private padVoicing: number[] = [];
   private counterPitch = 0;
   private arpIndex = 0;
@@ -147,6 +162,7 @@ export class Composer {
   constructor(theme: Theme, seed: number) {
     this.theme = theme;
     this.rng = new Rng(seed);
+    this.timing = new Rng(seed ^ 0x2545f491);
     this.scale = SCALES[theme.scale];
     this.motif = phraseFromText(theme.motif);
     this.answer = theme.answer ? phraseFromText(theme.answer) : null;
@@ -155,6 +171,18 @@ export class Composer {
   /** The next piece; only the first has an intro. */
   plan(first = false): PieceSection[] {
     return planPiece(this.theme, this.rng, first);
+  }
+
+  /** How much longer or shorter than steady a bar lasts in an unsteady theme; a section's bars add up to its steady length. */
+  wobble(section: PieceSection, bar: number): number {
+    const unsteady = this.theme.unsteady ?? 0;
+    if (unsteady <= 0) return 1;
+    if (this.wobbles?.section !== section) {
+      const draws = Array.from({ length: section.bars }, () => this.timing.next() * 2 - 1);
+      const mean = draws.reduce((a, b) => a + b, 0) / draws.length;
+      this.wobbles = { section, shares: draws.map((d) => (unsteady * (d - mean)) / 2) };
+    }
+    return 1 + (this.wobbles.shares[bar] ?? 0);
   }
 
   /** Chord degree for a bar of a section. */
@@ -197,10 +225,12 @@ export class Composer {
       }
       const vol = layer.vol ?? 1;
       const pan = layer.pan ?? DEFAULT_PAN[layer.role];
+      const late = LOOSE.has(layer.role) ? (this.theme.unsteady ?? 0) * 0.5 : 0;
       for (let i = before; i < events.length; i++) {
         const e = events[i];
         e.vel = Math.max(0.05, Math.min(1, e.vel * vol * (0.94 + this.rng.next() * 0.12)));
         e.pan = pan;
+        if (late > 0) e.at += this.rng.next() * late;
         if (!PERCUSSION.has(e.inst)) e.midi = fitRange(e.midi, e.inst);
       }
     }
@@ -211,6 +241,7 @@ export class Composer {
     const sections = layer.in ?? (layer.from !== undefined ? ALL_SECTIONS : DEFAULT_SECTIONS[layer.role]);
     if (!sections.includes(section)) return false;
     if (layer.from !== undefined && intensity < layer.from) return false;
+    if (layer.until !== undefined && intensity >= layer.until) return false;
     if (layer.every && globalBar % layer.every !== 0) return false;
     return true;
   }
@@ -281,7 +312,7 @@ export class Composer {
   }
 
   private melody(events: NoteEvent[], layer: Layer, section: PieceSection, bar: number, chord: number): void {
-    const phrase = this.phraseFor(section);
+    const phrase = this.spoken(section);
     const meter = this.theme.meter;
     const from = bar * meter;
     const delay = layer.delay ?? 0;
@@ -392,6 +423,36 @@ export class Composer {
     }
     this.cache.set(key, phrase);
     return phrase;
+  }
+
+  /** The section's phrase; in a theme with silence, broken into fragments afresh each time a section begins. */
+  private spoken(section: PieceSection): PhraseNote[] {
+    const phrase = this.phraseFor(section);
+    const silence = this.theme.silence ?? 0;
+    if (silence <= 0) return phrase;
+    if (this.fragments?.section !== section) this.fragments = { section, phrase: this.fragment(phrase, silence) };
+    return this.fragments.phrase;
+  }
+
+  /** Leaves out some of a phrase's bars, never two in a row (of those with notes), and cuts the rest off after a few notes, the last left to ring to the end of its bar. */
+  private fragment(phrase: readonly PhraseNote[], silence: number): PhraseNote[] {
+    const meter = this.theme.meter;
+    const bars = new Map<number, PhraseNote[]>();
+    for (const n of phrase) {
+      const bar = Math.floor(n.start / meter);
+      bars.set(bar, [...(bars.get(bar) ?? []), n]);
+    }
+    const result: PhraseNote[] = [];
+    let dropped = false;
+    for (const [bar, notes] of bars) {
+      dropped = !dropped && this.rng.chance(silence * 0.6);
+      if (dropped) continue;
+      const kept = notes.slice(0, Math.max(1, Math.round(notes.length * (1 - silence * this.rng.next()))));
+      const last = kept[kept.length - 1];
+      const ring = Math.max(last.beats, Math.min(last.beats * 2, (bar + 1) * meter - last.start));
+      result.push(...kept.slice(0, -1), { ...last, beats: ring });
+    }
+    return result;
   }
 
   /** The motif's opening bar, heard on every other bar of a breath. */
