@@ -38,10 +38,9 @@ import { openHelp } from './ui/help.ts';
 import { openMagic, RecentStore } from './ui/magic.ts';
 import { CastWatcher, fireMacro, hasMagic, hasPowers, recentLabel } from './play/recent.ts';
 import { NOT_NOW, type GameApi } from './ui/api.ts';
-import { titleName } from './play/text.ts';
 import { GameFeel, READ_MS, type QuestEvent } from './feel.ts';
 import { Coach } from './ui/coach.ts';
-import { diggerWorn, INVEN_WIELD, itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
+import { diggerWorn, itemMacro, listedItem, suggestedGear, type GearSuggestion } from './play/items.ts';
 import { ABANDONED, hasFallen } from './play/memorial.ts';
 import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyText } from './play/death.ts';
 import { CharacterPanel, type CharacterScreen } from './ui/character.ts';
@@ -373,7 +372,6 @@ const castWatcher = new CastWatcher();
 
 const character = new CharacterPanel(api, {
   sendKeys: (keys) => send(keys),
-  source: (letter) => sheetSource(letter),
   poke: () => {
     if (!engine.awaitingInput || engine.pendingKeys > 0 || macros.running) return;
     const screen = characterScreen();
@@ -709,15 +707,6 @@ function updatePromptCard(): void {
     promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()), leadMessages.map((m) => m.text));
     if (leadMessages.length) noteLeadShown();
   } else promptCard.hide();
-}
-
-/** Names for the equipment letters on the full character sheet. */
-function sheetSource(letter: string): string {
-  if (letter === '@') return 'Innate';
-  if (letter === 'z') return 'Symbiote';
-  const index = INVEN_WIELD + letter.charCodeAt(0) - 'a'.charCodeAt(0);
-  const item = engine.inventory()?.equip.find((slot) => slot.i === index && slot.name);
-  return item?.name ? titleName(item.name) : 'Equipment';
 }
 
 /** Tells the soundtrack where the player is: on a new level, or every couple of seconds for time of day. */

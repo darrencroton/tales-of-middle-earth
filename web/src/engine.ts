@@ -5,6 +5,7 @@ import {
   type AbilityTable,
   type BirthData,
   type CharacterState,
+  type PropertyCensus,
   type GameState,
   type InventoryState,
   type LevelSnapshot,
@@ -59,6 +60,7 @@ interface EmscriptenModule {
   _web_store_json(): number;
   _web_monster_desc(index: number): number;
   _web_character_json(): number;
+  _web_properties_json(): number;
   _web_set_auto_more(on: number): void;
   _web_set_effect_delay(factor: number): void;
   _web_run_options_json(): number;
@@ -177,6 +179,12 @@ export class Engine {
 
   character(): CharacterState | null {
     const json = this.callJson<CharacterState>((mod) => mod._web_character_json());
+    return json && json.ready ? json : null;
+  }
+
+  /** The hero's properties and their sources, for the character sheet's census. */
+  properties(): PropertyCensus | null {
+    const json = this.callJson<PropertyCensus>((mod) => mod._web_properties_json());
     return json && json.ready ? json : null;
   }
 

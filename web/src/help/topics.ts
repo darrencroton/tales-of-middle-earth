@@ -448,7 +448,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'Stats, level and the character sheet.',
         keywords: 'character sheet stats strength intelligence wisdom dexterity constitution charisma level experience summary',
         body: [
-          'Tap your name by your health, or Menu → Character. *Summary* shows your health, mana, stats and progress; *Skills* and *Abilities* are where you grow; *Full sheet* lists every bonus and resistance.',
+          'Tap your name by your health, or Menu → Character. *Summary* shows your health, mana, stats and progress; *Skills* and *Abilities* are where you grow; *Full sheet* has your stats, then every bonus, resistance, protection, trait and sense in the game, those you lack dimmed: tap one to see what it does and what gives it to you.',
           {
             terms: [
               ['Strength', 'Harder blows, and more you can carry.'],

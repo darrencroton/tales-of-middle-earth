@@ -1,4 +1,4 @@
-import { SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
+import { INVEN_WIELD, SLOT_NAMES, itemActions, itemMacro, type ItemPlace } from '../play/items.ts';
 import { itemRecent, packRecents } from '../play/recent.ts';
 import type { EquipSlot, InventoryState, ItemState, SpellInfo } from '../render/snapshot.ts';
 import { capitalise, itemGlyph, pounds, titleName, type GameApi } from './api.ts';
@@ -24,6 +24,13 @@ function itemRow(api: GameApi, item: ItemState, place: ItemPlace, slot?: string)
   button.append(name, el('span', 'item-weight', pounds(item.weight * item.number)));
   button.addEventListener('click', () => openItem(api, item, place));
   return button;
+}
+
+/** The carried or worn item at an inventory index. */
+export function carriedItem(api: GameApi, index: number): ItemState | null {
+  const inventory = api.engine.inventory();
+  const found = index >= INVEN_WIELD ? inventory?.equip.find((slot) => slot.i === index && !slot.empty && !!slot.name) : inventory?.pack.find((i) => i.i === index);
+  return (found as ItemState | undefined) ?? null;
 }
 
 function slotName(slot: EquipSlot): string {
