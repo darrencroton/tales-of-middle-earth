@@ -640,9 +640,9 @@ bool gear_blows = true;
  * class and weapon mastery add to it; bare-handed, the Barehand combat
  * skill gives them; in bear form, the Bearform combat skill; a body
  * without hands, Strength and Dexterity. What a mimic form adds is left to
- * credit_form.
+ * credit_form, and gear not yet identified to none.
  */
-void blows(std::vector<source> &out)
+void blows(std::vector<source> &out, source const &hidden)
 {
 	auto const &r_info = game->edit_data.r_info;
 	auto credit = [&out](char const *kind, std::string const &name, int n) {
@@ -651,9 +651,9 @@ void blows(std::vector<source> &out)
 		if (it == out.end()) it = out.insert(out.end(), source { kind, name });
 		it->nums["blows"] += n;
 	};
-	auto rest = [&out] {
+	auto rest = [&out, &hidden] {
 		auto const &blows_prop = *std::find_if(props().begin(), props().end(), [](prop const &p) { return !std::strcmp(p.id, "blows"); });
-		int n = p_ptr->num_blow;
+		int n = p_ptr->num_blow - share_of(hidden, blows_prop).n;
 		for (auto const &s : out) n -= share_of(s, blows_prop).n;
 		return n;
 	};
@@ -755,7 +755,7 @@ std::vector<source> sources(source &hidden)
 	equipment(out, hidden);
 	effects(out);
 	glow(out);
-	blows(out);
+	blows(out, hidden);
 	{
 		source s { "tactic", tactic_info[static_cast<byte>(p_ptr->tactic)].name };
 		s.nums["stealth"] = tactic_info[static_cast<byte>(p_ptr->tactic)].to_stealth;
