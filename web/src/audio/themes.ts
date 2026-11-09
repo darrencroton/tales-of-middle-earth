@@ -16,6 +16,7 @@ export type Instrument =
   | 'bell'
   | 'celesta'
   | 'glass'
+  | 'drop'
   | 'cello'
   | 'drone'
   | 'drum'
@@ -30,7 +31,8 @@ export const PERCUSSION: ReadonlySet<Instrument> = new Set(['drum', 'timpani', '
 
 export type Role = 'drone' | 'pad' | 'bass' | 'arp' | 'melody' | 'counter' | 'bells' | 'perc';
 
-export type SectionKind = 'intro' | 'a' | 'b' | 'breath';
+/** `hush`: bars left to the ambience, where only layers that ask for it (or danger layers) sound. */
+export type SectionKind = 'intro' | 'a' | 'b' | 'breath' | 'hush';
 
 export interface Layer {
   role: Role;
@@ -47,6 +49,8 @@ export interface Layer {
   in?: SectionKind[];
   /** Plays only at or above this intensity (0..1). */
   from?: number;
+  /** Plays only below this intensity (0..1): falls silent as danger grows. */
+  until?: number;
   /** Plays only on every n-th bar. */
   every?: number;
   pan?: number;
@@ -67,7 +71,8 @@ export type Ambience =
   | 'rumble'
   | 'leaves'
   | 'void'
-  | 'sand';
+  | 'sand'
+  | 'echoes';
 
 
 export type ThemeGroup = 'Opening' | 'Towns' | 'Wilderness' | 'Dungeons' | 'Quests';
@@ -98,6 +103,8 @@ export interface Theme {
   space: number;
   /** Echo send 0..1. */
   echo?: number;
+  /** Seconds between an echo's repeats (default 0.42). */
+  echoDelay?: number;
   /** Tone colour 0 (muffled) .. 1 (bright). */
   bright?: number;
   ambience: [Ambience, number][];
@@ -109,6 +116,10 @@ export interface Theme {
   swing?: number;
   /** How much the intro, breaths and the end of each piece broaden (0..0.3). */
   rubato?: number;
+  /** How much of the music is silence (0..1): hushed bars between sections, and phrases broken into fragments. */
+  silence?: number;
+  /** How unevenly bars fall (0..0.5): each is longer or shorter by up to this share, and notes land a little late. */
+  unsteady?: number;
 }
 
 /** Copies a theme with changes; layers in the patch replace the base layers. */
@@ -470,6 +481,7 @@ const THEMES: Theme[] = [
     space: 0.5,
     bright: 0.65,
     ambience: [['leaves', 0.4], ['birds', 0.35]],
+    silence: 0.15,
   },
   {
     id: 'mountains',
@@ -497,6 +509,7 @@ const THEMES: Theme[] = [
     echo: 0.35,
     bright: 0.65,
     ambience: [['wind', 0.55]],
+    silence: 0.2,
     rubato: 0.1,
   },
   {
@@ -521,6 +534,8 @@ const THEMES: Theme[] = [
     space: 0.6,
     bright: 0.45,
     ambience: [['water', 0.35], ['crickets', 0.25], ['drips', 0.2]],
+    silence: 0.25,
+    unsteady: 0.1,
     rubato: 0.12,
   },
   {
@@ -572,6 +587,7 @@ const THEMES: Theme[] = [
     echo: 0.3,
     bright: 0.75,
     ambience: [['wind', 0.65]],
+    silence: 0.3,
     rubato: 0.15,
   },
   {
@@ -621,6 +637,7 @@ const THEMES: Theme[] = [
     space: 0.6,
     bright: 0.45,
     ambience: [['wind', 0.5], ['rumble', 0.3]],
+    silence: 0.3,
     rubato: 0.1,
   },
 
@@ -640,7 +657,7 @@ const THEMES: Theme[] = [
     layers: [
       { role: 'drone', inst: 'drone', vol: 0.35 },
       { role: 'pad', inst: 'strings', vol: 0.35 },
-      { role: 'bass', inst: 'cello', octave: -1, vol: 0.45, pattern: 'x...x...' },
+      { role: 'bass', inst: 'cello', octave: -1, vol: 0.45, pattern: 'x...x...', in: ['b'] },
       { role: 'melody', inst: 'harp', octave: 1, in: ['a', 'breath'] },
       { role: 'melody', inst: 'cello', octave: 1, in: ['b'] },
       { role: 'bells', inst: 'bell', octave: 1, density: 0.12 },
@@ -649,7 +666,8 @@ const THEMES: Theme[] = [
     ],
     space: 0.7,
     bright: 0.5,
-    ambience: [['cave', 0.45], ['drips', 0.35]],
+    ambience: [['cave', 0.45], ['drips', 0.35], ['echoes', 0.25]],
+    silence: 0.3,
   },
   {
     id: 'mirkwood',
@@ -675,6 +693,7 @@ const THEMES: Theme[] = [
     space: 0.55,
     bright: 0.5,
     ambience: [['leaves', 0.35], ['crickets', 0.2], ['whispers', 0.1]],
+    silence: 0.15,
   },
   {
     id: 'mordor',
@@ -716,7 +735,7 @@ const THEMES: Theme[] = [
     motif: augmentMelody(melodyBars(SHADOW, 4), 2),
     answer: augmentMelody(melodyBars(SHADOW_ANSWER, 4), 2),
     layers: [
-      { role: 'drone', inst: 'drone', octave: -1, vol: 0.5 },
+      { role: 'drone', inst: 'drone', octave: -1, vol: 0.5, in: ['intro', 'a', 'b', 'breath', 'hush'] },
       { role: 'pad', inst: 'organ', vol: 0.4 },
       { role: 'pad', inst: 'choir', vol: 0.4 },
       { role: 'bass', inst: 'cello', octave: -1, vol: 0.5, pattern: 'x..xx...' },
@@ -729,6 +748,7 @@ const THEMES: Theme[] = [
     space: 0.85,
     bright: 0.55,
     ambience: [['rumble', 0.4], ['cave', 0.4]],
+    silence: 0.2,
     rubato: 0.08,
   },
   {
@@ -747,7 +767,6 @@ const THEMES: Theme[] = [
     layers: [
       { role: 'drone', inst: 'drone', vol: 0.4 },
       { role: 'pad', inst: 'ooh', vol: 0.5 },
-      { role: 'pad', inst: 'glass', octave: 1, vol: 0.2 },
       { role: 'arp', inst: 'harp', octave: 0, pattern: 'x.......', order: 'down', density: 0.7 },
       { role: 'melody', inst: 'voice', octave: 1 },
       { role: 'bells', inst: 'bell', octave: 1, density: 0.15 },
@@ -757,6 +776,8 @@ const THEMES: Theme[] = [
     space: 0.9,
     bright: 0.4,
     ambience: [['wind', 0.45], ['whispers', 0.2]],
+    silence: 0.45,
+    unsteady: 0.15,
     rubato: 0.2,
   },
   {
@@ -809,6 +830,8 @@ const THEMES: Theme[] = [
     echo: 0.45,
     bright: 0.6,
     ambience: [['void', 0.5], ['whispers', 0.12]],
+    silence: 0.4,
+    unsteady: 0.25,
     rubato: 0.2,
   },
   {
@@ -836,6 +859,7 @@ const THEMES: Theme[] = [
     echo: 0.3,
     bright: 0.35,
     ambience: [['sea', 0.3], ['drips', 0.3]],
+    silence: 0.25,
     rubato: 0.12,
   },
   {
@@ -880,7 +904,7 @@ const THEMES: Theme[] = [
       { role: 'drone', inst: 'drone', octave: -1, vol: 0.45 },
       { role: 'pad', inst: 'strings', vol: 0.3 },
       { role: 'pad', inst: 'glass', octave: 2, vol: 0.18 },
-      { role: 'arp', inst: 'harp', octave: 2, pattern: 'xoxoxoxoxoxoxoxo', order: 'random', density: 0.45, vol: 0.5 },
+      { role: 'arp', inst: 'harp', octave: 2, pattern: 'xoxoxoxoxoxoxoxo', order: 'random', density: 0.45, vol: 0.5, until: 0.6 },
       { role: 'melody', inst: 'reed', octave: 0 },
       { role: 'perc', inst: 'wood', pattern: 'x.x.x.xx', vol: 0.2, density: 0.6 },
       { role: 'perc', inst: 'frame', pattern: 'x..ox..o', vol: 0.35, from: 0.45 },
@@ -889,6 +913,8 @@ const THEMES: Theme[] = [
     space: 0.6,
     bright: 0.45,
     ambience: [['drips', 0.4], ['whispers', 0.25]],
+    silence: 0.35,
+    unsteady: 0.2,
   },
   {
     id: 'heart',
@@ -913,6 +939,7 @@ const THEMES: Theme[] = [
     space: 0.85,
     bright: 0.35,
     ambience: [['rumble', 0.6], ['cave', 0.3]],
+    silence: 0.3,
     rubato: 0.1,
   },
   {
@@ -937,6 +964,8 @@ const THEMES: Theme[] = [
     echo: 0.5,
     bright: 0.7,
     ambience: [['void', 0.5]],
+    silence: 0.6,
+    unsteady: 0.3,
     rubato: 0.25,
   },
   {
@@ -962,6 +991,7 @@ const THEMES: Theme[] = [
     space: 0.85,
     bright: 0.45,
     ambience: [['whispers', 0.3], ['wind', 0.35]],
+    silence: 0.25,
   },
   {
     id: 'illusory',
@@ -986,30 +1016,39 @@ const THEMES: Theme[] = [
     echo: 0.35,
     bright: 0.85,
     ambience: [['void', 0.15]],
+    unsteady: 0.12,
     rubato: 0.15,
   },
   {
     id: 'maze',
     name: 'The Maze',
     group: 'Dungeons',
-    mood: 'The Maze: the Deep theme as a ticking puzzle in five; corners that all look the same, and a step that never lands where you expect.',
-    root: 50,
-    scale: 'dorian',
-    bpm: 120,
+    mood: 'The Maze: cold stone and long silences; the Deep theme broken into drops of water that echo down the passages, never quite resolving, and something heavy moving where you cannot see.',
+    root: 45,
+    scale: 'locrian',
+    bpm: 60,
     meter: 5,
     chords: DEEP_CHORDS,
-    motif: padBars(staccatoMelody(DEEP), 5),
-    answer: padBars(staccatoMelody(DEEP_ANSWER), 5),
+    voicing: 'open',
+    motif: padBars(DEEP, 5),
+    answer: padBars(DEEP_ANSWER, 5),
+    intro: 0,
     layers: [
-      { role: 'pad', inst: 'strings', vol: 0.3 },
-      { role: 'arp', inst: 'lute', octave: 1, pattern: 'xooxooxoxo', order: 'up', density: 0.85, vol: 0.6 },
-      { role: 'melody', inst: 'reed', octave: 1 },
-      { role: 'perc', inst: 'wood', pattern: 'x..o..x.o.', vol: 0.35, density: 0.9 },
-      { role: 'bass', inst: 'cello', octave: -1, vol: 0.4, pattern: 'x.....x...' },
+      { role: 'drone', inst: 'drone', octave: -1, vol: 0.3, in: ['b', 'breath', 'hush'] },
+      { role: 'melody', inst: 'drop', octave: 1, in: ['a', 'breath'], until: 0.55 },
+      { role: 'melody', inst: 'drop', octave: 1, delay: 2.5, vol: 0.3, pan: -0.5, in: ['a', 'breath'], until: 0.55 },
+      { role: 'melody', inst: 'cello', octave: 0, vol: 0.3, in: ['b'] },
+      { role: 'bells', inst: 'drop', octave: 2, density: 0.25, in: ['hush'], until: 0.55 },
+      { role: 'perc', inst: 'drum', octave: -1, pattern: 'x.........', vol: 0.35, from: 0.4 },
+      { role: 'perc', inst: 'drum', octave: -1, pattern: '......x...', vol: 0.25, density: 0.7, from: 0.65 },
     ],
-    space: 0.4,
-    bright: 0.7,
-    ambience: [['cave', 0.25]],
+    space: 0.95,
+    echo: 0.45,
+    echoDelay: 0.9,
+    bright: 0.4,
+    ambience: [['drips', 0.4], ['cave', 0.35], ['echoes', 0.5]],
+    silence: 0.6,
+    unsteady: 0.35,
   },
   {
     id: 'orc-cave',
@@ -1040,7 +1079,7 @@ const THEMES: Theme[] = [
     id: 'moria',
     name: 'Drums in the Deep',
     group: 'Dungeons',
-    mood: 'Moria: the Dwarf theme fallen silent and slow in vast dark halls; drums in the deep.',
+    mood: 'Moria: the Dwarf theme fallen silent and slow in vast dark halls; long silences, and drums in the deep.',
     root: 38,
     scale: 'aeolian',
     bpm: 66,
@@ -1054,14 +1093,14 @@ const THEMES: Theme[] = [
       { role: 'pad', inst: 'ooh', octave: 1, vol: 0.45 },
       { role: 'melody', inst: 'cello', octave: 1, in: ['a', 'breath'] },
       { role: 'melody', inst: 'horn', octave: 1, vol: 0.7, in: ['b'] },
-      { role: 'arp', inst: 'harp', octave: 1, pattern: 'x.......', order: 'random', density: 0.6 },
-      { role: 'perc', inst: 'drum', octave: -1, pattern: 'x.....x.', vol: 0.4 },
+      { role: 'perc', inst: 'drum', octave: -1, pattern: 'x.....x.', vol: 0.3, in: ['b', 'hush'] },
       { role: 'perc', inst: 'drum', octave: -1, pattern: 'x.x.x...', vol: 0.5, from: 0.4 },
       { role: 'melody', inst: 'horn', octave: 0, delay: 4, vol: 0.3, pan: 0.45, in: ['a'] },
     ],
     space: 0.95,
     bright: 0.4,
-    ambience: [['cave', 0.5], ['drips', 0.35]],
+    ambience: [['cave', 0.5], ['drips', 0.35], ['echoes', 0.4]],
+    silence: 0.4,
     rubato: 0.08,
   },
   {
@@ -1090,12 +1129,13 @@ const THEMES: Theme[] = [
     space: 0.8,
     bright: 0.45,
     ambience: [['whispers', 0.3], ['wind', 0.25]],
+    silence: 0.2,
   },
   {
     id: 'water-cave',
     name: 'Ringing Waters',
     group: 'Dungeons',
-    mood: 'A small water cave: the Deep theme turned pentatonic, every drop ringing.',
+    mood: 'A small water cave: the Deep theme turned pentatonic and played by the drops themselves, each one ringing.',
     root: 60,
     scale: 'pentatonic',
     bpm: 76,
@@ -1105,13 +1145,15 @@ const THEMES: Theme[] = [
     answer: DEEP_ANSWER,
     layers: [
       { role: 'pad', inst: 'glass', vol: 0.35 },
-      { role: 'arp', inst: 'harp', octave: 1, pattern: 'x.o.o.o.', order: 'updown', density: 0.6 },
-      { role: 'melody', inst: 'celesta', octave: 1 },
+      { role: 'melody', inst: 'drop', octave: 1 },
+      { role: 'melody', inst: 'drop', octave: 2, delay: 1.5, vol: 0.3, pan: 0.45, in: ['a'] },
+      { role: 'bells', inst: 'drop', octave: 2, density: 0.25, in: ['b', 'breath', 'hush'] },
     ],
     space: 0.85,
     echo: 0.4,
     bright: 0.75,
     ambience: [['drips', 0.5], ['water', 0.3]],
+    silence: 0.35,
     rubato: 0.15,
   },
   {
@@ -1179,7 +1221,7 @@ const THEMES: Theme[] = [
     motif: augmentMelody(melodyBars(EAST, 4), 2),
     answer: augmentMelody(melodyBars(EAST_ANSWER, 4), 2),
     layers: [
-      { role: 'drone', inst: 'drone', vol: 0.45 },
+      { role: 'drone', inst: 'drone', vol: 0.45, in: ['intro', 'a', 'b', 'breath', 'hush'] },
       { role: 'pad', inst: 'strings', vol: 0.28 },
       { role: 'melody', inst: 'cello', octave: 1 },
       { role: 'perc', inst: 'drum', octave: -1, pattern: 'x..x....', vol: 0.4 },
@@ -1189,6 +1231,7 @@ const THEMES: Theme[] = [
     space: 0.6,
     bright: 0.5,
     ambience: [['sand', 0.4], ['rumble', 0.4]],
+    silence: 0.25,
   },
   {
     id: 'temple',
@@ -1213,6 +1256,7 @@ const THEMES: Theme[] = [
     space: 0.75,
     bright: 0.6,
     ambience: [['cave', 0.3], ['drips', 0.3]],
+    silence: 0.25,
     rubato: 0.1,
   },
 
@@ -1466,18 +1510,21 @@ function derived(): Theme[] {
   add(variant(t('illusory'), 'haunted', {
     name: 'The Haunted House',
     group: 'Quests',
-    mood: 'A haunted house: the music box in minor, playing to nobody.',
+    mood: 'A haunted house: the music box in minor, playing to nobody, stopping and starting by itself.',
     scale: 'harmonicMinor',
     bpm: 92,
     rubato: 0.2,
+    silence: 0.35,
+    unsteady: 0.2,
     bright: 0.6,
     ambience: [['whispers', 0.3], ['wind', 0.2]],
   }));
   add(variant(t('dol-guldur'), 'evil', {
     name: 'An Evil Place',
     group: 'Quests',
-    mood: 'An evil place: the air itself is hostile.',
+    mood: 'An evil place: the air itself is hostile, and most of what you hear is it.',
     floor: 0.25,
+    silence: 0.4,
   }));
   add(variant(t('dol-guldur'), 'thrain', {
     name: 'Thráin’s Cell',
@@ -1506,8 +1553,25 @@ function derived(): Theme[] {
     group: 'Dungeons',
     mood: 'The Helcaraxë: cold beyond bearing and cracking floes.',
     root: 47,
+    silence: 0.4,
     ambience: [['wind', 0.8]],
     layers: [...t('ice').layers, { role: 'perc', inst: 'anvil', octave: 2, pattern: '....x.', vol: 0.15, density: 0.35 }],
+  }));
+  add(variant(t('maze'), 'lost-hobbit', {
+    name: 'Lost in the Maze',
+    group: 'Quests',
+    mood: 'A hobbit lost in the Maze: the Hearth tune, far off and broken, dripping through the cold passages.',
+    scale: 'aeolian',
+    bpm: 84,
+    meter: 6,
+    chords: HEARTH_CHORDS,
+    motif: HEARTH,
+    answer: HEARTH_ANSWER,
+    layers: [
+      ...t('maze').layers.filter((l) => l.inst !== 'cello'),
+      { role: 'melody', inst: 'whistle', octave: 1, vol: 0.55, pan: 0.4, in: ['b'] },
+    ],
+    silence: 0.5,
   }));
   add(variant(t('forest'), 'old-forest', {
     name: 'The Old Forest',
@@ -1535,15 +1599,16 @@ function derived(): Theme[] {
  * level; a little of their natural contrast is kept.
  */
 const MEASURED_DB: Readonly<Record<string, number>> = {
-  title: -25, lament: -22.4, overworld: -28.1, bree: -27.7, gondolin: -23.7, 'minas-anor': -25.9, lorien: -27.6,
-  khazad: -26.3, haven: -26.2, plains: -25.6, forest: -26.1, mountains: -27.4, marsh: -29, desert: -29.4, ice: -30.2,
-  coast: -27.1, ashlands: -23.8, depths: -24.6, mirkwood: -27.2, mordor: -28, angband: -28.5, barrow: -28.2,
-  doom: -28.2, nether: -31.1, numenor: -25.5, mandos: -29, 'cirith-ungol': -28.7, heart: -25.5, void: -30.6,
-  'paths-dead': -27, illusory: -26, maze: -29.5, 'orc-cave': -28, moria: -22.8, 'dol-guldur': -28.4,
-  'water-cave': -30.7, sacred: -30.8, rhun: -27.3, sandworm: -23.8, temple: -27.9, thieves: -29.2, nazgul: -26.1,
-  trolls: -27.8, wolves: -25.6, erebor: -29, hobbit: -28.6, wight: -28.8, spiders: -27, poison: -28.7, narsil: -25.7,
-  eol: -25, nirnaeth: -22.4, 'gondolin-falls': -20.7, alliance: -25.9, dragons: -27.5, haunted: -26.9, evil: -28,
-  thrain: -28.3, apotheosis: -31.5, helcaraxe: -30, 'old-forest': -27.6, captive: -28.2,
+  title: -24.4, lament: -21.7, overworld: -27.5, bree: -27.8, gondolin: -23.7, 'minas-anor': -25.9, lorien: -26.7,
+  khazad: -26.2, haven: -26, plains: -25.5, forest: -26.3, mountains: -26.2, marsh: -29.2, desert: -29, ice: -30.4,
+  coast: -26.7, ashlands: -23.5, depths: -23.6, mirkwood: -27.5, mordor: -26.8, angband: -28.8, barrow: -29.7,
+  doom: -27.7, nether: -31.6, numenor: -26.3, mandos: -28.3, 'cirith-ungol': -29.3, heart: -25.7, void: -31.3,
+  'paths-dead': -27, illusory: -25.6, maze: -35.8, 'orc-cave': -27.9, moria: -26.1, 'dol-guldur': -29,
+  'water-cave': -33.9, sacred: -30.9, rhun: -27.3, sandworm: -23.9, temple: -26.6, thieves: -28.8, nazgul: -26.2,
+  trolls: -27.3, wolves: -25.4, captive: -28, erebor: -28.4, hobbit: -27.7, wight: -30.4, spiders: -27.3,
+  poison: -28.5, narsil: -25.5, eol: -24.7, nirnaeth: -22.1, 'gondolin-falls': -20.4, alliance: -25.7, dragons: -26.7,
+  haunted: -27.4, evil: -28.9, thrain: -28.8, apotheosis: -30.2, helcaraxe: -30.6, 'lost-hobbit': -38.2,
+  'old-forest': -27.2,
 };
 const TARGET_DB = -27;
 

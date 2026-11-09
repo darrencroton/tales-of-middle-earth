@@ -23,6 +23,7 @@ const BED_LEVEL: Record<Ambience, number> = {
   leaves: 0.05,
   void: 0.05,
   sand: 0.035,
+  echoes: 0,
 };
 
 /** Seconds between events at level 1; scaled up as the level falls. */
@@ -33,6 +34,7 @@ const EVENT_GAP: Partial<Record<Ambience, [number, number]>> = {
   whispers: [6, 16],
   fire: [0.12, 0.7],
   leaves: [5, 14],
+  echoes: [8, 24],
 };
 
 function lfo(core: AudioCore, rate: number, depth: number, target: AudioParam, nodes: AudioScheduledSourceNode[]): void {
@@ -161,7 +163,7 @@ function buildBed(core: AudioCore, kind: Ambience, out: GainNode): AudioSchedule
 /**
  * Ambient soundscapes beneath the music: steady beds (wind, cave air, the
  * sea) and scattered events (drips, birdsong, crickets, whispers, crackling
- * fire), each faded in and out as places change.
+ * fire, far-off echoes), each faded in and out as places change.
  */
 export class AmbiencePlayer {
   private readonly core: AudioCore;
@@ -254,6 +256,9 @@ export class AmbiencePlayer {
       case 'leaves':
         this.creak(t, level);
         break;
+      case 'echoes':
+        this.echo(t, level);
+        break;
       default:
         break;
     }
@@ -343,6 +348,32 @@ export class AmbiencePlayer {
     f.connect(g);
     source.start(t, Math.random() * 1.5);
     source.stop(t + 0.08);
+  }
+
+  /** Something far down a passage, a knock or a stone scraping, answered by its echoes from side to side. */
+  private echo(t: number, level: number): void {
+    const knock = Math.random() < 0.6;
+    const pan = Math.random() * 1.4 - 0.7;
+    const freq = knock ? 160 + Math.random() * 220 : 700 + Math.random() * 600;
+    const gap = 0.25 + Math.random() * 0.35;
+    const repeats = 2 + Math.floor(Math.random() * 3);
+    let peak = (knock ? 0.09 : 0.035) * level;
+    for (let i = 0; i <= repeats; i++) {
+      const at = t + i * gap;
+      const attack = knock ? 0.003 : 0.06;
+      const decay = knock ? 0.035 : 0.12;
+      const source = this.core.noiseSource(knock);
+      const f = filter(this.core, 'bandpass', freq * (1 - i * 0.1), knock ? 3 : 1.2);
+      const g = this.voice(i % 2 ? -pan * 0.6 : pan);
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.linearRampToValueAtTime(peak, at + attack);
+      g.gain.setTargetAtTime(0, at + attack, decay);
+      source.connect(f);
+      f.connect(g);
+      source.start(at, Math.random() * 1.5);
+      source.stop(at + attack + decay * 6);
+      peak *= 0.45;
+    }
   }
 
   private creak(t: number, level: number): void {

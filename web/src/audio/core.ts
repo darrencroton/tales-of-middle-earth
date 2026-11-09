@@ -20,6 +20,8 @@ export class AudioCore {
   readonly ambienceIn: GainNode;
   readonly musicReverb: GainNode;
   readonly musicEcho: GainNode;
+  /** Seconds between the echo's repeats. */
+  readonly echoDelay: AudioParam;
   readonly soundReverb: GainNode;
   readonly noise: AudioBuffer;
   readonly brownNoise: AudioBuffer;
@@ -53,6 +55,7 @@ export class AudioCore {
     const echoIn = ctx.createGain();
     const delay = ctx.createDelay(2);
     delay.delayTime.value = 0.42;
+    this.echoDelay = delay.delayTime;
     const feedback = ctx.createGain();
     feedback.gain.value = 0.38;
     const echoTone = ctx.createBiquadFilter();

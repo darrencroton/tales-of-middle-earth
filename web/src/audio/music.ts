@@ -1,4 +1,4 @@
-import { barStretch, Composer, pivotChord, secondsPerBar, sombreness, type PieceSection } from './composer.ts';
+import { Composer, pivotChord, secondsPerBar, sombreness, type PieceSection } from './composer.ts';
 import type { AudioCore } from './core.ts';
 import { themeGain, type Instrument, type Role, type Theme } from './themes.ts';
 import { hashString } from './theory.ts';
@@ -7,6 +7,8 @@ import { playVoice } from './voices.ts';
 /** How far ahead bars are written to the audio clock. */
 const LOOKAHEAD_S = 0.35;
 const FIRST_FADE_S = 0.5;
+/** Seconds between an echo's repeats unless a theme sets its own. */
+const ECHO_DELAY_S = 0.42;
 const FADE_OUT_S = 1.8;
 /** Longest wait for the bar to end before changing theme. */
 const MAX_WAIT_S = 2.4;
@@ -118,6 +120,7 @@ export class MusicPlayer {
     this.current = playback;
     this.core.musicReverb.gain.setTargetAtTime(0.25 + theme.space * 0.75, now, 1.2);
     this.core.musicEcho.gain.setTargetAtTime((theme.echo ?? 0) * 0.5, now, 1.2);
+    this.core.echoDelay.setTargetAtTime(theme.echoDelay ?? ECHO_DELAY_S, now, 0.6);
   }
 
   stop(): void {
@@ -146,7 +149,7 @@ export class MusicPlayer {
     const section = p.piece[p.section];
     const target = 1 + DRIVE * Math.max(0, this.level - (p.theme.floor ?? 0));
     p.drive += Math.max(-DRIVE_STEP, Math.min(DRIVE_STEP, target - p.drive));
-    const stretch = barStretch(p.theme, section, p.bar, p.section === p.piece.length - 1);
+    const stretch = p.composer.stretch(section, p.bar, p.section === p.piece.length - 1);
     const barSeconds = (secondsPerBar(p.theme) * stretch) / p.drive;
     p.barSeconds = barSeconds;
     const start = Math.max(p.nextAt, now + 0.02);
