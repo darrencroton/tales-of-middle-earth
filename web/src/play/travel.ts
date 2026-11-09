@@ -160,7 +160,7 @@ export function travelGrid(snap: LevelSnapshot, materials: readonly Material[], 
 const FEAT_RUBBLE = 0x31;
 
 /** What a tap on terrain too hard for the hero's digger says. */
-export const TOO_HARD = 'Too hard for your digger. More → Tunnel tries anyway.';
+export const TOO_HARD = 'Too hard for your digger: Tunnel, under More, tries anyway.';
 
 /**
  * The digging skill a cell needs (tome2's skill_req_1pct), when the hero can
