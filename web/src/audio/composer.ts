@@ -434,7 +434,7 @@ export class Composer {
     return this.fragments.phrase;
   }
 
-  /** Leaves some bars of a phrase silent, never two with notes in a row, and cuts the rest off after a few notes, the last left to ring to the end of its bar. */
+  /** Leaves out some of a phrase's bars, never two in a row (of those with notes), and cuts the rest off after a few notes, the last left to ring to the end of its bar. */
   private fragment(phrase: readonly PhraseNote[], silence: number): PhraseNote[] {
     const meter = this.theme.meter;
     const bars = new Map<number, PhraseNote[]>();
