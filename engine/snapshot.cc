@@ -1086,6 +1086,7 @@ void json_item_props(JsonWriter &w, object_type const *o_ptr, object_flag_set co
 	static const object_flag_set immunity_of[] = {
 		TR_IM_ACID, TR_IM_ELEC, TR_IM_FIRE, TR_IM_COLD, {}, {}, {}, {}, {}, TR_IM_NETHER, {}, {}, {},
 	};
+	static_assert(std::size(immunity_of) == std::size(resists));
 	static const flag_label abilities[] = {
 		{ TR_SENS_FIRE, "drawback", "Vulnerable to fire" },
 		{ TR_WRAITH, "ability", "Incorporeal" },

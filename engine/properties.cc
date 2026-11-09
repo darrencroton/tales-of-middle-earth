@@ -17,6 +17,7 @@
  */
 
 #include "artifact_type.hpp"
+#include "body.hpp"
 #include "corrupt.hpp"
 #include "defines.hpp"
 #include "deity_type.hpp"
@@ -629,45 +630,64 @@ void archery(std::vector<source> &out)
 	if (s.nums["shots"] || s.nums["might"]) out.push_back(std::move(s));
 }
 
+/* Whether gear's extra blows count: tome2 adds them in every way of fighting but one, an empty hand with a weapon's style. */
+bool gear_blows = true;
+
 /*
  * The blows of a round (calc_bonuses): with a weapon, Strength and
- * Dexterity against its weight give the base, up to the class's limit
- * (raised by the Extra Max Blow abilities), and gear, the class and
- * weapon mastery add to it; bare-handed, the Barehand combat skill gives
- * them; a body without hands, Strength and Dexterity. The base is what the
- * others leave.
+ * Dexterity against its weight give the base from tome2's table, up to the
+ * class's limit (raised by the Extra Max Blow abilities), and gear, the
+ * class and weapon mastery add to it; bare-handed, the Barehand combat
+ * skill gives them; in bear form, the Bearform combat skill; a body
+ * without hands, Strength and Dexterity. What a mimic form adds is left to
+ * credit_form.
  */
 void blows(std::vector<source> &out)
 {
-	source base { "stats", "Strength and Dexterity" };
-	auto add = [&out](source &&s) {
-		if (s.nums["blows"]) out.push_back(std::move(s));
+	auto const &r_info = game->edit_data.r_info;
+	auto credit = [&out](char const *kind, std::string const &name, int n) {
+		if (!n) return;
+		auto it = std::find_if(out.begin(), out.end(), [&](source const &s) { return !std::strcmp(s.kind, kind) && s.name == name; });
+		if (it == out.end()) it = out.insert(out.end(), source { kind, name });
+		it->nums["blows"] += n;
 	};
-	if (p_ptr->inventory[INVEN_WIELD].k_ptr)
+	auto rest = [&out] {
+		auto const &blows_prop = *std::find_if(props().begin(), props().end(), [](prop const &p) { return !std::strcmp(p.id, "blows"); });
+		int n = p_ptr->num_blow;
+		for (auto const &s : out) n -= share_of(s, blows_prop).n;
+		return n;
+	};
+	gear_blows = true;
+	object_type const *weapon = &p_ptr->inventory[INVEN_WIELD];
+	if (weapon->k_ptr)
 	{
-		for (auto &s : out)
-		{
-			if (!std::strcmp(s.kind, "class")) s.nums["blows"] += p_ptr->lev * cp_ptr->extra_blows / 50;
-		}
-		if (int const mastery = get_weaponmastery_skill(); mastery != -1)
-		{
-			source s { "skill", skill_name(mastery) };
-			s.nums["blows"] = get_skill_scale(mastery, 2);
-			add(std::move(s));
-		}
-		source s { "skill", skill_name(SKILL_MASTERY) };
-		s.nums["blows"] = get_skill_scale(SKILL_MASTERY, 3);
-		add(std::move(s));
+		int num = 0, wgt = 0, mul = 0;
+		analyze_blow(&num, &wgt, &mul);
+		int const div = std::max<int>(wgt, weapon->weight);
+		int const str = std::min(11, adj_str_blow[p_ptr->stat_ind[A_STR]] * mul / div);
+		int const dex = std::min<int>(11, adj_dex_blow[p_ptr->stat_ind[A_DEX]]);
+		credit("stats", "Strength and Dexterity", std::min<int>(blows_table[str][dex], num));
+		credit("class", cp_ptr->title, p_ptr->lev * cp_ptr->extra_blows / 50);
+		if (int const mastery = get_weaponmastery_skill(); mastery != -1) credit("skill", skill_name(mastery), get_skill_scale(mastery, 2));
+		credit("skill", skill_name(SKILL_MASTERY), get_skill_scale(SKILL_MASTERY, 3));
 	}
 	else if (p_ptr->melee_style == SKILL_HAND)
 	{
-		base = source { "skill", skill_name(SKILL_HAND) };
+		credit("skill", skill_name(SKILL_HAND), rest());
 	}
-	prop const *const blows_prop = &*std::find_if(props().begin(), props().end(), [](prop const &p) { return !std::strcmp(p.id, "blows"); });
-	int rest = p_ptr->num_blow;
-	for (auto const &s : out) rest -= share_of(s, *blows_prop).n;
-	base.nums["blows"] = rest;
-	add(std::move(base));
+	else if (!r_info[p_ptr->body_monster].body_parts[BODY_WEAPON])
+	{
+		credit("stats", "Strength and Dexterity", rest());
+	}
+	else if (!p_ptr->body_monster && p_ptr->mimic_form == resolve_mimic_name("Bear") && p_ptr->melee_style == SKILL_BEAR)
+	{
+		credit("skill", skill_name(SKILL_BEAR), 2 + get_skill(SKILL_BEAR) / 5);
+	}
+	else
+	{
+		gear_blows = false;
+		credit("stats", "Unarmed", 1);
+	}
 }
 
 /* The glow of a trait, an aura or anything but a worn light, which lights radius 1 only when nothing else gives light (calc_torch): given to the first that glows. */
@@ -810,11 +830,13 @@ void credit_form(prop const &p, int now, std::vector<std::pair<std::size_t, shar
  * [{kind, name, i (an item's inventory index), effect (json_effects' id),
  * turns}] and `props` [{id, now, from: [{s, as, n}]}]: kind race, class,
  * skill, god, corruption, form, fate, item, effect, tactic, movement,
- * load; `now` the hero's state (1/0; an element's grade 3 immune,
+ * load, stats (Strength and Dexterity's blows); `now` the hero's state (1/0; an element's grade 3 immune,
  * 2 resisted twice, 1, -1 vulnerable; an amount), left out for an amount
  * tome2 keeps nowhere; `as` "immune" or "vulnerable"; `n` what a source
  * adds to an amount. Gear not yet identified shows nothing: what only it
- * gives is left out.
+ * gives is left out. With a weapon, `blowsLimit` is the most blows
+ * Strength and Dexterity give, and `blowsRaised` the Extra Max Blow
+ * abilities that raised it.
  */
 extern "C" EMSCRIPTEN_KEEPALIVE char const *web_properties_json()
 {
@@ -843,7 +865,8 @@ extern "C" EMSCRIPTEN_KEEPALIVE char const *web_properties_json()
 		for (std::size_t i = 0; i < all.size(); i++)
 		{
 			auto const sh = share_of(all[i], p);
-			if (sh.counts) from.emplace_back(i, sh);
+			bool const ignored = !gear_blows && !std::strcmp(p.id, "blows") && !std::strcmp(all[i].kind, "item");
+			if (sh.counts && !ignored) from.emplace_back(i, sh);
 		}
 		auto const unseen = share_of(hidden, p);
 		w.begin_object();
