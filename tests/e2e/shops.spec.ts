@@ -51,7 +51,7 @@ async function homeStorage(page: Page, choice: 'Linked' | 'Separate'): Promise<v
   await expect(page.locator('.sheet-layer')).toBeHidden();
 }
 
-test('shops show their whole stock natively, buy and sell from item cards, the door offers going back in, and a service\'s answer is shown', async ({ page }) => {
+test('shops show their whole stock natively, buy and sell from item cards, the door offers going back in, a service\'s answer is shown, and linked homes hand out what each holds', async ({ page }) => {
   test.setTimeout(240_000);
   await page.goto('./?wizard');
   await waitForEngine(page);
@@ -205,6 +205,7 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
   await expect(page.locator('#toast')).toContainText('from your home in Bree');
   await expect(page.locator('.sheet-item')).toBeHidden();
   expect(await packCount()).toBe(had + 1);
+  expect(await page.evaluate(() => window.__tome!.engine.gameState(1)!.messages!.at(-1)?.text)).toMatch(/^You have .* \([a-w]\)\.$/);
   await expect(bree.locator('.shop-row')).toHaveCount(1);
   await expect(bree.locator('.shop-row')).toContainText(stored[1]);
   await leave(page);

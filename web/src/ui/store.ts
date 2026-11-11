@@ -2,7 +2,7 @@ import { KEY_BACKSLASH as BACKSLASH, KEY_ENTER as ENTER, KEY_SPACE as SPACE, key
 import { itemActions, itemMacro, SLOT_NAMES, type ItemAction, type ItemPlace } from '../play/items.ts';
 import { type Macro, type MacroScreen } from '../play/macro.ts';
 import { classifyPrompt } from '../play/prompts.ts';
-import { FEET_PER_LEVEL, STORE_ACTION, type InventoryState, type ItemState, type LinkedHome, type StockItem, type StoreCommand, type StoreOffer, type StoreState } from '../render/snapshot.ts';
+import { STORE_ACTION, type InventoryState, type ItemState, type LinkedHome, type StockItem, type StoreCommand, type StoreOffer, type StoreState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { capitalise, itemGlyph, pounds, titleName } from './api.ts';
 import { itemCardBody } from './inspect.ts';
@@ -204,11 +204,6 @@ function row(api: GameApi, key: string, item: Pick<ItemState, 'ch' | 'attr' | 'n
   return button;
 }
 
-/** Where another home of the hero's is: its town, or the dungeon and depth of a dungeon's town. */
-export function homePlace(home: Pick<LinkedHome, 'place' | 'depth'>): string {
-  return home.depth > 0 ? `${home.place}, ${home.depth * FEET_PER_LEVEL} ft` : home.place;
-}
-
 /**
  * The shelf: everything for sale (or stored, or on show), one scrolling list;
  * tap an item for its card. A home with others linked lists what is here,
@@ -233,7 +228,7 @@ export function shelfElements(api: GameApi, store: StoreState, model: ShopModel,
   return [
     el('p', 'shop-note muted', `Room on the shelves here for ${room} more.`),
     section('Here', store.stock.length ? listOf(store.stock, null) : el('p', 'empty', 'Nothing is stored here yet.')),
-    ...linked.map((home) => section(`In ${homePlace(home)}`, listOf(home.stock, home))),
+    ...linked.map((home) => section(`In ${home.place}`, listOf(home.stock, home))),
   ];
 }
 
@@ -294,7 +289,7 @@ function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: 
   const short = verb && shop && most === 0 ? `You have ${store.gold} gold: not enough for one.` : null;
   if (short) body.append(el('p', 'shop-short', short));
   body.append(itemCardBody(api, api.engine.storeItemInfo(item.i, from?.town), 'Nothing more is known about it until you own it.'));
-  const where = from ? `In your home in ${homePlace(from)}` : store.home ? 'In your home' : 'On show';
+  const where = from ? `In your home in ${from.place}` : store.home ? 'In your home' : 'On show';
   const subtitle = shop
     ? [`${item.price} gold each`, item.number > 1 ? `${item.number} for sale` : '', pounds(item.weight)].filter(Boolean).join(' · ')
     : [where, item.number > 1 ? `${item.number} ${from ? 'there' : 'here'}` : '', pounds(item.weight)].filter(Boolean).join(' · ');
@@ -308,7 +303,7 @@ function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: 
       unavailable: short,
       run: () => {
         const name = traded(item.name, quantity);
-        if (from) handlers.takeFrom(from.town, item.i, quantity, `Took ${name} from your home in ${homePlace(from)}.`);
+        if (from) handlers.takeFrom(from.town, item.i, quantity, `Took ${name} from your home in ${from.place}.`);
         else handlers.trade(shelfMacro(key, item.i, quantity, store.stock.length, handlers.page()), shop ? `Bought ${name} for ${quantity * item.price} gold.` : `Took ${name} from home.`);
       },
     });

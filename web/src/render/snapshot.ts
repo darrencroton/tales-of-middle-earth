@@ -516,14 +516,12 @@ export interface StoreOffer {
   price: number;
 }
 
-/** Another home of the hero's, shown in the home they stand in (Settings → Homes: linked; `engine/homes.cc`). */
+/** Another home of the hero's, shown in the home they stand in (Settings → Home storage: linked; `engine/homes.cc`). */
 export interface LinkedHome {
   /** tome2's town, which names the home to take from. */
   town: number;
-  /** The town's name, or the dungeon a dungeon's town is in. */
+  /** The town's name. */
   place: string;
-  /** A dungeon's town's level; 0 for a town on the land. */
-  depth: number;
   stock: StockItem[];
 }
 

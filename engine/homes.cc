@@ -1,5 +1,5 @@
 /*
- * Linked homes (Settings → Homes): at any of the hero's homes, the shelves
+ * Linked homes (Settings → Home storage): at any of the hero's homes, the shelves
  * of their other homes are shown too, and what is on them can be taken from
  * there. Each home keeps its own stock in tome2's town_info as before: what
  * is stored goes to the home the hero stands in (tome2's own command), and
@@ -14,25 +14,27 @@
  */
 
 #include "defines.hpp"
-#include "dungeon_info_type.hpp"
 #include "game.hpp"
+#include "object1.hpp"
 #include "object2.hpp"
 #include "object_type.hpp"
 #include "player_type.hpp"
 #include "store_type.hpp"
 #include "town_type.hpp"
 #include "variable.hpp"
-#include "wilderness_type_info.hpp"
 #include "xtra1.hpp"
+#include "z-term.hpp"
 
 #include "json.hpp"
 
 #include <emscripten.h>
+#include <fmt/format.h>
 
 #include <string>
 
-/* engine/snapshot.cc */
+/* engine/snapshot.cc, engine/adventure.cc */
 store_type *store_here(int *which);
+std::string town_name(int town);
 void json_stock_item(JsonWriter &w, std::size_t i, object_type *o_ptr, bool home_like, long price);
 
 namespace {
@@ -47,34 +49,12 @@ int home_here()
 	return store_here(&which) && which == STORE_HOME ? p_ptr->town_num : 0;
 }
 
-/* What tome2 calls a town: its name on the world map, or a dungeon's town by the dungeon and its depth (0 for none). */
-std::pair<std::string, int> town_place(int town)
-{
-	auto const &wf_info = game->edit_data.wf_info;
-	for (auto const &wf : wf_info)
-	{
-		if (wf.entrance != town || !wf.name) continue;
-		std::string name = wf.name;
-		while (!name.empty() && name.back() == ' ') name.pop_back();
-		return { name, 0 };
-	}
-	for (auto const &d : game->edit_data.d_info)
-	{
-		for (int j = 0; j < d.t_num && j < TOWN_DUNGEON; j++)
-		{
-			if (d.t_idx[j] == town) return { d.name, d.t_level[j] };
-		}
-	}
-	return { "", 0 };
-}
-
 }
 
 /*
  * Another home of the hero's that the home they stand in shows, or null: in
- * a town that stands (tome2 builds a town it has destroyed without a home),
- * holding something. A home is there to hold anything only once the hero
- * has had it (a quest's reward, or one in a dungeon's town).
+ * a town that stands, holding something. A home holds anything only once the
+ * hero has had it: a quest's reward in one of the five towns of the land.
  */
 store_type *linked_home(int town)
 {
@@ -86,7 +66,7 @@ store_type *linked_home(int town)
 	return home.stock.empty() ? nullptr : &home;
 }
 
-/* The other homes the home the hero stands in shows: each one's town, where it is ("place", "depth" for a dungeon's town) and stock. */
+/* The other homes the home the hero stands in shows: each one's town, its name ("place") and stock. */
 void json_linked_homes(JsonWriter &w)
 {
 	w.key("linked").begin_array();
@@ -94,11 +74,9 @@ void json_linked_homes(JsonWriter &w)
 	{
 		auto *st = linked_home(town);
 		if (!st) continue;
-		auto const place = town_place(town);
 		w.begin_object();
 		w.field("town", town);
-		w.field("place", place.first);
-		w.field("depth", place.second);
+		w.field("place", town_name(town));
 		w.key("stock").begin_array();
 		for (std::size_t i = 0; i < st->stock.size(); i++) json_stock_item(w, i, &st->stock[i], true, 0);
 		w.end_array();
@@ -109,7 +87,7 @@ void json_linked_homes(JsonWriter &w)
 
 extern "C" {
 
-/* Whether a home shows the hero's other homes (Settings → Homes, on unless set off). */
+/* Whether a home shows the hero's other homes (Settings → Home storage, on unless set off). */
 EMSCRIPTEN_KEEPALIVE void web_set_linked_homes(int on)
 {
 	linked = on != 0;
@@ -119,12 +97,13 @@ EMSCRIPTEN_KEEPALIVE void web_set_linked_homes(int on)
  * Takes `amount` of an item (by its place in the stock) from another home
  * the home the hero stands in shows into the pack, as store_purchase takes
  * from the home: a wand's charges shared out, at most 99, only with room in
- * the pack. Returns the pack slot it went to, -1 when it cannot be taken
- * (no such home or item), -2 with no room in the pack.
+ * the pack, and its "You have …" logged. Only inside the home (its screen
+ * up). Returns the pack slot it went to, -1 when it cannot be taken, -2 with
+ * no room in the pack.
  */
 EMSCRIPTEN_KEEPALIVE int web_home_take(int town, int index, int amount)
 {
-	store_type *st = linked_home(town);
+	store_type *st = character_icky ? linked_home(town) : nullptr;
 	if (!st || index < 0 || index >= static_cast<int>(st->stock.size())) return -1;
 	auto &o_ref = st->stock[index];
 	if (amount < 1 || amount > o_ref.number || amount > 99) return -1;
@@ -140,6 +119,9 @@ EMSCRIPTEN_KEEPALIVE int web_home_take(int town, int index, int amount)
 	if (!o_ref.number) st->stock.erase(st->stock.begin() + index);
 
 	int const slot = inven_carry(&forge, false);
+	char name[160];
+	object_desc(name, &p_ptr->inventory[slot], true, 3);
+	game->messages.add(fmt::format("You have {} ({}).", name, index_to_label(slot)), TERM_WHITE);
 	handle_stuff();
 	return slot;
 }

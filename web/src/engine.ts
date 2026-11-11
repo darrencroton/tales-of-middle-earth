@@ -406,15 +406,15 @@ export class Engine {
     this.running()?._web_set_persistent_levels(on ? 1 : 0);
   }
 
-  /** Whether a home shows the hero's other homes, to take from (Settings → Homes). */
+  /** Whether a home shows the hero's other homes, to take from (Settings → Home storage). */
   setLinkedHomes(on: boolean): void {
     this.running()?._web_set_linked_homes(on ? 1 : 0);
   }
 
-  /** Takes some of an item from a linked home into the pack: the pack slot it went to, 'full' with no room in the pack, null when it cannot be taken. */
-  homeTake(town: number, index: number, amount: number): number | 'full' | null {
+  /** Takes some of an item from a linked home into the pack: 'taken', 'full' with no room in the pack, null when it cannot be taken. */
+  homeTake(town: number, index: number, amount: number): 'taken' | 'full' | null {
     const slot = this.running()?._web_home_take(town, index, amount) ?? -1;
-    return slot === -2 ? 'full' : slot >= 0 ? slot : null;
+    return slot === -2 ? 'full' : slot >= 0 ? 'taken' : null;
   }
 
   /** Marks grids of the current level (y * width + x) as remembered; returns how many were new. */

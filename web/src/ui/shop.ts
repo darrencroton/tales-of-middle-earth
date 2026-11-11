@@ -153,11 +153,7 @@ export class ShopController {
     this.deps.deny();
   }
 
-  /**
-   * Takes from another home of the hero's (`web_home_take`, no turn passing,
-   * as in the home), only while tome2 waits at the home's commands: in the
-   * middle of one of its questions the pack may not be moved under it.
-   */
+  /** Takes from another home of the hero's (`web_home_take`, no turn passing, as in the home), only while tome2 waits at the home's commands. */
   private takeFrom(town: number, item: number, quantity: number, done: string): void {
     const { api } = this.deps;
     if (this.service || this.trade || this.deps.macroRunning() || api.engine.pendingKeys > 0 || !this.atCommands()) {

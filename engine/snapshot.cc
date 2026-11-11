@@ -662,9 +662,6 @@ std::string spell_schools(spell_type *spell)
 	return out;
 }
 
-/* tome2's store number of the home (store.cc's cur_store_num 7). */
-constexpr int HOME_STORE = 7;
-
 /* store.cc's store names, which decide what each kind of shop buys. */
 bool blessed(object_type const *o_ptr)
 {
@@ -2120,7 +2117,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 	}
 	auto const &info = st_info[st->st_idx];
 	auto const &owner = ow_info[st->owner];
-	bool const home = which == HOME_STORE;
+	bool const home = which == STORE_HOME;
 	bool const museum = bool(info.flags & STF_MUSEUM);
 
 	w.field("here", 1);
