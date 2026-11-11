@@ -158,6 +158,19 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
   );
   body.append(
     section(
+      'Home storage',
+      segmented<'linked' | 'separate'>('Home storage', [['linked', 'Linked'], ['separate', 'Separate']], current.linkedHomes ? 'linked' : 'separate', (value) =>
+        update({ linkedHomes: value === 'linked' }),
+      ),
+      el(
+        'p',
+        'muted',
+        'Linked, each of your homes shows what all of them hold, and you can take anything from any of them. What you store stays in the home you leave it in. Separate, each home shows only its own.',
+      ),
+    ),
+  );
+  body.append(
+    section(
       'Map symbols',
       segmented<GlyphMode>('Map symbols', [['brogue', 'Shaded'], ['classic', 'Classic ASCII']], current.glyphs, (glyphs) =>
         update({ glyphs }),
