@@ -110,8 +110,8 @@ function full(store: Pick<StoreState, 'room'>): boolean {
 }
 
 /** Why there is no room for something carried, in the building's own voice. */
-function fullNote(store: Pick<StoreState, 'home' | 'museum' | 'owner' | 'name'>): string {
-  if (store.home) return 'Every shelf at home is full: only more of what is already stored will fit.';
+function fullNote(store: Pick<StoreState, 'home' | 'museum' | 'owner' | 'name' | 'linked'>): string {
+  if (store.home) return store.linked ? 'Every shelf in this home is full: only more of what is already on them will fit.' : 'Every shelf at home is full: only more of what is already stored will fit.';
   if (store.museum) return 'Every case in the museum is full: only more of what is already on show will fit.';
   return `${keeper(store)}’s shelves are full to the rafters: only more of what is already there will fit. Come back once some stock has found new owners.`;
 }
@@ -214,7 +214,7 @@ export function shelfElements(api: GameApi, store: StoreState, model: ShopModel,
     list.append(row(api, rowKey('stock', item.name), item, aside, !store.home && !store.museum, short, () => openShelfItem(api, store, model, item, handlers)));
   }
   const elements: HTMLElement[] = [list];
-  if (store.home) elements.unshift(el('p', 'shop-note muted', `Room on the shelves for ${store.room} more.`));
+  if (store.home && !store.linked) elements.unshift(el('p', 'shop-note muted', `Room on the shelves for ${store.room} more.`));
   return elements;
 }
 

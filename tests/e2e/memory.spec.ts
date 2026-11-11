@@ -129,11 +129,17 @@ test('kept levels stay as the hero left them, their stairs lead one level on and
 
   /* By the stairs, each kept level leads one on and one back, onto the way taken (away from the quest levels at 3 and 8). */
   const wayDown = async (depth: number) => {
-    await wizardCommand(page, 'w');
-    const way = await findFeature(page, WAY_DOWN, { known: true });
-    expect(way, `no way down known on level ${depth}`).not.toBeNull();
-    await travelTo(page, way!);
-    return way!;
+    /* A way down may lie past trees or water the hero cannot cross: teleported elsewhere, another may be within reach. */
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (attempt) await wizardCommand(page, 't');
+      await wizardCommand(page, 'w');
+      const way = await findFeature(page, WAY_DOWN, { known: true });
+      expect(way, `no way down known on level ${depth}`).not.toBeNull();
+      await travelTo(page, way!);
+      const here = await playerPos(page);
+      if (here.x === way!.x && here.y === way!.y) return way!;
+    }
+    throw new Error(`no way down reached on level ${depth}`);
   };
   await jumpToLevel(page, 5);
   const down5 = await wayDown(5);

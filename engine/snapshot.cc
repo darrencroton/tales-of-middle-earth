@@ -160,6 +160,8 @@ store_type *store_here(int *which)
 	return &stores[c_ptr.special];
 }
 
+namespace {
+
 /* An item on a shelf by its place in the stock: named as the home and museums name it, or as a shop does, with the price of one. */
 void json_stock_item(JsonWriter &w, std::size_t i, object_type *o_ptr, bool home_like, long price)
 {
@@ -177,8 +179,6 @@ void json_stock_item(JsonWriter &w, std::size_t i, object_type *o_ptr, bool home
 	w.field("price", price);
 	w.end_object();
 }
-
-namespace {
 
 /* Header layout shared with web/src/snapshot.ts (int32 slots). */
 enum HeaderSlot {
