@@ -77,7 +77,7 @@ export class ShopController {
         deps.api.runMacro(macro);
         if (!deps.macroRunning()) this.settle();
       },
-      takeFrom: (town, item, quantity, done) => this.takeFrom(town, item, quantity, done),
+      takeLinked: (item, quantity, done) => this.takeLinked(item, quantity, done),
       page: () => shelfPage(deps.buffer.screenText()),
       steals: deps.steals,
     };
@@ -153,19 +153,19 @@ export class ShopController {
     this.deps.deny();
   }
 
-  /** Takes from another home of the hero's (`web_home_take`, no turn passing, as in the home), only while tome2 waits at the home's commands. */
-  private takeFrom(town: number, item: number, quantity: number, done: string): void {
+  /** Takes from the shelf linked homes show (`web_home_take`, no turn passing, as in the home), only while tome2 waits at the home's commands. */
+  private takeLinked(item: number, quantity: number, done: (taken: number) => string): void {
     const { api } = this.deps;
     if (this.service || this.trade || this.deps.macroRunning() || api.engine.pendingKeys > 0 || !this.atCommands()) {
       api.refuse(NOT_NOW);
       return;
     }
-    const taken = api.engine.homeTake(town, item, quantity);
+    const taken = api.engine.homeTake(item, quantity);
     if (taken === 'full') api.refuse('You cannot carry that many different items.');
     else if (taken === null) api.refuse('It is no longer there.');
     else {
       api.sheets.closeAll();
-      this.deps.showToast(done, { log: false });
+      this.deps.showToast(done(taken), { log: false });
     }
     this.deps.redraw();
   }

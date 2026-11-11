@@ -115,8 +115,7 @@ bool level_quest_open();
 void web_run_options_tick();
 void web_adventure_tick();
 void json_adventure(JsonWriter &w);
-store_type *linked_home(int town);
-void json_linked_homes(JsonWriter &w);
+std::vector<object_type const *> *linked_shelf();
 
 /* Shared with the other exports (engine/knowledge.cc, engine/homes.cc). */
 /*
@@ -161,6 +160,8 @@ store_type *store_here(int *which)
 	return &stores[c_ptr.special];
 }
 
+namespace {
+
 /* An item on a shelf by its place in the stock: named as the home and museums name it, or as a shop does, with the price of one. */
 void json_stock_item(JsonWriter &w, std::size_t i, object_type *o_ptr, bool home_like, long price)
 {
@@ -178,8 +179,6 @@ void json_stock_item(JsonWriter &w, std::size_t i, object_type *o_ptr, bool home
 	w.field("price", price);
 	w.end_object();
 }
-
-namespace {
 
 /* Header layout shared with web/src/snapshot.ts (int32 slots). */
 enum HeaderSlot {
@@ -2078,14 +2077,15 @@ EMSCRIPTEN_KEEPALIVE char const *web_object_info(int item)
 	return item_info_json(valid ? get_object(item) : nullptr);
 }
 
-/*
- * What the player knows about an item on a shelf, by its position in the
- * stock, as web_object_info: of the shop (or home) they are in, or with
- * `town` of another home of theirs it shows (engine/homes.cc).
- */
-EMSCRIPTEN_KEEPALIVE char const *web_store_object_info(int town, int index)
+/* What the player knows about an item on the shelf of the shop (or home) they are in, by its position in the stock (the shelf linked homes show, engine/homes.cc), as web_object_info. */
+EMSCRIPTEN_KEEPALIVE char const *web_store_object_info(int index)
 {
-	store_type *st = town ? linked_home(town) : store_here(nullptr);
+	if (auto *shelf = linked_shelf())
+	{
+		bool const valid = index >= 0 && index < static_cast<int>(shelf->size());
+		return item_info_json(valid ? const_cast<object_type *>((*shelf)[index]) : nullptr);
+	}
+	store_type *st = store_here(nullptr);
 	bool const valid = st && index >= 0 && index < static_cast<int>(st->stock.size());
 	return item_info_json(valid ? &st->stock[index] : nullptr);
 }
@@ -2096,8 +2096,9 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_object_info(int town, int index)
  * to the hero, name), its whole stock (price of one to buy, as tome2 decides
  * how many the hero can afford; none in the home), and for each item carried whether
  * the shop takes it and what it pays for one ("why" says why not: "kind",
- * "worthless", "cursed", "full": no room on its shelves, "nothing"). A home
- * also lists the other homes it shows ("linked", engine/homes.cc).
+ * "worthless", "cursed", "full": no room on its shelves, "nothing"). While
+ * homes are linked a home's stock is all the hero's homes' as one ("linked",
+ * engine/homes.cc).
  */
 EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 {
@@ -2128,7 +2129,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 	w.field("buys", home || museum || shop_buys_anything(info.name) ? 1 : 0);
 	w.field("noSelling", options->no_selling ? 1 : 0);
 	w.field("gold", p_ptr->au);
-	w.field("capacity", st->stock_size);
+	w.field("room", st->stock.size() < st->stock_size ? st->stock_size - st->stock.size() : 0);
 
 	w.key("actions").begin_array();
 	for (auto const idx : info.actions)
@@ -2149,15 +2150,23 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 	}
 	w.end_array();
 
+	auto const *shelf = home ? linked_shelf() : nullptr;
+	w.field("linked", shelf ? 1 : 0);
 	w.key("stock").begin_array();
-	for (std::size_t i = 0; i < st->stock.size(); i++)
+	if (shelf)
 	{
-		auto *o_ptr = &st->stock[i];
-		auto const one = one_of(o_ptr);
-		json_stock_item(w, i, o_ptr, home || museum, home || museum ? 0 : shop_price(*st, owner, &one, true));
+		for (std::size_t i = 0; i < shelf->size(); i++) json_stock_item(w, i, const_cast<object_type *>((*shelf)[i]), true, 0);
+	}
+	else
+	{
+		for (std::size_t i = 0; i < st->stock.size(); i++)
+		{
+			auto *o_ptr = &st->stock[i];
+			auto const one = one_of(o_ptr);
+			json_stock_item(w, i, o_ptr, home || museum, home || museum ? 0 : shop_price(*st, owner, &one, true));
+		}
 	}
 	w.end_array();
-	if (home) json_linked_homes(w);
 
 	w.key("sell").begin_array();
 	for (int i = 0; i < INVEN_TOTAL; i++)

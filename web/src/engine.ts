@@ -56,7 +56,7 @@ interface EmscriptenModule {
   _web_grid_json(y: number, x: number): number;
   _web_inventory_json(): number;
   _web_object_info(item: number): number;
-  _web_store_object_info(town: number, index: number): number;
+  _web_store_object_info(index: number): number;
   _web_store_json(): number;
   _web_monster_desc(index: number): number;
   _web_character_json(): number;
@@ -92,7 +92,7 @@ interface EmscriptenModule {
   _web_companions_target(target: number, calloff: number): number;
   _web_dismiss_companion(index: number): number;
   _web_set_linked_homes(on: number): void;
-  _web_home_take(town: number, index: number, amount: number): number;
+  _web_home_take(index: number, amount: number): number;
 }
 
 interface ModuleOptions {
@@ -314,9 +314,9 @@ export class Engine {
     return json && Object.keys(json).length ? json : null;
   }
 
-  /** What the player knows about an item on the shelf of the shop they are in, or of a linked home by its town, by stock position. */
-  storeItemInfo(index: number, town = 0): ItemInfo | null {
-    const json = this.callJson<ItemInfo>((mod) => mod._web_store_object_info(town, index));
+  /** What the player knows about an item on the shelf of the shop they are in, by stock position. */
+  storeItemInfo(index: number): ItemInfo | null {
+    const json = this.callJson<ItemInfo>((mod) => mod._web_store_object_info(index));
     return json && Object.keys(json).length ? json : null;
   }
 
@@ -406,15 +406,15 @@ export class Engine {
     this.running()?._web_set_persistent_levels(on ? 1 : 0);
   }
 
-  /** Whether a home shows the hero's other homes, to take from (Settings → Home storage). */
+  /** Whether a home shows all the hero's homes as one (Settings → Home storage). */
   setLinkedHomes(on: boolean): void {
     this.running()?._web_set_linked_homes(on ? 1 : 0);
   }
 
-  /** Takes some of an item from a linked home into the pack: 'taken', 'full' with no room in the pack, null when it cannot be taken. */
-  homeTake(town: number, index: number, amount: number): 'taken' | 'full' | null {
-    const slot = this.running()?._web_home_take(town, index, amount) ?? -1;
-    return slot === -2 ? 'full' : slot >= 0 ? 'taken' : null;
+  /** Takes some of an item on the shelf linked homes show into the pack: how many were taken, 'full' with no room in the pack, null when it cannot be taken. */
+  homeTake(index: number, amount: number): number | 'full' | null {
+    const taken = this.running()?._web_home_take(index, amount) ?? -1;
+    return taken === -2 ? 'full' : taken > 0 ? taken : null;
   }
 
   /** Marks grids of the current level (y * width + x) as remembered; returns how many were new. */

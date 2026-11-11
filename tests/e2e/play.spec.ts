@@ -624,7 +624,8 @@ test('a Demonologist sees Doom Shield take hold, what it does and the turns it h
   await dismissMore(page);
   await waitAtCommand(page);
   const shield = () => page.evaluate(() => window.__tome!.engine.gameState()?.player?.effects?.find((e) => e.id === 'shield') ?? null);
-  /* Casting it fails most of the time at this level: mana is restored before each attempt, so attempts never stop for want of it. */
+  /* At this level it fails 95% of the time: Intelligence, its casting stat, raised to 18/100 brings that to 5%; mana is restored before each attempt. */
+  await wizardCommand(page, 'e\r118\r\x1b');
   for (let attempt = 0; attempt < 12 && !(await shield()); attempt++) {
     await wizardCommand(page, 'a');
     await page.locator('#toolbar [data-action="commands"]').click();

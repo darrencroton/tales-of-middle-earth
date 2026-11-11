@@ -201,7 +201,8 @@ describe('shops', () => {
     buys: 1,
     noSelling: 0,
     gold: 100,
-    capacity: 24,
+    room: 24,
+    linked: 0,
     actions: [
       { key: 's', action: STORE_ACTION.sell, cost: 0, closed: 0, name: 'Sell an item' },
       { key: 'p', action: STORE_ACTION.buy, cost: 0, closed: 0, name: 'Purchase an item' },

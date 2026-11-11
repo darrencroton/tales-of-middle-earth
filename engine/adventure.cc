@@ -167,9 +167,6 @@ int haven()
 	return 0;
 }
 
-}
-
-/* A town's name on the world map (engine/homes.cc too); empty for one destroyed. */
 std::string town_name(int town)
 {
 	int x, y;
@@ -179,8 +176,6 @@ std::string town_name(int town)
 	while (!name.empty() && name.back() == ' ') name.pop_back();
 	return name;
 }
-
-namespace {
 
 /* The One Ring holds the hero: it sustains their life while it can, and then ends it, whatever the mode. */
 bool ring_hold()
