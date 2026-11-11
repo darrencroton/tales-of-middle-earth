@@ -172,55 +172,62 @@ test('shops show their whole stock natively, buy and sell from item cards, the d
   await page.keyboard.press('Escape');
   await leave(page);
 
-  /* Homes are linked: what is stored in Bree's is listed in Gondolin's under Bree, and taken from there, in place, into the pack. */
+  /* Homes are linked: each shows all of them as one, so what is stored in Bree's is on Gondolin's shelf, stacked with the same there, and taken from both. */
   await makeHome(page, await door(page, '1', 15));
   const home = () => page.evaluate(() => window.__tome!.engine.store()!);
   const pack = () => page.evaluate(() => window.__tome!.engine.inventory()!.pack.map((i) => ({ name: i.name, number: i.number })));
-  await expect(page.locator('.termview .empty')).toContainText('Your home stands bare');
-  await page.locator('.termview [data-tab="offer"]').click();
-  const kept = (await pack()).slice(0, 2);
-  expect(kept, 'two kinds of thing to store').toHaveLength(2);
-  for (const item of kept) {
-    await page.locator('.termview .shop-row', { hasText: item.name }).first().click();
+  const store = async (name: string) => {
+    await page.locator('.termview [data-tab="offer"]').click();
+    await page.locator('.termview .shop-row', { hasText: name }).first().click();
     await page.locator('.sheet-item [data-action="offer"]').click();
     await expect(page.locator('#toast')).toContainText('Stored');
-  }
-  const stored = (await home()).stock.map((i) => i.name);
+    await page.locator('.termview [data-tab="shelf"]').click();
+  };
+  await expect(page.locator('.termview .empty')).toContainText('Your home stands bare');
+  const onHand = await pack();
+  const several = onHand.find((i) => i.number >= 3);
+  const other = onHand.find((i) => i !== several);
+  expect(several && other, 'a stack of three and something else to store').toBeTruthy();
+  await store(several!.name);
+  await store(other!.name);
+  const stored = (await home()).stock;
   expect(stored).toHaveLength(2);
   await leave(page);
 
   await wizardCommand(page, 'T', 2);
   await wizardCommand(page, 'z');
   await makeHome(page, await door(page, '1', 15));
-  const homeSection = (title: string) => page.locator('.termview .sheet-section').filter({ has: page.locator('h3', { hasText: new RegExp(`^${title}$`) }) });
-  const bree = homeSection('In Bree');
-  await expect(bree.locator('.shop-row')).toHaveCount(2);
-  await expect(homeSection('Here')).toContainText('Nothing is stored here yet');
-  await bree.locator('.shop-row', { hasText: stored[0] }).click();
-  await expect(page.locator('.sheet-item .sheet-subtitle')).toContainText('In your home in Bree');
+  await expect(page.locator('.termview .shop-row')).toHaveCount(2);
+  await store(several!.name.replace(/^\d+ /, ''));
+  const shelf = await home();
+  expect(shelf.linked).toBe(1);
+  expect(shelf.stock).toHaveLength(2);
+  const both = shelf.stock.find((i) => i.number === 2)!;
+  expect(both, 'the same stored in both homes stacks as one').toBeTruthy();
+  await expect(page.locator('.termview .sheet-section')).toHaveCount(0);
+  await page.locator('.termview .shop-row', { hasText: both.name }).click();
+  await expect(page.locator('.sheet-item .sheet-subtitle')).toContainText('In your home · 2 here');
   await expect(page.locator('.sheet-item .item-detail')).not.toBeEmpty();
   const packCount = async () => (await pack()).reduce((n, i) => n + i.number, 0);
   const had = await packCount();
+  await page.locator('.sheet-item .stepper-button', { hasText: '+' }).click();
   await page.locator('.sheet-item [data-action="take"]').click();
-  await expect(page.locator('#toast')).toContainText('from your home in Bree');
+  await expect(page.locator('#toast')).toContainText('Took 2 ×');
   await expect(page.locator('.sheet-item')).toBeHidden();
-  expect(await packCount()).toBe(had + 1);
+  expect(await packCount()).toBe(had + 2);
   expect(await page.evaluate(() => window.__tome!.engine.gameState(1)!.messages!.at(-1)?.text)).toMatch(/^You have .* \([a-w]\)\.$/);
-  await expect(bree.locator('.shop-row')).toHaveCount(1);
-  await expect(bree.locator('.shop-row')).toContainText(stored[1]);
+  await expect(page.locator('.termview .shop-row')).toHaveCount(1);
   await leave(page);
 
-  /* Separate, each home shows only its own; linked again, Bree's is back as it was. */
-  const linked = async () => (await home()).linked?.length ?? 0;
+  /* Separate, each home shows only its own (Gondolin's gave its one first); linked again, Bree's is back as it was. */
   await homeStorage(page, 'Separate');
   await enterHome(page);
-  expect(await linked()).toBe(0);
+  expect((await home()).linked).toBe(0);
   await expect(page.locator('.termview .empty')).toContainText('Your home stands bare');
   await leave(page);
   await homeStorage(page, 'Linked');
   await enterHome(page);
-  expect(await linked()).toBe(1);
-  await expect(bree).toBeVisible();
+  expect((await home()).stock).toHaveLength(1);
   await leave(page);
 });
 

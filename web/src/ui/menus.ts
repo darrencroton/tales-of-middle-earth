@@ -165,7 +165,7 @@ export function openSettings(sheets: Sheets, settings: Settings, apply: (next: S
       el(
         'p',
         'muted',
-        'When linked, each of your homes shows what all of them hold, and you can take anything from any of them. What you store stays in the home you leave it in. When separate, each home shows only its own.',
+        'When linked, each of your homes holds everything you have stored in any of them, ready to take. What you store stays in the home you leave it in. When separate, each home holds only its own.',
       ),
     ),
   );

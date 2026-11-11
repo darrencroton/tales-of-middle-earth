@@ -83,7 +83,7 @@ Map (toolbar, HUD, gestures)
 Shop, home, museum (walk in, or Enter shop on the door)
                 ─────────────── native panel: one scrolling list a tab — Buy · Sell · Exit (home: Stored ·
                                 Inventory · Exit; museum: Collection · Donate · Exit); services and their cost head the shelf;
-                                linked homes: Stored lists Here, then each other home under its town
+                                linked homes: Stored is every home's items as one shelf
                                 ├── Shelf item      card over the shop (details, how many, Buy/Take)
                                 └── Item carried    card over the shop (what it fetches or why not, how many,
                                                     Sell/Store/Donate; wear, take off, inscribe, destroy)
