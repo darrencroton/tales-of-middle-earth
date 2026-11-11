@@ -2087,10 +2087,11 @@ function applySettings(): void {
   document.documentElement.dataset.animation = settings.animation;
 }
 
-/** Applies the settings tome2 itself keeps: messages flowing past, kept levels, and how bolts and blasts are drawn. */
+/** Applies the settings tome2 itself keeps: messages flowing past, kept levels, linked homes, and how bolts and blasts are drawn. */
 function applyEngineSettings(): void {
   engine.setAutoMore(settings.messages === 'flow');
   engine.setPersistentLevels(settings.persistentLevels);
+  engine.setLinkedHomes(settings.linkedHomes);
   engine.setEffectDelay(EFFECT_DELAY[settings.animation]);
 }
 

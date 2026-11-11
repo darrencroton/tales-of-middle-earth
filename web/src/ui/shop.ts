@@ -4,7 +4,7 @@ import type { Action } from '../play/actions.ts';
 import type { PromptKind } from '../play/prompts.ts';
 import { newMessages, type GameState, type StoreCommand, type StoreState } from '../render/snapshot.ts';
 import type { TerminalBuffer } from '../terminal.ts';
-import type { GameApi } from './api.ts';
+import { NOT_NOW, type GameApi } from './api.ts';
 import { el, navButton, section } from './dom.ts';
 import { viewerHeading } from './filepages.ts';
 import { openMessage } from './menus.ts';
@@ -77,6 +77,7 @@ export class ShopController {
         deps.api.runMacro(macro);
         if (!deps.macroRunning()) this.settle();
       },
+      takeFrom: (town, item, quantity, done) => this.takeFrom(town, item, quantity, done),
       page: () => shelfPage(deps.buffer.screenText()),
       steals: deps.steals,
     };
@@ -150,6 +151,23 @@ export class ShopController {
     if (!said && !done) return;
     this.deps.showToast(said ? said.replace(/\s*-more-\s*$/, '') : 'Nothing changed.', { log: false });
     this.deps.deny();
+  }
+
+  /** Takes from another home of the hero's (`web_home_take`, no turn passing, as in the home), only while tome2 waits at the home's commands. */
+  private takeFrom(town: number, item: number, quantity: number, done: string): void {
+    const { api } = this.deps;
+    if (this.service || this.trade || this.deps.macroRunning() || api.engine.pendingKeys > 0 || !this.atCommands()) {
+      api.refuse(NOT_NOW);
+      return;
+    }
+    const taken = api.engine.homeTake(town, item, quantity);
+    if (taken === 'full') api.refuse('You cannot carry that many different items.');
+    else if (taken === null) api.refuse('It is no longer there.');
+    else {
+      api.sheets.closeAll();
+      this.deps.showToast(done, { log: false });
+    }
+    this.deps.redraw();
   }
 
   private setTab(tab: ShopTab): void {

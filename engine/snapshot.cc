@@ -108,15 +108,17 @@ void web_scratch_term_end();
 void display_weapon_damage(object_type *o_ptr);
 void display_ammo_damage(object_type *o_ptr);
 
-/* Map memory (engine/memory.cc), run options (engine/runoptions.cc) and Adventure mode (engine/adventure.cc). */
+/* Map memory (engine/memory.cc), run options (engine/runoptions.cc), Adventure mode (engine/adventure.cc) and linked homes (engine/homes.cc). */
 void web_memory_tick();
 int level_quest();
 bool level_quest_open();
 void web_run_options_tick();
 void web_adventure_tick();
 void json_adventure(JsonWriter &w);
+store_type *linked_home(int town);
+void json_linked_homes(JsonWriter &w);
 
-/* Shared with the other exports (engine/knowledge.cc). */
+/* Shared with the other exports (engine/knowledge.cc, engine/homes.cc). */
 /*
  * True once the character has a level, including while a new level is being
  * generated: quest hooks print messages (with -more-) before the engine marks
@@ -145,6 +147,36 @@ bool begin_ready(JsonWriter &w)
 	w.field("ready", ready ? 1 : 0);
 	if (!ready) w.end_object();
 	return ready;
+}
+
+/* The shop (or home) on the player's grid, as do_cmd_store finds it; null elsewhere. */
+store_type *store_here(int *which)
+{
+	if (!(level_ready() && town_info) || p_ptr->wild_mode) return nullptr;
+	auto const &c_ptr = cave[p_ptr->py][p_ptr->px];
+	if (c_ptr.feat != FEAT_SHOP) return nullptr;
+	auto &stores = town_info[p_ptr->town_num].store;
+	if (c_ptr.special < 0 || static_cast<std::size_t>(c_ptr.special) >= stores.size()) return nullptr;
+	if (which) *which = c_ptr.special;
+	return &stores[c_ptr.special];
+}
+
+/* An item on a shelf by its place in the stock: named as the home and museums name it, or as a shop does, with the price of one. */
+void json_stock_item(JsonWriter &w, std::size_t i, object_type *o_ptr, bool home_like, long price)
+{
+	char name[160];
+	if (home_like) object_desc(name, o_ptr, true, 3);
+	else object_desc_store(name, o_ptr, true, 3);
+	w.begin_object();
+	w.field("i", i);
+	w.field("name", name);
+	w.field("tval", o_ptr->tval);
+	w.field("number", o_ptr->number);
+	w.field("weight", o_ptr->weight);
+	w.field("ch", static_cast<unsigned char>(object_char(o_ptr)));
+	w.field("attr", object_attr(o_ptr));
+	w.field("price", price);
+	w.end_object();
 }
 
 namespace {
@@ -628,21 +660,6 @@ std::string spell_schools(spell_type *spell)
 		out += school_at(school_idx)->name;
 	}
 	return out;
-}
-
-/* tome2's store number of the home (store.cc's cur_store_num 7). */
-constexpr int HOME_STORE = 7;
-
-/* The shop (or home) on the player's grid, as do_cmd_store finds it; null elsewhere. */
-store_type *store_here(int *which = nullptr)
-{
-	if (!(level_ready() && town_info) || p_ptr->wild_mode) return nullptr;
-	auto const &c_ptr = cave[p_ptr->py][p_ptr->px];
-	if (c_ptr.feat != FEAT_SHOP) return nullptr;
-	auto &stores = town_info[p_ptr->town_num].store;
-	if (c_ptr.special < 0 || static_cast<std::size_t>(c_ptr.special) >= stores.size()) return nullptr;
-	if (which) *which = c_ptr.special;
-	return &stores[c_ptr.special];
 }
 
 /* store.cc's store names, which decide what each kind of shop buys. */
@@ -2061,10 +2078,14 @@ EMSCRIPTEN_KEEPALIVE char const *web_object_info(int item)
 	return item_info_json(valid ? get_object(item) : nullptr);
 }
 
-/* What the player knows about an item on the shelf of the shop (or home) they are in, by its position in the stock, as web_object_info. */
-EMSCRIPTEN_KEEPALIVE char const *web_store_object_info(int index)
+/*
+ * What the player knows about an item on a shelf, by its position in the
+ * stock, as web_object_info: of the shop (or home) they are in, or with
+ * `town` of another home of theirs it shows (engine/homes.cc).
+ */
+EMSCRIPTEN_KEEPALIVE char const *web_store_object_info(int town, int index)
 {
-	store_type *st = store_here();
+	store_type *st = town ? linked_home(town) : store_here(nullptr);
 	bool const valid = st && index >= 0 && index < static_cast<int>(st->stock.size());
 	return item_info_json(valid ? &st->stock[index] : nullptr);
 }
@@ -2075,7 +2096,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_object_info(int index)
  * to the hero, name), its whole stock (price of one to buy, as tome2 decides
  * how many the hero can afford; none in the home), and for each item carried whether
  * the shop takes it and what it pays for one ("why" says why not: "kind",
- * "worthless", "cursed", "full": no room on its shelves, "nothing").
+ * "worthless", "cursed", "full": no room on its shelves, "nothing"). A home
+ * also lists the other homes it shows ("linked", engine/homes.cc).
  */
 EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 {
@@ -2095,7 +2117,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 	}
 	auto const &info = st_info[st->st_idx];
 	auto const &owner = ow_info[st->owner];
-	bool const home = which == HOME_STORE;
+	bool const home = which == STORE_HOME;
 	bool const museum = bool(info.flags & STF_MUSEUM);
 
 	w.field("here", 1);
@@ -2131,22 +2153,11 @@ EMSCRIPTEN_KEEPALIVE char const *web_store_json()
 	for (std::size_t i = 0; i < st->stock.size(); i++)
 	{
 		auto *o_ptr = &st->stock[i];
-		char name[160];
-		if (home || museum) object_desc(name, o_ptr, true, 3);
-		else object_desc_store(name, o_ptr, true, 3);
-		w.begin_object();
-		w.field("i", i);
-		w.field("name", name);
-		w.field("tval", o_ptr->tval);
-		w.field("number", o_ptr->number);
-		w.field("weight", o_ptr->weight);
-		w.field("ch", static_cast<unsigned char>(object_char(o_ptr)));
-		w.field("attr", object_attr(o_ptr));
 		auto const one = one_of(o_ptr);
-		w.field("price", home || museum ? 0 : shop_price(*st, owner, &one, true));
-		w.end_object();
+		json_stock_item(w, i, o_ptr, home || museum, home || museum ? 0 : shop_price(*st, owner, &one, true));
 	}
 	w.end_array();
+	if (home) json_linked_homes(w);
 
 	w.key("sell").begin_array();
 	for (int i = 0; i < INVEN_TOTAL; i++)

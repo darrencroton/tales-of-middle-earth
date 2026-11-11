@@ -18,6 +18,8 @@ export interface Settings {
   sound: VolumeLevel;
   /** Dungeon levels stay as the hero left them (otherwise each visit makes a new one, as in classic ToME). */
   persistentLevels: boolean;
+  /** Each home shows the hero's other homes too, to take from (otherwise each keeps only its own, as in classic ToME). */
+  linkedHomes: boolean;
   /** How fast exploring and travel walk on screen. */
   explorePace: ExplorePace;
 }
@@ -64,6 +66,7 @@ export function defaultSettings(prefersReducedMotion: boolean): Settings {
     music: 'medium',
     sound: 'medium',
     persistentLevels: true,
+    linkedHomes: true,
     explorePace: 'normal',
   };
 }
@@ -82,6 +85,7 @@ export function sanitiseSettings(raw: unknown, defaults: Settings): Settings {
   const messages = value.messages === 'flow' || value.messages === 'pause' ? value.messages : defaults.messages;
   const volume = (v: unknown, fallback: VolumeLevel): VolumeLevel => (VOLUME_LEVELS.includes(v as VolumeLevel) ? (v as VolumeLevel) : fallback);
   const persistentLevels = typeof value.persistentLevels === 'boolean' ? value.persistentLevels : defaults.persistentLevels;
+  const linkedHomes = typeof value.linkedHomes === 'boolean' ? value.linkedHomes : defaults.linkedHomes;
   const explorePace = value.explorePace === 'normal' || value.explorePace === 'relaxed' ? value.explorePace : defaults.explorePace;
   return {
     animation,
@@ -92,6 +96,7 @@ export function sanitiseSettings(raw: unknown, defaults: Settings): Settings {
     music: volume(value.music, defaults.music),
     sound: volume(value.sound, defaults.sound),
     persistentLevels,
+    linkedHomes,
     explorePace,
   };
 }

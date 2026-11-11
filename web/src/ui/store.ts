@@ -2,7 +2,7 @@ import { KEY_BACKSLASH as BACKSLASH, KEY_ENTER as ENTER, KEY_SPACE as SPACE, key
 import { itemActions, itemMacro, SLOT_NAMES, type ItemAction, type ItemPlace } from '../play/items.ts';
 import { type Macro, type MacroScreen } from '../play/macro.ts';
 import { classifyPrompt } from '../play/prompts.ts';
-import { STORE_ACTION, type InventoryState, type ItemState, type StockItem, type StoreCommand, type StoreOffer, type StoreState } from '../render/snapshot.ts';
+import { STORE_ACTION, type InventoryState, type ItemState, type LinkedHome, type StockItem, type StoreCommand, type StoreOffer, type StoreState } from '../render/snapshot.ts';
 import type { GameApi } from './api.ts';
 import { capitalise, itemGlyph, pounds, titleName } from './api.ts';
 import { itemCardBody } from './inspect.ts';
@@ -173,6 +173,8 @@ const IN_SHOP = new Set(['wear', 'takeoff', 'inscribe', 'destroy']);
 export interface ShopHandlers {
   /** Runs a trade or another command in the shop, keeping the shop on screen; `done` is said once it has gone through. */
   trade(macro: Macro, done: string | null): void;
+  /** Takes some of an item from another home of the hero's (`LinkedHome.town`) into the pack; `done` is said once it has. */
+  takeFrom(town: number, item: number, quantity: number, done: string): void;
   /** Turns tome2's list to the page an item is on: the page shown now. */
   page(): number;
   /** The hero has the Stealing skill, so the shelf offers Steal. */
@@ -202,18 +204,32 @@ function row(api: GameApi, key: string, item: Pick<ItemState, 'ch' | 'attr' | 'n
   return button;
 }
 
-/** The shelf: everything for sale (or stored, or on show), one scrolling list; tap an item for its card. */
+/**
+ * The shelf: everything for sale (or stored, or on show), one scrolling list;
+ * tap an item for its card. A home with others linked lists what is here,
+ * then what each of the others holds, under its town's name.
+ */
 export function shelfElements(api: GameApi, store: StoreState, model: ShopModel, handlers: ShopHandlers): HTMLElement[] {
-  if (store.stock.length === 0) return [el('p', 'empty', model.shelf.empty)];
-  const list = el('div', 'item-list');
-  for (const item of store.stock) {
-    const short = !store.home && !store.museum && affordable(store, item) === 0;
-    const aside = store.home || store.museum ? pounds(item.weight * item.number) : `${item.price} gold`;
-    list.append(row(api, rowKey('stock', item.name), item, aside, !store.home && !store.museum, short, () => openShelfItem(api, store, model, item, handlers)));
-  }
-  const elements: HTMLElement[] = [list];
-  if (store.home) elements.unshift(el('p', 'shop-note muted', `Room on the shelves for ${Math.max(0, store.capacity - store.stock.length)} more.`));
-  return elements;
+  const linked = store.linked ?? [];
+  if (store.stock.length === 0 && !linked.length) return [el('p', 'empty', model.shelf.empty)];
+  const listOf = (stock: readonly StockItem[], from: LinkedHome | null) => {
+    const list = el('div', 'item-list');
+    for (const item of stock) {
+      const short = !store.home && !store.museum && affordable(store, item) === 0;
+      const aside = store.home || store.museum ? pounds(item.weight * item.number) : `${item.price} gold`;
+      const key = rowKey(from ? `home${from.town}` : 'stock', item.name);
+      list.append(row(api, key, item, aside, !store.home && !store.museum, short, () => openShelfItem(api, store, model, item, from, handlers)));
+    }
+    return list;
+  };
+  if (!store.home) return [listOf(store.stock, null)];
+  const room = Math.max(0, store.capacity - store.stock.length);
+  if (!linked.length) return [el('p', 'shop-note muted', `Room on the shelves for ${room} more.`), listOf(store.stock, null)];
+  return [
+    el('p', 'shop-note muted', `Room on the shelves here for ${room} more.`),
+    section('Here', store.stock.length ? listOf(store.stock, null) : el('p', 'empty', 'Nothing is stored here yet.')),
+    ...linked.map((home) => section(`In ${home.place}`, listOf(home.stock, home))),
+  ];
 }
 
 /** What the hero carries, pack and equipment, each with what the shop offers for it or why it will not take it. */
@@ -254,8 +270,8 @@ export function offerElements(api: GameApi, store: StoreState, model: ShopModel,
   return elements;
 }
 
-/** One item on the shelf: what it is and costs, how many to take, and Buy (or Take), or Steal one for a thief; looking costs nothing. */
-function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: StockItem, handlers: ShopHandlers): void {
+/** One item on the shelf (or in another home, `from`): what it is and costs, how many to take, and Buy (or Take), or Steal one for a thief; looking costs nothing. */
+function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: StockItem, from: LinkedHome | null, handlers: ShopHandlers): void {
   const body = el('div', 'item-detail');
   const most = affordable(store, item);
   const shop = !store.home && !store.museum;
@@ -272,10 +288,11 @@ function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: 
   if (amount) body.append(amount.element);
   const short = verb && shop && most === 0 ? `You have ${store.gold} gold: not enough for one.` : null;
   if (short) body.append(el('p', 'shop-short', short));
-  body.append(itemCardBody(api, api.engine.storeItemInfo(item.i), 'Nothing more is known about it until you own it.'));
+  body.append(itemCardBody(api, api.engine.storeItemInfo(item.i, from?.town), 'Nothing more is known about it until you own it.'));
+  const where = from ? `In your home in ${from.place}` : store.home ? 'In your home' : 'On show';
   const subtitle = shop
     ? [`${item.price} gold each`, item.number > 1 ? `${item.number} for sale` : '', pounds(item.weight)].filter(Boolean).join(' · ')
-    : [store.home ? 'In your home' : 'On show', item.number > 1 ? `${item.number} here` : '', pounds(item.weight)].filter(Boolean).join(' · ');
+    : [where, item.number > 1 ? `${item.number} ${from ? 'there' : 'here'}` : '', pounds(item.weight)].filter(Boolean).join(' · ');
   const actions: SheetAction[] = [];
   const key = model.shelf.key;
   if (verb && key) {
@@ -286,8 +303,8 @@ function openShelfItem(api: GameApi, store: StoreState, model: ShopModel, item: 
       unavailable: short,
       run: () => {
         const name = traded(item.name, quantity);
-        const done = shop ? `Bought ${name} for ${quantity * item.price} gold.` : `Took ${name} from home.`;
-        handlers.trade(shelfMacro(key, item.i, quantity, store.stock.length, handlers.page()), done);
+        if (from) handlers.takeFrom(from.town, item.i, quantity, `Took ${name} from your home in ${from.place}.`);
+        else handlers.trade(shelfMacro(key, item.i, quantity, store.stock.length, handlers.page()), shop ? `Bought ${name} for ${quantity * item.price} gold.` : `Took ${name} from home.`);
       },
     });
   }

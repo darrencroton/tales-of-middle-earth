@@ -516,6 +516,15 @@ export interface StoreOffer {
   price: number;
 }
 
+/** Another home of the hero's, shown in the home they stand in (Settings → Home storage: linked; `engine/homes.cc`). */
+export interface LinkedHome {
+  /** tome2's town, which names the home to take from. */
+  town: number;
+  /** The town's name. */
+  place: string;
+  stock: StockItem[];
+}
+
 /** The shop or home on the hero's grid (`web_store_json`). */
 export interface StoreState {
   here: number;
@@ -533,6 +542,8 @@ export interface StoreState {
   capacity: number;
   actions: StoreCommand[];
   stock: StockItem[];
+  /** In a home: the hero's other homes holding something, while homes are linked. */
+  linked?: LinkedHome[];
   sell: StoreOffer[];
 }
 

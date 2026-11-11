@@ -415,11 +415,11 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Shops and money',
         icon: '$',
         summary: 'Buying, selling and your home.',
-        keywords: 'shop store buy sell gold money price home stash keep museum donate general store armoury weaponsmith temple alchemist magic black market',
+        keywords: 'shop store buy sell gold money price home homes linked storage stash keep museum donate general store armoury weaponsmith temple alchemist magic black market',
         body: [
           'Walk into a shop’s door to trade; standing at the door, *Enter shop* on the toolbar takes you back in. *Buy* lists everything for sale, *Sell* what you carry. Tap an item for its description, then *Buy* or *Sell*, choosing how many. Things you cannot afford, or the shop will not take, are dimmed and say why.',
           'Each shop buys only its own kind of goods, and some specialist shops buy nothing at all. Unless you chose *No selling* when you began, shops pay for what they take. With No selling they pay nothing, but gold found lying about is worth five times as much.',
-          'Your *Home* keeps anything you leave there safe: *Inventory* to store what you carry, *Stored* to take it back.',
+          'Your *Home* keeps anything you leave there safe: *Inventory* to store what you carry, *Stored* to take it back. Clearing the thieves out of Bree earns you a home there, and other towns have homes to earn too. Your homes are linked: each lists what all of them hold, the others’ under their town’s name, and you can take anything from any of them. What you store stays in the home you leave it in (Settings → Home storage: *Separate* keeps each home to its own).',
           'A hero with the Stealing skill can try to *Steal* from a shop’s shelf instead of paying. Caught, they are thrown out for a long while.',
           {
             terms: [
@@ -614,7 +614,7 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Settings',
         icon: '⚙',
         summary: 'Text size, sound, animation, pace and more.',
-        keywords: 'settings options text size font music sound volume animation messages exploring pace dungeon levels map symbols zoom',
+        keywords: 'settings options text size font music sound volume animation messages exploring pace dungeon levels home storage linked map symbols zoom',
         body: [
           'Menu → *Settings*, or Settings on the title screen:',
           {
@@ -625,6 +625,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Messages', 'Let them flow past, or pause at each.'],
               ['Exploring', 'The pace of Explore and travel.'],
               ['Dungeon levels', 'Kept as you left them, or new each visit. Towns and the land are always remembered.'],
+              ['Home storage', 'Linked, every home you own lists and hands out what all of them hold; separate, each only its own.'],
               ['Map symbols', 'Shaded symbols, or classic letters.'],
               ['Map zoom', 'How close the map is; pinching does the same.'],
             ],
