@@ -1,14 +1,17 @@
 import { INVEN_WIELD } from '../play/items.ts';
 import {
+  booksCastableFirst,
   displayName,
   hasMagic,
   hasPowers,
   itemRecent,
   magicArts,
+  powerReached,
   recentKey,
   rememberRecent,
   skillActionName,
   techniques,
+  usableFirst,
   usableRecents,
   validRecent,
   type RecentAction,
@@ -109,8 +112,8 @@ function magicItemRow(api: GameApi, item: MagicItem, handlers: MagicHandlers): H
   return row;
 }
 
-function rowButton(label: string, hint: string, icon: string, key: string, run: () => void): HTMLButtonElement {
-  const button = el('button', 'row-button');
+function rowButton(label: string, hint: string, icon: string, key: string, run: () => void, unavailable = false): HTMLButtonElement {
+  const button = el('button', `row-button${unavailable ? ' unavailable' : ''}`);
   button.type = 'button';
   button.dataset.nav = '';
   button.dataset.key = key;
@@ -156,7 +159,8 @@ function powerMeta(power: PowerInfo): string {
 function openPower(api: GameApi, power: PowerInfo, handlers: MagicHandlers): void {
   const body = el('div', 'inspect');
   const grid = el('div', 'stat-grid');
-  if (power.level > 1) grid.append(stat('Level', String(power.level), (api.state()?.player?.lev ?? 0) < power.level ? 'bad' : ''));
+  const ok = reached(api, power);
+  if (power.level > 1) grid.append(stat('Level', String(power.level), ok ? '' : 'bad'));
   grid.append(stat('Mana', power.cost ? String(power.cost) : 'None'));
   body.append(grid);
   const text = el('div', 'description');
@@ -175,15 +179,30 @@ function openPower(api: GameApi, power: PowerInfo, handlers: MagicHandlers): voi
     body,
     kind: 'card',
     className: 'sheet-item',
-    actions: [{ id: 'use', label: `Use ${displayName(power.name)}`, primary: true, run: () => handlers.run({ kind: 'path', command: 'U', steps: [power.name] }) }],
+    actions: [
+      {
+        id: 'use',
+        label: `Use ${displayName(power.name)}`,
+        primary: true,
+        unavailable: ok ? null : `You need to reach level ${power.level} to use this.`,
+        run: () => handlers.run({ kind: 'path', command: 'U', steps: [power.name] }),
+      },
+    ],
   });
 }
 
-/** A power as a tappable row (one tap uses it), with ⓘ for what it does. */
+/** The hero has reached the level a power needs. */
+function reached(api: GameApi, power: PowerInfo): boolean {
+  return powerReached(power, api.state()?.player?.lev ?? 0);
+}
+
+/** A power as a tappable row (one tap uses it; below the level it needs, dimmed and opening its card), with ⓘ for what it does. */
 function powerRow(api: GameApi, power: PowerInfo, handlers: MagicHandlers): HTMLElement {
   const row = el('div', 'spell-line');
   const hint = power.source === 'gear' ? [powerMeta(power), grantor(power)].filter(Boolean).join(' · ') : powerMeta(power);
-  row.append(rowButton(displayName(power.name), hint, '❂', `bonus-${power.name}`, () => handlers.run({ kind: 'path', command: 'U', steps: [power.name] })));
+  const ok = reached(api, power);
+  const tap = () => (ok ? handlers.run({ kind: 'path', command: 'U', steps: [power.name] }) : openPower(api, power, handlers));
+  row.append(rowButton(displayName(power.name), hint, '❂', `bonus-${power.name}`, tap, !ok));
   const info = el('button', 'tv-info', 'i');
   info.type = 'button';
   info.setAttribute('aria-label', `About ${displayName(power.name)}`);
@@ -225,7 +244,7 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
   if (recent) body.append(recent);
 
   if (current === 'magic') {
-    for (const book of spells?.books ?? []) {
+    for (const book of booksCastableFirst(spells)) {
       const list = el('div', 'menu-list');
       for (const spell of book.spells) list.append(magicSpellRow(api, spell, handlers));
       body.append(section(book.name.replace(/^(a|an|the) /i, ''), list));
@@ -234,22 +253,23 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
     if (arts.length) body.append(section('Magic arts', skillList(arts, '✧', handlers)));
   } else {
     const magicItems = spells?.items ?? [];
-    const groups = new Map<string, HTMLElement[]>();
-    const add = (heading: string, row: HTMLElement) => groups.set(heading, [...(groups.get(heading) ?? []), row]);
+    const groups = new Map<string, { row: HTMLElement; usable: boolean }[]>();
+    const add = (heading: string, row: HTMLElement, usable: boolean) => groups.set(heading, [...(groups.get(heading) ?? []), { row, usable }]);
     for (const source of SOURCE_ORDER) {
-      for (const power of spells?.bonus ?? []) if (power.source === source) add(powerHeading(power), powerRow(api, power, handlers));
+      for (const power of spells?.bonus ?? []) if (power.source === source) add(powerHeading(power), powerRow(api, power, handlers), reached(api, power));
       if (source !== 'gear') continue;
-      const worn = (item: MagicItem) => (item.i >= INVEN_WIELD ? 0 : 1);
-      for (const item of magicItems.filter((m) => m.command === 'A').sort((a, b) => worn(a) - worn(b))) add('Gear', magicItemRow(api, item, handlers));
-      for (const item of magicItems) if (item.command !== 'A') add('Devices', magicItemRow(api, item, handlers));
+      const activated = magicItems.filter((m) => m.command === 'A');
+      for (const item of usableFirst(activated, (m) => m.i >= INVEN_WIELD)) add('Gear', magicItemRow(api, item, handlers), !item.wear);
+      for (const item of magicItems) if (item.command !== 'A') add('Devices', magicItemRow(api, item, handlers), true);
     }
-    for (const [heading, rows] of groups) {
+    const lists = [...groups].map(([heading, entries]) => ({ heading, rows: usableFirst(entries, (e) => e.usable).map((e) => e.row), usable: entries.some((e) => e.usable) }));
+    for (const { heading, rows } of usableFirst(lists, (l) => l.usable)) {
       const list = el('div', 'menu-list');
       list.append(...rows);
       body.append(section(heading, list));
     }
     if (items) {
-      const rows = [...(groups.get('Gear') ?? []), ...(groups.get('Devices') ?? [])].map((row) => row.querySelector<HTMLElement>('.spell-row[data-key^="item:"]'));
+      const rows = lists.filter((l) => l.heading === 'Gear' || l.heading === 'Devices').flatMap((l) => l.rows).map((row) => row.querySelector<HTMLElement>('.spell-row[data-key^="item:"]'));
       initial = rows.find((row) => row && !row.classList.contains('unavailable')) ?? null;
     }
     const moves = techniques(spells);

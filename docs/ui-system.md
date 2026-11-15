@@ -22,7 +22,10 @@ Map (toolbar, HUD, gestures)
 │   │                             └── Inscribe      card at the top (text field)             depth 3
 │   ├── Cast / Powers ─────── Magic · Powers       panel, two tabs, each headed by Recent:  depth 1
 │   │                         Magic: books, Magic arts · Powers: by race, class, form; Gear (its powers, what
-│   │                         activates), Devices (wands, staffs, rods); corruption; Techniques — a tap uses it
+│   │                         activates), Devices (wands, staffs, rods); corruption; Techniques — a tap uses it;
+│   │                         what the hero can use first, in books and headings alike (spells not yet
+│   │                         castable, powers above their level, gear to be worn first after), never by
+│   │                         mana, charges or a target, so nothing moves from turn to turn
 │   │                         ├── Spell / power     card over the panel (figures, needs; Cast / Use) depth 2
 │   │                         └── Item              ⓘ on gear or a device: its item card (Activate, Aim, Zap…) depth 2
 │   ├── More ──────────────── Commands             panel: commands by intent (section 7)   depth 1

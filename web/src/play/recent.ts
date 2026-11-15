@@ -1,5 +1,5 @@
 import { KEY_BACKSLASH as BACKSLASH, KEY_ESCAPE, keyCodes, typedAnswer } from '../input/keys.ts';
-import type { InventoryState, ItemState, MagicItem, SpellState } from '../render/snapshot.ts';
+import type { InventoryState, ItemState, MagicItem, PowerInfo, SpellState } from '../render/snapshot.ts';
 import { INVEN_WIELD, useAction, type ItemAction, type ItemPlace } from './items.ts';
 import { bracketChoices, classifyPrompt } from './prompts.ts';
 import type { Macro, MacroScreen } from './macro.ts';
@@ -80,6 +80,22 @@ export function magicArts(spells: SpellState | null): SpellState['powers'] {
 /** The other "use a skill" entries: techniques such as Piercing shots, Mimicry or Forge ammo (Steal is More's). */
 export function techniques(spells: SpellState | null): SpellState['powers'] {
   return (spells?.powers ?? []).filter((p) => p.mkey !== MKEY_SCHOOL && p.mkey !== MKEY_STEAL && !isMagicArt(p.label));
+}
+
+/** `list` with the entries `usable` accepts first, each part in its own order. */
+export function usableFirst<T>(list: readonly T[], usable: (entry: T) => boolean): T[] {
+  return [...list.filter(usable), ...list.filter((entry) => !usable(entry))];
+}
+
+/** The hero has reached the level a power needs. */
+export function powerReached(power: PowerInfo, level: number): boolean {
+  return level >= power.level;
+}
+
+/** The hero's spell books, those with a spell the hero can cast first, and in each its castable spells first. */
+export function booksCastableFirst(spells: SpellState | null): SpellState['books'] {
+  const books = (spells?.books ?? []).map((book) => ({ ...book, spells: usableFirst(book.spells, (spell) => !!spell.ok) }));
+  return usableFirst(books, (book) => book.spells.some((spell) => spell.ok));
 }
 
 /** The hero has spells in their books or a magic art to use. */
@@ -266,7 +282,7 @@ export function quickRecent(
     if (magic) return magic;
     const first = spells?.books.flatMap((b) => b.spells).find((spell) => spell.ok);
     if (first) return { kind: 'spell', name: first.name };
-    const power = spells?.bonus.find((p) => p.level <= level);
+    const power = spells?.bonus.find((p) => powerReached(p, level));
     if (power) return { kind: 'path', command: 'U', steps: [power.name] };
     return null;
   }
