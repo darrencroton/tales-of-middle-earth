@@ -1,11 +1,12 @@
 import { INVEN_WIELD } from '../play/items.ts';
 import {
-  castableBooks,
+  booksCastableFirst,
   displayName,
   hasMagic,
   hasPowers,
   itemRecent,
   magicArts,
+  powerReached,
   recentKey,
   rememberRecent,
   skillActionName,
@@ -158,7 +159,8 @@ function powerMeta(power: PowerInfo): string {
 function openPower(api: GameApi, power: PowerInfo, handlers: MagicHandlers): void {
   const body = el('div', 'inspect');
   const grid = el('div', 'stat-grid');
-  if (power.level > 1) grid.append(stat('Level', String(power.level), powerReached(api, power) ? '' : 'bad'));
+  const ok = reached(api, power);
+  if (power.level > 1) grid.append(stat('Level', String(power.level), ok ? '' : 'bad'));
   grid.append(stat('Mana', power.cost ? String(power.cost) : 'None'));
   body.append(grid);
   const text = el('div', 'description');
@@ -177,21 +179,30 @@ function openPower(api: GameApi, power: PowerInfo, handlers: MagicHandlers): voi
     body,
     kind: 'card',
     className: 'sheet-item',
-    actions: [{ id: 'use', label: `Use ${displayName(power.name)}`, primary: true, run: () => handlers.run({ kind: 'path', command: 'U', steps: [power.name] }) }],
+    actions: [
+      {
+        id: 'use',
+        label: `Use ${displayName(power.name)}`,
+        primary: true,
+        unavailable: ok ? null : `You need to reach level ${power.level} to use this.`,
+        run: () => handlers.run({ kind: 'path', command: 'U', steps: [power.name] }),
+      },
+    ],
   });
 }
 
 /** The hero has reached the level a power needs. */
-function powerReached(api: GameApi, power: PowerInfo): boolean {
-  return (api.state()?.player?.lev ?? 0) >= power.level;
+function reached(api: GameApi, power: PowerInfo): boolean {
+  return powerReached(power, api.state()?.player?.lev ?? 0);
 }
 
-/** A power as a tappable row (one tap uses it; dimmed below the level it needs), with ⓘ for what it does. */
+/** A power as a tappable row (one tap uses it; below the level it needs, dimmed and opening its card), with ⓘ for what it does. */
 function powerRow(api: GameApi, power: PowerInfo, handlers: MagicHandlers): HTMLElement {
   const row = el('div', 'spell-line');
   const hint = power.source === 'gear' ? [powerMeta(power), grantor(power)].filter(Boolean).join(' · ') : powerMeta(power);
-  const use = () => handlers.run({ kind: 'path', command: 'U', steps: [power.name] });
-  row.append(rowButton(displayName(power.name), hint, '❂', `bonus-${power.name}`, use, !powerReached(api, power)));
+  const ok = reached(api, power);
+  const tap = () => (ok ? handlers.run({ kind: 'path', command: 'U', steps: [power.name] }) : openPower(api, power, handlers));
+  row.append(rowButton(displayName(power.name), hint, '❂', `bonus-${power.name}`, tap, !ok));
   const info = el('button', 'tv-info', 'i');
   info.type = 'button';
   info.setAttribute('aria-label', `About ${displayName(power.name)}`);
@@ -233,7 +244,7 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
   if (recent) body.append(recent);
 
   if (current === 'magic') {
-    for (const book of castableBooks(spells)) {
+    for (const book of booksCastableFirst(spells)) {
       const list = el('div', 'menu-list');
       for (const spell of book.spells) list.append(magicSpellRow(api, spell, handlers));
       body.append(section(book.name.replace(/^(a|an|the) /i, ''), list));
@@ -245,7 +256,7 @@ export function openMagic(api: GameApi, recents: readonly RecentAction[], handle
     const groups = new Map<string, { row: HTMLElement; usable: boolean }[]>();
     const add = (heading: string, row: HTMLElement, usable: boolean) => groups.set(heading, [...(groups.get(heading) ?? []), { row, usable }]);
     for (const source of SOURCE_ORDER) {
-      for (const power of spells?.bonus ?? []) if (power.source === source) add(powerHeading(power), powerRow(api, power, handlers), powerReached(api, power));
+      for (const power of spells?.bonus ?? []) if (power.source === source) add(powerHeading(power), powerRow(api, power, handlers), reached(api, power));
       if (source !== 'gear') continue;
       const activated = magicItems.filter((m) => m.command === 'A');
       for (const item of usableFirst(activated, (m) => m.i >= INVEN_WIELD)) add('Gear', magicItemRow(api, item, handlers), !item.wear);

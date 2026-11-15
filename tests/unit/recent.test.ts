@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import {
-  castableBooks,
+  booksCastableFirst,
   castSpellMacro,
   CastWatcher,
   fireMacro,
@@ -310,7 +310,7 @@ describe('usable first', () => {
       items: [],
       powers: [],
     };
-    const books = castableBooks(spells);
+    const books = booksCastableFirst(spells);
     assert.deepEqual(
       books.map((b) => [b.name, b.spells.map((s) => s.name)]),
       [
@@ -320,6 +320,6 @@ describe('usable first', () => {
       ],
     );
     assert.deepEqual(spells.books[1].spells.map((s) => s.name), ['Fire Golem', 'Manathrust', 'Phase Door']);
-    assert.deepEqual(castableBooks(null), []);
+    assert.deepEqual(booksCastableFirst(null), []);
   });
 });
