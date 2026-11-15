@@ -8,7 +8,7 @@ export function cleanPrompt(text: string): string {
   let t = text.replace(/\s+/g, ' ').trim();
   if (/Help file '[^']+'/.test(t)) return 'Help';
   if (/Use which power of your golem\?/.test(t)) return 'Creature powers';
-  if (/^Reset recall depth\?/.test(t)) return 'Next time, recall to this level instead of the deepest?';
+  if (/^Reset recall depth\?/.test(t)) return 'Next time, recall to this level?';
   if (/, (Info file|File) '[^']+', Line \d+\/\d+\]$/.test(t)) return 'Reading';
   const viewer = /^\[[^\]]*?\),\s*(.+?),\s*Line \d+\/\d+\]$/.exec(t);
   if (viewer) return viewer[1];
@@ -61,7 +61,7 @@ export interface NumberQuestion {
 /* tome2 asks how many without saying the most (fireproofing a stack); the stepper offers up to this. */
 const UNSTATED_MOST = 99;
 
-/** Reads a quantity prompt: "Quantity (1-6): 1", "How many would you like fireproofed? 1", "Which level in Mirkwood(11-14)? 14". */
+/** Reads a quantity prompt: "Quantity (1-6): 1", "How many would you like fireproofed? 1", "Which level in Mirkwood(11-14)? 1". */
 export function numberQuestion(text: string): NumberQuestion {
   const range = NUMBER_RANGE.exec(text);
   const min = range ? Number(range[1]) : 1;
@@ -77,6 +77,7 @@ export function numberQuestion(text: string): NumberQuestion {
     };
   }
   const question = text.slice(0, text.search(/[?:]/) + 1 || undefined).replace(NUMBER_RANGE, '');
-  const title = /^Quantity\b/i.test(question) ? 'How many?' : `${cleanPrompt(question).replace(/[?:]$/, '')}?`;
-  return { title, min, max, most: `All ${max}` };
+  const quantity = /^Quantity\b/i.test(question);
+  const title = quantity ? 'How many?' : `${cleanPrompt(question).replace(/[?:]$/, '')}?`;
+  return { title, min, max, most: quantity || /^How many\b/i.test(question) ? `All ${max}` : `Most (${max})` };
 }

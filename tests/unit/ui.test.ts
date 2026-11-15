@@ -477,13 +477,13 @@ describe('file viewer headings', () => {
   it('words number questions by what the number means', () => {
     assert.deepEqual(numberQuestion('Quantity (1-6): 1'), { title: 'How many?', min: 1, max: 6, most: 'All 6' });
     assert.deepEqual(numberQuestion('How many would you like fireproofed? 1'), { title: 'How many would you like fireproofed?', min: 1, max: 99, most: 'All 99' });
-    assert.deepEqual(numberQuestion('Your wager (1-5000) ? '), { title: 'Your wager?', min: 1, max: 5000, most: 'All 5000' });
-    const depth = numberQuestion('Which level in Mirkwood(11-14)? 14');
+    assert.deepEqual(numberQuestion('Your wager (1-5000) ? '), { title: 'Your wager?', min: 1, max: 5000, most: 'Most (5000)' });
+    const depth = numberQuestion('Which level in Mirkwood(11-14)? 1');
     assert.equal(depth.title, 'How deep in Mirkwood?');
     assert.deepEqual([depth.min, depth.max, depth.most], [11, 14, 'Deepest']);
     assert.match(depth.hint ?? '', /Level 11 to 14/);
     assert.equal(numberQuestion('Which level in Maze(25-25)? 1').hint, 'Word of Recall takes you to level 25.');
-    assert.equal(cleanPrompt('Reset recall depth? [y/n]'), 'Next time, recall to this level instead of the deepest?');
+    assert.equal(cleanPrompt('Reset recall depth? [y/n]'), 'Next time, recall to this level?');
   });
 
   it('titles knowledge and help files', () => {

@@ -780,7 +780,9 @@ function refresh(): void {
   }
   leadMessages = leadInMessages(commandState, state, atCommands, settings.messages === 'flow');
 
-  if (snap.icky || shop.trading) {
+  /* Choosing where Word of Recall leads: tome2 leaves its icky mode at each key that redraws its list. */
+  const recallChoice = currentPrompt() === 'dungeon' || /^Which dungeon\? /.test(rowZeroText());
+  if (snap.icky || shop.trading || shop.serving || recallChoice) {
     setMode('overlay');
     const under = engine.savedScreen() ?? base;
     const region = (under ? buffer.diffBounds(under, 1) : null) ?? { x0: 0, y0: 1, x1: buffer.cols - 1, y1: buffer.rows - 1 };
@@ -808,8 +810,10 @@ function refresh(): void {
       termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero for their tale' }, `fame:${scores.length}:${shown}`, () =>
         heroes.fameRows(scores, shown, true),
       );
-    } else if (currentPrompt() === 'dungeon') {
-      renderRecallChoice(termView, engine.knowledge(), (keys) => send(keyCodes(keys)));
+    } else if (recallChoice) {
+      renderRecallChoice(termView, engine.knowledge(), (keys) => {
+        if (currentPrompt() === 'dungeon' && engine.pendingKeys === 0) send(keyCodes(keys));
+      });
     } else if (store) {
       shop.render();
     } else if (character.render(screen) || characterView) {
@@ -1055,7 +1059,7 @@ function updateActionBar(force = false): void {
       prompt: journeys.answering ? 'none' : prompt,
       promptText: rowZeroText(),
       cardShown: promptCard.visible,
-      listShown: termView.visible && (termView.choices().length > 0 || termView.options().length > 0),
+      listShown: termView.visible && (termView.native || termView.choices().length > 0 || termView.options().length > 0),
       fallen: hasFallen(game.lastState?.player),
       screen: !termView.visible ? null : termView.options().length ? 'options' : /You may now dump a character record/.test(buffer.screenText()) || (game.ended && /Hall of Fame/.test(rowZeroText())) ? 'gameover' : reader.heading() ? 'file' : null,
       looking,

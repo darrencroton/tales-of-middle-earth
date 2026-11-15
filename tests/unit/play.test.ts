@@ -761,7 +761,7 @@ describe('actions', () => {
   });
 
   it('recognises numbers asked for with a range, and the choice of where Word of Recall leads', () => {
-    assert.equal(classifyPrompt('Which level in Barrow-Downs(1-5)? 5', true), 'quantity');
+    assert.equal(classifyPrompt('Which level in Barrow-Downs(1-5)? 1', true), 'quantity');
     assert.equal(classifyPrompt('Your wager (1-5000) ? ', true), 'quantity');
     assert.equal(classifyPrompt('Jump to level (0-127): ', true), 'quantity');
     assert.equal(classifyPrompt('Select a dungeon (a-c), * to list, @ to select by name, +/- to scroll:'), 'dungeon');

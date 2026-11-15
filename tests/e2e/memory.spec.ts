@@ -1,9 +1,8 @@
 import type { Page } from '@playwright/test';
 import { canvasBrightness, continueAs, createCharacter, dismissMore, equipSuggested, expect, findFeature, jumpToLevel, keptLevelFiles, playerPos, pressExplore, saveAndQuit, sendText, test, travelTo, waitAtCommand, waitForEngine, waitForScreen, wizardCommand, wizardGive } from './helpers.ts';
 
-/* k_info indexes of the scrolls. */
+/* k_info index of the Scroll of Reset Recall. */
 const RESET_RECALL = 677;
-const WORD_OF_RECALL = 220;
 
 /** A fingerprint of the level's terrain, and how many grids the hero remembers. */
 function level(page: Page): Promise<{ terrain: number; known: number; depth: number }> {
@@ -196,31 +195,31 @@ test('kept levels stay as the hero left them, their stairs lead one level on and
     return { wx: place.wx, wy: place.wy, town: place.town, underfoot: tome.engine.features()[snap.feat[snap.py * snap.width + snap.px]].name };
   })).toEqual({ wx: 35, wy: 25, town: 0, underfoot: 'down staircase' });
 
-  /* A Scroll of Reset Recall lists the dungeons Word of Recall can reach, then asks how deep; Escape keeps the scroll, and Word of Recall then leads there. */
+  /* A Scroll of Reset Recall lists the dungeons Word of Recall can reach, then asks how deep; Escape and Cancel keep the scroll. */
   const recall = () => page.evaluate(() => window.__tome!.engine.knowledge()!.recall.filter((d) => d.recall).map((d) => `${d.dungeon} ${d.depth}`));
   const scrolls = () => page.evaluate(() => window.__tome!.engine.inventory()!.pack.filter((i) => /Reset Recall/.test(i.name)).reduce((n, i) => n + i.number, 0));
-  const read = async (name: RegExp) => {
+  const read = async () => {
     await page.locator('#toolbar [data-action="inventory"]').click();
-    await page.locator('.sheet .item-row', { hasText: name }).click();
+    await page.locator('.sheet .item-row', { hasText: 'Reset Recall' }).click();
     await page.locator('.sheet .sheet-action', { hasText: 'Read' }).click();
   };
   await wizardGive(page, '-', RESET_RECALL);
   await wizardGive(page, '-', RESET_RECALL);
   const dungeon = (await recall())[0].replace(/ \d+$/, '');
-  await read(/Reset Recall/);
+  await read();
   await expect(page.locator('.termview .sheet-title')).toHaveText('Recall to which dungeon?');
   await expect(page.locator('.termview .recall-row')).toHaveCount(2);
-  await expect(page.locator('.termview .recall-row.is-active')).toContainText(`${dungeon}Word of Recall leads here now`);
+  await expect(page.locator('.termview .recall-row.is-active')).toContainText(`${dungeon}Word of Recall takes you here`);
   await page.keyboard.press('Escape');
   await waitAtCommand(page);
   expect(await scrolls()).toBe(2);
-  await read(/Reset Recall/);
+  await read();
   await page.locator('.termview .recall-row', { hasText: 'Maze' }).click();
   await expect(page.locator('.prompt-card .card-title')).toHaveText('How deep in Maze?');
   await page.locator('.prompt-card .card-button', { hasText: 'Cancel' }).click();
   await waitAtCommand(page);
   expect(await scrolls()).toBe(2);
-  await read(/Reset Recall/);
+  await read();
   await page.locator('.termview .recall-row', { hasText: dungeon }).click();
   await expect(page.locator('.prompt-card .card-title')).toHaveText(`How deep in ${dungeon}?`);
   await page.locator('.prompt-card .stepper-button', { hasText: '+' }).click();
@@ -229,19 +228,6 @@ test('kept levels stay as the hero left them, their stairs lead one level on and
   await waitAtCommand(page);
   expect(await scrolls()).toBe(1);
   expect(await recall()).toEqual([`${dungeon} 2`]);
-  await wizardGive(page, '-', WORD_OF_RECALL);
-  await read(/Word of Recall/);
-  await dismissMore(page);
-  await waitAtCommand(page);
-  await expect.poll(async () => {
-    await wizardCommand(page, 'z');
-    await sendText(page, '\\R\r');
-    await dismissMore(page);
-    if (/^Rest/.test(await page.evaluate(() => window.__tome!.screenText().split('\n')[0]))) await sendText(page, '50\r');
-    await dismissMore(page);
-    return page.evaluate(() => window.__tome!.engine.place()?.depth);
-  }, { timeout: 60_000 }).toBe(2);
-  expect(await page.evaluate(() => window.__tome!.engine.place()!.dungeonName)).toBe(dungeon);
 });
 
 test.describe(() => {

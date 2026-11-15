@@ -24,7 +24,7 @@ export function renderRecallChoice(view: TermView, knowledge: Knowledge | null, 
         row.dataset.key = d.dungeon;
         const text = el('span', 'row-text');
         text.append(el('span', 'row-label', d.dungeon));
-        if (d.recall) text.append(el('span', 'row-line', 'Word of Recall leads here now'));
+        if (d.recall) text.append(el('span', 'row-line', 'Word of Recall takes you here'));
         row.append(el('span', 'row-icon', iconText('↧')), text, el('span', 'row-hint', `${d.depth * FEET_PER_LEVEL} ft (L${d.depth})`));
         row.addEventListener('click', () => choose(recallChoiceKeys(i, dungeons.length)));
         list.append(row);

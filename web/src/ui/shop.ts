@@ -101,6 +101,11 @@ export class ShopController {
     return !!this.trade && !!this.deps.api.engine.store();
   }
 
+  /** A service asked for is still being answered (tome2 may leave its icky mode while it asks something, as choosing where Word of Recall leads does). */
+  get serving(): boolean {
+    return !!this.service;
+  }
+
   /** The toolbar's actions while a shop is shown, else null. */
   actions(): Action[] | null {
     return this.shownShop ? SHOP_ACTIONS : null;
