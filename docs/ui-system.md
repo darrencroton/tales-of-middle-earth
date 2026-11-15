@@ -77,8 +77,10 @@ Map (toolbar, HUD, gestures)
 │   └── message log ───────── Messages             panel
 ├── Map tap / long-press ───── travel (a neutral creature beside you: talk; a wall beside you, with a digger: mark, and dig on a second tap) / look card (terrain; an altar's god, each creature and item there → its card)
 ├── A quest begun or ended ─── quest card (the scene tome2 told, then what it asks) or its banner
-└── tome2 asks something ───── question card on the map (yes/no, how many, text, direction,
-                               aim, lettered choice, message box) or a TermView panel
+└── tome2 asks something ───── question card on the map (yes/no, how many or another number, text,
+                               direction, aim, lettered choice, message box), a native panel (where
+                               Word of Recall leads: each dungeon with its recall depth, then How deep?)
+                               or a TermView panel
                                (item prompts, each item with ⓘ for its card; spell lists, each spell with ⓘ;
                                shops, options, other menus),
                                led by what tome2 said since it last waited for a command
@@ -259,7 +261,7 @@ Four things look different and never stand for each other:
 | Escape | One step back: the previous sheet in the frame, or closes a card. |
 | Backspace | Back, when the frame has a previous sheet. |
 | Arrows / swipes | Move the highlight; Enter / tap chooses. Long lists scroll naturally. Over a tome2 panel `TermView.handleKey` decides from what it shows: a native view's highlight, the reader's scroll and links, a tome2 menu without a cursor of its own; otherwise keys go to tome2. |
-| ← / → (or − / +) | Change a how-many stepper's number (`stepper` in `ui/dom.ts`: −, the number, +, All; shared by How many?, the shop's item cards and tome2's quantity card, where Enter then answers with it). Its buttons are not list rows, so ↑ / ↓ keep moving through the rows. |
+| ← / → (or − / +) | Change a how-many stepper's number (`stepper` in `ui/dom.ts`: −, the number, +, All; shared by How many?, the shop's item cards and tome2's quantity card, where Enter then answers with it; a range from tome2's question sets its least and most, *Deepest* for a recall depth). Its buttons are not list rows, so ↑ / ↓ keep moving through the rows. |
 
 - **Context is kept.** Sheets covered by a tome2 screen (a reading command,
   `api.command`, an item action that only shows something) reopen when it

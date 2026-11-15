@@ -17,8 +17,8 @@ export interface Knowledge {
   uniques: (KnownRace & { dead: number })[];
   /** Each kind of creature slain, with how many (a unique once). */
   kills: (KnownRace & { count: number; unique: number })[];
-  /** Dungeons with a recall depth; `recall` marks the one Word of Recall leads to. */
-  recall: { dungeon: string; depth: number; recall: number }[];
+  /** Dungeons with a recall depth; `recall` marks the one Word of Recall leads to, `blocked` those it cannot reach. */
+  recall: { dungeon: string; depth: number; recall: number; blocked?: number }[];
   /** Dungeon towns found. */
   towns: { dungeon: string; depth: number }[];
   corruptions: { name: string; attr: number; desc: string }[];
@@ -109,6 +109,20 @@ export function uniqueGroups(knowledge: Pick<Knowledge, 'uniques' | 'notes'>): {
 export function killList(knowledge: Pick<Knowledge, 'kills'>): { kills: Knowledge['kills']; total: number } {
   const kills = [...knowledge.kills].sort((a, b) => b.level - a.level || b.count - a.count || a.name.localeCompare(b.name));
   return { kills, total: kills.reduce((n, k) => n + k.count, 0) };
+}
+
+/* tome2 lists the dungeons Word of Recall can lead to twenty at a time. */
+const RECALL_BATCH = 20;
+
+/** The dungeons tome2 offers when choosing where Word of Recall leads, in its order: those with a recall depth that recall can reach. */
+export function recallChoices(knowledge: Pick<Knowledge, 'recall'>): Knowledge['recall'] {
+  return knowledge.recall.filter((d) => !d.blocked);
+}
+
+/** Keys choosing the `index`th of `total` dungeons in tome2's list: back to its first twenty ('-' stops there), on to the index's twenty, then its letter. */
+export function recallChoiceKeys(index: number, total: number): string {
+  const batches = Math.ceil(total / RECALL_BATCH);
+  return '-'.repeat(Math.max(0, batches - 1)) + '+'.repeat(Math.floor(index / RECALL_BATCH)) + String.fromCharCode(97 + (index % RECALL_BATCH));
 }
 
 /** Recall depths, the dungeon Word of Recall leads to first. */

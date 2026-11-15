@@ -1,5 +1,8 @@
 import type { Page } from '@playwright/test';
-import { canvasBrightness, continueAs, createCharacter, dismissMore, equipSuggested, expect, findFeature, jumpToLevel, keptLevelFiles, playerPos, pressExplore, saveAndQuit, sendText, test, travelTo, waitAtCommand, waitForEngine, waitForScreen, wizardCommand } from './helpers.ts';
+import { canvasBrightness, continueAs, createCharacter, dismissMore, equipSuggested, expect, findFeature, jumpToLevel, keptLevelFiles, playerPos, pressExplore, saveAndQuit, sendText, test, travelTo, waitAtCommand, waitForEngine, waitForScreen, wizardCommand, wizardGive } from './helpers.ts';
+
+/* k_info index of the Scroll of Reset Recall. */
+const RESET_RECALL = 677;
 
 /** A fingerprint of the level's terrain, and how many grids the hero remembers. */
 function level(page: Page): Promise<{ terrain: number; known: number; depth: number }> {
@@ -60,7 +63,7 @@ async function explore(page: Page, times: number): Promise<void> {
   await waitAtCommand(page);
 }
 
-test('kept levels stay as the hero left them, their stairs lead one level on and back, the way back is known, the heading follows the depth, and the first level stays as it was left after a trip up to the land', async ({ page }) => {
+test('kept levels stay as the hero left them, their stairs lead one level on and back, the way back is known, the heading follows the depth, and the first level stays as it was left after a trip up to the land; a Scroll of Reset Recall chooses where Word of Recall leads', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Keeper');
@@ -191,6 +194,40 @@ test('kept levels stay as the hero left them, their stairs lead one level on and
     const snap = tome.engine.snapshot()!;
     return { wx: place.wx, wy: place.wy, town: place.town, underfoot: tome.engine.features()[snap.feat[snap.py * snap.width + snap.px]].name };
   })).toEqual({ wx: 35, wy: 25, town: 0, underfoot: 'down staircase' });
+
+  /* A Scroll of Reset Recall lists the dungeons Word of Recall can reach, then asks how deep; Escape and Cancel keep the scroll. */
+  const recall = () => page.evaluate(() => window.__tome!.engine.knowledge()!.recall.filter((d) => d.recall).map((d) => `${d.dungeon} ${d.depth}`));
+  const scrolls = () => page.evaluate(() => window.__tome!.engine.inventory()!.pack.filter((i) => /Reset Recall/.test(i.name)).reduce((n, i) => n + i.number, 0));
+  const read = async () => {
+    await page.locator('#toolbar [data-action="inventory"]').click();
+    await page.locator('.sheet .item-row', { hasText: 'Reset Recall' }).click();
+    await page.locator('.sheet .sheet-action', { hasText: 'Read' }).click();
+  };
+  await wizardGive(page, '-', RESET_RECALL);
+  await wizardGive(page, '-', RESET_RECALL);
+  const dungeon = (await recall())[0].replace(/ \d+$/, '');
+  await read();
+  await expect(page.locator('.termview .sheet-title')).toHaveText('Recall to which dungeon?');
+  await expect(page.locator('.termview .recall-row')).toHaveCount(2);
+  await expect(page.locator('.termview .recall-row.is-active')).toContainText(`${dungeon}Word of Recall takes you here`);
+  await page.keyboard.press('Escape');
+  await waitAtCommand(page);
+  expect(await scrolls()).toBe(2);
+  await read();
+  await page.locator('.termview .recall-row', { hasText: 'Maze' }).click();
+  await expect(page.locator('.prompt-card .card-title')).toHaveText('How deep in Maze?');
+  await page.locator('.prompt-card .card-button', { hasText: 'Cancel' }).click();
+  await waitAtCommand(page);
+  expect(await scrolls()).toBe(2);
+  await read();
+  await page.locator('.termview .recall-row', { hasText: dungeon }).click();
+  await expect(page.locator('.prompt-card .card-title')).toHaveText(`How deep in ${dungeon}?`);
+  await page.locator('.prompt-card .stepper-button', { hasText: '+' }).click();
+  await page.locator('.prompt-card .card-button', { hasText: 'OK' }).click();
+  await dismissMore(page);
+  await waitAtCommand(page);
+  expect(await scrolls()).toBe(1);
+  expect(await recall()).toEqual([`${dungeon} 2`]);
 });
 
 test.describe(() => {

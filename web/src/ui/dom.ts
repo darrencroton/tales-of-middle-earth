@@ -91,13 +91,15 @@ export interface Stepper {
 }
 
 /**
- * A stepper choosing a number from one to `max`, starting at `initial`;
+ * A stepper choosing a number from one (or `range.min`) to `max`, starting
+ * at `initial`, with a button for the most (`range.most`, else "All n");
  * `onChange` gets each new number. Its buttons are not list rows, so arrows
  * up and down keep moving through the pop-up's rows.
  */
-export function stepper(max: number, initial: number, onChange: (n: number) => void = () => undefined): Stepper {
-  const most = Math.max(1, max);
-  const clamp = (n: number) => Math.max(1, Math.min(most, n));
+export function stepper(max: number, initial: number, onChange: (n: number) => void = () => undefined, range: { min?: number; most?: string } = {}): Stepper {
+  const least = range.min ?? 1;
+  const most = Math.max(least, max);
+  const clamp = (n: number) => Math.max(least, Math.min(most, n));
   let value = clamp(initial);
   const shown = el('span', 'stepper-value', String(value));
   shown.setAttribute('aria-live', 'polite');
@@ -115,7 +117,7 @@ export function stepper(max: number, initial: number, onChange: (n: number) => v
     return b;
   };
   const element = el('div', 'stepper');
-  element.append(button('−', () => value - 1), shown, button('+', () => value + 1), button(`All ${most}`, () => most, 'stepper-button wide'));
+  element.append(button('−', () => value - 1), shown, button('+', () => value + 1), button(range.most ?? `All ${most}`, () => most, 'stepper-button wide'));
   return {
     element,
     get value() {

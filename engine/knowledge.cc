@@ -15,6 +15,7 @@
 #include "cave_type.hpp"
 #include "corrupt.hpp"
 #include "defines.hpp"
+#include "dungeon_flag.hpp"
 #include "dungeon_info_type.hpp"
 #include "fate.hpp"
 #include "files.hpp"
@@ -190,7 +191,7 @@ static void json_kills(JsonWriter &w)
 	w.end_array();
 }
 
-/* Dungeons with a recall depth, the one Word of Recall takes the hero to marked; and the dungeon towns found. */
+/* Dungeons with a recall depth, the one Word of Recall takes the hero to marked and those it cannot reach (NO_RECALL); and the dungeon towns found. */
 static void json_dungeons(JsonWriter &w)
 {
 	auto const &d_info = game->edit_data.d_info;
@@ -202,6 +203,7 @@ static void json_dungeons(JsonWriter &w)
 		w.field("dungeon", d_info[y].name);
 		w.field("depth", max_dlv[y]);
 		w.field("recall", p_ptr->recall_dungeon == y ? 1 : 0);
+		if (d_info[y].flags & DF_NO_RECALL) w.field("blocked", 1);
 		w.end_object();
 	}
 	w.end_array();

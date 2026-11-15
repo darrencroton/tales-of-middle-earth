@@ -19,7 +19,7 @@ import { heroEntry } from '../../web/src/ui/gameover.ts';
 import { damageLabel, effectText, loreText, spellText, powerNotes, propGroups, propText, spellNotes } from '../../web/src/ui/inspect.ts';
 import { fateText } from '../../web/src/ui/memorial.ts';
 import { findMessageBox } from '../../web/src/ui/msgbox.ts';
-import { cleanPrompt } from '../../web/src/ui/prompttext.ts';
+import { cleanPrompt, numberQuestion } from '../../web/src/ui/prompttext.ts';
 import { type TermRow } from '../../web/src/ui/termparse.ts';
 import { termRow } from './fixtures.ts';
 
@@ -472,6 +472,18 @@ describe('file viewer headings', () => {
   it('heads the power list of a controlled creature as its powers', () => {
     assert.equal(cleanPrompt('(Powers a-b, *=List, ESC=exit) Use which power of your golem? '), 'Creature powers');
     assert.notEqual(cleanPrompt('(Powers a-b, *=List, ESC=exit) Use which power of your body? '), 'Creature powers');
+  });
+
+  it('words number questions by what the number means', () => {
+    assert.deepEqual(numberQuestion('Quantity (1-6): 1'), { title: 'How many?', min: 1, max: 6, most: 'All 6' });
+    assert.deepEqual(numberQuestion('How many would you like fireproofed? 1'), { title: 'How many would you like fireproofed?', min: 1, max: 99, most: 'All 99' });
+    assert.deepEqual(numberQuestion('Your wager (1-5000) ? '), { title: 'Your wager?', min: 1, max: 5000, most: 'Most (5000)' });
+    const depth = numberQuestion('Which level in Mirkwood(11-14)? 1');
+    assert.equal(depth.title, 'How deep in Mirkwood?');
+    assert.deepEqual([depth.min, depth.max, depth.most], [11, 14, 'Deepest']);
+    assert.match(depth.hint ?? '', /Level 11 to 14/);
+    assert.equal(numberQuestion('Which level in Maze(25-25)? 1').hint, 'Word of Recall takes you to level 25.');
+    assert.equal(cleanPrompt('Reset recall depth? [y/n]'), 'Next time, recall to this level?');
   });
 
   it('titles knowledge and help files', () => {

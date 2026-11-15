@@ -1,3 +1,5 @@
+import { NUMBER_RANGE } from '../play/prompts.ts';
+
 /**
  * Turns tome2's prompts, full of keyboard hints, into plain questions:
  * "(Spells a-f, Descs A-F, ESC=exit) Cast which spell?" → "Cast which spell?".
@@ -6,6 +8,7 @@ export function cleanPrompt(text: string): string {
   let t = text.replace(/\s+/g, ' ').trim();
   if (/Help file '[^']+'/.test(t)) return 'Help';
   if (/Use which power of your golem\?/.test(t)) return 'Creature powers';
+  if (/^Reset recall depth\?/.test(t)) return 'Next time, recall to this level?';
   if (/, (Info file|File) '[^']+', Line \d+\/\d+\]$/.test(t)) return 'Reading';
   const viewer = /^\[[^\]]*?\),\s*(.+?),\s*Line \d+\/\d+\]$/.exec(t);
   if (viewer) return viewer[1];
@@ -44,4 +47,37 @@ export function isInstructionLine(text: string): boolean {
 export function describableRange(prompt: string): [string, string] | null {
   const m = /Descs ([A-Z])-([A-Z])/.exec(prompt);
   return m ? [m[1], m[2]] : null;
+}
+
+/** A question answered with a number: its heading, a line saying what the number means, the range offered and the label of the button for the most. */
+export interface NumberQuestion {
+  title: string;
+  hint?: string;
+  min: number;
+  max: number;
+  most: string;
+}
+
+/* tome2 asks how many without saying the most (fireproofing a stack); the stepper offers up to this. */
+const UNSTATED_MOST = 99;
+
+/** Reads a quantity prompt: "Quantity (1-6): 1", "How many would you like fireproofed? 1", "Which level in Mirkwood(11-14)? 1". */
+export function numberQuestion(text: string): NumberQuestion {
+  const range = NUMBER_RANGE.exec(text);
+  const min = range ? Number(range[1]) : 1;
+  const max = Math.max(min, range ? Number(range[2]) : UNSTATED_MOST);
+  const recall = /^Which level in (.+?)\s*\(/.exec(text);
+  if (recall) {
+    return {
+      title: `How deep in ${recall[1]}?`,
+      hint: min === max ? `Word of Recall takes you to level ${min}.` : `Level ${min} to ${max}. Word of Recall takes you to the level you choose.`,
+      min,
+      max,
+      most: 'Deepest',
+    };
+  }
+  const question = text.slice(0, text.search(/[?:]/) + 1 || undefined).replace(NUMBER_RANGE, '');
+  const quantity = /^Quantity\b/i.test(question);
+  const title = quantity ? 'How many?' : `${cleanPrompt(question).replace(/[?:]$/, '')}?`;
+  return { title, min, max, most: quantity || /^How many\b/i.test(question) ? `All ${max}` : `Most (${max})` };
 }

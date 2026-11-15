@@ -315,6 +315,11 @@ export class TermView {
     this.nav.setActive(current ?? this.nav.find(mark) ?? defaultItem(this.body, this.footer), true);
   }
 
+  /** A native view (`renderCustom`) is shown, with its own rows and highlight. */
+  get native(): boolean {
+    return this.renderedKey.startsWith('custom\u0000');
+  }
+
   /**
    * Who the panel's keys go to: its own highlight in a native view, the
    * reader's scroll and links, the highlight of a tome2 menu without a
@@ -323,7 +328,7 @@ export class TermView {
    */
   private keyTarget(): 'custom' | 'reader' | 'menu' | null {
     if (this.root.hidden) return null;
-    if (this.renderedKey.startsWith('custom\u0000')) return 'custom';
+    if (this.native) return 'custom';
     if (this.scrollKey) return 'reader';
     return this.choices().length > 0 && !this.hasCursor ? 'menu' : null;
   }
