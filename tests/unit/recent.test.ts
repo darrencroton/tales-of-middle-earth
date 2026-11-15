@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import {
+  castableBooks,
   castSpellMacro,
   CastWatcher,
   fireMacro,
@@ -24,6 +25,7 @@ import {
   screenChoices,
   thenAim,
   packRecents,
+  usableFirst,
   usableRecents,
   validRecent,
   type RecentAction,
@@ -286,5 +288,38 @@ describe('recent actions', () => {
       assert.equal(magicItemRefusal({ ...ring, charging: 1 }, 'Ring of Speed'), 'The Ring of Speed is still recharging.');
       assert.equal(magicItemRefusal({ ...ring, command: 'z', charging: 1 }, 'Rod of Light'), 'The Rod of Light is still charging.');
     });
+  });
+});
+
+describe('usable first', () => {
+  it('puts what the hero can use first, each part in its own order', () => {
+    assert.deepEqual(usableFirst([1, 2, 3, 4, 5], (n) => n % 2 === 0), [2, 4, 1, 3, 5]);
+    assert.deepEqual(usableFirst([] as number[], () => true), []);
+  });
+
+  it('lists books with a castable spell first, castable spells first in each, short of mana or not', () => {
+    const spell = (name: string, ok: number, short = 0) => ({ name, school: 'arcane', level: ok ? 1 : -1, mana: 2, fail: 10, info: '', ok, short, desc: '', skill: 1, blind: 0, confused: 0, stat: 1, manaMin: 1, manaMax: 2, piety: 0, instrument: 0 });
+    const spells: SpellState = {
+      ready: 1,
+      books: [
+        { i: 0, name: 'Necronomicon', spells: [spell('Horrify', 0), spell('Raise Death', 0)] },
+        { i: 1, name: 'Beginners', spells: [spell('Fire Golem', 0), spell('Manathrust', 1), spell('Phase Door', 1, 1)] },
+        { i: 2, name: 'Conveyance', spells: [spell('Blink', 1, 1)] },
+      ],
+      bonus: [],
+      items: [],
+      powers: [],
+    };
+    const books = castableBooks(spells);
+    assert.deepEqual(
+      books.map((b) => [b.name, b.spells.map((s) => s.name)]),
+      [
+        ['Beginners', ['Manathrust', 'Phase Door', 'Fire Golem']],
+        ['Conveyance', ['Blink']],
+        ['Necronomicon', ['Horrify', 'Raise Death']],
+      ],
+    );
+    assert.deepEqual(spells.books[1].spells.map((s) => s.name), ['Fire Golem', 'Manathrust', 'Phase Door']);
+    assert.deepEqual(castableBooks(null), []);
   });
 });

@@ -82,6 +82,22 @@ export function techniques(spells: SpellState | null): SpellState['powers'] {
   return (spells?.powers ?? []).filter((p) => p.mkey !== MKEY_SCHOOL && p.mkey !== MKEY_STEAL && !isMagicArt(p.label));
 }
 
+/**
+ * `list` with what the hero can use first, each part in its own order. Only
+ * for what the hero has unlocked (a spell's level, a power's level, gear
+ * worn), never for what changes from turn to turn (mana, charges, a target),
+ * so a list moves only as the hero grows.
+ */
+export function usableFirst<T>(list: readonly T[], usable: (entry: T) => boolean): T[] {
+  return [...list.filter(usable), ...list.filter((entry) => !usable(entry))];
+}
+
+/** The hero's spell books, those with a spell the hero can cast first, and in each its castable spells first. */
+export function castableBooks(spells: SpellState | null): SpellState['books'] {
+  const books = (spells?.books ?? []).map((book) => ({ ...book, spells: usableFirst(book.spells, (spell) => !!spell.ok) }));
+  return usableFirst(books, (book) => book.spells.some((spell) => spell.ok));
+}
+
 /** The hero has spells in their books or a magic art to use. */
 export function hasMagic(spells: SpellState | null): boolean {
   return !!spells?.books.length || magicArts(spells).length > 0;

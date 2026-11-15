@@ -22,7 +22,8 @@ Map (toolbar, HUD, gestures)
 │   │                             └── Inscribe      card at the top (text field)             depth 3
 │   ├── Cast / Powers ─────── Magic · Powers       panel, two tabs, each headed by Recent:  depth 1
 │   │                         Magic: books, Magic arts · Powers: by race, class, form; Gear (its powers, what
-│   │                         activates), Devices (wands, staffs, rods); corruption; Techniques — a tap uses it
+│   │                         activates), Devices (wands, staffs, rods); corruption; Techniques — a tap uses it;
+│   │                         what the hero can use first, in books and headings alike
 │   │                         ├── Spell / power     card over the panel (figures, needs; Cast / Use) depth 2
 │   │                         └── Item              ⓘ on gear or a device: its item card (Activate, Aim, Zap…) depth 2
 │   ├── More ──────────────── Commands             panel: commands by intent (section 7)   depth 1
@@ -244,6 +245,7 @@ Four things look different and never stand for each other:
 | Default action | gold fill | The action marked primary, or else the only one that can be done unless destructive (`defaultAction`): a building's lone Exit, a card's lone OK. |
 | Selected tab | gold fill in the tab row | Which view shows; never an action. |
 | Cannot be done now | dimmed in place | `PopAction.unavailable`: never the default, still tappable, and says why (a toast and the deny sound, as the toolbar does). Rows that cannot be used now (a shop item too dear, a service not for you) are dimmed and still open their card. |
+| Not yet the hero's | after the rest, dimmed | In the Magic panel (below Recent), what the hero has not unlocked follows what they have, each part in its own order: spells they cannot cast yet (and books with none), powers above their level, gear that must be worn first (`usableFirst`). Never by mana, charges or a target, so nothing moves from turn to turn. |
 
 ## 5. Navigation rules
 
