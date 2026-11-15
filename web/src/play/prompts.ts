@@ -1,6 +1,6 @@
 import { gridDistance } from './pathfinding.ts';
 
-export type PromptKind = 'none' | 'more' | 'yesno' | 'aim' | 'direction' | 'item' | 'quantity' | 'text' | 'choice' | 'other';
+export type PromptKind = 'none' | 'more' | 'yesno' | 'aim' | 'direction' | 'item' | 'quantity' | 'text' | 'choice' | 'dungeon' | 'other';
 
 /*
  * A shop's "Buy …? [y/n/RET/ESC]" or "Sell …?" (store.cc's prompt_yesno) does
@@ -8,6 +8,12 @@ export type PromptKind = 'none' | 'more' | 'yesno' | 'aim' | 'direction' | 'item
  * question runs past the 80 columns of row 0, [y/n] and all.
  */
 const CUT_SHOP_QUESTION = /^(Buy|Sell) .{70,}$/;
+
+/** tome2's choice of the dungeon Word of Recall leads to (a Scroll of Reset Recall, a building's teleport to a dungeon level). */
+const DUNGEON_PROMPT = /^Select a dungeon \(a-.\), \* to list/;
+
+/* A range of numbers to choose from: "Quantity (1-6):", "Which level in Mirkwood(11-14)?", "Your wager (1-5000) ?". */
+export const NUMBER_RANGE = /\((\d+)\s*-\s*(\d+)\)/;
 
 /**
  * Classifies tome2's prompt line (terminal row 0) so the UI can offer the
@@ -20,13 +26,14 @@ export function classifyPrompt(rowZero: string, typing = false): PromptKind {
   if (/-more-$/.test(text)) return 'more';
   if (/\[y\/n[\]/]/i.test(text) || CUT_SHOP_QUESTION.test(text)) return 'yesno';
   if (bracketChoices(text).length > 1) return 'choice';
+  if (DUNGEON_PROMPT.test(text)) return 'dungeon';
   if (/^Direction \(.*target/.test(text)) return 'aim';
   if (/Direction(\s*\(Escape to cancel\))?\?\s*$/.test(text)) return 'direction';
   if (/^\((Inven|Equip|Floor):|^(Inven|Equip|Floor):|which (item|spell|book|power)|\(\w-\w,/i.test(text)) return 'item';
-  if (/^(Quantity|How many)\b/i.test(text)) return 'quantity';
+  if (/^(Quantity|How many)\b/i.test(text) || NUMBER_RANGE.test(text)) return 'quantity';
   if (/\([a-zA-Z0-9]-[a-zA-Z0-9]+\)/.test(text)) return 'item';
-  /* Typed answers: after a colon, or to a question of what (Engrave what?, Wish for what?, naming an artifact). */
-  if (typing && (/:\s*[^:?]*$/.test(text) || /\bwhat\b[^?]*\?\s*[^?]*$/i.test(text))) return 'text';
+  /* Typed answers: after a colon, or to a question of what or which (Engrave what?, Wish for what?, naming an artifact, Which dungeon?). */
+  if (typing && (/:\s*[^:?]*$/.test(text) || /\b(what|which)\b[^?]*\?\s*[^?]*$/i.test(text))) return 'text';
   return 'other';
 }
 

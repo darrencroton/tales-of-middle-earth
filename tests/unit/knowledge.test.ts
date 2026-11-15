@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { bondName, companionOrder, companionsLine, orderRefusal, type Companion } from '../../web/src/play/companions.ts';
-import { adventureDay, journal, killList, noteWhen, parseNotes, recallList, uniqueGroups, type Knowledge } from '../../web/src/play/knowledge.ts';
+import { adventureDay, journal, killList, noteWhen, parseNotes, recallChoiceKeys, recallChoices, recallList, uniqueGroups, type Knowledge } from '../../web/src/play/knowledge.ts';
 
 /* A notes file as tome2 writes it: its birth banner, dated notes (add_note) and session banners. */
 const NOTES = [
@@ -79,6 +79,18 @@ describe('knowledge', () => {
       { dungeon: 'Mirkwood', depth: 9, recall: 1 },
     ];
     assert.deepEqual(recallList({ recall }).map((d) => d.dungeon), ['Mirkwood', 'Barrow-Downs']);
+  });
+
+  it("offers the dungeons Word of Recall can reach in tome2's order, and picks one by its batch and letter", () => {
+    const recall = [
+      { dungeon: 'Barrow-Downs', depth: 5, recall: 0 },
+      { dungeon: 'Lost temple of Eru', depth: 1, recall: 0, blocked: 1 },
+      { dungeon: 'Mirkwood', depth: 9, recall: 1 },
+    ];
+    assert.deepEqual(recallChoices({ recall }).map((d) => d.dungeon), ['Barrow-Downs', 'Mirkwood']);
+    assert.equal(recallChoiceKeys(1, 2), 'b');
+    assert.equal(recallChoiceKeys(0, 25), '-a');
+    assert.equal(recallChoiceKeys(22, 25), '-+c');
   });
 });
 

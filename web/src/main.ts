@@ -46,6 +46,7 @@ import { battlefieldText, followReturn, isReturnPrompt, SAFETY_CLOSED, safetyTex
 import { CharacterPanel, type CharacterScreen } from './ui/character.ts';
 import { companionsLater, openCompanions } from './ui/companions.ts';
 import { openKnowledge } from './ui/knowledge.ts';
+import { renderRecallChoice } from './ui/recall.ts';
 import { el, iconText } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
 import { openAltarGod } from './ui/gods.ts';
@@ -807,6 +808,8 @@ function refresh(): void {
       termView.renderCustom({ layout: 'full', title: 'Hall of Fame', subtitle: 'Tap a hero for their tale' }, `fame:${scores.length}:${shown}`, () =>
         heroes.fameRows(scores, shown, true),
       );
+    } else if (currentPrompt() === 'dungeon') {
+      renderRecallChoice(termView, engine.knowledge(), (keys) => send(keyCodes(keys)));
     } else if (store) {
       shop.render();
     } else if (character.render(screen) || characterView) {

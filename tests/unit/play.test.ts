@@ -757,6 +757,15 @@ describe('actions', () => {
     assert.equal(classifyPrompt('Wish for what? ', true), 'text');
     assert.equal(classifyPrompt('What do you want to call the artifact? ', true), 'text');
     assert.equal(classifyPrompt('Select a skill (a-98), @ to select by name, +/- to scroll:', true), 'item');
+    assert.equal(classifyPrompt('Which dungeon? Mirkwood', true), 'text');
+  });
+
+  it('recognises numbers asked for with a range, and the choice of where Word of Recall leads', () => {
+    assert.equal(classifyPrompt('Which level in Barrow-Downs(1-5)? 5', true), 'quantity');
+    assert.equal(classifyPrompt('Your wager (1-5000) ? ', true), 'quantity');
+    assert.equal(classifyPrompt('Jump to level (0-127): ', true), 'quantity');
+    assert.equal(classifyPrompt('Select a dungeon (a-c), * to list, @ to select by name, +/- to scroll:'), 'dungeon');
+    assert.equal(classifyPrompt('Select a dungeon (a-`), * to list, @ to select by name, +/- to scroll:'), 'dungeon');
   });
 
   it('recognises yes/no prompts with extra answers', () => {

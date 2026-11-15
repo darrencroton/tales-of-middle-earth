@@ -2,7 +2,7 @@ import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, keyCodes as codes, typedAnswe
 import { hallsWords, RETURN_KEYS } from '../play/death.ts';
 import { bracketChoices, choiceQuestion, type PromptKind } from '../play/prompts.ts';
 import { el, iconText, leadIn, stepper, type Stepper } from './dom.ts';
-import { cleanPrompt } from './prompttext.ts';
+import { cleanPrompt, numberQuestion } from './prompttext.ts';
 import type { MessageBox } from './msgbox.ts';
 
 export type CardKind = Extract<PromptKind, 'yesno' | 'quantity' | 'text' | 'direction' | 'aim' | 'choice'>;
@@ -30,12 +30,6 @@ function questionEnd(text: string): number {
 function promptDefault(text: string): string {
   const end = questionEnd(text);
   return end > 0 ? text.slice(end).trim() : '';
-}
-
-/** Highest quantity offered by "Quantity (1-6):", or null. */
-function quantityLimit(text: string): number | null {
-  const m = /\((\d+)\s*-\s*(\d+)\)/.exec(text);
-  return m ? Number(m[2]) : null;
 }
 
 /** What the card between death and life offers. */
@@ -277,14 +271,17 @@ export class PromptCard {
 
   private quantity(raw: string): void {
     this.amountMoved = false;
-    const amount = stepper(quantityLimit(raw) ?? 99, Number(promptDefault(raw)) || 1, () => (this.amountMoved = true));
+    const question = numberQuestion(raw);
+    const amount = stepper(question.max, Number(promptDefault(raw)) || question.min, () => (this.amountMoved = true), question);
     this.amount = amount;
     const buttons = el('div', 'card-buttons');
     buttons.append(
       this.button('Cancel', [ESCAPE]),
       this.button('OK', () => this.answerQuantity(), 'card-button primary'),
     );
-    this.root.replaceChildren(this.title('How many?'), amount.element, buttons);
+    const parts = [this.title(question.title)];
+    if (question.hint) parts.push(el('p', 'card-hint', question.hint));
+    this.root.replaceChildren(...parts, amount.element, buttons);
   }
 
   private answerQuantity(): void {
