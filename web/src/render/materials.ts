@@ -44,6 +44,8 @@ export interface Material {
   floor: boolean;
   /** The digging skill that gets through it at 1% a turn: walls, veins, rubble and trees; none for doors and what tome2 does not tunnel. */
   dig?: number;
+  /** A place the player looks for (a shop's door, stairs, a fountain, an altar): its symbol stays readable in the dark and in memory. */
+  landmark?: boolean;
   /** Walkable only by the hero's own ability (trees for a tree walker): travel avoids it unless it saves a long way round, and exploring never uses it. */
   shortcut?: boolean;
 }
@@ -87,13 +89,14 @@ const RULES: Rule[] = [
   [/brick roof/, () => wall([0.46, 0.16, 0.12])],
   [/small window|^window$/, () => wall([0.36, 0.33, 0.31], { solid: false, glyph: '▫', fg: [0.95, 0.85, 0.5] })],
   [/rain barrel/, () => material({ glyph: '○', fg: [0.6, 0.42, 0.22], bg: FLOOR_BG })],
-  [/^building$/, () => material({ bg: [0.32, 0.2, 0.1], emit: { colour: [0.55, 0.42, 0.25], radius: 1 } })],
+  [/^building$/, () => material({ bg: [0.32, 0.2, 0.1], emit: { colour: [0.55, 0.42, 0.25], radius: 1 }, landmark: true })],
   [/jammed door|locked door|^door$/, () => material({ glyph: '+', fg: [0.85, 0.6, 0.32], bg: [0.3, 0.18, 0.08], blocksLight: true })],
   [/open door|broken door/, () => material({ glyph: "'", fg: [0.85, 0.6, 0.32], bg: [0.2, 0.13, 0.07] })],
-  [/shaft down/, () => material({ glyph: '⇊', bg: [0.16, 0.15, 0.17] })],
-  [/shaft up/, () => material({ glyph: '⇈', bg: [0.16, 0.15, 0.17] })],
+  [/shaft down/, () => material({ glyph: '⇊', bg: [0.16, 0.15, 0.17], landmark: true })],
+  [/shaft up/, () => material({ glyph: '⇈', bg: [0.16, 0.15, 0.17], landmark: true })],
   [/staircase|quest (entrance|exit|down level|up level)|town exit|path to the/, () =>
-    material({ bg: [0.16, 0.15, 0.17] })],
+    material({ bg: [0.16, 0.15, 0.17], landmark: true })],
+  [/^town$/, () => material({ bg: FLOOR_BG, landmark: true })],
   [/pool of deep lava/, () =>
     material({ glyph: '≈', fg: [1, 0.78, 0.35], bg: [0.78, 0.22, 0.03], dance: 0.22, emit: { colour: [1, 0.42, 0.12], radius: 4 } })],
   [/shallow lava/, () =>
@@ -103,7 +106,7 @@ const RULES: Rule[] = [
   [/deep water/, () => material({ glyph: '≈', fg: [0.32, 0.48, 0.9], bg: [0.04, 0.12, 0.4], dance: 0.12 })],
   [/tainted water/, () => material({ glyph: '≈', fg: [0.55, 0.58, 0.3], bg: [0.17, 0.19, 0.07], dance: 0.08 })],
   [/shallow water|encircling sea/i, () => material({ glyph: '≈', fg: [0.5, 0.7, 0.98], bg: [0.1, 0.26, 0.56], dance: 0.1 })],
-  [/fountain/, () => material({ glyph: '⌂', fg: [0.55, 0.75, 1], bg: [0.08, 0.16, 0.3], dance: 0.06 })],
+  [/fountain/, () => material({ glyph: '⌂', fg: [0.55, 0.75, 1], bg: [0.08, 0.16, 0.3], dance: 0.06, landmark: true })],
   [/dark pit/, () => material({ glyph: '∷', fg: [0.15, 0.13, 0.2], bg: [0.01, 0.01, 0.03] })],
   [/dead tree/, () => material({ glyph: '♣', fg: [0.48, 0.38, 0.26], bg: [0.1, 0.08, 0.05], blocksLight: true })],
   [/small tree/, () => material({ glyph: '♣', fg: [0.38, 0.72, 0.3], bg: [0.06, 0.14, 0.05] })],
@@ -124,8 +127,8 @@ const RULES: Rule[] = [
   [/^trap$|monster trap/, () => material({ fg: [0.95, 0.42, 0.4], bg: FLOOR_BG })],
   [/glyph of warding/, () => material({ fg: [1, 0.92, 0.45], bg: FLOOR_BG, emit: { colour: [0.5, 0.45, 0.15], radius: 1 } })],
   [/explosive rune/, () => material({ fg: [1, 0.35, 0.3], bg: FLOOR_BG, emit: { colour: [0.5, 0.12, 0.08], radius: 1 } })],
-  [/altar/i, () => material({ bg: [0.2, 0.18, 0.22], emit: { colour: [0.35, 0.32, 0.45], radius: 2 } })],
-  [/jumpgate/i, () => material({ bg: [0.15, 0.05, 0.2], dance: 0.2, emit: { colour: [0.5, 0.2, 0.6], radius: 2 } })],
+  [/altar/i, () => material({ bg: [0.2, 0.18, 0.22], emit: { colour: [0.35, 0.32, 0.45], radius: 2 }, landmark: true })],
+  [/jumpgate/i, () => material({ bg: [0.15, 0.05, 0.2], dance: 0.2, emit: { colour: [0.5, 0.2, 0.6], radius: 2 }, landmark: true })],
   [/open floor/, () => material({ glyph: '·', fg: [0.56, 0.53, 0.48], bg: FLOOR_BG })],
 ];
 

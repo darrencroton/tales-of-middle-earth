@@ -69,6 +69,13 @@ export function cellNoise(x: number, y: number, t: number, speed = 1): number {
   return 0.6 * Math.sin(t * 2.1 * speed + phase) + 0.4 * Math.sin(t * 3.7 * speed + p2);
 }
 
+/** Lightens a colour darker than `minLuminance` towards white, keeping its hue. */
+export function lifted(a: RGB, minLuminance: number): RGB {
+  const l = luminance(a);
+  if (l >= minLuminance) return a;
+  return mix(a, [1, 1, 1], Math.min(0.75, (minLuminance - l) / (1 - l) + 0.15));
+}
+
 /**
  * Lightens dark text colours (tome2's dark blue, dark grey...) so they stay
  * readable on the black panels. Accepts and returns "rgb(r, g, b)" strings.
@@ -76,12 +83,8 @@ export function cellNoise(x: number, y: number, t: number, speed = 1): number {
 export function readableColour(css: string, minLuminance = 0.32): string {
   const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(css);
   if (!m) return css;
-  let [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  if (luminance >= minLuminance) return css;
-  const k = Math.min(0.75, (minLuminance - luminance) / (1 - luminance) + 0.15);
-  r += (255 - r) * k;
-  g += (255 - g) * k;
-  b += (255 - b) * k;
-  return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+  const colour: RGB = [Number(m[1]) / 255, Number(m[2]) / 255, Number(m[3]) / 255];
+  const [r, g, b] = lifted(colour, minLuminance);
+  if (r === colour[0] && g === colour[1] && b === colour[2]) return css;
+  return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
 }
