@@ -32,7 +32,7 @@ export interface CellAppearance {
   solid: boolean;
   /** Terrain symbol (centred by its ink) rather than a creature or item letter. */
   terrain: boolean;
-  /** A landmark's symbol (a shop's door, stairs...), drawn even where the map is too small for symbols. */
+  /** A landmark's symbol (a shop's door, stairs...): drawn bold, and as a dot where the map is too small for symbols. */
   landmark: boolean;
 }
 

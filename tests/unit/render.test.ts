@@ -176,8 +176,8 @@ describe('cell appearance', () => {
     assert.ok(luminance(remembered.fg) > 0.3, 'a dark grey shop number is lifted');
     assert.ok(luminance(unlit.fg) > 0.3, 'and keeps its colour out of the light');
     assert.ok(luminance(remembered.bg) < 0.1, 'the building stays dark');
-    snap.layer[1] = 0;
-    assert.equal(cellAppearance(context(snap), 1, 0), null, 'an unknown landmark stays hidden');
+    snap.info[1] = 0;
+    assert.equal(cellAppearance(context(snap), 1, 0)?.landmark, false, 'a landmark the hero does not know is not told apart');
   });
 
   it('keeps monsters vivid in dim light', () => {

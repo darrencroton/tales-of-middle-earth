@@ -96,6 +96,7 @@ const RULES: Rule[] = [
   [/shaft up/, () => material({ glyph: '⇈', bg: [0.16, 0.15, 0.17], landmark: true })],
   [/staircase|quest (entrance|exit|down level|up level)|town exit|path to the/, () =>
     material({ bg: [0.16, 0.15, 0.17], landmark: true })],
+  [/^town$/, () => material({ bg: FLOOR_BG, landmark: true })],
   [/pool of deep lava/, () =>
     material({ glyph: '≈', fg: [1, 0.78, 0.35], bg: [0.78, 0.22, 0.03], dance: 0.22, emit: { colour: [1, 0.42, 0.12], radius: 4 } })],
   [/shallow lava/, () =>

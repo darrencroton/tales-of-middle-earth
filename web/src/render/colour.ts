@@ -83,6 +83,8 @@ export function lifted(a: RGB, minLuminance: number): RGB {
 export function readableColour(css: string, minLuminance = 0.32): string {
   const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(css);
   if (!m) return css;
-  const [r, g, b] = lifted([Number(m[1]) / 255, Number(m[2]) / 255, Number(m[3]) / 255], minLuminance);
+  const colour: RGB = [Number(m[1]) / 255, Number(m[2]) / 255, Number(m[3]) / 255];
+  const [r, g, b] = lifted(colour, minLuminance);
+  if (r === colour[0] && g === colour[1] && b === colour[2]) return css;
   return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
 }
