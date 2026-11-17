@@ -4,6 +4,7 @@ import {
   cellHash,
   cellNoise,
   desaturate,
+  lifted,
   mix,
   multiply,
   scale,
@@ -31,6 +32,8 @@ export interface CellAppearance {
   solid: boolean;
   /** Terrain symbol (centred by its ink) rather than a creature or item letter. */
   terrain: boolean;
+  /** A landmark's symbol (a shop's door, stairs...), drawn even where the map is too small for symbols. */
+  landmark: boolean;
 }
 
 export interface AppearanceContext {
@@ -41,6 +44,8 @@ export interface AppearanceContext {
 }
 
 const MEMORY_TINT: RGB = [0.0, 0.02, 0.09];
+/** Least luminance of a landmark's symbol before light and memory. */
+const LANDMARK_LUMINANCE = 0.45;
 const HALLUCINATION_GLYPHS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ&!?=$|"~';
 const UNKNOWN_MATERIAL: Material = {
   glyph: null,
@@ -96,6 +101,11 @@ export function cellAppearance(ctx: AppearanceContext, x: number, y: number): Ce
 
   if (layerByte & LAYER_MULTI_HUED && !isTerrain) fg = shimmerColour(palette, x, y, animate ? time : 0);
 
+  const landmark = isTerrain && mat.landmark === true;
+  if (landmark) fg = lifted(fg, LANDMARK_LUMINANCE);
+  /* Plain terrain's symbol takes the light; a landmark's, like a creature's or an item's, keeps most of its own colour. */
+  const symbolShaded = isTerrain && !landmark;
+
   const solid = isTerrain && mat.solid && glyphMode === 'brogue';
   if (mat.solid) bg = scale(bg, 0.9 + 0.2 * cellHash(x, y));
 
@@ -114,17 +124,12 @@ export function cellAppearance(ctx: AppearanceContext, x: number, y: number): Ce
   if (visible) {
     const light = lightAt(frame, x, y);
     bg = multiply(bg, light);
-    if (isTerrain) {
-      fg = multiply(fg, light);
-    } else if (layer !== LAYER_PLAYER) {
-      fg = mix(fg, multiply(fg, light), 0.3);
-    }
-  } else if (isTerrain) {
-    bg = rememberedColour(bg, 0.32);
-    fg = rememberedColour(fg, 0.42);
+    if (symbolShaded) fg = multiply(fg, light);
+    else if (layer !== LAYER_PLAYER) fg = mix(fg, multiply(fg, light), 0.3);
   } else {
     bg = rememberedColour(bg, 0.32);
-    if (layer !== LAYER_PLAYER) fg = mix(fg, rememberedColour(fg, 0.6), 0.5);
+    if (symbolShaded) fg = rememberedColour(fg, 0.42);
+    else if (layer !== LAYER_PLAYER) fg = mix(fg, rememberedColour(fg, 0.6), 0.5);
   }
 
   if (snap.hallucinating && !isTerrain && layer !== LAYER_PLAYER) {
@@ -133,5 +138,5 @@ export function cellAppearance(ctx: AppearanceContext, x: number, y: number): Ce
     glyph = HALLUCINATION_GLYPHS[Math.floor(cellHash(y, x, phase) * HALLUCINATION_GLYPHS.length)];
   }
 
-  return { glyph, fg, bg, solid, terrain: isTerrain };
+  return { glyph, fg, bg, solid, terrain: isTerrain, landmark };
 }

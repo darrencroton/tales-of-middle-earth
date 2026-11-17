@@ -273,6 +273,7 @@ export class MapRenderer {
     const fontPx = Math.max(1, Math.floor(Math.min(cellH * 0.86, cellW / 0.6)));
     const tiny = fontPx < 7;
     const font = `${fontPx}px ${MAP_FONT}`;
+    const landmarkFont = `bold ${font}`;
     ctx.font = font;
     if (font !== this.glyphFont) {
       this.glyphFont = font;
@@ -303,7 +304,7 @@ export class MapRenderer {
         ctx.fillRect(left, top, width, height);
         if (tiny) {
           const layer = snap.layer[y * snap.width + x] & LAYER_MASK;
-          if (layer >= LAYER_OBJECT) {
+          if (layer >= LAYER_OBJECT || cell.landmark) {
             ctx.fillStyle = toCss(cell.fg);
             ctx.fillRect(left, top, Math.max(1, width), Math.max(1, height));
           }
@@ -311,7 +312,10 @@ export class MapRenderer {
         }
         if (!cell.solid && cell.glyph !== ' ') {
           ctx.fillStyle = toCss(cell.fg);
-          ctx.fillText(cell.glyph, left + width / 2, top + height / 2 + this.glyphOffset(cell.glyph, cell.terrain));
+          const offset = this.glyphOffset(cell.glyph, cell.terrain);
+          if (cell.landmark) ctx.font = landmarkFont;
+          ctx.fillText(cell.glyph, left + width / 2, top + height / 2 + offset);
+          if (cell.landmark) ctx.font = font;
         }
       }
     }

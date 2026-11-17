@@ -25,9 +25,11 @@ const FEATURES: FeatureInfo[] = [
   feature('open floor', FB_FLOOR),
   feature('granite wall', FB_WALL | FB_NO_VISION | FB_NO_WALK, '#'),
   feature('pool of deep lava', FB_FLOOR, '.', 12),
+  feature('Building', FB_FLOOR, '7', 8),
 ];
 const WALL = 2;
 const LAVA = 3;
+const SHOP = 4;
 
 describe('colour helpers', () => {
   it('formats and clamps CSS colours', () => {
@@ -160,6 +162,22 @@ describe('cell appearance', () => {
     assert.ok(remembered.bg[2] > remembered.bg[0], 'memory is blue-tinted');
     const memory = rememberedColour([1, 0, 0], 0.4);
     assert.ok(memory[0] < 1 && memory[2] > 0);
+  });
+
+  it('keeps a landmark readable in the dark and in memory, its ground as dark as the rest', () => {
+    const snap = snapshot(3, 1, { info: new Uint16Array([CAVE_MARK, CAVE_MARK, CAVE_SEEN]), feat: new Uint8Array([1, SHOP, SHOP]) });
+    snap.glyph.set([46, 55, 55]);
+    snap.attr.set([8, 8, 8]);
+    const floor = cellAppearance(context(snap), 0, 0)!;
+    const remembered = cellAppearance(context(snap), 1, 0)!;
+    const unlit = cellAppearance(context(snap), 2, 0)!;
+    assert.equal(remembered.landmark, true);
+    assert.equal(floor.landmark, false);
+    assert.ok(luminance(remembered.fg) > 0.3, 'a dark grey shop number is lifted');
+    assert.ok(luminance(unlit.fg) > 0.3, 'and keeps its colour out of the light');
+    assert.ok(luminance(remembered.bg) < 0.1, 'the building stays dark');
+    snap.layer[1] = 0;
+    assert.equal(cellAppearance(context(snap), 1, 0), null, 'an unknown landmark stays hidden');
   });
 
   it('keeps monsters vivid in dim light', () => {
