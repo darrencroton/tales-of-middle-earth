@@ -9,6 +9,7 @@ export function cleanPrompt(text: string): string {
   if (/Help file '[^']+'/.test(t)) return 'Help';
   if (/Use which power of your golem\?/.test(t)) return 'Creature powers';
   if (/^Reset recall depth\?/.test(t)) return 'Next time, recall to this level?';
+  if (/^Again\(Y\/N\)\?/.test(t)) return 'Play again?';
   if (/, (Info file|File) '[^']+', Line \d+\/\d+\]$/.test(t)) return 'Reading';
   const viewer = /^\[[^\]]*?\),\s*(.+?),\s*Line \d+\/\d+\]$/.exec(t);
   if (viewer) return viewer[1];
@@ -20,7 +21,13 @@ export function cleanPrompt(text: string): string {
   return t ? t[0].toUpperCase() + t.slice(1) : t;
 }
 
-const HINT_WORDS = /\bESC\b|\bRET\b|\bEsc\b|Escape|\bto (exit|scroll|cancel|quit|select|move|accept|advance|continue|restart|set)\b|for (Equip|Inven|floor|options|random|help)|\bselect by name\b|=exit|^\s*[a-zA-Z@*+=/\-]{1,2}\s*-\s*[a-zA-Z]\s*$|^\s*[a-zA-Z]-[a-zA-Z0-9]+\s*$|^(Inven|Equip|Floor|Spells|Descs)\b/;
+/** A yes/no question as its card's heading: key hints left out, ending in a question mark. */
+export function yesNoQuestion(text: string): string {
+  const question = cleanPrompt(text);
+  return /[?!.]$/.test(question) ? question : `${question}?`;
+}
+
+const HINT_WORDS = /\bESC\b|\bRET\b|\bEsc\b|Escape|\bto (exit|scroll|cancel|quit|select|move|accept|advance|continue|restart|set)\b|for (Equip|Inven|floor|options|random|help)|\bselect by name\b|=exit|^\s*[a-zA-Z@*+=/\-]{1,2}\s*-\s*[a-zA-Z]\s*$|^\s*[a-zA-Z]-[a-zA-Z0-9]+\s*$|^\s*[a-zA-Z](\/[a-zA-Z])+\s*$|^(Inven|Equip|Floor|Spells|Descs)\b/;
 
 /** True for a phrase that only tells the player which keys to press. */
 function isKeyHint(text: string): boolean {

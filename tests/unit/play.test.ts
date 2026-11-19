@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { commandGroups, commandKeys, commandRefusal, contextActions, contextualAction, CONTROLLING, converseMacro, creaturePowersMacro, exploreRefusal, pickupCommand, releaseMacro, restMacro, speedAction, transitionUnderfoot, waitCommand, WORLD_MAP_EXPLORE_LEVEL, type CommandContext } from '../../web/src/play/actions.ts';
 import { findPath, floodFill, gridDistance, type TravelGrid } from '../../web/src/play/pathfinding.ts';
-import { classifyPrompt, directionDigit, isAdjacent } from '../../web/src/play/prompts.ts';
+import { classifyPrompt, directionDigit, isAdjacent, isIrreversible } from '../../web/src/play/prompts.ts';
 import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
 import { approachTarget, FAR_WALK_STEPS, goAction, isKnown, outOfSight, pushPast, rubbleBeside, stepTowards, STOP_MESSAGES, stopMessage, tapAction, TOO_HARD, Travel, travelGrid, type StopContext, type TravelContext } from '../../web/src/play/travel.ts';
 import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials, walkableFor, type FeatureInfo } from '../../web/src/render/materials.ts';
@@ -28,6 +28,26 @@ describe('prompt classification', () => {
     assert.equal(classifyPrompt(row0('Sell an Elven Bar Chain Mail of Resistance (-2 to accuracy) [18,+12] (+3 to stealth)? [y/n/RET/ESC] ')), 'yesno');
     assert.equal(classifyPrompt(row0('Buy a Spectral Lucerne Hammer (*Defender*) (2d5) (+1,-2) [+1] (+4 to stealth)? [y/n/RET/ESC] ')), 'yesno');
     assert.equal(classifyPrompt('(Inven: a-w, / for Equip, ESC) Sell which item?'), 'item');
+  });
+
+  it('recognises yes/no questions however tome2 words their keys', () => {
+    assert.equal(classifyPrompt('Leave this unique level forever (y/n) ? ', true), 'yesno');
+    assert.equal(classifyPrompt('Again(Y/N)?', true), 'yesno');
+    assert.equal(classifyPrompt('Allow shots to pierce? ', true), 'yesno');
+    assert.equal(classifyPrompt('Recall details? (k/p/y/n): ', true), 'other');
+  });
+
+  it('asks a single lettered choice, but not an armour named in a message', () => {
+    assert.equal(classifyPrompt('Create [S]hots? ', true), 'choice');
+    assert.equal(classifyPrompt('You see a Soft Leather Armour [8].'), 'other');
+  });
+
+  it('marks a yes that cannot be taken back', () => {
+    assert.ok(isIrreversible('Leave this unique level forever?'));
+    assert.ok(isIrreversible('Really abandon the quest?'));
+    assert.ok(isIrreversible('This will destroy the ring. Do you wish to continue?'));
+    assert.ok(!isIrreversible('Really leave the level?'));
+    assert.ok(!isIrreversible('Next time, recall to this level?'));
   });
 });
 

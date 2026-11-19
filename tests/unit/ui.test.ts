@@ -484,6 +484,8 @@ describe('file viewer headings', () => {
     assert.match(depth.hint ?? '', /Level 11 to 14/);
     assert.equal(numberQuestion('Which level in Maze(25-25)? 1').hint, 'Word of Recall takes you to level 25.');
     assert.equal(cleanPrompt('Reset recall depth? [y/n]'), 'Next time, recall to this level?');
+    assert.equal(cleanPrompt('Leave this unique level forever (y/n) ? '), 'Leave this unique level forever?');
+    assert.equal(cleanPrompt('Again(Y/N)?'), 'Play again?');
   });
 
   it('titles knowledge and help files', () => {
