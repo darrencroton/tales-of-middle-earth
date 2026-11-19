@@ -486,6 +486,7 @@ describe('file viewer headings', () => {
     assert.equal(cleanPrompt('Reset recall depth? [y/n]'), 'Next time, recall to this level?');
     assert.equal(cleanPrompt('Leave this unique level forever (y/n) ? '), 'Leave this unique level forever?');
     assert.equal(cleanPrompt('Again(Y/N)?'), 'Play again?');
+    assert.equal(cleanPrompt('Recall details? (k/p/y/n): '), 'Recall details? (k/p/y/n)');
   });
 
   it('titles knowledge and help files', () => {

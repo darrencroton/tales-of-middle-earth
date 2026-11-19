@@ -46,6 +46,8 @@ describe('prompt classification', () => {
     assert.ok(isIrreversible('Leave this unique level forever?'));
     assert.ok(isIrreversible('Really abandon the quest?'));
     assert.ok(isIrreversible('This will destroy the ring. Do you wish to continue?'));
+    assert.ok(isIrreversible('Abandon it permanently?'));
+    assert.ok(!isIrreversible('Do you want to abandon the creature?'));
     assert.ok(!isIrreversible('Really leave the level?'));
     assert.ok(!isIrreversible('Next time, recall to this level?'));
   });

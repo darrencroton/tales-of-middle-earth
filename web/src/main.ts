@@ -579,12 +579,12 @@ function rowZeroText(): string {
 }
 
 /**
- * tome2's question: row 0, or with row 0 empty a yes/no question where its
- * cursor waits (a gamble's "Again(Y/N)?", drawn beside the game).
+ * tome2's question: row 0, or in a game with row 0 empty a yes/no question
+ * where its cursor waits (a gamble's "Again(Y/N)?", drawn beside the game).
  */
 function promptText(): string {
   const row0 = rowZeroText();
-  if (row0 || buffer.cursorY <= 0) return row0;
+  if (row0 || buffer.cursorY <= 0 || !game.lastSnap?.inDungeon) return row0;
   const asked = buffer.rowText(buffer.cursorY).slice(0, Math.max(0, buffer.cursorX)).trim().split(/\s{2,}/).pop() ?? '';
   return isYesNo(asked) ? asked : row0;
 }

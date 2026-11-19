@@ -18,8 +18,8 @@ const ONE_KEY_HINT = /\([a-z](\/[a-z])+\)/i;
 /* tome2's questions read as one key and answered y or n without saying so (Piercing shots). */
 const UNHINTED_YES_NO = /^Allow shots to pierce\?/;
 
-/* A yes that cannot be taken back: leaving a unique level for good, destroying, deleting, abandoning, quitting. */
-const IRREVERSIBLE = /\b(forever|destroy|delete|abandon|quit|retire)\b|\*really\*/i;
+/* A yes that cannot be taken back: leaving a unique level for good, destroying, deleting, abandoning a quest or a creature for good, quitting. */
+const IRREVERSIBLE = /\b(forever|destroy|delete|abandon the quest|permanently|quit|retire)\b|\*really\*/i;
 
 /** tome2's choice of the dungeon Word of Recall leads to (a Scroll of Reset Recall, a building's teleport to a dungeon level). */
 const DUNGEON_PROMPT = /^Select a dungeon \(a-.\), \* to list/;
