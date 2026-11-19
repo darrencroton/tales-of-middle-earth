@@ -233,7 +233,7 @@ test('kept levels stay as the hero left them, their stairs lead one level on and
 test.describe(() => {
   test.use({ settings: { animation: 'off', persistentLevels: false } });
 
-  test('levels are made anew on each visit when they are not kept, and small levels are small, except in Moria', async ({ page }) => {
+  test('levels are made anew on each visit when they are not kept, and small levels are small, except in Moria, whose Orc Town is left for good only on a yes', async ({ page }) => {
     const size = () => page.evaluate(() => {
       const snap = window.__tome!.engine.snapshot()!;
       return `${snap.width}x${snap.height}`;
@@ -251,6 +251,25 @@ test.describe(() => {
     /* Moria is built vast whatever the setting. */
     await wizardCommand(page, 'D', 22);
     expect(await size()).toBe('198x66');
+
+    /* Orc Town, a unique level: tome2 asks "(y/n)" itself, before it looks for stairs; the card's default is No. */
+    await jumpToLevel(page, 35);
+    /* A quest met on the way down (a random quest at 150 ft) is told once the hero is first quiet on the map. */
+    const onward = page.locator('.sheet-action', { hasText: 'Onward' });
+    await onward.waitFor({ timeout: 3_000 }).then(() => onward.click()).catch(() => undefined);
+    const card = page.locator('.prompt-card:not([hidden])');
+    const lastMessage = () => page.evaluate(() => window.__tome!.engine.gameState(1)!.messages!.at(-1)?.text ?? '');
+    await sendText(page, '\\>');
+    await expect(card.locator('.card-title')).toHaveText('Leave this unique level forever?');
+    await expect(card.locator('.card-button.danger')).toHaveText('Yes');
+    await page.keyboard.press('Enter');
+    await waitAtCommand(page);
+    await expect(card).toBeHidden();
+    expect(await lastMessage()).not.toMatch(/no down staircase/);
+    await sendText(page, '\\>');
+    await card.locator('.card-button', { hasText: 'Yes' }).click();
+    await waitAtCommand(page);
+    expect(await lastMessage()).toMatch(/no down staircase/);
   });
 });
 

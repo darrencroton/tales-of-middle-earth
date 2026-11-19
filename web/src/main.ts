@@ -16,7 +16,7 @@ import { altarAction } from './play/gods.ts';
 import { hasEffect } from './play/effects.ts';
 import { contextActions, contextualAction, commandRefusal, CONTROLLING, exploreRefusal, creaturePowersMacro, releaseMacro, restMacro, waitCommand, type Action, type ActionContext, type CommandContext, type NativeView } from './play/actions.ts';
 import { MacroRunner, type Macro } from './play/macro.ts';
-import { classifyPrompt, directionDigit, isAdjacent, type PromptKind } from './play/prompts.ts';
+import { classifyPrompt, directionDigit, isAdjacent, isYesNo, type PromptKind } from './play/prompts.ts';
 import { goAction, rubbleBeside, TAP_AGAIN, tapAction, type TapAction } from './play/travel.ts';
 import { Journeys } from './play/journeys.ts';
 import { HeroMemoryKeeper } from './play/heromemory.ts';
@@ -578,8 +578,19 @@ function rowZeroText(): string {
   return buffer.rowText(0).trim();
 }
 
+/**
+ * tome2's question: row 0, or in a game with row 0 empty a yes/no question
+ * where its cursor waits (a gamble's "Again(Y/N)?", drawn beside the game).
+ */
+function promptText(): string {
+  const row0 = rowZeroText();
+  if (row0 || buffer.cursorY <= 0 || !game.lastSnap?.inDungeon) return row0;
+  const asked = buffer.rowText(buffer.cursorY).slice(0, Math.max(0, buffer.cursorX)).trim().split(/\s{2,}/).pop() ?? '';
+  return isYesNo(asked) ? asked : row0;
+}
+
 function currentPrompt(): PromptKind {
-  return classifyPrompt(rowZeroText(), buffer.cursorY === 0);
+  return classifyPrompt(promptText(), buffer.cursorY === 0);
 }
 
 /** The game state when tome2 last waited for a command (on the map, or a building's). */
@@ -707,7 +718,7 @@ function updatePromptCard(): void {
   const show =
     CARD_KINDS.has(kind) && !(kind === 'text' && menuShown) && !macros.running && !journeys.targeting && !journeys.answering && !title.isVisible && engine.pendingKeys === 0;
   if (show) {
-    promptCard.show(kind as CardKind, rowZeroText(), /'5'|current target/i.test(rowZeroText()), leadMessages.map((m) => m.text));
+    promptCard.show(kind as CardKind, promptText(), /'5'|current target/i.test(rowZeroText()), leadMessages.map((m) => m.text));
     if (leadMessages.length) noteLeadShown();
   } else promptCard.hide();
 }

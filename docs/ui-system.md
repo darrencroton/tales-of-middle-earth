@@ -246,7 +246,7 @@ Four things look different and never stand for each other:
 | State | Looks | Rule |
 |---|---|---|
 | Highlight | gold outline | Arrows, swipes and Enter act on it. First: the item a view marks current (tome2's cursor), else a pop-up's first usable row, else the footer's default action, else the tab of the view shown (`defaultItem`). A list rebuilt in place keeps it on the same row, or the row now in its place (`ListNav.mark`/`find`). |
-| Default action | gold fill | The action marked primary, or else the only one that can be done unless destructive (`defaultAction`): a building's lone Exit, a card's lone OK. |
+| Default action | gold fill | The action marked primary, or else the only one that can be done unless destructive (`defaultAction`): a building's lone Exit, a card's lone OK. A yes/no question's Yes, unless it cannot be taken back (leaving a unique level forever, destroying, abandoning a quest, quitting: `isIrreversible`), when Yes is red and No is highlighted. |
 | Selected tab | gold fill in the tab row | Which view shows; never an action. |
 | Cannot be done now | dimmed in place | `PopAction.unavailable`: never the default, still tappable, and says why (a toast and the deny sound, as the toolbar does). Rows that cannot be used now (a shop item too dear, a service not for you) are dimmed and still open their card. |
 

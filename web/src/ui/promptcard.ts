@@ -1,8 +1,8 @@
 import { KEY_ENTER as ENTER, KEY_ESCAPE as ESCAPE, keyCodes as codes, typedAnswer } from '../input/keys.ts';
 import { hallsWords, RETURN_KEYS } from '../play/death.ts';
-import { bracketChoices, choiceQuestion, type PromptKind } from '../play/prompts.ts';
+import { bracketChoices, choiceQuestion, isIrreversible, type PromptKind } from '../play/prompts.ts';
 import { el, iconText, leadIn, stepper, type Stepper } from './dom.ts';
-import { cleanPrompt, numberQuestion } from './prompttext.ts';
+import { cleanPrompt, numberQuestion, yesNoQuestion } from './prompttext.ts';
 import type { MessageBox } from './msgbox.ts';
 
 export type CardKind = Extract<PromptKind, 'yesno' | 'quantity' | 'text' | 'direction' | 'aim' | 'choice'>;
@@ -131,12 +131,13 @@ export class PromptCard {
     if (key === this.renderedKey) return;
     this.renderedKey = key;
     this.root.className = `prompt-card ${box.kind}`;
+    if (box.kind === 'yesno') {
+      this.yesNo(box.text);
+      return;
+    }
     const buttons = el('div', 'card-buttons');
     let primary: HTMLButtonElement;
-    if (box.kind === 'yesno') {
-      primary = this.button('Yes', codes('y'), 'card-button primary');
-      buttons.append(this.button('No', codes('n')), primary);
-    } else if (box.kind === 'choice') {
+    if (box.kind === 'choice') {
       buttons.append(this.button('Cancel', [ESCAPE]));
       for (const choice of box.choices) buttons.append(this.button(choice.label, codes(choice.key)));
       primary = buttons.lastElementChild as HTMLButtonElement;
@@ -246,14 +247,16 @@ export class PromptCard {
     return el('p', 'card-title', text);
   }
 
+  /** Yes and No; Yes is the default unless it cannot be taken back (leaving a unique level forever), when No is and Yes is red. */
   private yesNo(raw: string): void {
-    let question = cleanPrompt(raw);
-    if (!/[?!.]$/.test(question)) question += '?';
+    const question = yesNoQuestion(raw);
+    const irreversible = isIrreversible(question);
     const buttons = el('div', 'card-buttons');
-    const yes = this.button('Yes', codes('y'), 'card-button primary');
-    buttons.append(this.button('No', codes('n')), yes);
+    const no = this.button('No', codes('n'));
+    const yes = this.button('Yes', codes('y'), irreversible ? 'card-button danger' : 'card-button primary');
+    buttons.append(no, yes);
     this.root.replaceChildren(this.title(question), buttons);
-    yes.focus({ preventScroll: true });
+    (irreversible ? no : yes).focus({ preventScroll: true });
   }
 
   /** tome2's "[S]hots, [A]rrows or [B]olts?" questions, one button per choice. */

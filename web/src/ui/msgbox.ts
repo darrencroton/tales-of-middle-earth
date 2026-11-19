@@ -1,4 +1,5 @@
-import { bracketChoices } from '../play/prompts.ts';
+import { bracketChoices, isYesNo } from '../play/prompts.ts';
+import { yesNoQuestion } from './prompttext.ts';
 import { rowText, type TermRow } from './termparse.ts';
 
 interface BoxChoice {
@@ -37,10 +38,7 @@ export function findMessageBox(rows: readonly TermRow[]): MessageBox | null {
 }
 
 function classifyBox(text: string): Pick<MessageBox, 'kind' | 'text' | 'choices'> {
-  if (/\(y\/n\)\s*$/i.test(text)) {
-    const question = text.replace(/\s*\(y\/n\)\s*$/i, '').replace(/\s*\(this is permanent\)/i, '');
-    return { kind: 'yesno', text: /[?!.]$/.test(question) ? question : `${question}?`, choices: [] };
-  }
+  if (isYesNo(text)) return { kind: 'yesno', text: yesNoQuestion(text.replace(/\s*\(this is permanent\)/i, '')), choices: [] };
   const choices = bracketChoices(text);
   if (choices.length > 1) return { kind: 'choice', text: 'Choose one', choices };
   return { kind: 'notice', text, choices: [] };
