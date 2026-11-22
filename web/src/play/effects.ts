@@ -66,6 +66,11 @@ const ELEMENTS: Readonly<Record<string, string>> = {
 };
 const ELEMENT_SHORT: Readonly<Record<string, string>> = { resistAcid: 'Acid', resistElec: 'Elec', resistFire: 'Fire', resistCold: 'Cold', resistPois: 'Pois' };
 
+/** The attributes a drain lowers, by name. */
+function statNames(e: EffectState): string[] {
+  return (e.stats ?? []).map((s) => STATS[s] ?? s);
+}
+
 function signed(n: number): string {
   return n < 0 ? `−${-n}` : `+${n}`;
 }
@@ -217,13 +222,26 @@ const CATALOGUE: Readonly<Record<string, Entry>> = {
     ends: 'When its time comes it will most likely burst out as a hostile creature, unless something cures you first.',
   },
   drained: {
-    abbr: (e) => `−${(e.stat ?? '').slice(0, 2)}`,
-    short: (e) => (STATS[e.stat ?? ''] ? `Weak ${STATS[e.stat ?? ''].slice(0, 3)}` : 'Weakened'),
+    abbr: (e) => (e.stats?.length === 1 ? `−${e.stats[0].slice(0, 2)}` : 'Wk'),
+    short: (e) => (e.stats?.length === 1 ? `Weak ${STATS[e.stats[0]].slice(0, 3)}` : e.stats?.length === 2 ? `Weak ${e.stats.map((s) => s.charAt(0)).join('+')}` : 'Weakened'),
     kind: 'bane',
     icon: '▽',
-    name: (e) => `Weakened ${STATS[e.stat ?? ''] ?? 'attribute'}`,
-    does: (e) => `Your ${STATS[e.stat ?? '']?.toLowerCase() ?? 'attribute'} is lowered for a time.`,
-    ends: 'It returns by itself when this runs out.',
+    name: (e) => ((e.stats?.length ?? 0) <= 2 ? `Weakened ${listed(statNames(e))}` : 'Weakened'),
+    does: (e) => `Your ${listed(statNames(e)).toLowerCase()} ${e.stats?.length === 1 ? 'is' : 'are'} below ${e.stats?.length === 1 ? 'its' : 'their'} best.`,
+    ends: (e) => {
+      const potions = `${listed(statNames(e).map((s) => `Restore ${s}`))} or a mushroom of Restoring`;
+      return e.turns ? `It returns by itself when this runs out; ${potions} brings it back sooner.` : `It stays until restored: ${potions} brings it back.`;
+    },
+  },
+  drainedExp: {
+    abbr: '−Xp',
+    short: 'Lost xp',
+    kind: 'bane',
+    icon: '▽',
+    name: 'Drained experience',
+    strength: (e) => `${e.lost ?? 0} experience lost`,
+    does: 'Your life force has been drained: you have less experience than you earned, and may have lost levels. A level won back gives no new skill points.',
+    ends: 'Experience you earn wins some of it back; Restore Life Levels brings it all back at once.',
   },
   undead: {
     abbr: 'Ud',
@@ -473,18 +491,29 @@ function resistance(effects: readonly EffectState[]): Effect | null {
   return effect;
 }
 
+/**
+ * The attributes below their best, as one: drains often come together (the
+ * Black Breath, a potion of Ruination). It counts down only when all of them
+ * come back by themselves, as long as the last.
+ */
+function drained(effects: readonly EffectState[]): Effect | null {
+  const found = effects.filter((e) => e.id === 'drained');
+  if (!found.length) return null;
+  const timed = found.every((e) => e.turns);
+  return describe('drained', 'drained', { id: 'drained', turns: timed ? Math.max(...found.map((e) => e.turns ?? 0)) : undefined, stats: found.map((e) => e.stat ?? '') });
+}
+
 /** The effects in force on the hero, as the player reads them: ailments (the dangerous first), then blessings, then what they keep going. */
 export function heroEffects(player: Pick<PlayerState, 'effects' | 'pray'> & Partial<Pick<PlayerState, 'food'>>): Effect[] {
   const states = player.effects ?? [];
   const all: Effect[] = [];
   if (player.food !== undefined && isHungry({ food: player.food })) all.push(describe('hunger', 'hunger', { id: 'hunger', level: player.food })!);
   for (const e of states) {
-    if (ELEMENTS[e.id]) continue;
-    const effect = describe(e.stat ? `${e.id}:${e.stat}` : e.id, e.id, e);
+    if (ELEMENTS[e.id] || e.id === 'drained') continue;
+    const effect = describe(e.id, e.id, e);
     if (effect) all.push(effect);
   }
-  const resist = resistance(states);
-  if (resist) all.push(resist);
+  for (const merged of [drained(states), resistance(states)]) if (merged) all.push(merged);
   if (player.pray === 2) all.push(describe('praying', 'praying', { id: 'praying' })!);
   const renewed = new Set(states.find((e) => e.id === 'song')?.renews ?? []);
   if (renewed.size) {

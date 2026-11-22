@@ -1,5 +1,5 @@
 import { hasEffect } from '../play/effects.ts';
-import { isHostile, newMessages, type GameState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
+import { isHostile, levelRegained, newMessages, type GameState, type MonsterState, type PlayerState } from '../render/snapshot.ts';
 
 export type Element = 'fire' | 'cold' | 'lightning' | 'poison' | 'magic' | 'dark' | 'earth';
 
@@ -271,7 +271,7 @@ export function outcomeCue(key: string, tookTime: boolean, messages: readonly st
   return { id: outcome.kind === 'failed' ? 'fizzle' : 'deny' };
 }
 
-type Tracked = Pick<PlayerState, 'name' | 'lev' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'effects' | 'food'>;
+type Tracked = Pick<PlayerState, 'name' | 'lev' | 'peakLev' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'effects' | 'food'>;
 
 const STATUS_CUES: [string, CueId][] = [
   ['poisoned', 'poisoned'],
@@ -302,7 +302,7 @@ export function playerCues(prev: Tracked | null, next: Tracked, heard: ReadonlyS
     if (next.wild !== prev.wild) cues.push({ id: 'travel' });
     else cues.push({ id: next.depth > prev.depth ? 'stairs-down' : 'stairs-up' });
   }
-  if (next.lev > prev.lev) cues.push({ id: 'levelup' });
+  if (next.lev > prev.lev && !levelRegained(prev, next)) cues.push({ id: 'levelup' });
   if (!moved && next.mhp > 0) {
     const lost = prev.chp - next.chp;
     const gained = next.chp - prev.chp;

@@ -139,6 +139,8 @@ export interface PlayerState {
   cls: string;
   title?: string;
   lev: number;
+  /** The highest level that has given skill points (tome2's skill_last_level): a level lost to a drain and won back gives none. */
+  peakLev?: number;
   exp: number;
   au: number;
   chp: number;
@@ -231,8 +233,11 @@ export interface EffectState {
   up?: number;
   /** The shape taken or body borrowed. */
   form?: string;
-  /** A temporarily drained attribute. */
+  /** A drained attribute, or those drained (as the HUD shows them, together). */
   stat?: string;
+  stats?: string[];
+  /** Drained experience: how much is lost. */
+  lost?: number;
   /** The spell sung, held by Inertia Control, and how much mana it takes. */
   spell?: string;
   mana?: number;
@@ -248,6 +253,11 @@ export interface EffectState {
 
 /** Feet below the surface of one dungeon level, as tome2 counts depth. */
 export const FEET_PER_LEVEL = 50;
+
+/** Whether a level gained between two states is one reached before, lost to a drain and won back: it gives no skill points. */
+export function levelRegained(prev: Pick<PlayerState, 'peakLev'>, next: Pick<PlayerState, 'lev'>): boolean {
+  return next.lev <= (prev.peakLev ?? 0);
+}
 
 /** How deep the hero is, in feet (none on the world map). */
 export function feetOf(player: Pick<PlayerState, 'depth' | 'wild'>): number {

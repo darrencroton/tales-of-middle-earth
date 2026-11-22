@@ -72,6 +72,7 @@ describe('effects on the hero', () => {
       ...[30, 80, 150].map((level) => ({ id: 'stun', turns: 3, level })),
       ...[5, 20, 40, 70, 150, 300, 1500].map((level) => ({ id: 'cut', turns: 3, level })),
       { id: 'drained', turns: 3, stat: 'CON' },
+      { id: 'drainedExp', lost: 1200 },
       { id: 'undead', kills: 3 },
       ...[{ armour: -290 }, { armour: 40 }, { armour: 10, aura: 'fear' as const }, { armour: 10, aura: 'fire' as const }].map((s) => ({ id: 'shield', turns: 3, ...s })),
       { id: 'fast', turns: 3, speed: 10 },
@@ -116,16 +117,18 @@ describe('effects on the hero', () => {
     assert.equal(undead.fading, false);
   });
 
-  it('keeps temporary drains apart by attribute, and leaves out what it does not know', () => {
-    const keys = hero([
-      { id: 'drained', turns: 300, stat: 'STR' },
-      { id: 'drained', turns: 80, stat: 'CON' },
-      { id: 'unheard', turns: 3 },
+  it('gathers drained attributes into one, counting down only when all of them pass, and leaves out what it does not know', () => {
+    const one = hero([{ id: 'drained', stat: 'STR' }, { id: 'drainedExp', lost: 450 }, { id: 'unheard', turns: 3 }]);
+    assert.deepEqual(one.map((e) => [e.key, e.abbr, e.short, e.name, e.lasts]), [
+      ['drained', '−ST', 'Weak Str', 'Weakened Strength', 'Until cured'],
+      ['drainedExp', '−Xp', 'Lost xp', 'Drained experience', 'Until cured'],
     ]);
-    assert.deepEqual(keys.map((e) => [e.key, e.abbr, e.name]), [
-      ['drained:STR', '−ST', 'Weakened Strength'],
-      ['drained:CON', '−CO', 'Weakened Constitution'],
-    ]);
+    assert.equal(one[0].ends, 'It stays until restored: Restore Strength or a mushroom of Restoring brings it back.');
+    assert.equal(one[1].strength, '450 experience lost');
+    const two = hero([{ id: 'drained', turns: 300, stat: 'STR' }, { id: 'drained', turns: 80, stat: 'CON' }])[0];
+    assert.deepEqual([two.name, two.short, two.left], ['Weakened Strength and Constitution', 'Weak S+C', { count: 300, unit: 'turn' }]);
+    const mixed = hero([{ id: 'drained', turns: 300, stat: 'STR' }, { id: 'drained', stat: 'CON' }, { id: 'drained', stat: 'WIS' }])[0];
+    assert.deepEqual([mixed.name, mixed.short, mixed.abbr, mixed.left], ['Weakened', 'Weakened', 'Wk', null]);
   });
 
   it('tells which blessings faded, and whether the hero is under an effect or hungry', () => {

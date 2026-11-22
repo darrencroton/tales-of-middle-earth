@@ -518,6 +518,7 @@ describe('sound cues', () => {
     assert.deepEqual(ids({ depth: 0 }), ['stairs-up']);
     assert.deepEqual(ids({ wild: 1 }), ['travel']);
     assert.deepEqual(ids({ lev: 2 }), ['levelup']);
+    assert.deepEqual(playerCues({ ...base, peakLev: 2 }, { ...base, lev: 2, peakLev: 2 }, new Set(), false).map((c) => c.id), []);
     assert.deepEqual(ids({ chp: 15 }), ['hurt']);
     assert.deepEqual(ids({ chp: 15 }, ['hurt']), []);
     const poisoned = [{ id: 'poisoned', turns: 5 }];

@@ -27,7 +27,10 @@ describe('game feel events', () => {
   });
 
   it('reports level-ups, gold and depth changes', () => {
-    assert.deepEqual(playerEvents(base, { ...base, lev: 2, exp: 10, skillPoints: 5 }), [{ kind: 'levelup', level: 2, skillPoints: 5 }]);
+    assert.deepEqual(playerEvents(base, { ...base, lev: 2, exp: 10, skillPoints: 5 }), [{ kind: 'levelup', level: 2, skillPoints: 5, regained: false }]);
+    assert.deepEqual(playerEvents({ ...base, lev: 4, peakLev: 5 }, { ...base, lev: 5, peakLev: 5 }), [{ kind: 'levelup', level: 5, skillPoints: 0, regained: true }]);
+    assert.deepEqual(playerEvents({ ...base, lev: 4, peakLev: 5 }, { ...base, lev: 6, peakLev: 6 }), [{ kind: 'levelup', level: 6, skillPoints: 0, regained: false }]);
+    assert.deepEqual(playerEvents({ ...base, lev: 5, exp: 900, peakLev: 5 }, { ...base, lev: 4, exp: 700, peakLev: 5 }), [{ kind: 'leveldown', level: 4 }]);
     assert.deepEqual(playerEvents(base, { ...base, exp: 4 }), [{ kind: 'exp', amount: 4 }]);
     assert.deepEqual(playerEvents(base, { ...base, au: 112 }), [{ kind: 'gold', amount: 12 }]);
     assert.deepEqual(playerEvents(base, { ...base, au: 90 }), []);

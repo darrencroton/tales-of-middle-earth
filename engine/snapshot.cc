@@ -1681,10 +1681,14 @@ static void json_effects(JsonWriter &w)
 	if (p_ptr->stun > 0) json_effect(w, "stun", healing(p_ptr->stun), [&] { w.field("level", p_ptr->stun); });
 	if (p_ptr->cut > 0) json_effect(w, "cut", p_ptr->cut > 1000 ? 0 : healing(p_ptr->cut), [&] { w.field("level", p_ptr->cut); });
 	if (p_ptr->black_breath) json_effect(w, "blackBreath", 0);
+	/* An attribute below its maximum: all of it back in `turns` when the drain was temporary (stat_cnt), else until restored. */
 	for (int i = 0; i < 6; i++)
 	{
-		if (p_ptr->stat_cnt[i] > 0) json_effect(w, "drained", p_ptr->stat_cnt[i], [&] { w.field("stat", stat_names[i]); });
+		if (p_ptr->stat_cur[i] >= p_ptr->stat_max[i]) continue;
+		bool const timed = p_ptr->stat_cnt[i] > 0 && p_ptr->stat_cur[i] + p_ptr->stat_los[i] >= p_ptr->stat_max[i];
+		json_effect(w, "drained", timed ? p_ptr->stat_cnt[i] : 0, [&] { w.field("stat", stat_names[i]); });
 	}
+	if (p_ptr->exp < p_ptr->max_exp) json_effect(w, "drainedExp", 0, [&] { w.field("lost", p_ptr->max_exp - p_ptr->exp); });
 
 	if (p_ptr->fast > 0) json_effect(w, "fast", p_ptr->fast, [&] { w.field("speed", p_ptr->speed_factor); });
 	if (p_ptr->shield > 0)
@@ -1796,6 +1800,8 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 		if (idx < cp_ptr->titles.size()) w.field("title", cp_ptr->titles[idx]);
 	}
 	w.field("lev", p_ptr->lev);
+	/* The highest level that has given skill points: one lost to a drain and won back gives none. */
+	w.field("peakLev", p_ptr->skill_last_level);
 	w.field("exp", p_ptr->exp);
 	w.field("au", p_ptr->au);
 	w.field("chp", p_ptr->chp);
