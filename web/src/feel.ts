@@ -1,5 +1,5 @@
 import type { AnimationLevel } from './settings.ts';
-import { feetOf, placeName, type PlayerState } from './render/snapshot.ts';
+import { feetOf, levelRegained, placeName, type PlayerState } from './render/snapshot.ts';
 import { blessingsGone, heroEffects } from './play/effects.ts';
 import { timesText } from './play/death.ts';
 import { el, iconText } from './ui/dom.ts';
@@ -15,7 +15,10 @@ type Surface = 'world' | 'town' | 'land';
 
 export type FeelEvent =
   | { kind: 'hurt'; fraction: number }
-  | { kind: 'levelup'; level: number; skillPoints: number }
+  /** A level gained; `regained` when it was reached before, lost to a drain and won back (no skill points). */
+  | { kind: 'levelup'; level: number; skillPoints: number; regained: boolean }
+  /** A level lost to drained experience. */
+  | { kind: 'leveldown'; level: number }
   | { kind: 'depth'; place: string; feet: number; deeper: boolean; surface: Surface }
   /** A level that holds a quest, arrived at (`place` is its dungeon, empty on a quest's own level). */
   | { kind: 'quest'; title: string; place: string; feet: number }
@@ -30,7 +33,7 @@ export type FeelEvent =
   /** Back from death in Adventure mode, with the `deaths` returned from, this one included; played by main.ts (`followReturn`). */
   | { kind: 'returned'; deaths: number };
 
-type Tracked = Pick<PlayerState, 'name' | 'lev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown' | 'quest' | 'quests' | 'effects' | 'pray' | 'dead'>;
+type Tracked = Pick<PlayerState, 'name' | 'lev' | 'peakLev' | 'exp' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'skillPoints' | 'area' | 'inTown' | 'quest' | 'quests' | 'effects' | 'pray' | 'dead'>;
 
 /** What changed for the player between two states, as feedback events. */
 export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
@@ -52,7 +55,8 @@ export function playerEvents(prev: Tracked | null, next: Tracked): FeelEvent[] {
   }
   /* tome2 never ends a quest as the hero arrives on another quest's level, so an end takes the arrival's place. */
   quest = endedQuest(prev, next, level) ?? quest;
-  if (next.lev > prev.lev) events.push({ kind: 'levelup', level: next.lev, skillPoints: next.skillPoints ?? 0 });
+  if (next.lev > prev.lev) events.push({ kind: 'levelup', level: next.lev, skillPoints: next.skillPoints ?? 0, regained: levelRegained(prev, next) });
+  else if (next.lev < prev.lev) events.push({ kind: 'leveldown', level: next.lev });
   else if (next.exp > prev.exp) events.push({ kind: 'exp', amount: next.exp - prev.exp });
   if (next.chp < prev.chp && next.mhp > 0) events.push({ kind: 'hurt', fraction: Math.min(1, (prev.chp - next.chp) / next.mhp) });
   if (next.au > prev.au) events.push({ kind: 'gold', amount: next.au - prev.au });
@@ -283,6 +287,10 @@ export class GameFeel {
         vibrate(Math.round(20 + event.fraction * 80));
         break;
       case 'levelup':
+        if (event.regained) {
+          this.showBanner(`Level ${event.level}`, 'Won back · no new skill points', 'level');
+          break;
+        }
         this.flash('levelup', 1);
         this.showBanner(
           `Level ${event.level}`,
@@ -290,6 +298,9 @@ export class GameFeel {
           'levelup',
         );
         vibrate([30, 60, 30]);
+        break;
+      case 'leveldown':
+        this.showBanner(`Level ${event.level}`, 'Experience drained', 'level drained');
         break;
       case 'exp':
         this.float(`+${event.amount} xp`, 'exp');

@@ -47,7 +47,7 @@ describe('memorial', () => {
     const memorial = buildMemorial({
       player,
       character: {
-        ready: 1, stats: [{ name: 'STR', use: ' 18/50', top: '18/50', drained: 0 }], god: 'Tulkas', exp: 9000, nextExp: 10000,
+        ready: 1, stats: [{ name: 'STR', use: ' 18/50', top: '18/50', drained: 0 }], god: 'Tulkas', exp: 9000, maxExp: 9000, nextExp: 10000,
         toHit: 12, toDam: 15, ac: 40, toAc: 10, blows: 3, shots: 1, infra: 20, maxDepth: 30, turn: 900,
         skills: [{ name: 'Combat', value: 5000 }, { name: 'Sword-mastery', value: 20000 }], abilities: ['Precision'],
       },

@@ -541,10 +541,12 @@ function summaryBody(api: GameApi): HTMLElement | null {
   );
   body.append(section('Combat', combat));
 
+  const experience = stat('Experience', String(player.exp), player.exp < sheet.maxExp ? 'drained' : '');
+  if (player.exp < sheet.maxExp) experience.append(el('span', 'stat-note', `max ${sheet.maxExp}`));
   const progress = el('div', 'stat-grid');
   progress.append(
     stat('Level', String(player.lev)),
-    stat('Experience', String(player.exp)),
+    experience,
     stat('Next level', sheet.nextExp > 0 ? String(sheet.nextExp) : '—'),
     stat('Gold', `${player.au}`),
     stat('Location', depthLabel(player)),

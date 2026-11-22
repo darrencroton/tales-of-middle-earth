@@ -72,6 +72,7 @@ describe('effects on the hero', () => {
       ...[30, 80, 150].map((level) => ({ id: 'stun', turns: 3, level })),
       ...[5, 20, 40, 70, 150, 300, 1500].map((level) => ({ id: 'cut', turns: 3, level })),
       { id: 'drained', turns: 3, stat: 'CON' },
+      { id: 'drainedExp', lost: 1200 },
       { id: 'undead', kills: 3 },
       ...[{ armour: -290 }, { armour: 40 }, { armour: 10, aura: 'fear' as const }, { armour: 10, aura: 'fire' as const }].map((s) => ({ id: 'shield', turns: 3, ...s })),
       { id: 'fast', turns: 3, speed: 10 },
@@ -116,16 +117,21 @@ describe('effects on the hero', () => {
     assert.equal(undead.fading, false);
   });
 
-  it('keeps temporary drains apart by attribute, and leaves out what it does not know', () => {
+  it('keeps drains apart by attribute, lasting until restored unless they pass, and leaves out what it does not know', () => {
     const keys = hero([
       { id: 'drained', turns: 300, stat: 'STR' },
-      { id: 'drained', turns: 80, stat: 'CON' },
+      { id: 'drained', stat: 'CON' },
+      { id: 'drainedExp', lost: 450 },
       { id: 'unheard', turns: 3 },
     ]);
-    assert.deepEqual(keys.map((e) => [e.key, e.abbr, e.name]), [
-      ['drained:STR', '−ST', 'Weakened Strength'],
-      ['drained:CON', '−CO', 'Weakened Constitution'],
+    assert.deepEqual(keys.map((e) => [e.key, e.abbr, e.name, e.lasts]), [
+      ['drained:STR', '−ST', 'Weakened Strength', 'Until cured'],
+      ['drained:CON', '−CO', 'Weakened Constitution', 'Until cured'],
+      ['drainedExp', 'Xp', 'Drained experience', 'Until cured'],
     ]);
+    assert.deepEqual(keys[0].left, { count: 300, unit: 'turn' });
+    assert.equal(keys[1].left, null);
+    assert.equal(keys[2].strength, '450 experience lost');
   });
 
   it('tells which blessings faded, and whether the hero is under an effect or hungry', () => {

@@ -3908,6 +3908,10 @@ html.keyboard-tight .prompt-card.text .card-title {
   text-shadow: 0 0 12px rgb(255 190 80 / 0.7);
 }
 
+.feel-banner.drained strong {
+  color: var(--bane);
+}
+
 .feel-banner span {
   color: var(--muted);
   font-size: var(--fs-small);

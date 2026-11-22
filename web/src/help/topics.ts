@@ -344,7 +344,7 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Ailments, blessings and hunger',
         icon: '☠',
         summary: 'Poison, cuts, fear, hunger; shields, haste and other blessings.',
-        keywords: 'status effect effects buff buffs debuff duration turns left poison poisoned cut bleeding stun stunned confused blind afraid fear paralysed paralyzed hallucinating slow fast haste hasted hungry hunger weak food eat eating starving shield doom blessing blessed heroism resistance song sustained fading',
+        keywords: 'status effect effects buff buffs debuff duration turns left poison poisoned cut bleeding stun stunned confused blind afraid fear paralysed paralyzed hallucinating slow fast haste hasted hungry hunger weak food eat eating starving drained drain weakened experience restore shield doom blessing blessed heroism resistance song sustained fading',
         body: [
           'Effects on you show as tiles in the strip below your health: ailments in red (bright and glowing when dangerous), blessings such as a shield, haste or resistance in green, and what you keep going (a song, prayer) in blue. With a few they show their names; as more gather, long names shorten (*Doom* for Doom shield, *rFire* for fire resistance), then all go to two letters, so the creatures around you stay in view. The bar under each empties as it runs down, and a blessing breathes gently in its last few turns. Its name floats over your hero as it begins and fades.',
           'Tap a tile for what it does, how strong it is, the turns it has left and what ends it; the character summary lists them all by name. Most ailments wear off with time; potions cure them sooner.',
@@ -359,6 +359,8 @@ export const HELP: readonly HelpGroup[] = [
               ['Afraid', 'You cannot fight hand to hand. Missiles and magic still work.'],
               ['Paralysed', 'You cannot act at all. Free action protects against it.'],
               ['Hallucinating', 'What you see is not what is there.'],
+              ['Weakened', 'An attribute drained below its best. It stays until restored by a Restore potion or a mushroom of Restoring, unless the drain was a passing one.'],
+              ['Drained experience', 'Experience drained away, perhaps with a level or more. Experience you earn wins some back, and Restore Life Levels all of it; a level won back brings no new skill points.'],
               ['Slow, Fast', 'Fewer or more turns than those around you.'],
               ['Hungry, Weak', 'Eat something: tap it in your pack. Weakness makes you feeble, and starving heroes faint.'],
             ],
@@ -470,7 +472,7 @@ export const HELP: readonly HelpGroup[] = [
         summary: 'How your hero grows.',
         keywords: 'skill points ability abilities learn raise lower spend level up',
         body: [
-          'Each new level brings *6 skill points*. Spend them on the Skills tab of your character, or tap *skill points to spend* when it shows under your health.',
+          'Each new level brings *6 skill points*, the first time it is reached: a level lost to drained experience and won back brings none. Spend them on the Skills tab of your character, or tap *skill points to spend* when it shows under your health.',
           'A point raises a skill by an amount your race and class decide: skills your class is good at grow much faster. A skill can be raised to at most your level plus four.',
           'Spend points on what you use: a fighter’s Combat and weapon mastery, a caster’s Magic and their school, and for everyone, skills that keep you alive.',
           'Points can be taken back with *Lower* until you leave the Skills screen, when you are asked to keep them.',
