@@ -541,8 +541,9 @@ function summaryBody(api: GameApi): HTMLElement | null {
   );
   body.append(section('Combat', combat));
 
-  const experience = stat('Experience', String(player.exp), player.exp < sheet.maxExp ? 'drained' : '');
-  if (player.exp < sheet.maxExp) experience.append(el('span', 'stat-note', `max ${sheet.maxExp}`));
+  const lost = player.effects?.find((e) => e.id === 'drainedExp')?.lost ?? 0;
+  const experience = stat('Experience', String(player.exp), lost ? 'drained' : '');
+  if (lost) experience.append(el('span', 'stat-note', `max ${player.exp + lost}`));
   const progress = el('div', 'stat-grid');
   progress.append(
     stat('Level', String(player.lev)),

@@ -271,7 +271,7 @@ export function outcomeCue(key: string, tookTime: boolean, messages: readonly st
   return { id: outcome.kind === 'failed' ? 'fizzle' : 'deny' };
 }
 
-type Tracked = Pick<PlayerState, 'name' | 'lev' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'effects' | 'food'> & Partial<Pick<PlayerState, 'peakLev'>>;
+type Tracked = Pick<PlayerState, 'name' | 'lev' | 'peakLev' | 'au' | 'chp' | 'mhp' | 'depth' | 'dungeon' | 'wild' | 'effects' | 'food'>;
 
 const STATUS_CUES: [string, CueId][] = [
   ['poisoned', 'poisoned'],

@@ -359,7 +359,7 @@ export const HELP: readonly HelpGroup[] = [
               ['Afraid', 'You cannot fight hand to hand. Missiles and magic still work.'],
               ['Paralysed', 'You cannot act at all. Free action protects against it.'],
               ['Hallucinating', 'What you see is not what is there.'],
-              ['Weakened', 'An attribute drained below its best. It stays until restored by a Restore potion or a mushroom of Restoring, unless the drain was a passing one.'],
+              ['Weakened', 'Attributes drained below their best. They stay until restored by the attribute’s Restore potion (Restore Strength…) or a mushroom of Restoring, unless the drain was a passing one.'],
               ['Drained experience', 'Experience drained away, perhaps with a level or more. Experience you earn wins some back, and Restore Life Levels all of it; a level won back brings no new skill points.'],
               ['Slow, Fast', 'Fewer or more turns than those around you.'],
               ['Hungry, Weak', 'Eat something: tap it in your pack. Weakness makes you feeble, and starving heroes faint.'],

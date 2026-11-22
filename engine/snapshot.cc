@@ -2387,7 +2387,6 @@ EMSCRIPTEN_KEEPALIVE char const *web_character_json()
 
 	w.field("god", deity_info[p_ptr->pgod].name);
 	w.field("exp", p_ptr->exp);
-	w.field("maxExp", p_ptr->max_exp);
 	w.field("nextExp", p_ptr->lev < PY_MAX_LEVEL ? static_cast<long>(player_exp[p_ptr->lev - 1]) * p_ptr->expfact / 100L : 0);
 	w.field("toHit", p_ptr->dis_to_h);
 	w.field("toDam", p_ptr->dis_to_d);

@@ -117,21 +117,18 @@ describe('effects on the hero', () => {
     assert.equal(undead.fading, false);
   });
 
-  it('keeps drains apart by attribute, lasting until restored unless they pass, and leaves out what it does not know', () => {
-    const keys = hero([
-      { id: 'drained', turns: 300, stat: 'STR' },
-      { id: 'drained', stat: 'CON' },
-      { id: 'drainedExp', lost: 450 },
-      { id: 'unheard', turns: 3 },
+  it('gathers drained attributes into one, counting down only when all of them pass, and leaves out what it does not know', () => {
+    const one = hero([{ id: 'drained', stat: 'STR' }, { id: 'drainedExp', lost: 450 }, { id: 'unheard', turns: 3 }]);
+    assert.deepEqual(one.map((e) => [e.key, e.abbr, e.short, e.name, e.lasts]), [
+      ['drained', '−ST', 'Weak Str', 'Weakened Strength', 'Until cured'],
+      ['drainedExp', '−Xp', 'Lost xp', 'Drained experience', 'Until cured'],
     ]);
-    assert.deepEqual(keys.map((e) => [e.key, e.abbr, e.name, e.lasts]), [
-      ['drained:STR', '−ST', 'Weakened Strength', 'Until cured'],
-      ['drained:CON', '−CO', 'Weakened Constitution', 'Until cured'],
-      ['drainedExp', 'Xp', 'Drained experience', 'Until cured'],
-    ]);
-    assert.deepEqual(keys[0].left, { count: 300, unit: 'turn' });
-    assert.equal(keys[1].left, null);
-    assert.equal(keys[2].strength, '450 experience lost');
+    assert.equal(one[0].ends, 'It stays until restored: Restore Strength or a mushroom of Restoring brings it back.');
+    assert.equal(one[1].strength, '450 experience lost');
+    const two = hero([{ id: 'drained', turns: 300, stat: 'STR' }, { id: 'drained', turns: 80, stat: 'CON' }])[0];
+    assert.deepEqual([two.name, two.short, two.left], ['Weakened Strength and Constitution', 'Weak S+C', { count: 300, unit: 'turn' }]);
+    const mixed = hero([{ id: 'drained', turns: 300, stat: 'STR' }, { id: 'drained', stat: 'CON' }, { id: 'drained', stat: 'WIS' }])[0];
+    assert.deepEqual([mixed.name, mixed.short, mixed.abbr, mixed.left], ['Weakened', 'Weakened', 'Wk', null]);
   });
 
   it('tells which blessings faded, and whether the hero is under an effect or hungry', () => {

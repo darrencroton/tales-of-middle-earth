@@ -288,7 +288,7 @@ export class GameFeel {
         break;
       case 'levelup':
         if (event.regained) {
-          this.showBanner(`Level ${event.level}`, 'Won back · no new skill points', 'level');
+          this.showBanner(`Level ${event.level}`, 'Won back · no new skill points', 'level regained');
           break;
         }
         this.flash('levelup', 1);
