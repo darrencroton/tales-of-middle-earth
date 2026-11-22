@@ -51,6 +51,39 @@ async function takeStairs(page: Page, id: 'descend' | 'ascend', depth: number): 
   await waitAtCommand(page);
 }
 
+/* tome2's level feelings. */
+const FEELING = /^(Looks like any other level|You feel there is something special|You have a superb|You have an excellent|You have a very good|You have a good|You feel strangely lucky|You feel your luck is turning|You like the look|This level can't be all bad|What a boring place)/;
+
+/** The level feeling told on the arrival `arrive` makes. */
+async function feelingOn(page: Page, arrive: () => Promise<void>): Promise<string> {
+  const before = await page.evaluate(() => window.__tome!.engine.gameState(0)!.messageTotal ?? 0);
+  await arrive();
+  return page.evaluate(
+    ([total, source]) => {
+      const state = window.__tome!.engine.gameState(50)!;
+      return state.messages!.slice(0, Math.max(0, (state.messageTotal ?? 0) - total)).find((m) => new RegExp(source).test(m.text))?.text ?? '';
+    },
+    [before, FEELING.source] as const,
+  );
+}
+
+/** Rests, sending the creatures around away first (wizard mode), until `gameTurns` game turns have passed. */
+async function passTime(page: Page, gameTurns: number): Promise<void> {
+  const turn = () => page.evaluate(() => window.__tome!.engine.snapshot()!.turn);
+  const until = (await turn()) + gameTurns;
+  for (let attempt = 0; attempt < 10 && (await turn()) < until; attempt++) {
+    await wizardCommand(page, 'z');
+    const before = await turn();
+    await sendText(page, '\\R');
+    await waitForScreen(page, /^Rest \(/);
+    await sendText(page, `${Math.ceil((until - before) / 10)}\r`);
+    await expect.poll(turn).toBeGreaterThan(before);
+    await dismissMore(page);
+    await waitAtCommand(page);
+  }
+  expect(await turn(), 'the hero could not rest').toBeGreaterThanOrEqual(until);
+}
+
 /** Explores a few times, sending the creatures around away first (wizard mode), so a fight cannot end the test. */
 async function explore(page: Page, times: number): Promise<void> {
   for (let i = 0; i < times; i++) {
@@ -144,12 +177,16 @@ test('kept levels stay as the hero left them, their stairs lead one level on and
     }
     throw new Error(`no way down reached on level ${depth}`);
   };
-  await jumpToLevel(page, 5);
+  /* tome2 gives a level's feeling only once the hero has spent a while on the level before; a kept level keeps it when the hero comes back. */
+  await passTime(page, 1000);
+  const feeling = await feelingOn(page, () => jumpToLevel(page, 5));
+  expect(feeling).toMatch(FEELING);
+  expect(feeling).not.toMatch(/^Looks like any other level/);
   const down5 = await wayDown(5);
   await takeStairs(page, 'descend', 6);
   const up6 = await playerPos(page);
   expect((await arrival(page, up6)).underfoot).toMatch(WAY_UP);
-  await takeStairs(page, 'ascend', 5);
+  expect(await feelingOn(page, () => takeStairs(page, 'ascend', 5))).toBe(feeling);
   expect(await playerPos(page)).toEqual(down5);
   await takeStairs(page, 'descend', 6);
   expect(await playerPos(page)).toEqual(up6);

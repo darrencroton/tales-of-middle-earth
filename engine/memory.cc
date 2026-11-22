@@ -35,7 +35,10 @@
 
 #include <emscripten.h>
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -460,21 +463,71 @@ bool end_turn_hook(void *, void *, void *)
 	return false;
 }
 
+/* Marks the feeling written after tome2's data in a saved level's file. */
+constexpr char FEELING_MARK[4] = { 'F', 'E', 'E', 'L' };
+constexpr std::size_t FEELING_SIZE = sizeof(FEELING_MARK) + 3;
+
+/* Writes the level's feeling and fate after what tome2 saved of it, which keeps neither. */
+void save_feeling(std::string const &file)
+{
+	std::FILE *f = std::fopen(file.c_str(), "ab");
+	if (!f) return;
+	unsigned char trailer[FEELING_SIZE];
+	std::copy(std::begin(FEELING_MARK), std::end(FEELING_MARK), trailer);
+	auto const value = static_cast<uint16_t>(feeling);
+	trailer[4] = value & 0xff;
+	trailer[5] = value >> 8;
+	trailer[6] = fate_flag ? 1 : 0;
+	std::fwrite(trailer, 1, FEELING_SIZE, f);
+	std::fclose(f);
+}
+
+/* Gives a level loaded from its file the feeling and fate it was built with, or none. */
+void load_feeling(std::string const &file)
+{
+	feeling = 0;
+	fate_flag = false;
+	std::FILE *f = std::fopen(file.c_str(), "rb");
+	if (!f) return;
+	unsigned char trailer[FEELING_SIZE];
+	bool const read = std::fseek(f, -static_cast<long>(FEELING_SIZE), SEEK_END) == 0 && std::fread(trailer, 1, FEELING_SIZE, f) == FEELING_SIZE;
+	std::fclose(f);
+	if (!read || !std::equal(std::begin(FEELING_MARK), std::end(FEELING_MARK), trailer)) return;
+	feeling = static_cast<s16b>(trailer[4] | (trailer[5] << 8));
+	fate_flag = trailer[6] != 0;
+}
+
 } // namespace
 
 extern "C" {
+
+void __real__Z12save_dungeonv();
+
+/*
+ * tome2's save_dungeon (wrapped at link time, CMakeLists.txt), adding the
+ * level's feeling and fate to its file, as tome2 works them out only when it
+ * builds a level.
+ */
+void __wrap__Z12save_dungeonv()
+{
+	__real__Z12save_dungeonv();
+	if (!dun_level) return;
+	if (auto ext = get_dungeon_save_extension()) save_feeling(name_file_dungeon_save(*ext).string());
+}
 
 bool __real__Z12load_dungeonRKNSt3__212basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE(std::string const &ext);
 
 /*
  * tome2's load_dungeon (wrapped at link time, CMakeLists.txt), which puts the
- * hero where they left the level: a hero arriving by a change of depth is
- * put on a staircase back the way they came instead, before tome2 brings
- * their companions to them.
+ * hero where they left the level and leaves the feeling of the level before:
+ * the level's own feeling and fate are given back, and a hero arriving by a
+ * change of depth is put on a staircase back the way they came instead,
+ * before tome2 brings their companions to them.
  */
 bool __wrap__Z12load_dungeonRKNSt3__212basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE(std::string const &ext)
 {
 	if (!__real__Z12load_dungeonRKNSt3__212basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE(ext)) return false;
+	load_feeling(name_file_dungeon_save(ext).string());
 	arrive_on_way_back();
 	return true;
 }
