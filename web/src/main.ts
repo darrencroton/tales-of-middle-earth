@@ -651,7 +651,8 @@ function markPoint(cell: MapPoint): void {
       return;
     }
     const at = engine.pointAt(cell.x, cell.y);
-    if (at === 'marked') send(keyCodes('5'));
+    /* Sent straight to the engine, as send() would recentre a map the player has panned to the mark. */
+    if (at === 'marked') engine.sendKeys(keyCodes('5'));
     else if (at === 'edge') refuse(NOT_THERE);
     return;
   }
