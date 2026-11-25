@@ -219,6 +219,7 @@ describe('travel', () => {
     assert.deepEqual(tap(0, 0, 'direction'), { kind: 'none' });
     assert.deepEqual(tap(1, 1, 'aim'), { kind: 'direction', digit: '4' });
     assert.deepEqual(tap(0, 0, 'aim'), { kind: 'target', cell: { x: 0, y: 0 } });
+    assert.deepEqual(tap(2, 1, 'point'), { kind: 'point', cell: { x: 2, y: 1 } });
     snap.atCommand = false;
     assert.deepEqual(tap(0, 0, 'none'), { kind: 'interrupt' });
     assert.deepEqual(tap(0, 0, 'other'), { kind: 'none' });

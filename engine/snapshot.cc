@@ -108,7 +108,7 @@ void web_scratch_term_end();
 void display_weapon_damage(object_type *o_ptr);
 void display_ammo_damage(object_type *o_ptr);
 
-/* Map memory (engine/memory.cc), run options (engine/runoptions.cc), Adventure mode (engine/adventure.cc) and linked homes (engine/homes.cc). */
+/* Map memory (engine/memory.cc), run options (engine/runoptions.cc), Adventure mode (engine/adventure.cc), linked homes (engine/homes.cc) and choosing a point (engine/choosing.cc). */
 void web_memory_tick();
 int level_quest();
 bool level_quest_open();
@@ -116,6 +116,9 @@ void web_run_options_tick();
 void web_adventure_tick();
 void json_adventure(JsonWriter &w);
 std::vector<object_type const *> *linked_shelf();
+extern int choosing_point;
+void json_genocide(JsonWriter &w);
+bool point_hint(std::string const &msg);
 
 /* Shared with the other exports (engine/knowledge.cc, engine/homes.cc). */
 /*
@@ -208,10 +211,12 @@ enum HeaderSlot {
 	H_TURN,
 	H_FLOOR_OBJECTS,
 	H_HERO_ACTING,
+	H_CHOOSING,
+	H_MAP_STALE,
 	H_COUNT
 };
 
-constexpr int32_t SNAPSHOT_VERSION = 3;
+constexpr int32_t SNAPSHOT_VERSION = 5;
 
 enum Layer : uint8_t {
 	LAYER_UNKNOWN = 0,
@@ -1399,6 +1404,7 @@ extern "C" void BOOST_PP_CAT(__real_, MESSAGES_ADD)(Messages *self, std::string 
 
 extern "C" void BOOST_PP_CAT(__wrap_, MESSAGES_ADD)(Messages *self, std::string const &msg, byte color)
 {
+	if (point_hint(msg)) return;
 	if (self->size() == 0 || self->at(0).text != msg) messages_added++;
 	BOOST_PP_CAT(__real_, MESSAGES_ADD)(self, msg, color);
 }
@@ -1439,6 +1445,8 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	if (delay_override >= 0 && options) options->delay_factor = delay_override;
 	/* The hero is drawn as their race's symbol, as in the snapshot, never as a digit for their health. */
 	if (options) options->player_char_health = false;
+	/* The view stays centred on the hero (tome2 sees creatures and draws bolts only within it), as loading set it. */
+	if (options) options->center_player = true;
 	/* The frontend saves on arriving on another level; tome2's own autosaves stay off. */
 	if (options)
 	{
@@ -1463,6 +1471,10 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	header[H_AT_COMMAND] = (inkey_flag && !character_icky) ? 1 : 0;
 	/* The hero's own command is under way (tome2 takes its energy once it is done). */
 	header[H_HERO_ACTING] = (character_generated && p_ptr->energy >= 100 && !inkey_flag) ? 1 : 0;
+	/* tome2's point selection waits (1: a place; 2: a creature whose kind Genocide erases). */
+	header[H_CHOOSING] = choosing_point;
+	/* tome2 has yet to redraw its map (its view moved, as when the hero is moved mid-turn). */
+	header[H_MAP_STALE] = (p_ptr && (p_ptr->redraw & PR_MAP)) ? 1 : 0;
 	header[H_TURN] = static_cast<int32_t>(turn);
 	header[H_FLOOR_OBJECTS] = 0;
 
@@ -1835,6 +1847,7 @@ EMSCRIPTEN_KEEPALIVE char const *web_state_json(int max_messages)
 	json_quests(w, false);
 	json_effects(w);
 	w.end_object();
+	json_genocide(w);
 
 	/* Visible monsters */
 	w.key("monsters").begin_array();

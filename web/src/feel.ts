@@ -120,12 +120,16 @@ interface Banner {
 
 function rankOf(kind: string): BannerRank {
   if (kind.startsWith('quest')) return 'quest';
-  return kind === 'levelup' || kind === 'legend' || kind === 'returned' ? 'milestone' : 'passing';
+  return kind === 'levelup' || kind === 'legend' || kind === 'returned' || kind === 'genocide' ? 'milestone' : 'passing';
 }
 const FLOAT_MS = 1400;
 /* Damage and kill floats over creatures (the CSS animation is 1600ms). */
 const FLOAT_AT_MS = 1650;
 const RING_MS = 700;
+/* Genocide's wave, how fast it spreads (px a second) and how long a creature takes to dissolve as it passes. */
+const WAVE_MS = 1600;
+const WAVE_SPEED = 700;
+const ERASE_MS = 1100;
 const SHAKE_MS = 420;
 /* A hit taking at least this fraction of maximum health shakes the screen. */
 const SHAKE_HURT = 0.2;
@@ -214,6 +218,34 @@ export class GameFeel {
     node.style.setProperty('--ring', colour);
     this.layer.append(node);
     window.setTimeout(() => node.remove(), RING_MS);
+  }
+
+  /**
+   * Genocide: a dark wave spreads from `origin`, each creature erased in view
+   * dissolves as it passes (its glyph in its colour), and the map flashes and
+   * trembles (viewport coordinates).
+   */
+  erase(origin: { x: number; y: number }, erased: readonly { x: number; y: number; glyph: string; colour: string }[]): void {
+    vibrate([40, 60, 120]);
+    if (this.animation() === 'off') return;
+    const rect = this.layer.getBoundingClientRect();
+    const wave = el('div', 'feel-wave');
+    wave.style.left = `${origin.x - rect.left}px`;
+    wave.style.top = `${origin.y - rect.top}px`;
+    this.layer.append(wave);
+    window.setTimeout(() => wave.remove(), WAVE_MS);
+    for (const e of erased) {
+      const ghost = el('div', 'feel-erase', e.glyph);
+      ghost.style.left = `${e.x - rect.left}px`;
+      ghost.style.top = `${e.y - rect.top}px`;
+      ghost.style.setProperty('--erase', e.colour);
+      const delay = Math.round((Math.hypot(e.x - origin.x, e.y - origin.y) / WAVE_SPEED) * 1000);
+      ghost.style.animationDelay = `${delay}ms`;
+      this.layer.append(ghost);
+      window.setTimeout(() => ghost.remove(), delay + ERASE_MS);
+    }
+    this.flash('genocide', 1);
+    this.shake(0.7);
   }
 
   /** A deed earned: a gold card at the top of the map, one at a time. */
@@ -344,7 +376,7 @@ export class GameFeel {
   private flash(kind: string, strength: number): void {
     if (this.animation() === 'off') return;
     this.vignette.style.setProperty('--strength', String(Math.min(1, strength)));
-    this.vignette.classList.remove('hurt', 'levelup', 'returned');
+    this.vignette.classList.remove('hurt', 'levelup', 'returned', 'genocide');
     void this.vignette.offsetWidth;
     this.vignette.classList.add(kind);
   }

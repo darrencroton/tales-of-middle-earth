@@ -11,21 +11,34 @@ export function terminalCell(snap: LevelSnapshot, col: number, row: number, rows
   return { x, y };
 }
 
+/** Where tome2's map view starts on the level (its panel's first row and column). */
+interface Panel {
+  row: number;
+  col: number;
+}
+
 /**
  * Glyphs tome2 has drawn over the map that are not what lies on their grid
- * (a bolt, a beam or a blast): cells that differ from the screen at the last
- * idle and whose character is not the one the snapshot shows there; while
+ * (a bolt, a beam or a blast): cells that differ from the same grid on the
+ * screen at the last idle (drawn with the view at `basePanel`: the view
+ * follows the hero, so it moves when they step before a creature's bolt) and
+ * whose character is not the one the snapshot shows there; while
  * hallucinating, creature and item grids are left out.
  */
-export function drawnEffects(snap: LevelSnapshot, screen: ScreenCopy, base: ScreenCopy, cols: number, rows: number): MapEffect[] {
+export function drawnEffects(snap: LevelSnapshot, screen: ScreenCopy, base: ScreenCopy, cols: number, rows: number, basePanel: Panel): MapEffect[] {
   const effects: MapEffect[] = [];
   for (let row = snap.rowMap; row < rows - 1; row++) {
     for (let col = snap.colMap; col < cols; col++) {
       const i = row * cols + col;
       const ch = screen.chars[i];
-      if (ch === 0x20 || (ch === base.chars[i] && screen.attrs[i] === base.attrs[i])) continue;
+      if (ch === 0x20) continue;
       const point = terminalCell(snap, col, row, rows);
       if (!point) continue;
+      const baseRow = point.y - basePanel.row + snap.rowMap;
+      const baseCol = point.x - basePanel.col + snap.colMap;
+      const b = baseRow * cols + baseCol;
+      const onBase = baseRow >= snap.rowMap && baseRow < rows - 1 && baseCol >= snap.colMap && baseCol < cols;
+      if (onBase && ch === base.chars[b] && screen.attrs[i] === base.attrs[b]) continue;
       const cell = point.y * snap.width + point.x;
       if (ch === snap.glyph[cell]) continue;
       const layer = snap.layer[cell] & LAYER_MASK;
