@@ -12,7 +12,8 @@
  * screen shows (its panel, which follows the hero only near its edges), not
  * the map the player sees, so `web_point_at` puts the point anywhere on the
  * level, moving the panel to it: a key then shows the cursor there, and
- * Space chooses it. Its key hints are left out of the message log
+ * Space chooses it. The panel is put back once tgt_pt returns, as tome2
+ * sees creatures only on its panel (update_mon) and draws bolts only there. Its key hints are left out of the message log
  * (`point_hint`): the frontend's card says what to do.
  *
  * Genocide (its scroll, its staff and Udun's spell, an activation) erases
@@ -125,6 +126,20 @@ std::vector<Creature> creatures()
 	return out;
 }
 
+/* Moves tome2's panel to start at a row and column, as change_panel and the static panel_bounds do. */
+void set_panel(int row, int col)
+{
+	int wid, hgt;
+	get_screen_size(&wid, &hgt);
+	panel_row_min = std::max(0, std::min(row, cur_hgt - hgt));
+	panel_col_min = std::max(0, std::min(col, cur_wid - wid));
+	panel_row_max = std::min(panel_row_min + hgt - 1, cur_hgt - 1);
+	panel_col_max = std::min(panel_col_min + wid - 1, cur_wid - 1);
+	panel_row_prt = panel_row_min - ROW_MAP;
+	panel_col_prt = panel_col_min - COL_MAP;
+	p_ptr->redraw |= PR_MAP;
+}
+
 /* Runs tome2's genocide or mass genocide and notes what it did. */
 template <typename F>
 void note_genocide(bool mass, F real)
@@ -225,10 +240,13 @@ bool __wrap__Z6tgt_ptPiS_(int *x, int *y)
 	choosing_point = point_purpose;
 	point_x = x;
 	point_y = y;
+	int const row = panel_row_min;
+	int const col = panel_col_min;
 	bool const chosen = __real__Z6tgt_ptPiS_(x, y);
 	choosing_point = 0;
 	point_x = nullptr;
 	point_y = nullptr;
+	if (row != panel_row_min || col != panel_col_min) set_panel(row, col);
 	pick = { chosen, *x, *y };
 	return chosen;
 }
@@ -237,26 +255,18 @@ bool __wrap__Z6tgt_ptPiS_(int *x, int *y)
  * Puts tome2's point cursor on a grid while it waits, short of the level's
  * edge as tgt_pt keeps it; the panel moves to centre the grid when the grid
  * is not well within it (tgt_pt's cursor never stands on its first row or
- * column). Returns 1 when it is there, 0 otherwise.
+ * column). Returns 1 when it is there, 0 at the level's edge, -1 when tome2
+ * is not asking for a point.
  */
 EMSCRIPTEN_KEEPALIVE int web_point_at(int x, int y)
 {
-	if (!point_x || !point_y || x <= 0 || y <= 0 || x >= cur_wid - 1 || y >= cur_hgt - 1) return 0;
+	if (!point_x || !point_y) return -1;
+	if (x <= 0 || y <= 0 || x >= cur_wid - 1 || y >= cur_hgt - 1) return 0;
 	int wid, hgt;
 	get_screen_size(&wid, &hgt);
 	bool const across = x > panel_col_min && x < panel_col_min + wid;
 	bool const down = y > panel_row_min && y < panel_row_min + hgt;
-	if (!across || !down)
-	{
-		/* As tome2's panel_bounds, after change_panel's bounds. */
-		panel_row_min = std::max(0, std::min(y - hgt / 2, cur_hgt - hgt));
-		panel_col_min = std::max(0, std::min(x - wid / 2, cur_wid - wid));
-		panel_row_max = std::min(panel_row_min + hgt - 1, cur_hgt - 1);
-		panel_col_max = std::min(panel_col_min + wid - 1, cur_wid - 1);
-		panel_row_prt = panel_row_min - ROW_MAP;
-		panel_col_prt = panel_col_min - COL_MAP;
-		p_ptr->redraw |= PR_MAP;
-	}
+	if (!across || !down) set_panel(y - hgt / 2, x - wid / 2);
 	*point_x = x;
 	*point_y = y;
 	return 1;

@@ -418,9 +418,10 @@ export class Engine {
     return taken === -2 ? 'full' : taken > 0 ? taken : null;
   }
 
-  /** Puts tome2's point cursor on a grid while it asks for a point (`tgt_pt`); false where it cannot go (the level's edge). */
-  pointAt(x: number, y: number): boolean {
-    return (this.running()?._web_point_at(x, y) ?? 0) === 1;
+  /** Puts tome2's point cursor on a grid while it asks for a point (`tgt_pt`): `edge` where it cannot go, `idle` when tome2 is not asking. */
+  pointAt(x: number, y: number): 'marked' | 'edge' | 'idle' {
+    const at = this.running()?._web_point_at(x, y) ?? -1;
+    return at === 1 ? 'marked' : at === 0 ? 'edge' : 'idle';
   }
 
   /** Marks grids of the current level (y * width + x) as remembered; returns how many were new. */

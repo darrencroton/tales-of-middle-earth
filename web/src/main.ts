@@ -603,6 +603,7 @@ function cursorCell(): MapPoint | null {
 
 const MARK_CREATURE = 'Tap a creature on the map first.';
 const MARK_PLACE = 'Tap a place on the map first.';
+const NOT_YOU = 'Choose a creature, not yourself.';
 const NOT_THERE = 'The edge of the level cannot be chosen.';
 
 /** The card for tome2's question of a point on the map: what its cursor marks, and whether Choose can be taken. */
@@ -634,8 +635,10 @@ function pointChoice(snap: LevelSnapshot): PointChoice {
 /**
  * A tap on the map while tome2 asks for a point: marks the place (tome2's
  * cursor is put there, and a key that moves it nowhere shows it), or chooses
- * the place marked. A tap on the hero marks nothing, so it never chooses the
- * hero's own place by mistake; Choose can.
+ * the place marked. A tap on the hero only marks the hero (not for
+ * Genocide), so it never chooses the hero's own place by mistake; Choose can.
+ * A tap while tome2 has stopped asking (the chosen magic under way) does
+ * nothing.
  */
 function markPoint(cell: MapPoint): void {
   const snap = game.lastSnap;
@@ -643,9 +646,13 @@ function markPoint(cell: MapPoint): void {
   if (!snap || !cursor || engine.pendingKeys > 0) return;
   const hero = cell.x === snap.px && cell.y === snap.py;
   if (cell.x !== cursor.x || cell.y !== cursor.y) {
-    if (hero) refuse(snap.choosing === 'genocide' ? MARK_CREATURE : MARK_PLACE);
-    else if (engine.pointAt(cell.x, cell.y)) send(keyCodes('5'));
-    else refuse(NOT_THERE);
+    if (hero && snap.choosing === 'genocide') {
+      refuse(NOT_YOU);
+      return;
+    }
+    const at = engine.pointAt(cell.x, cell.y);
+    if (at === 'marked') send(keyCodes('5'));
+    else if (at === 'edge') refuse(NOT_THERE);
     return;
   }
   const { refusal } = pointChoice(snap);
@@ -1466,7 +1473,8 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
       return;
     }
     const goal = cell ?? (prompt === 'none' ? map.gridAt(clientX, clientY) : null);
-    recentreMap();
+    /* A point is marked where it was tapped, panned to or not. */
+    if (prompt !== 'point') recentreMap();
     if (goal) tapMapCell(snap, goal, prompt);
     return;
   }

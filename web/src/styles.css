@@ -572,7 +572,7 @@ html.keyboard-open .sheet-layer {
   animation-name: sheet-down;
 }
 
-/* In landscape it keeps to one side, the right unless the hero is on the right; top or bottom as in portrait. */
+/* In landscape it keeps to one side, the right unless the hero is on the right, at the foot of the map. */
 @media (orientation: landscape) and (min-width: 560px) {
   .prompt-card.point {
     left: auto;
@@ -588,6 +588,7 @@ html.keyboard-open .sheet-layer {
   .prompt-card.point.above {
     top: auto;
     bottom: 0.6rem;
+    animation-name: sheet-up;
   }
 }
 

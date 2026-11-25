@@ -621,12 +621,23 @@ test('race powers are under their race in Powers, their lettered questions are b
     const at = await page.evaluate(({ x, y }) => window.__tome!.mapCellCentre(x, y), kobold);
     await page.mouse.click(at.x, at.y);
   };
+  /* A mark far off moves tome2's panel while it asks; once chosen, the panel is as it was, so creatures by the hero stay seen. */
+  const panel = () => page.evaluate(() => [window.__tome!.engine.snapshot()!.panelCol, window.__tome!.engine.snapshot()!.panelRow]);
+  const before = await panel();
+  const far = await page.evaluate(() => {
+    const s = window.__tome!.engine.snapshot()!;
+    return { x: s.px < s.width / 2 ? s.width - 2 : 1, y: s.py < s.height / 2 ? s.height - 2 : 1 };
+  });
+  expect(await page.evaluate(({ x, y }) => window.__tome!.engine.pointAt(x, y), far)).toBe('marked');
+  await sendText(page, '5');
+  await expect.poll(panel).not.toEqual(before);
   await tapKobold();
   await expect(pick).toContainText('Marked: Kobold (k)');
   await pick.locator('[data-choose]').click();
   await expect(page.locator('.feel-banner')).toHaveText(/Genocide.*Kobold and its kind \(k\) erased/);
   await waitAtCommand(page);
   expect(await page.evaluate(() => window.__tome!.engine.gameState()!.monsters!.some((m) => m.name === 'Kobold'))).toBe(false);
+  expect(await panel()).toEqual(before);
 });
 
 test('a Demonologist sees Doom Shield take hold, what it does and the turns it has left, then feels it fade', async ({ page }) => {

@@ -363,7 +363,8 @@ export class PromptCard {
    */
   handleKey(e: KeyboardEvent): boolean {
     if (!this.visible) return false;
-    const choose = this.root.querySelector<HTMLButtonElement>('[data-choose]');
+    /* Enter takes the default only: where Choose is not (no creature seen), Space still reaches tome2. */
+    const choose = this.root.querySelector<HTMLButtonElement>('[data-choose].primary, [data-choose].unavailable');
     if (choose && e.key === 'Enter') {
       choose.click();
       return true;
