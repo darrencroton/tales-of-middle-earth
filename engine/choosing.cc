@@ -9,8 +9,8 @@
  * Unholy word, Discharge minion, Symbiosis and taking a companion all use it.
  * Its wrap notes while it waits (`choosing_point`, in the snapshot's header)
  * and what was chosen. Its cursor keeps to the part of the level tome2's
- * screen shows (its panel, which follows the hero only near its edges), not
- * the map the player sees, so `web_point_at` puts the point anywhere on the
+ * screen shows (its panel, 66x22 grids round the hero), not the map the
+ * player sees, so `web_point_at` puts the point anywhere on the
  * level, moving the panel to it: a key then shows the cursor there, and
  * Space chooses it. The panel is put back once tgt_pt returns, as tome2
  * sees creatures only on its panel (update_mon) and draws bolts only there. Its key hints are left out of the message log

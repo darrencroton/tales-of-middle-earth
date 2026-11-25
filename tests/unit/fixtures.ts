@@ -26,6 +26,7 @@ export function snapshot(width: number, height: number, over: Partial<LevelSnaps
     floorObjects: 0,
     heroActing: false,
     choosing: null,
+    mapStale: false,
     feat: new Uint8Array(n).fill(1),
     info: new Uint16Array(n),
     glyph: new Uint8Array(n).fill('.'.charCodeAt(0)),

@@ -1605,8 +1605,9 @@ function autosave(): void {
 function captureEffects(): void {
   const snap = game.lastSnap;
   if (!snap || !snap.inDungeon || snap.icky || !base) return;
-  if (snap.panelRow !== basePanel.row || snap.panelCol !== basePanel.col) return;
-  const effects = drawnEffects(snap, buffer, base, buffer.cols, buffer.rows);
+  /* The view moved and tome2 has not yet drawn its map there: the screen shows the old one. */
+  if (snap.mapStale && (snap.panelRow !== basePanel.row || snap.panelCol !== basePanel.col)) return;
+  const effects = drawnEffects(snap, buffer, base, buffer.cols, buffer.rows, basePanel);
   if (effects.length > MAX_EFFECT_CELLS) return;
   map.setEffects(effects);
   audio.effects(effects, snap.heroActing);

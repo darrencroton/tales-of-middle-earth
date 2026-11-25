@@ -212,10 +212,11 @@ enum HeaderSlot {
 	H_FLOOR_OBJECTS,
 	H_HERO_ACTING,
 	H_CHOOSING,
+	H_MAP_STALE,
 	H_COUNT
 };
 
-constexpr int32_t SNAPSHOT_VERSION = 4;
+constexpr int32_t SNAPSHOT_VERSION = 5;
 
 enum Layer : uint8_t {
 	LAYER_UNKNOWN = 0,
@@ -1444,6 +1445,8 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	if (delay_override >= 0 && options) options->delay_factor = delay_override;
 	/* The hero is drawn as their race's symbol, as in the snapshot, never as a digit for their health. */
 	if (options) options->player_char_health = false;
+	/* The view stays centred on the hero (tome2 sees creatures and draws bolts only within it), as loading set it. */
+	if (options) options->center_player = true;
 	/* The frontend saves on arriving on another level; tome2's own autosaves stay off. */
 	if (options)
 	{
@@ -1470,6 +1473,8 @@ EMSCRIPTEN_KEEPALIVE int32_t const *web_snapshot()
 	header[H_HERO_ACTING] = (character_generated && p_ptr->energy >= 100 && !inkey_flag) ? 1 : 0;
 	/* tome2's point selection waits (1: a place; 2: a creature whose kind Genocide erases). */
 	header[H_CHOOSING] = choosing_point;
+	/* tome2 has yet to redraw its map (its view moved, as when the hero is moved mid-turn). */
+	header[H_MAP_STALE] = (p_ptr && (p_ptr->redraw & PR_MAP)) ? 1 : 0;
 	header[H_TURN] = static_cast<int32_t>(turn);
 	header[H_FLOOR_OBJECTS] = 0;
 

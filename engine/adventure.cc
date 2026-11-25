@@ -466,6 +466,8 @@ bool __wrap__Z11load_playerRK12program_args(program_args const &args)
 	returning = false;
 	options->always_small_level = true;
 	bool const ok = __real__Z11load_playerRK12program_args(args);
+	/* tome2 sees creatures and draws bolts only within its view of the level, so it stays centred on the hero. */
+	options->center_player = true;
 	read_side_file();
 	forget_saved_view();
 	if (!character_loaded)

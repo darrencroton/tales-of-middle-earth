@@ -214,7 +214,7 @@ describe('drawn effects', () => {
     const { snap, screen, base, at } = setup();
     screen.chars[at(2, 1)] = code('*');
     screen.attrs[at(2, 1)] = 6;
-    assert.deepEqual(drawnEffects(snap, screen, base, COLS, ROWS), [{ x: 2, y: 1, ch: code('*'), attr: 6 }]);
+    assert.deepEqual(drawnEffects(snap, screen, base, COLS, ROWS, { row: 0, col: 0 }), [{ x: 2, y: 1, ch: code('*'), attr: 6 }]);
   });
 
   it('ignores grids tome2 only redrew: shimmering water, a creature that moved', () => {
@@ -228,7 +228,23 @@ describe('drawn effects', () => {
     snap.glyph[snap.width + 1] = code('o');
     snap.layer[snap.width + 1] = LAYER_MONSTER;
     screen.chars[at(1, 1)] = code('o');
-    assert.deepEqual(drawnEffects(snap, screen, base, COLS, ROWS), []);
+    assert.deepEqual(drawnEffects(snap, screen, base, COLS, ROWS, { row: 0, col: 0 }), []);
+  });
+
+  it('compares each grid with where it was drawn when the view has moved with the hero', () => {
+    const { snap, base } = setup();
+    snap.glyph.set([...'abcdefgh'].map(code));
+    for (let y = 0; y < 2; y++) for (let x = 0; x < 4; x++) base.chars[(y + 1) * COLS + x + 13] = snap.glyph[y * 4 + x];
+    /* The view now starts a column on: every grid is drawn a column to the left, one of them under a bolt. */
+    snap.panelCol = 1;
+    const screen = { chars: new Uint8Array(COLS * ROWS).fill(0x20), attrs: base.attrs.slice() };
+    for (let y = 0; y < 2; y++) for (let x = 1; x < 4; x++) screen.chars[(y + 1) * COLS + x - 1 + 13] = snap.glyph[y * 4 + x];
+    screen.chars[2 * COLS + 2 - 1 + 13] = code('*');
+    screen.attrs[2 * COLS + 2 - 1 + 13] = 6;
+    /* What was already drawn on a grid at the last idle, though not the snapshot's, is not new. */
+    base.chars[1 * COLS + 3 + 13] = code('X');
+    screen.chars[1 * COLS + 3 - 1 + 13] = code('X');
+    assert.deepEqual(drawnEffects(snap, screen, base, COLS, ROWS, { row: 0, col: 0 }), [{ x: 2, y: 1, ch: code('*'), attr: 6 }]);
   });
 
   it('ignores the symbols hallucination gives creatures', () => {
@@ -236,7 +252,7 @@ describe('drawn effects', () => {
     snap.glyph[1] = code('k');
     snap.layer[1] = LAYER_MONSTER;
     screen.chars[at(1, 0)] = code('D');
-    assert.deepEqual(drawnEffects(snap, screen, base, COLS, ROWS), []);
+    assert.deepEqual(drawnEffects(snap, screen, base, COLS, ROWS, { row: 0, col: 0 }), []);
   });
 });
 

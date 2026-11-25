@@ -21,7 +21,7 @@ export const LAYER_MULTI_HUED = 0x80;
 
 export const NO_EFFECT = 0xff;
 
-const SNAPSHOT_VERSION = 4;
+const SNAPSHOT_VERSION = 5;
 
 /* Header slot indices, matching HeaderSlot in engine/snapshot.cc. */
 const H = {
@@ -52,7 +52,8 @@ const H = {
   FLOOR_OBJECTS: 24,
   HERO_ACTING: 25,
   CHOOSING: 26,
-  COUNT: 27,
+  MAP_STALE: 27,
+  COUNT: 28,
 } as const;
 
 export interface LevelSnapshot {
@@ -79,6 +80,8 @@ export interface LevelSnapshot {
   heroActing: boolean;
   /** tome2 waits for a point on the map (`tgt_pt`): any place, or a creature whose kind Genocide erases. */
   choosing: 'place' | 'genocide' | null;
+  /** tome2 has yet to redraw its map on the screen (its view has moved since it last drew it). */
+  mapStale: boolean;
   feat: Uint8Array;
   info: Uint16Array;
   glyph: Uint8Array;
@@ -127,6 +130,7 @@ export function readSnapshot(memory: SnapshotMemory, headerPtr: number): LevelSn
     turn: header[H.TURN],
     floorObjects: header[H.FLOOR_OBJECTS],
     heroActing: header[H.HERO_ACTING] !== 0,
+    mapStale: header[H.MAP_STALE] !== 0,
     choosing: header[H.CHOOSING] === 2 ? 'genocide' : header[H.CHOOSING] === 1 ? 'place' : null,
     feat: bytes(header[H.PTR_FEAT]),
     info: memory.HEAPU16.slice(header[H.PTR_INFO] >> 1, (header[H.PTR_INFO] >> 1) + n),
