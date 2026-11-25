@@ -8,7 +8,12 @@
  * Jumpgate, Dimension Door, Convey recall, Stone prison, Earthquake, Magelock,
  * Unholy word, Discharge minion, Symbiosis and taking a companion all use it.
  * Its wrap notes while it waits (`choosing_point`, in the snapshot's header)
- * and what was chosen.
+ * and what was chosen. Its cursor keeps to the part of the level tome2's
+ * screen shows (its panel, which follows the hero only near its edges), not
+ * the map the player sees, so `web_point_at` puts the point anywhere on the
+ * level, moving the panel to it: a key then shows the cursor there, and
+ * Space chooses it. Its key hints are left out of the message log
+ * (`point_hint`): the frontend's card says what to do.
  *
  * Genocide (its scroll, its staff and Udun's spell, an activation) erases
  * every creature on the level drawn with the symbol of one the hero chooses,
@@ -40,8 +45,14 @@
 
 #include "json.hpp"
 
+#include <emscripten.h>
+
+#include <algorithm>
 #include <string>
 #include <vector>
+
+/* The map's size on tome2's screen (xtra2.cc, not in its headers). */
+void get_screen_size(int *wid_p, int *hgt_p);
 
 /* What tome2's point selection is choosing while it waits: 0 nothing, 1 a place, 2 a creature whose kind Genocide erases. */
 int choosing_point = 0;
@@ -50,6 +61,10 @@ namespace {
 
 /* What the next point chosen is for. */
 int point_purpose = 1;
+
+/* tgt_pt's point, while it waits. */
+int *point_x = nullptr;
+int *point_y = nullptr;
 
 /* The last point chosen, if one was. */
 struct Pick
@@ -68,6 +83,7 @@ struct Creature
 	int x;
 	int y;
 	bool seen;
+	bool unique;
 	bool spared;
 	int ch;
 	int attr;
@@ -82,6 +98,7 @@ struct Genocide
 	std::string race;
 	int ch = 0;
 	int attr = 0;
+	bool unique = false;
 	bool spared = false;
 	bool erased = false;
 	std::vector<Creature> seen;
@@ -101,8 +118,9 @@ std::vector<Creature> creatures()
 		auto const &m = m_list[i];
 		if (!m.r_idx) continue;
 		auto const r_ptr = m.race();
-		bool const spared = (r_ptr->flags & RF_UNIQUE) || (m.mflag & MFLAG_QUEST);
-		out.push_back({ i, m.r_idx, r_ptr->name ? r_ptr->name : "", m.fx, m.fy, m.ml && !p_ptr->image, spared, static_cast<unsigned char>(r_ptr->x_char), r_ptr->x_attr });
+		bool const unique = static_cast<bool>(r_ptr->flags & RF_UNIQUE);
+		bool const spared = unique || (m.mflag & MFLAG_QUEST);
+		out.push_back({ i, m.r_idx, r_ptr->name ? r_ptr->name : "", m.fx, m.fy, m.ml && !p_ptr->image, unique, spared, static_cast<unsigned char>(r_ptr->x_char), r_ptr->x_attr });
 	}
 	return out;
 }
@@ -143,6 +161,7 @@ void note_genocide(bool mass, F real)
 			g.race = chosen->name;
 			g.ch = chosen->ch;
 			g.attr = chosen->attr;
+			g.unique = chosen->unique;
 			g.spared = chosen->spared;
 		}
 	}
@@ -157,7 +176,13 @@ void note_genocide(bool mass, F real)
 
 }
 
-/* The last genocide, for web_state_json: {n, mass, outcome, race, ch, attr, spared, erased, seen: [{x, y, ch, attr}]}. */
+/* tome2's key hints as it asks for a point (tgt_pt, and Genocide before it), left out of the message log. */
+bool point_hint(std::string const &msg)
+{
+	return msg == "Select a point and press space." || msg == "Target a monster to select the race to genocide.";
+}
+
+/* The last genocide, for web_state_json: {n, mass, outcome, race, ch, attr, unique, spared, erased, seen: [{x, y, ch, attr}]}. */
 void json_genocide(JsonWriter &w)
 {
 	if (!last.serial) return;
@@ -170,6 +195,7 @@ void json_genocide(JsonWriter &w)
 		w.field("race", last.race);
 		w.field("ch", last.ch);
 		w.field("attr", last.attr);
+		w.field("unique", last.unique ? 1 : 0);
 		w.field("spared", last.spared ? 1 : 0);
 	}
 	w.field("erased", last.erased ? 1 : 0);
@@ -197,10 +223,43 @@ void __real__Z13mass_genocidev();
 bool __wrap__Z6tgt_ptPiS_(int *x, int *y)
 {
 	choosing_point = point_purpose;
+	point_x = x;
+	point_y = y;
 	bool const chosen = __real__Z6tgt_ptPiS_(x, y);
 	choosing_point = 0;
+	point_x = nullptr;
+	point_y = nullptr;
 	pick = { chosen, *x, *y };
 	return chosen;
+}
+
+/*
+ * Puts tome2's point cursor on a grid while it waits, short of the level's
+ * edge as tgt_pt keeps it; the panel moves to centre the grid when the grid
+ * is not well within it (tgt_pt's cursor never stands on its first row or
+ * column). Returns 1 when it is there, 0 otherwise.
+ */
+EMSCRIPTEN_KEEPALIVE int web_point_at(int x, int y)
+{
+	if (!point_x || !point_y || x <= 0 || y <= 0 || x >= cur_wid - 1 || y >= cur_hgt - 1) return 0;
+	int wid, hgt;
+	get_screen_size(&wid, &hgt);
+	bool const across = x > panel_col_min && x < panel_col_min + wid;
+	bool const down = y > panel_row_min && y < panel_row_min + hgt;
+	if (!across || !down)
+	{
+		/* As tome2's panel_bounds, after change_panel's bounds. */
+		panel_row_min = std::max(0, std::min(y - hgt / 2, cur_hgt - hgt));
+		panel_col_min = std::max(0, std::min(x - wid / 2, cur_wid - wid));
+		panel_row_max = std::min(panel_row_min + hgt - 1, cur_hgt - 1);
+		panel_col_max = std::min(panel_col_min + wid - 1, cur_wid - 1);
+		panel_row_prt = panel_row_min - ROW_MAP;
+		panel_col_prt = panel_col_min - COL_MAP;
+		p_ptr->redraw |= PR_MAP;
+	}
+	*point_x = x;
+	*point_y = y;
+	return 1;
 }
 
 void __wrap__Z8genocidev()

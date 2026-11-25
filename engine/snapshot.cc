@@ -118,6 +118,7 @@ void json_adventure(JsonWriter &w);
 std::vector<object_type const *> *linked_shelf();
 extern int choosing_point;
 void json_genocide(JsonWriter &w);
+bool point_hint(std::string const &msg);
 
 /* Shared with the other exports (engine/knowledge.cc, engine/homes.cc). */
 /*
@@ -1402,8 +1403,7 @@ extern "C" void BOOST_PP_CAT(__real_, MESSAGES_ADD)(Messages *self, std::string 
 
 extern "C" void BOOST_PP_CAT(__wrap_, MESSAGES_ADD)(Messages *self, std::string const &msg, byte color)
 {
-	/* tome2's key hint for its point cursor (tgt_pt) is left out of the log: the frontend's card says how to choose. */
-	if (msg == "Select a point and press space.") return;
+	if (point_hint(msg)) return;
 	if (self->size() == 0 || self->at(0).text != msg) messages_added++;
 	BOOST_PP_CAT(__real_, MESSAGES_ADD)(self, msg, color);
 }

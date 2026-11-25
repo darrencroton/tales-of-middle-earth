@@ -52,6 +52,8 @@ export interface PointChoice {
   purpose: 'place' | 'genocide';
   /** What lies where tome2's cursor rests ("Cave orc (o)"), or null while it rests on the hero. */
   marked: string | null;
+  /** Choose is the default: false where Genocide's mark shows no creature (one unseen may still be there). */
+  sure: boolean;
   /** Why Choose cannot be taken now, if it cannot. */
   refusal?: string;
   /** Says why a choice cannot be made (a toast and the refusal sound). */
@@ -179,7 +181,7 @@ export class PromptCard {
    * takes it. Escape and Cancel give up, as tome2 does.
    */
   showPoint(choice: PointChoice): void {
-    const key = `point\u0000${choice.purpose}\u0000${choice.marked}\u0000${choice.refusal ?? ''}\u0000${choice.lead.join('\n')}`;
+    const key = `point\u0000${choice.purpose}\u0000${choice.marked}\u0000${choice.sure}\u0000${choice.refusal ?? ''}\u0000${choice.lead.join('\n')}`;
     this.root.hidden = false;
     this.leading = choice.lead.length > 0;
     if (key === this.renderedKey) return;
@@ -189,7 +191,7 @@ export class PromptCard {
     const { refusal } = choice;
     const choose = refusal
       ? this.button('Choose', () => choice.refuse(refusal), 'card-button unavailable')
-      : this.button('Choose', codes(' '), 'card-button primary');
+      : this.button('Choose', codes(' '), choice.sure ? 'card-button primary' : 'card-button');
     choose.dataset.choose = '';
     const buttons = el('div', 'card-buttons');
     buttons.append(this.button('Cancel', [ESCAPE]), choose);
@@ -198,7 +200,17 @@ export class PromptCard {
     if (words.hint) parts.push(el('p', 'card-hint', words.hint));
     this.root.replaceChildren(...parts, marked, buttons);
     if (choice.lead.length) this.root.prepend(leadIn(choice.lead));
-    if (!refusal) choose.focus({ preventScroll: true });
+    if (!refusal && choice.sure) choose.focus({ preventScroll: true });
+  }
+
+  /**
+   * Keeps the card on the side of the map away from `point` (the hero, in
+   * viewport coordinates): at the top while it is in the lower half, and in
+   * landscape on the left while it is in the right half (styles.css).
+   */
+  keepClearOf(point: { x: number; y: number }, map: DOMRect): void {
+    this.root.classList.toggle('above', point.y > map.top + map.height / 2);
+    this.root.classList.toggle('leftward', point.x > map.left + map.width / 2);
   }
 
   /**

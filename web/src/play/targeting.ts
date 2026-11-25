@@ -1,5 +1,4 @@
 import { keyCodes as code } from '../input/keys.ts';
-import type { LevelSnapshot } from '../render/snapshot.ts';
 import type { Point } from './pathfinding.ts';
 import { directionDigit } from './prompts.ts';
 
@@ -18,31 +17,6 @@ export function cursorMoves(dx: number, dy: number): number[] {
     y -= sy;
   }
   return keys;
-}
-
-/** Where tome2's map sits on its screen of `cols` × `rows`, and which part of the level it shows. */
-export type PointView = Pick<LevelSnapshot, 'panelCol' | 'panelRow' | 'colMap' | 'rowMap' | 'width' | 'height'> & { cols: number; rows: number };
-
-/**
- * Whether tome2's point cursor (`tgt_pt`) can reach a cell: it keeps to the
- * part of the level its screen shows (its panel), short of the panel's first
- * row and column and of the level's edge.
- */
-export function pointReachable(view: PointView, cell: Point): boolean {
-  const wid = view.cols - view.colMap - 1;
-  const hgt = view.rows - view.rowMap - 1;
-  const across = cell.x > Math.max(0, view.panelCol) && cell.x < Math.min(view.panelCol + wid, view.width - 1);
-  const down = cell.y > Math.max(0, view.panelRow) && cell.y < Math.min(view.panelRow + hgt, view.height - 1);
-  return across && down;
-}
-
-/** What a tap on the map does while tome2 asks for a point: chooses where its cursor is, moves the cursor there, or cannot reach. */
-export type PointStep = { kind: 'choose' } | { kind: 'move'; keys: number[] } | { kind: 'far' };
-
-export function pointStep(view: PointView, cursor: Point, cell: Point): PointStep {
-  if (cursor.x === cell.x && cursor.y === cell.y) return { kind: 'choose' };
-  if (!pointReachable(view, cell)) return { kind: 'far' };
-  return { kind: 'move', keys: cursorMoves(cell.x - cursor.x, cell.y - cursor.y) };
 }
 
 /**

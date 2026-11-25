@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { commandGroups, commandKeys, commandRefusal, contextActions, contextualAction, CONTROLLING, converseMacro, creaturePowersMacro, exploreRefusal, pickupCommand, releaseMacro, restMacro, speedAction, transitionUnderfoot, waitCommand, WORLD_MAP_EXPLORE_LEVEL, type CommandContext } from '../../web/src/play/actions.ts';
 import { findPath, floodFill, gridDistance, type TravelGrid } from '../../web/src/play/pathfinding.ts';
 import { classifyPrompt, directionDigit, isAdjacent, isIrreversible } from '../../web/src/play/prompts.ts';
-import { TargetPicker, cursorMoves, pointStep, type PointView } from '../../web/src/play/targeting.ts';
+import { TargetPicker, cursorMoves } from '../../web/src/play/targeting.ts';
 import { approachTarget, FAR_WALK_STEPS, goAction, isKnown, outOfSight, pushPast, rubbleBeside, stepTowards, STOP_MESSAGES, stopMessage, tapAction, TOO_HARD, Travel, travelGrid, type StopContext, type TravelContext } from '../../web/src/play/travel.ts';
 import { FB_DOOR, FB_FLOOR, FB_NO_VISION, FB_NO_WALK, FB_WALL, buildMaterials, walkableFor, type FeatureInfo } from '../../web/src/render/materials.ts';
 import { CAVE_MARK, CAVE_SEEN, LAYER_MONSTER, LAYER_TERRAIN, type LevelSnapshot, type MonsterState } from '../../web/src/render/snapshot.ts';
@@ -453,19 +453,6 @@ describe('targeting', () => {
   it('moves a free cursor diagonally first', () => {
     assert.deepEqual(cursorMoves(2, -1), keys('96'));
     assert.deepEqual(cursorMoves(0, 0), []);
-  });
-
-  it("moves tome2's point cursor to a tapped place within its panel, and chooses where it rests", () => {
-    /* An 80×24 screen shows 66×22 of a 198×66 level from (66, 22). */
-    const view: PointView = { panelCol: 66, panelRow: 22, colMap: 13, rowMap: 1, width: 198, height: 66, cols: 80, rows: 24 };
-    const cursor = { x: 100, y: 30 };
-    assert.deepEqual(pointStep(view, cursor, { x: 100, y: 30 }), { kind: 'choose' });
-    assert.deepEqual(pointStep(view, cursor, { x: 102, y: 29 }), { kind: 'move', keys: keys('96') });
-    assert.deepEqual(pointStep(view, cursor, { x: 131, y: 43 }), { kind: 'move', keys: cursorMoves(31, 13) });
-    for (const far of [{ x: 66, y: 30 }, { x: 132, y: 30 }, { x: 100, y: 22 }, { x: 100, y: 44 }]) assert.deepEqual(pointStep(view, cursor, far), { kind: 'far' });
-    /* Nor onto the level's edge. */
-    assert.deepEqual(pointStep({ ...view, panelCol: -1, width: 40 }, { x: 5, y: 30 }, { x: 0, y: 30 }), { kind: 'far' });
-    assert.deepEqual(pointStep({ ...view, panelCol: -1, width: 40 }, { x: 5, y: 30 }, { x: 39, y: 30 }), { kind: 'far' });
   });
 
   it('selects a cycled target when the cursor lands on it', () => {

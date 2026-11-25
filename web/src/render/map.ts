@@ -52,6 +52,7 @@ export class MapRenderer {
   private highlight: MapPoint | null = null;
   private highlightUntil = 0;
   private reticle: MapPoint | null = null;
+  private followReticle = true;
   private lookCell: MapPoint | null = null;
   private foe: MapPoint | null = null;
   private hits: { x: number; y: number; until: number }[] = [];
@@ -180,8 +181,10 @@ export class MapRenderer {
     this.lookCell = point;
   }
 
-  setReticle(point: MapPoint | null): void {
+  /** Marks tome2's cursor; the view follows it unless it was put on a place the player tapped (`follow` false). */
+  setReticle(point: MapPoint | null, follow = true): void {
     this.reticle = point;
+    this.followReticle = follow;
   }
 
   /** Marks the creature the Attack button would strike. */
@@ -247,7 +250,7 @@ export class MapRenderer {
     const cols = this.canvas.width / cellW;
     const rows = this.canvas.height / cellH;
 
-    const focus = this.reticle ?? { x: snap.px + this.panX, y: snap.py + this.panY };
+    const focus = (this.followReticle && this.reticle) || { x: snap.px + this.panX, y: snap.py + this.panY };
     const targetX = this.clampCamera(focus.x + 0.5, cols, snap.width);
     const targetY = this.clampCamera(focus.y + 0.5, rows, snap.height);
     if (this.overview) {

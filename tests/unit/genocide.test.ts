@@ -10,10 +10,10 @@ describe('genocide', () => {
   it('names the kind erased when the hero saw the creature chosen, and only then', () => {
     assert.deepEqual(genocideTelling(cast(ORC)), { kind: 'banner', title: 'Genocide', subtitle: 'Cave orc and its kind (o) erased from this level' });
     assert.deepEqual(genocideTelling(cast()), { kind: 'banner', title: 'Genocide', subtitle: 'Its kind is erased from this level' });
-    assert.deepEqual(genocideTelling(cast({ ...ORC, race: 'Lagduf, the Snaga', spared: 1 })), {
+    assert.deepEqual(genocideTelling(cast({ ...ORC, race: 'Lagduf, the Snaga', unique: 1, spared: 1 })), {
       kind: 'banner',
       title: 'Genocide',
-      subtitle: "Its kind (o) is erased · the Lagduf, the Snaga withstands it",
+      subtitle: 'Its kind (o) is erased · Lagduf, the Snaga withstands it',
     });
     assert.deepEqual(genocideTelling(cast({ mass: 1 })), { kind: 'banner', title: 'Mass genocide', subtitle: 'The creatures around you are erased' });
   });
@@ -22,7 +22,9 @@ describe('genocide', () => {
     assert.deepEqual(genocideTelling(cast({ outcome: 'stopped', erased: 0 })), { kind: 'toast', text: 'A mysterious force stops the genocide.', logged: false });
     assert.deepEqual(genocideTelling(cast({ outcome: 'cancelled', erased: 0 })), { kind: 'toast', text: 'No creature was chosen. The magic is spent.', logged: true });
     assert.deepEqual(genocideTelling(cast({ outcome: 'empty', erased: 0 })), { kind: 'toast', text: 'No creature there. The magic is spent.', logged: false });
-    assert.match((genocideTelling(cast({ ...ORC, race: 'Lagduf, the Snaga', spared: 1, erased: 0 })) as { text: string }).text, /^The Lagduf, the Snaga withstands genocide/);
+    assert.match((genocideTelling(cast({ ...ORC, race: 'Lagduf, the Snaga', unique: 1, spared: 1, erased: 0 })) as { text: string }).text, /^Lagduf, the Snaga withstands genocide/);
+    /* A quest foe that is not unique is one of its kind. */
+    assert.match((genocideTelling(cast({ ...ORC, spared: 1, erased: 0 })) as { text: string }).text, /^The Cave orc withstands genocide/);
     assert.match((genocideTelling(cast({ mass: 1, erased: 0 })) as { text: string }).text, /^Nothing nearby could be erased/);
   });
 });

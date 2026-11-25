@@ -461,8 +461,8 @@ export interface GameState {
 /**
  * What a Genocide did: `n` counts them. `outcome`: the level stopped it, the
  * hero chose nothing or no creature, or it was cast. `race`, `ch`, `attr`:
- * the creature chosen, when the hero saw it (`spared`: a unique or quest foe,
- * which Genocide passes over). `erased`: anything was, seen or not (the strain
+ * the creature chosen, when the hero saw it (`unique`; `spared`: a unique or
+ * quest foe, which Genocide passes over). `erased`: anything was, seen or not (the strain
  * hurts the hero for each). `seen`: the creatures erased that the hero saw.
  */
 export interface GenocideState {
@@ -472,6 +472,7 @@ export interface GenocideState {
   race?: string;
   ch?: number;
   attr?: number;
+  unique?: number;
   spared?: number;
   erased: number;
   seen: { x: number; y: number; ch: number; attr: number }[];

@@ -12,6 +12,10 @@ export type GenocideTelling = { kind: 'banner'; title: string; subtitle: string 
 const SPENT = 'The magic is spent.';
 const WITHSTAND = 'Uniques and quest foes withstand genocide.';
 
+function capitalised(text: string): string {
+  return text[0].toUpperCase() + text.slice(1);
+}
+
 export function genocideTelling(g: GenocideState): GenocideTelling {
   const title = g.mass ? 'Mass genocide' : 'Genocide';
   switch (g.outcome) {
@@ -24,14 +28,16 @@ export function genocideTelling(g: GenocideState): GenocideTelling {
     case 'cast':
       break;
   }
-  const kind = g.race && g.ch ? `${g.race} and its kind (${String.fromCharCode(g.ch)})` : '';
+  const symbol = g.ch ? String.fromCharCode(g.ch) : '';
+  /* A unique is named bare ("Lagduf, the Snaga"), others as one of their kind ("the Cave orc"). */
+  const who = g.race ? (g.unique ? g.race : `the ${g.race}`) : '';
   if (g.erased) {
     if (g.mass) return { kind: 'banner', title, subtitle: 'The creatures around you are erased' };
-    if (!kind) return { kind: 'banner', title, subtitle: 'Its kind is erased from this level' };
-    if (g.spared) return { kind: 'banner', title, subtitle: `Its kind (${String.fromCharCode(g.ch!)}) is erased · the ${g.race} withstands it` };
-    return { kind: 'banner', title, subtitle: `${kind} erased from this level` };
+    if (!who) return { kind: 'banner', title, subtitle: 'Its kind is erased from this level' };
+    if (g.spared) return { kind: 'banner', title, subtitle: `Its kind (${symbol}) is erased · ${who} withstands it` };
+    return { kind: 'banner', title, subtitle: `${g.race} and its kind (${symbol}) erased from this level` };
   }
   if (g.mass) return { kind: 'toast', text: `Nothing nearby could be erased. ${WITHSTAND}`, logged: true };
-  if (g.race && g.spared) return { kind: 'toast', text: `The ${g.race} withstands genocide, and nothing of its kind could be erased.`, logged: true };
+  if (who && g.spared) return { kind: 'toast', text: `${capitalised(who)} withstands genocide, and nothing of its kind could be erased.`, logged: true };
   return { kind: 'toast', text: `Nothing of its kind could be erased. ${WITHSTAND}`, logged: true };
 }

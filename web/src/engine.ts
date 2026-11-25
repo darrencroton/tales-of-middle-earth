@@ -93,6 +93,7 @@ interface EmscriptenModule {
   _web_dismiss_companion(index: number): number;
   _web_set_linked_homes(on: number): void;
   _web_home_take(index: number, amount: number): number;
+  _web_point_at(x: number, y: number): number;
 }
 
 interface ModuleOptions {
@@ -415,6 +416,11 @@ export class Engine {
   homeTake(index: number, amount: number): number | 'full' | null {
     const taken = this.running()?._web_home_take(index, amount) ?? -1;
     return taken === -2 ? 'full' : taken > 0 ? taken : null;
+  }
+
+  /** Puts tome2's point cursor on a grid while it asks for a point (`tgt_pt`); false where it cannot go (the level's edge). */
+  pointAt(x: number, y: number): boolean {
+    return (this.running()?._web_point_at(x, y) ?? 0) === 1;
   }
 
   /** Marks grids of the current level (y * width + x) as remembered; returns how many were new. */

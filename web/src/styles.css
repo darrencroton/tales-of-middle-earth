@@ -565,12 +565,29 @@ html.keyboard-open .sheet-layer {
   margin-top: 0;
 }
 
-/* A point is chosen on the map: in landscape its card keeps to the map's right, clear of the hero at its centre. */
+/* A point is chosen on the map: its card keeps away from the hero, at the top while the hero is low on the map. */
+.prompt-card.point.above {
+  top: calc(0.6rem + var(--top-clear));
+  bottom: auto;
+  animation-name: sheet-down;
+}
+
+/* In landscape it keeps to one side, the right unless the hero is on the right; top or bottom as in portrait. */
 @media (orientation: landscape) and (min-width: 560px) {
   .prompt-card.point {
     left: auto;
     width: min(24rem, 42%);
     margin: 0;
+  }
+
+  .prompt-card.point.leftward {
+    left: 0.6rem;
+    right: auto;
+  }
+
+  .prompt-card.point.above {
+    top: auto;
+    bottom: 0.6rem;
   }
 }
 

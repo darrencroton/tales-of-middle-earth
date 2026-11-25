@@ -18,7 +18,6 @@ import { contextActions, contextualAction, commandRefusal, CONTROLLING, exploreR
 import { MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, isYesNo, type PromptKind } from './play/prompts.ts';
 import { goAction, rubbleBeside, TAP_AGAIN, tapAction, type TapAction } from './play/travel.ts';
-import { pointStep } from './play/targeting.ts';
 import { genocideTelling } from './play/genocide.ts';
 import { Journeys } from './play/journeys.ts';
 import { HeroMemoryKeeper } from './play/heromemory.ts';
@@ -602,8 +601,9 @@ function cursorCell(): MapPoint | null {
   return game.lastSnap && buffer.cursorY >= 0 ? terminalToDungeon(game.lastSnap, buffer.cursorX, buffer.cursorY) : null;
 }
 
-const FAR_POINT = 'Too far away to choose: choose somewhere nearer.';
 const MARK_CREATURE = 'Tap a creature on the map first.';
+const MARK_PLACE = 'Tap a place on the map first.';
+const NOT_THERE = 'The edge of the level cannot be chosen.';
 
 /** The card for tome2's question of a point on the map: what its cursor marks, and whether Choose can be taken. */
 function pointChoice(snap: LevelSnapshot): PointChoice {
@@ -612,29 +612,46 @@ function pointChoice(snap: LevelSnapshot): PointChoice {
   const onHero = !cursor || (cursor.x === snap.px && cursor.y === snap.py);
   const cell = onHero ? null : describeCell(api, cursor);
   const creature = cell?.monsters[0];
-  const marked = onHero ? null : creature ? `${creature.name} (${String.fromCharCode(creature.ch)})` : purpose === 'genocide' ? 'No creature seen there' : (cell?.title ?? null);
+  const marked = onHero
+    ? null
+    : cell?.blurred
+      ? 'Something you cannot make out'
+      : creature
+        ? `${creature.name} (${String.fromCharCode(creature.ch)})`
+        : purpose === 'genocide'
+          ? 'No creature seen there'
+          : (cell?.title ?? null);
   return {
     purpose,
     marked,
+    sure: purpose !== 'genocide' || !!creature,
     refusal: purpose === 'genocide' && onHero ? MARK_CREATURE : undefined,
     refuse,
     lead: leadMessages.map((m) => m.text),
   };
 }
 
-/** A tap on the map while tome2 asks for a point: marks the place (moving its cursor there), or chooses the place marked. */
+/**
+ * A tap on the map while tome2 asks for a point: marks the place (tome2's
+ * cursor is put there, and a key that moves it nowhere shows it), or chooses
+ * the place marked. A tap on the hero marks nothing, so it never chooses the
+ * hero's own place by mistake; Choose can.
+ */
 function markPoint(cell: MapPoint): void {
   const snap = game.lastSnap;
   const cursor = cursorCell();
   if (!snap || !cursor || engine.pendingKeys > 0) return;
-  const step = pointStep({ ...snap, cols: buffer.cols, rows: buffer.rows }, cursor, cell);
-  if (step.kind === 'far') refuse(FAR_POINT);
-  else if (step.kind === 'move') send(step.keys);
-  else {
-    const { refusal } = pointChoice(snap);
-    if (refusal) refuse(refusal);
-    else send([SPACE]);
+  const hero = cell.x === snap.px && cell.y === snap.py;
+  if (cell.x !== cursor.x || cell.y !== cursor.y) {
+    if (hero) refuse(snap.choosing === 'genocide' ? MARK_CREATURE : MARK_PLACE);
+    else if (engine.pointAt(cell.x, cell.y)) send(keyCodes('5'));
+    else refuse(NOT_THERE);
+    return;
   }
+  const { refusal } = pointChoice(snap);
+  if (hero) refuse(refusal ?? MARK_PLACE);
+  else if (refusal) refuse(refusal);
+  else send([SPACE]);
 }
 
 /** The game state when tome2 last waited for a command (on the map, or a building's). */
@@ -738,6 +755,7 @@ function updatePromptCard(): void {
   if (kind === 'point' && game.lastSnap) {
     const choice = pointChoice(game.lastSnap);
     promptCard.showPoint(choice);
+    promptCard.keepClearOf(map.cellCentre(game.lastSnap.px, game.lastSnap.py), stage.getBoundingClientRect());
     if (choice.lead.length) noteLeadShown();
     return;
   }
@@ -889,7 +907,8 @@ function refresh(): void {
     shop.leave();
     termView.hide();
     const cursor = rowZeroText() || snap.choosing ? cursorCell() : null;
-    map.setReticle(cursor && (cursor.x !== snap.px || cursor.y !== snap.py) ? cursor : null);
+    /* A point is marked where the player tapped, so the view stays put. */
+    map.setReticle(cursor && (cursor.x !== snap.px || cursor.y !== snap.py) ? cursor : null, !snap.choosing);
   }
   updatePromptCard();
 
@@ -920,7 +939,7 @@ function refresh(): void {
     const sameHero = !!previous && previous.player?.name === state.player?.name;
     const slain = sameHero ? slainMonsters(previous.monsters ?? [], state.monsters ?? [], newMessages(previous, state)) : [];
     if (sameHero) showHits(previous, state, slain);
-    if (sameHero && state.genocide && state.genocide.n !== previous.genocide?.n) tellGenocide(state.genocide, snap);
+    if (sameHero && state.genocide && state.genocide.n !== previous.genocide?.n) tellGenocide(state.genocide, snap, !!state.player?.dead);
     if (state.player) {
       app.classList.toggle('fallen', hasFallen(state.player) && !game.abandoning);
       app.classList.toggle('between', !!state.player.dead && state.player.fate === 'choice');
@@ -1014,7 +1033,9 @@ function showHits(previous: GameState, next: GameState, slain: readonly Slain[])
 }
 
 /** Tells what a Genocide did: the creatures erased in view dissolve as a wave passes, under a banner; else why nothing was erased. */
-function tellGenocide(g: GenocideState, snap: LevelSnapshot): void {
+function tellGenocide(g: GenocideState, snap: LevelSnapshot, dead: boolean): void {
+  /* The strain killed the hero: the death is told instead. */
+  if (dead) return;
   const telling = genocideTelling(g);
   if (telling.kind === 'toast') {
     showToast(telling.text, { log: telling.logged, read: true });
