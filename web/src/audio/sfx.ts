@@ -119,6 +119,7 @@ const DUCK: Partial<Record<CueId, [number, number]>> = {
   levelup: [7, 1.5],
   quest: [7, 1.5],
   returned: [7, 2.5],
+  genocide: [8, 2.5],
   explosion: [3, 0.4],
 };
 
@@ -209,6 +210,7 @@ export class SoundEffects {
     unique: ({ t }) => this.unique(t),
     death: ({ t }) => this.death(t),
     returned: ({ t }) => this.returned(t),
+    genocide: ({ t }) => this.genocide(t),
     shop: ({ t }) => this.shopBell(t),
     deny: ({ t }) => this.tone(this.out(0, 1), t, { type: 'sine', freq: 220, to: 170, glide: 0.12, level: 0.12, decay: 0.08 }),
     poisoned: ({ t }) => this.sickly(t),
@@ -809,6 +811,17 @@ export class SoundEffects {
     [0, 2, 4, 7].forEach((d, i) => playVoice(this.core, 'horn', dest, t + 0.3 + i * 0.45, i === 3 ? 1.2 : 0.5, this.midi(d, 1), 0.8, { bright: 0.6, sustained: false }));
     this.chord(t + 0.2, [0, 4, 7], 2, 0.3, 'choir', 1);
     playVoice(this.core, 'bell', this.out(0, 1), t + 1.65, 2.5, this.midi(7, 2), 0.9, { bright: 0.8, sustained: false });
+  }
+
+  /** Genocide: air drawn in, then a low gong and a blow felt more than heard, a choir's dark cluster, and the air torn away as the wave passes. */
+  private genocide(t: number): void {
+    this.noise(this.out(0, 1), t, { type: 'bandpass', freq: 250, to: 2200, glide: 0.45, q: 0.7, level: 0.1, attack: 0.4, decay: 0.04 });
+    const hit = t + 0.45;
+    this.thump(hit, 0.7, 72, 30, 0.35);
+    playVoice(this.core, 'gong', this.out(0, 1), hit, 6, this.key.root - 12, 1, { bright: 0.45, sustained: false });
+    this.chord(hit, [0, 1, 4], 3, 0.55, 'choir', 0);
+    this.chord(hit + 0.1, [0, 1], 2.4, 0.5, 'brass', 1);
+    this.noise(this.out(0, 1), hit, { type: 'lowpass', freq: 3000, to: 160, glide: 1.4, level: 0.32, attack: 0.01, decay: 0.9, brown: true });
   }
 
   private heartbeat(t: number, s: number): void {

@@ -1,6 +1,7 @@
 import { gridDistance } from './pathfinding.ts';
 
-export type PromptKind = 'none' | 'more' | 'yesno' | 'aim' | 'direction' | 'item' | 'quantity' | 'text' | 'choice' | 'dungeon' | 'other';
+/** tome2's question; `point` (a place on the map, `tgt_pt`) comes from the snapshot, as tome2 asks for it only in a message. */
+export type PromptKind = 'none' | 'more' | 'yesno' | 'aim' | 'direction' | 'point' | 'item' | 'quantity' | 'text' | 'choice' | 'dungeon' | 'other';
 
 /*
  * A shop's "Buy …? [y/n/RET/ESC]" or "Sell …?" (store.cc's prompt_yesno) does

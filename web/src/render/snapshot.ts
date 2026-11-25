@@ -21,7 +21,7 @@ export const LAYER_MULTI_HUED = 0x80;
 
 export const NO_EFFECT = 0xff;
 
-const SNAPSHOT_VERSION = 3;
+const SNAPSHOT_VERSION = 4;
 
 /* Header slot indices, matching HeaderSlot in engine/snapshot.cc. */
 const H = {
@@ -51,7 +51,8 @@ const H = {
   TURN: 23,
   FLOOR_OBJECTS: 24,
   HERO_ACTING: 25,
-  COUNT: 26,
+  CHOOSING: 26,
+  COUNT: 27,
 } as const;
 
 export interface LevelSnapshot {
@@ -76,6 +77,8 @@ export interface LevelSnapshot {
   floorObjects: number;
   /** The hero's own command is under way (before creatures act in the same turn). */
   heroActing: boolean;
+  /** tome2 waits for a point on the map (`tgt_pt`): any place, or a creature whose kind Genocide erases. */
+  choosing: 'place' | 'genocide' | null;
   feat: Uint8Array;
   info: Uint16Array;
   glyph: Uint8Array;
@@ -124,6 +127,7 @@ export function readSnapshot(memory: SnapshotMemory, headerPtr: number): LevelSn
     turn: header[H.TURN],
     floorObjects: header[H.FLOOR_OBJECTS],
     heroActing: header[H.HERO_ACTING] !== 0,
+    choosing: header[H.CHOOSING] === 2 ? 'genocide' : header[H.CHOOSING] === 1 ? 'place' : null,
     feat: bytes(header[H.PTR_FEAT]),
     info: memory.HEAPU16.slice(header[H.PTR_INFO] >> 1, (header[H.PTR_INFO] >> 1) + n),
     glyph: bytes(header[H.PTR_GLYPH]),
@@ -450,6 +454,27 @@ export interface GameState {
   objects?: ObjectState[];
   messageTotal?: number;
   messages?: MessageState[];
+  /** The last Genocide or Mass Genocide since the engine started (`engine/choosing.cc`). */
+  genocide?: GenocideState;
+}
+
+/**
+ * What a Genocide did: `n` counts them. `outcome`: the level stopped it, the
+ * hero chose nothing or no creature, or it was cast. `race`, `ch`, `attr`:
+ * the creature chosen, when the hero saw it (`spared`: a unique or quest foe,
+ * which Genocide passes over). `erased`: anything was, seen or not (the strain
+ * hurts the hero for each). `seen`: the creatures erased that the hero saw.
+ */
+export interface GenocideState {
+  n: number;
+  mass: number;
+  outcome: 'stopped' | 'cancelled' | 'empty' | 'cast';
+  race?: string;
+  ch?: number;
+  attr?: number;
+  spared?: number;
+  erased: number;
+  seen: { x: number; y: number; ch: number; attr: number }[];
 }
 
 export interface ItemState {

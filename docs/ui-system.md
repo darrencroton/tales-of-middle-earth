@@ -78,7 +78,7 @@ Map (toolbar, HUD, gestures)
 ├── Map tap / long-press ───── travel (a neutral creature beside you: talk; a wall beside you, with a digger: mark, and dig on a second tap) / look card (terrain; an altar's god, each creature and item there → its card)
 ├── A quest begun or ended ─── quest card (the scene tome2 told, then what it asks) or its banner
 └── tome2 asks something ───── question card on the map (yes/no, how many or another number, text,
-                               direction, aim, lettered choice, message box), a native panel (where
+                               direction, aim, a point on the map, lettered choice, message box), a native panel (where
                                Word of Recall leads: each dungeon with its recall depth, then How deep?)
                                or a TermView panel
                                (item prompts, each item with ⓘ for its card; spell lists, each spell with ⓘ;
@@ -139,7 +139,7 @@ where the code comes from.
 | **Panel** | A screen of its own: a list to work through, several views, or long reading | Inventory, Character, Magic, Commands, Messages, Settings, Soundtrack, Hall of Fame, Fallen hero, Help and its topics, the Knowledge lists, Companions, Quests; every tome2 panel (item prompts, spell lists, shops, options, the reader) | fixed: `--popup-height` | bottom sheet (centred on wide screens) |
 | **Menu** | A short list of places to go | Menu, Knowledge, Share & backup | its rows, capped at `--popup-height` | bottom sheet |
 | **Card** | Details of one thing, or a question | Item, spell, creature (also a kind of creature from Knowledge), Choose target, shop item, memorial item/foe, a saved hero (Game Roster), a hero of the Hall of Fame, Which journey continues?, How many?, Inscribe, confirmations, messages, tome2 message boxes over a sheet | its content, capped (shorter than a panel beneath it) | floats above whatever opened it |
-| **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim…), look card (what is at a cell, each creature and item a row opening its card), the Halls of Waiting, death card | its content | bottom of the map, no backdrop |
+| **Map card** | A question or note that leaves the map usable | tome2 questions (yes/no, direction, aim, a point on the map…), look card (what is at a cell, each creature and item a row opening its card), the Halls of Waiting, death card | its content | bottom of the map, no backdrop |
 | **Full screen** | A screen that replaces the game | title, character creation, end of game, Hall of Fame after death | whole screen | — |
 
 A map card or tome2 panel shown while tome2 is not at its command prompt (or a

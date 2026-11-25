@@ -552,6 +552,28 @@ html.keyboard-open .sheet-layer {
   display: none;
 }
 
+.card-marked {
+  margin: 0 0 0.7rem;
+  color: var(--accent-bright);
+}
+
+.card-button.unavailable {
+  opacity: 0.5;
+}
+
+.prompt-card.point .card-hint + .card-hint {
+  margin-top: 0;
+}
+
+/* A point is chosen on the map: in landscape its card keeps to the map's right, clear of the hero at its centre. */
+@media (orientation: landscape) and (min-width: 560px) {
+  .prompt-card.point {
+    left: auto;
+    width: min(24rem, 42%);
+    margin: 0;
+  }
+}
+
 .card-hint {
   margin: -0.4rem 0 0.7rem;
   color: var(--muted);
@@ -3843,6 +3865,12 @@ html.keyboard-tight .prompt-card.text .card-title {
   animation: feel-flash 2400ms ease-out;
 }
 
+/* Genocide: the map darkens to violet-black at the edges and slowly clears. */
+.feel-vignette.genocide {
+  background: radial-gradient(ellipse at center, rgb(120 60 200 / 0.18) 0%, rgb(40 10 70 / 0.55) 55%, rgb(4 0 10 / 0.9) 100%);
+  animation: feel-flash 2200ms ease-out;
+}
+
 @keyframes feel-flash {
   from {
     opacity: var(--strength);
@@ -4215,6 +4243,83 @@ html.keyboard-tight .prompt-card.text .card-title {
     opacity: 0;
     transform: scale(2.4);
   }
+}
+
+/* Genocide's wave: a dark ring edged in violet light, spreading over the whole map from the hero. */
+.feel-wave {
+  position: absolute;
+  width: 200vmax;
+  height: 200vmax;
+  margin: -100vmax 0 0 -100vmax;
+  border-radius: 50%;
+  background: radial-gradient(circle, transparent 58%, rgb(20 0 40 / 0.55) 66%, rgb(170 110 255 / 0.55) 69.5%, rgb(230 200 255 / 0.85) 70%, transparent 71%);
+  pointer-events: none;
+  transform: scale(0);
+  animation: feel-wave 1600ms cubic-bezier(0.2, 0.6, 0.4, 1) forwards;
+}
+
+@keyframes feel-wave {
+  0% {
+    opacity: 1;
+    transform: scale(0);
+  }
+  70% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+/* A creature erased in view: its glyph flares, drains of colour and rises away as ash. */
+.feel-erase {
+  --erase: #c9a0ff;
+  position: absolute;
+  font-family: var(--mono);
+  font-size: var(--fs-title);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--erase);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+  animation: feel-erase 1100ms ease-out forwards;
+}
+
+@keyframes feel-erase {
+  0% {
+    opacity: 1;
+    filter: none;
+    text-shadow: 0 0 0 var(--erase);
+    transform: translate(-50%, -50%) scale(1);
+  }
+  25% {
+    opacity: 1;
+    color: #f2e6ff;
+    text-shadow: 0 0 14px #b48cff, 0 0 28px #6c2bd9;
+    transform: translate(-50%, -50%) scale(1.6);
+  }
+  100% {
+    opacity: 0;
+    color: #3a2a4a;
+    filter: blur(6px);
+    text-shadow: 0 -12px 18px #6c2bd9;
+    transform: translate(-50%, -170%) scale(2.4, 0.6);
+  }
+}
+
+.feel-banner.genocide {
+  border-color: rgb(180 130 255 / 0.6);
+  background: linear-gradient(to right, transparent, rgb(14 4 26 / 0.9) 20%, rgb(14 4 26 / 0.9) 80%, transparent);
+}
+
+.feel-banner.genocide strong {
+  color: #e9dcff;
+  font-family: var(--serif);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: 0 0 16px rgb(160 100 255 / 0.95), 0 0 30px rgb(100 40 200 / 0.7);
 }
 
 .feel-banner.streak strong {

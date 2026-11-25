@@ -56,6 +56,7 @@ export type CueId =
   | 'unique'
   | 'death'
   | 'returned'
+  | 'genocide'
   | 'shop'
   | 'deny'
   | 'poisoned'

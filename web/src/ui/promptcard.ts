@@ -46,6 +46,30 @@ interface ReturnOffer {
   refuse(why: string): void;
 }
 
+/** tome2's question of a point on the map (`tgt_pt`), as the card shows it. */
+export interface PointChoice {
+  /** Any place, or a creature whose kind Genocide erases. */
+  purpose: 'place' | 'genocide';
+  /** What lies where tome2's cursor rests ("Cave orc (o)"), or null while it rests on the hero. */
+  marked: string | null;
+  /** Why Choose cannot be taken now, if it cannot. */
+  refusal?: string;
+  /** Says why a choice cannot be made (a toast and the refusal sound). */
+  refuse(why: string): void;
+  /** What tome2 said before it asked. */
+  lead: readonly string[];
+}
+
+/* What each kind of point tome2 asks for means to the player, and what to do while nothing is marked. */
+const POINT_WORDS: Readonly<Record<PointChoice['purpose'], { title: string; hint?: string; unmarked: string }>> = {
+  place: { title: 'Choose a place', unmarked: 'Tap a place on the map, then Choose.' },
+  genocide: {
+    title: 'Choose a creature to erase',
+    hint: 'Every creature on this level with its symbol is erased, but uniques and quest foes. Each one costs you some health.',
+    unmarked: 'Tap a creature on the map, then Choose.',
+  },
+};
+
 /**
  * Native card for tome2's questions: yes/no, how many, a line of text, a
  * direction, or a target. It sits at the bottom of the map so the map can
@@ -147,6 +171,34 @@ export class PromptCard {
     }
     this.root.replaceChildren(this.title(box.text), buttons);
     primary.focus({ preventScroll: true });
+  }
+
+  /**
+   * A point on the map (tome2's `tgt_pt`): the map is tapped to mark it
+   * (tome2's cursor, drawn as the reticle), and Choose, or a tap on the mark,
+   * takes it. Escape and Cancel give up, as tome2 does.
+   */
+  showPoint(choice: PointChoice): void {
+    const key = `point\u0000${choice.purpose}\u0000${choice.marked}\u0000${choice.refusal ?? ''}\u0000${choice.lead.join('\n')}`;
+    this.root.hidden = false;
+    this.leading = choice.lead.length > 0;
+    if (key === this.renderedKey) return;
+    this.renderedKey = key;
+    this.root.className = `prompt-card point ${choice.purpose}`;
+    const words = POINT_WORDS[choice.purpose];
+    const { refusal } = choice;
+    const choose = refusal
+      ? this.button('Choose', () => choice.refuse(refusal), 'card-button unavailable')
+      : this.button('Choose', codes(' '), 'card-button primary');
+    choose.dataset.choose = '';
+    const buttons = el('div', 'card-buttons');
+    buttons.append(this.button('Cancel', [ESCAPE]), choose);
+    const marked = choice.marked ? el('p', 'card-marked', `Marked: ${choice.marked}`) : el('p', 'card-hint', words.unmarked);
+    const parts = [this.title(words.title)];
+    if (words.hint) parts.push(el('p', 'card-hint', words.hint));
+    this.root.replaceChildren(...parts, marked, buttons);
+    if (choice.lead.length) this.root.prepend(leadIn(choice.lead));
+    if (!refusal) choose.focus({ preventScroll: true });
   }
 
   /**
@@ -293,11 +345,18 @@ export class PromptCard {
 
   /**
    * Keys for the how-many card: ArrowLeft/ArrowRight (or − and +) change the
-   * number, and Enter answers with it once they have; other keys go to
-   * tome2's prompt, which the card follows.
+   * number, and Enter answers with it once they have; for a point, Enter
+   * chooses (tome2 takes only Space). Other keys go to tome2's prompt (the
+   * point card's arrows move tome2's cursor), which the card follows.
    */
   handleKey(e: KeyboardEvent): boolean {
-    if (!this.visible || !this.amount?.element.isConnected) return false;
+    if (!this.visible) return false;
+    const choose = this.root.querySelector<HTMLButtonElement>('[data-choose]');
+    if (choose && e.key === 'Enter') {
+      choose.click();
+      return true;
+    }
+    if (!this.amount?.element.isConnected) return false;
     if (e.key === 'Enter' && this.amountMoved) {
       this.answerQuantity();
       return true;

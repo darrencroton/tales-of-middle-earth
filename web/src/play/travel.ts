@@ -263,6 +263,7 @@ export function isKnown(snap: LevelSnapshot, point: Point): boolean {
 export type TapAction =
   | { kind: 'direction'; digit: string }
   | { kind: 'target'; cell: Point }
+  | { kind: 'point'; cell: Point }
   | { kind: 'interrupt' }
   | { kind: 'wait' }
   | { kind: 'travel'; cell: Point }
@@ -339,6 +340,7 @@ export function tapAction(snap: LevelSnapshot, materials: readonly Material[], c
   const direction = (): TapAction => ({ kind: 'direction', digit: directionDigit(cell.x - snap.px, cell.y - snap.py) ?? '5' });
   if (prompt === 'direction') return near ? direction() : { kind: 'none' };
   if (prompt === 'aim') return near ? direction() : { kind: 'target', cell };
+  if (prompt === 'point') return { kind: 'point', cell };
   /* Resting, running or repeating: a tap interrupts it. */
   if (!snap.atCommand) return prompt === 'none' ? { kind: 'interrupt' } : { kind: 'none' };
   if (steered !== undefined) return steerAction(steered, cell);

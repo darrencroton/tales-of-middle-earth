@@ -18,13 +18,15 @@ import { contextActions, contextualAction, commandRefusal, CONTROLLING, exploreR
 import { MacroRunner, type Macro } from './play/macro.ts';
 import { classifyPrompt, directionDigit, isAdjacent, isYesNo, type PromptKind } from './play/prompts.ts';
 import { goAction, rubbleBeside, TAP_AGAIN, tapAction, type TapAction } from './play/travel.ts';
+import { pointStep } from './play/targeting.ts';
+import { genocideTelling } from './play/genocide.ts';
 import { Journeys } from './play/journeys.ts';
 import { HeroMemoryKeeper } from './play/heromemory.ts';
 import { Conversation } from './play/conversation.ts';
 import { abandonMacro, finishMacro, leaveTombMacro, quitMacro } from './play/quit.ts';
 import { gridDistance } from './play/pathfinding.ts';
 import { questKey } from './play/mapmemory.ts';
-import { isHostile, isNeutral, LEAD_LINES, leadInMessages, newMessages, type GameState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState } from './render/snapshot.ts';
+import { isHostile, isNeutral, LEAD_LINES, leadInMessages, newMessages, type GameState, type GenocideState, type LevelQuest, type LevelSnapshot, type MessageState, type MonsterState } from './render/snapshot.ts';
 import { acquireSessionLock } from './saves.ts';
 import { Backup } from './backup.ts';
 import { Transfer } from './ui/transfer.ts';
@@ -51,13 +53,13 @@ import { el, iconText } from './ui/dom.ts';
 import { onTap } from './ui/tap.ts';
 import { openAltarGod } from './ui/gods.ts';
 import { openEffect } from './ui/effects.ts';
-import { openFloorObject, openMonster, openQuest, openTargets } from './ui/info.ts';
+import { describeCell, openFloorObject, openMonster, openQuest, openTargets } from './ui/info.ts';
 import { openInventory, openItemDetails } from './ui/inventory.ts';
 import { askQuantity, askText, confirmSheet, openHistory, openMenu, openMessage, openSettings, openTemplate, type AdventureRules } from './ui/menus.ts';
 import { Sheets, type SheetTrail } from './ui/sheet.ts';
 import { bufferRows, type OptionBlock } from './ui/termparse.ts';
 import { TermView, type TermViewOptions } from './ui/termview.ts';
-import { PromptCard, type CardKind } from './ui/promptcard.ts';
+import { PromptCard, type CardKind, type PointChoice } from './ui/promptcard.ts';
 import { setRefusal, type PopAction, type PopTab } from './ui/popup.ts';
 import { cleanPrompt, describableRange } from './ui/prompttext.ts';
 import { Abilities } from './ui/abilities.ts';
@@ -590,7 +592,49 @@ function promptText(): string {
 }
 
 function currentPrompt(): PromptKind {
-  return classifyPrompt(promptText(), buffer.cursorY === 0);
+  const kind = classifyPrompt(promptText(), buffer.cursorY === 0);
+  /* tome2 asks for a point in a message, whose -more- (with Pause) comes first. */
+  return game.lastSnap?.choosing && kind !== 'more' ? 'point' : kind;
+}
+
+/** Where tome2's cursor rests on the map, while it shows one. */
+function cursorCell(): MapPoint | null {
+  return game.lastSnap && buffer.cursorY >= 0 ? terminalToDungeon(game.lastSnap, buffer.cursorX, buffer.cursorY) : null;
+}
+
+const FAR_POINT = 'Too far away to choose: choose somewhere nearer.';
+const MARK_CREATURE = 'Tap a creature on the map first.';
+
+/** The card for tome2's question of a point on the map: what its cursor marks, and whether Choose can be taken. */
+function pointChoice(snap: LevelSnapshot): PointChoice {
+  const purpose = snap.choosing ?? 'place';
+  const cursor = cursorCell();
+  const onHero = !cursor || (cursor.x === snap.px && cursor.y === snap.py);
+  const cell = onHero ? null : describeCell(api, cursor);
+  const creature = cell?.monsters[0];
+  const marked = onHero ? null : creature ? `${creature.name} (${String.fromCharCode(creature.ch)})` : purpose === 'genocide' ? 'No creature seen there' : (cell?.title ?? null);
+  return {
+    purpose,
+    marked,
+    refusal: purpose === 'genocide' && onHero ? MARK_CREATURE : undefined,
+    refuse,
+    lead: leadMessages.map((m) => m.text),
+  };
+}
+
+/** A tap on the map while tome2 asks for a point: marks the place (moving its cursor there), or chooses the place marked. */
+function markPoint(cell: MapPoint): void {
+  const snap = game.lastSnap;
+  const cursor = cursorCell();
+  if (!snap || !cursor || engine.pendingKeys > 0) return;
+  const step = pointStep({ ...snap, cols: buffer.cols, rows: buffer.rows }, cursor, cell);
+  if (step.kind === 'far') refuse(FAR_POINT);
+  else if (step.kind === 'move') send(step.keys);
+  else {
+    const { refusal } = pointChoice(snap);
+    if (refusal) refuse(refusal);
+    else send([SPACE]);
+  }
 }
 
 /** The game state when tome2 last waited for a command (on the map, or a building's). */
@@ -691,6 +735,12 @@ function updatePromptCard(): void {
   }
   const kind = currentPrompt();
   const quiet = !macros.running && engine.pendingKeys === 0;
+  if (kind === 'point' && game.lastSnap) {
+    const choice = pointChoice(game.lastSnap);
+    promptCard.showPoint(choice);
+    if (choice.lead.length) noteLeadShown();
+    return;
+  }
   /* tome2 asks to dump the screen at a death, or for a last screenshot when undead form ends it. */
   if (kind === 'yesno' && /Dump the screen\?|Make a last screenshot\?/.test(rowZeroText()) && quiet) {
     const player = engine.gameState(0)?.player;
@@ -838,7 +888,7 @@ function refresh(): void {
     setMode('map');
     shop.leave();
     termView.hide();
-    const cursor = rowZeroText() ? terminalToDungeon(snap, buffer.cursorX, buffer.cursorY) : null;
+    const cursor = rowZeroText() || snap.choosing ? cursorCell() : null;
     map.setReticle(cursor && (cursor.x !== snap.px || cursor.y !== snap.py) ? cursor : null);
   }
   updatePromptCard();
@@ -870,6 +920,7 @@ function refresh(): void {
     const sameHero = !!previous && previous.player?.name === state.player?.name;
     const slain = sameHero ? slainMonsters(previous.monsters ?? [], state.monsters ?? [], newMessages(previous, state)) : [];
     if (sameHero) showHits(previous, state, slain);
+    if (sameHero && state.genocide && state.genocide.n !== previous.genocide?.n) tellGenocide(state.genocide, snap);
     if (state.player) {
       app.classList.toggle('fallen', hasFallen(state.player) && !game.abandoning);
       app.classList.toggle('between', !!state.player.dead && state.player.fate === 'choice');
@@ -960,6 +1011,20 @@ function showHits(previous: GameState, next: GameState, slain: readonly Slain[])
   }
   /* With animation off no frames are scheduled, so the flash is cleared explicitly. */
   if (marked) window.setTimeout(() => requestFrame(), HIT_FLASH_MS + 50);
+}
+
+/** Tells what a Genocide did: the creatures erased in view dissolve as a wave passes, under a banner; else why nothing was erased. */
+function tellGenocide(g: GenocideState, snap: LevelSnapshot): void {
+  const telling = genocideTelling(g);
+  if (telling.kind === 'toast') {
+    showToast(telling.text, { log: telling.logged, read: true });
+    audio.cue('fizzle');
+    return;
+  }
+  const erased = g.seen.map((c) => ({ ...map.cellCentre(c.x, c.y), glyph: String.fromCharCode(c.ch), colour: buffer.palette[c.attr] ?? '' }));
+  feel.erase(map.cellCentre(snap.px, snap.py), erased);
+  feel.announce(telling.title, telling.subtitle, 'genocide');
+  audio.cue('genocide');
 }
 
 /* Action bar */
@@ -1361,7 +1426,7 @@ function onStageTap(clientX: number, clientY: number, target: EventTarget | null
     send([SPACE]);
     return;
   }
-  if (promptCard.visible && prompt !== 'aim' && prompt !== 'direction') return;
+  if (promptCard.visible && prompt !== 'aim' && prompt !== 'direction' && prompt !== 'point') return;
 
   const snap = game.lastSnap;
   if (mode === 'map' && snap) {
@@ -1422,6 +1487,9 @@ function doTap(action: TapAction): void {
       break;
     case 'target':
       journeys.target(action.cell);
+      break;
+    case 'point':
+      markPoint(action.cell);
       break;
     case 'interrupt':
       send([KEY_ESCAPE]);
@@ -1842,7 +1910,7 @@ const journeys = new Journeys({
   alwaysPickup,
   pace: () => settings.explorePace,
   animating,
-  cursorCell: () => (game.lastSnap && buffer.cursorY >= 0 ? terminalToDungeon(game.lastSnap, buffer.cursorX, buffer.cursorY) : null),
+  cursorCell,
   held: heroHeld,
   underfoot: underfootName,
   lightOffered: (snap) => changingButton(snap).id === 'equip' && gearSuggestion()?.kind === 'light',

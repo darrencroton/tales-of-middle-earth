@@ -94,7 +94,7 @@ add_subdirectory(${TOME2_DIR}/src ${CMAKE_BINARY_DIR}/tome2 EXCLUDE_FROM_ALL)
 #
 # Web frontend
 #
-add_executable(tome engine/main-web.cc engine/snapshot.cc engine/memory.cc engine/runoptions.cc engine/adventure.cc engine/knowledge.cc engine/properties.cc engine/homes.cc)
+add_executable(tome engine/main-web.cc engine/snapshot.cc engine/memory.cc engine/runoptions.cc engine/adventure.cc engine/knowledge.cc engine/properties.cc engine/homes.cc engine/choosing.cc)
 target_include_directories(tome PRIVATE ${TOME2_DIR}/src ${TOME2_DIR}/src/include)
 target_link_libraries(tome PRIVATE game_main game squelch ${LIBS})
 
@@ -126,6 +126,9 @@ set(TOME_LINK_FLAGS
 	-Wl,--wrap=_Z13highscore_addiP10high_score
 	-Wl,--wrap=_Z12save_dungeonv
 	-Wl,--wrap=_Z12load_dungeonRKNSt3__212basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE
+	-Wl,--wrap=_Z6tgt_ptPiS_
+	-Wl,--wrap=_Z8genocidev
+	-Wl,--wrap=_Z13mass_genocidev
 	-Wl,--wrap=_ZN8Messages3addERKNSt3__212basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEEh
 	"SHELL:--preload-file ${TOME_LIB_DIR}@/lib"
 	"SHELL:--exclude-file ${TOME_LIB_DIR}/xtra/font"

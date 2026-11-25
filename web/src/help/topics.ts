@@ -498,7 +498,7 @@ export const HELP: readonly HelpGroup[] = [
         title: 'Magic and powers',
         icon: '✦',
         summary: 'Spells, books, mana and powers.',
-        keywords: 'magic spell cast school book mana fail failure power powers again device wand staff rod activate activation artifact recharge charges golem control release mind steal',
+        keywords: 'magic spell cast school book mana fail failure power powers again device wand staff rod activate activation artifact recharge charges golem control release mind steal choose place point genocide erase jumpgate',
         body: [
           'Spells are written in books and belong to schools: Mana, Fire, Water, Air, Earth, Nature, Conveyance, Divination, Temporal, Mind, Meta and more. Your skill in a school decides which of its spells you can cast and how well.',
           '*Cast* opens your magic: what you used recently first, then every spell in the books you carry, then your *magic arts* (Necromancy, Mindcraft, Copy a spell and the like). Tap ⓘ beside a spell to read what it does. *Again* on the toolbar repeats your last spell at the nearest foe.',
@@ -506,6 +506,8 @@ export const HELP: readonly HelpGroup[] = [
           '*Powers* are gifts of your race, your class, what you wear, a form you have taken or what has changed you, each listed under what grants it. Below them are *techniques* your skills and abilities bring: piercing shots, mimicry, forging ammunition and others. Magic and Powers are the two tabs of one panel, both headed by what you used recently: the toolbar button (*Cast*, or *Powers* for heroes who do not cast) and More → *Magic* or *Powers* open it.',
           'Some classes have magic of their own: songs, mindcraft, necromancy, thaumaturgy and others.',
           'Some spells put another creature under your control: *Fire Golem* makes one from a torch or lantern, and *Mind Steal* takes a foe. While you control it, a tap on the map moves the creature a step that way, and your own actions wait. More offers its powers, its pack and *Release creature*. The toolbar\'s first button, *Release*, lets it go for now: it stays where it is, and you take control of it again when you cast Fire Golem, load the game or come back to its level.',
+          'Some magic asks for a place or a creature on the map: a card says what it wants, a tap marks it, and *Choose* (or a second tap on the mark) takes it. You can only choose within the part of the map around you. *Cancel* gives up; some magic, Genocide among it, is spent all the same.',
+          '*Genocide* (a scroll, a staff, a spell or an artifact) erases every creature on the level drawn with the same symbol as the one you choose, but uniques and quest foes; *Mass genocide* erases those around you. Each creature erased costs you some health, so a large kind can kill you. Some places forbid it.',
           '*Powers* also lists your *gear*: the powers what you wear grants and what activates, each with what it does and how often, then your *devices*, the wands, staffs and rods you carry, with their charges. A tap uses it; ⓘ opens the item. Something still recharging, out of charges or needing to be worn first is dimmed and says so. Wands, staffs and rods let anyone use magic; skill with magic devices makes them, and activations, work better.',
         ],
         see: ['gods', 'skills'],

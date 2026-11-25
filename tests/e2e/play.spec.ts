@@ -15,6 +15,7 @@ import {
   screenText,
   sendText,
   stepOffStairs,
+  summonBeside,
   test,
   travelTo,
   viewMode,
@@ -25,6 +26,10 @@ import {
   wizardCommand,
   wizardGive,
 } from './helpers.ts';
+
+/* r_info and k_info indices. */
+const KOBOLD = 30;
+const SCROLL_OF_GENOCIDE = 207;
 
 async function actionIds(page: Page): Promise<string[]> {
   return page.evaluate(() => window.__tome!.actions());
@@ -516,7 +521,7 @@ test.describe(() => {
   });
 });
 
-test('race powers are under their race in Powers, their lettered questions are buttons, and they are offered again; gear and devices are there too', async ({ page }) => {
+test('race powers are under their race in Powers, their lettered questions are buttons, and they are offered again; gear and devices are there too, and Genocide is aimed at a creature tapped on the map', async ({ page }) => {
   await page.goto('./?wizard');
   await waitForEngine(page);
   await createCharacter(page, 'Stormwing', { race: 'Thunderlord', cls: 'Warrior' });
@@ -601,6 +606,27 @@ test('race powers are under their race in Powers, their lettered questions are b
   await dismissMore(page);
   await waitAtCommand(page);
   await expect(page.locator('#toolbar [data-action="recast"]')).toContainText('Wand of Manathrust');
+
+  /* Genocide asks for a creature on the map (tome2's point cursor): a tap marks it, Choose erases its kind, and a banner says so. */
+  await summonBeside(page, KOBOLD);
+  await wizardGive(page, '-', SCROLL_OF_GENOCIDE);
+  const scroll = await page.evaluate(() => window.__tome!.engine.inventory()!.pack.findIndex((p) => /Genocide/.test(p.name)));
+  await sendText(page, `r${String.fromCharCode(97 + scroll)}`);
+  const pick = page.locator('.prompt-card.point');
+  await expect(pick).toContainText('Choose a creature to erase');
+  await pick.locator('[data-choose]').click();
+  await expect(page.locator('#toast')).toHaveText('Tap a creature on the map first.');
+  const kobold = await page.evaluate(() => window.__tome!.engine.gameState()!.monsters!.find((m) => m.name === 'Kobold')!);
+  const tapKobold = async () => {
+    const at = await page.evaluate(({ x, y }) => window.__tome!.mapCellCentre(x, y), kobold);
+    await page.mouse.click(at.x, at.y);
+  };
+  await tapKobold();
+  await expect(pick).toContainText('Marked: Kobold (k)');
+  await pick.locator('[data-choose]').click();
+  await expect(page.locator('.feel-banner')).toHaveText(/Genocide.*Kobold and its kind \(k\) erased/);
+  await waitAtCommand(page);
+  expect(await page.evaluate(() => window.__tome!.engine.gameState()!.monsters!.some((m) => m.name === 'Kobold'))).toBe(false);
 });
 
 test('a Demonologist sees Doom Shield take hold, what it does and the turns it has left, then feels it fade', async ({ page }) => {
